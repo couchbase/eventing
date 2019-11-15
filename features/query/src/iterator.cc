@@ -108,7 +108,7 @@ void Query::Iterator::RowCallback(lcb_t connection, int,
                 << " is_error : " << cursor->is_error
                 << " is_client_auth_error : " << cursor->is_client_auth_error
                 << " resp rflags : " << resp->rflags
-                << " resp rc : " << resp->rc << " is_last : " << std::endl;
+                << " resp rc : " << resp->rc << std::endl;
 
   cursor->YieldTo(Cursor::ExecutionControl::kV8);
   if (!cursor->is_last) {
