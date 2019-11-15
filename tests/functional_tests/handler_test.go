@@ -1479,3 +1479,101 @@ func TestLargeHandler(t *testing.T) {
 	waitForDeployToFinish(functionName)
 	flushFunctionAndBucket(functionName)
 }
+
+func TestAllowInterHandlerRecursion(t *testing.T) {
+	time.Sleep(time.Second * 5)
+	handler1 := "source_bucket_update_op"
+	handler2 := "src_bucket_op_on_delete"
+	functionName1 := fmt.Sprintf("%s_%s", t.Name(), handler1)
+	functionName2 := fmt.Sprintf("%s_%s", t.Name(), handler2)
+
+	flushFunctionAndBucket(functionName1)
+	flushFunctionAndBucket(functionName2)
+
+	defer func() {
+		flushFunctionAndBucket(functionName1)
+		flushFunctionAndBucket(functionName2)
+	}()
+
+	payload := fmt.Sprintf("{\"allow_interbucket_recursion\":%v}", true)
+	_, err := configChange(payload)
+	if err != nil {
+		t.Errorf("Failed to change setting allow_interbucket_recursion, err : %v\n", err)
+		return
+	}
+
+	resp := createAndDeployFunction(functionName1, handler1, &commonSettings{srcMutationEnabled: true})
+	log.Printf("response body %s err %v", string(resp.body), resp.err)
+	waitForDeployToFinish(functionName1)
+	resp = createAndDeployFunction(functionName2, handler2, &commonSettings{srcMutationEnabled: true})
+	log.Printf("response body %s err %v", string(resp.body), resp.err)
+	waitForDeployToFinish(functionName2)
+
+	status := getFnStatus(functionName2)
+	if status != "deployed" {
+		t.Errorf("%s must be deployed", functionName2)
+	}
+
+	log.Printf("%s is deployed", functionName2)
+
+	payload = fmt.Sprintf("{\"allow_interbucket_recursion\":%v}", false)
+	_, err = configChange(payload)
+	if err != nil {
+		t.Errorf("Failed to change setting allow_interbucket_recursion, err : %v\n", err)
+		return
+	}
+}
+
+func TestAllowInterBucketRecursion(t *testing.T) {
+	functionName1 := fmt.Sprintf("%s_function1", t.Name())
+	functionName2 := fmt.Sprintf("%s_function2", t.Name())
+
+	time.Sleep(time.Second * 5)
+
+	payload := fmt.Sprintf("{\"allow_interbucket_recursion\":%v}", true)
+	_, err := configChange(payload)
+	if err != nil {
+		t.Errorf("Failed to change setting allow_interbucket_recursion, err : %v\n", err)
+		return
+	}
+
+	jsFileName := "noop"
+	setting1 := &commonSettings{
+		aliasSources: []string{dstBucket},
+		aliasHandles: []string{"dst_bucket"},
+		metaBucket:   metaBucket,
+		sourceBucket: srcBucket,
+	}
+	resp := createAndDeployFunction(functionName1, jsFileName, setting1)
+	log.Printf("response body %s err %v", string(resp.body), resp.err)
+	waitForDeployToFinish(functionName1)
+
+	setting2 := &commonSettings{
+		aliasSources: []string{srcBucket},
+		aliasHandles: []string{"dst_bucket"},
+		metaBucket:   metaBucket,
+		sourceBucket: dstBucket,
+	}
+	resp = createAndDeployFunction(functionName2, jsFileName, setting2)
+	log.Printf("response body %s err %v", string(resp.body), resp.err)
+	waitForDeployToFinish(functionName2)
+
+	defer func() {
+		flushFunctionAndBucket(functionName1)
+		flushFunctionAndBucket(functionName2)
+	}()
+
+	status := getFnStatus(functionName2)
+	if status != "deployed" {
+		t.Errorf("%s must be deployed", functionName2)
+	}
+
+	log.Printf("%s is deployed", functionName2)
+
+	payload = fmt.Sprintf("{\"allow_interbucket_recursion\":%v}", false)
+	_, err = configChange(payload)
+	if err != nil {
+		t.Errorf("Failed to change setting allow_interbucket_recursion, err : %v\n", err)
+		return
+	}
+}

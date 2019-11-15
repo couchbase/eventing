@@ -55,7 +55,17 @@ func (m *ServiceMgr) validateApplication(app *application) (info *runtimeInfo) {
 		return
 	}
 
-	if m.isAppDeployable(app) == false {
+	var config common.Config
+	if config, info = m.getConfig(); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
+	var allowInterBucketRecursion bool
+	if flag, ok := config["allow_interbucket_recursion"]; ok {
+		allowInterBucketRecursion = flag.(bool)
+	}
+
+	if allowInterBucketRecursion == false && m.isAppDeployable(app) == false {
 		info.Code = m.statusCodes.errInterFunctionRecursion.Code
 		info.Info = fmt.Sprintf("Inter handler recursion error")
 		return
@@ -63,7 +73,7 @@ func (m *ServiceMgr) validateApplication(app *application) (info *runtimeInfo) {
 
 	source, destinations := m.getSourceAndDestinationsFromDepCfg(&app.DeploymentConfig)
 	if len(destinations) != 0 {
-		if possible, path := m.graph.isAcyclicInsertPossible(app.Name, source, destinations); !possible {
+		if possible, path := m.graph.isAcyclicInsertPossible(app.Name, source, destinations); !possible && !allowInterBucketRecursion {
 			info.Code = m.statusCodes.errInterBucketRecursion.Code
 			info.Info = fmt.Sprintf("Inter bucket recursion error; function: %s causes a cycle "+
 				"involving functions: %v, hence deployment is disallowed", app.Name, path)
@@ -306,6 +316,10 @@ func (m *ServiceMgr) validateConfig(c map[string]interface{}) (info *runtimeInfo
 	}
 
 	if info = m.validateBoolean("force_compress", true, c); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
+	if info = m.validateBoolean("allow_interbucket_recursion", true, c); info.Code != m.statusCodes.ok.Code {
 		return
 	}
 
