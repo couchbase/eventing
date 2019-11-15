@@ -14,8 +14,8 @@ func testFlexReset(handler string, t *testing.T) {
 	pumpBucketOps(opsType{count: itemCount}, &rateLimit{})
 	createAndDeployFunction(functionName, handler, &commonSettings{
 		lcbInstCap:       2,
-		deadlineTimeout:  15,
-		executionTimeout: 10,
+		deadlineTimeout:  70,
+		executionTimeout: 60,
 	})
 	waitForDeployToFinish(functionName)
 
