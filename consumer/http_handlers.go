@@ -65,6 +65,13 @@ func (c *Consumer) RebalanceTaskProgress() *cm.RebalanceProgress {
 func (c *Consumer) CheckIfQueuesAreDrained() error {
 	logPrefix := "Consumer::CheckIfQueuesAreDrained"
 
+	defer func() {
+		// This recover is put with a defensive intention. See MB-36326
+		if r := recover(); r != nil {
+			logging.Infof("%s [%s:%s:%d] Recovered from panic", logPrefix, c.workerName, c.tcpPort, c.Pid())
+		}
+	}()
+
 	vbsFilterAckYetToCome := c.getVbsFilterAckYetToCome()
 	if len(vbsFilterAckYetToCome) > 0 {
 		logging.Infof("%s [%s:%s:%d] vbsFilterAckYetToCome dump: %s len: %d",

@@ -43,6 +43,7 @@ func NewProducer(appName, debuggerPort, eventingPort, eventingSSLPort, eventingD
 		notifySupervisorCh:           make(chan struct{}),
 		nsServerPort:                 nsServerPort,
 		numVbuckets:                  numVbuckets,
+		isPausing:                    false,
 		pauseProducerCh:              make(chan struct{}, 1),
 		plannerNodeMappingsRWMutex:   &sync.RWMutex{},
 		pollBucketStopCh:             make(chan struct{}, 1),
@@ -287,6 +288,7 @@ func (p *Producer) Serve() {
 			// This routine cleans up everything apart from metadataBucketHandle,
 			// which would be needed to clean up metadata bucket
 			logging.Infof("%s [%s:%d] Pausing processing", logPrefix, p.appName, p.LenRunningConsumers())
+			p.isPausing = true
 
 			for _, c := range p.getConsumers() {
 				c.PauseConsumer()
@@ -336,6 +338,7 @@ func (p *Producer) Serve() {
 			logging.Infof("%s [%s:%d] Closed stop chan and app log writer handle",
 				logPrefix, p.appName, p.LenRunningConsumers())
 
+			p.isPausing = false
 			p.notifySupervisorCh <- struct{}{}
 
 		case <-p.stopProducerCh:
@@ -703,6 +706,12 @@ func (p *Producer) KillAndRespawnEventingConsumer(c common.EventingConsumer) {
 		delete(p.feedbackListeners, c)
 	}
 	p.listenerRWMutex.Unlock()
+
+	if p.isPausing {
+		logging.Infof("%s [%s:%d] Not respawning consumer as the Function is pausing",
+			logPrefix, p.appName, p.LenRunningConsumers())
+		return
+	}
 
 	logging.Infof("%s [%s:%d] ConsumerIndex: %d respawning the Eventing.Consumer instance",
 		logPrefix, p.appName, p.LenRunningConsumers(), consumerIndex)
