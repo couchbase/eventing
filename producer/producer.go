@@ -220,11 +220,11 @@ func (p *Producer) Serve() {
 				logging.Infof("%s [%s:%d] Planner status: %t, post vbucket to worker assignment during rebalance",
 					logPrefix, p.appName, p.LenRunningConsumers(), p.isPlannerRunning)
 
-				for _, eventingConsumer := range p.getConsumers() {
-					consumerName := eventingConsumer.ConsumerName()
+				for _, c := range p.getConsumers() {
+					consumerName := c.ConsumerName()
 					// Notify consumer of rebalance only if there is a change in assignedVbs
 					oldVbucketSlice, _ := oldworkerVbucketMap[consumerName]
-					newVbucketSlice, _ := eventingConsumer.GetAssignedVbs(consumerName)
+					newVbucketSlice, _ := c.GetAssignedVbs(consumerName)
 
 					sort.Sort(util.Uint16Slice(oldVbucketSlice))
 					sort.Sort(util.Uint16Slice(newVbucketSlice))
@@ -236,10 +236,13 @@ func (p *Producer) Serve() {
 					if !util.CompareSlices(oldVbucketSlice, newVbucketSlice) || !p.firstRebalanceDone {
 						logging.Infof("%s [%s:%d] Consumer: %s sent cluster state change message from producer",
 							logPrefix, p.appName, p.LenRunningConsumers(), consumerName)
-						eventingConsumer.NotifyClusterChange()
+						c.NotifyClusterChange()
 					} else {
-						logging.Infof("%s [%s:%d] skipped cluster state change message for consumer: %s oldSlice: %v, newSlice: %v",
-							logPrefix, p.appName, p.LenRunningConsumers(), consumerName, oldVbucketSlice, newVbucketSlice)
+						// set the rebalance status on the consumer as it uses this flag to control throttling in processDcpEvents()
+						// This helps in accelerating eventing owning VBs faster during KV rebalance. c.RebalanceTaskProgress() will reset this flag
+						c.SetRebalanceStatus(true)
+						logging.Infof("%s [%s:%d] skipped cluster state change message for consumer: %s oldSlice: %v, newSlice: %v, updated isRebalanceOngoing to: %v",
+							logPrefix, p.appName, p.LenRunningConsumers(), consumerName, oldVbucketSlice, newVbucketSlice, c.GetRebalanceStatus())
 					}
 				}
 				if !p.firstRebalanceDone {
