@@ -60,15 +60,32 @@ func (p *Producer) GetInsight() *common.Insight {
 	return wrapper
 }
 
+func (p *Producer) AggregateCurlStats(in interface{}, curlMap map[string]float64) {
+	for key, val := range in.(map[string]interface{}) {
+		if oldVal, ok := curlMap[key]; ok {
+			curlMap[key] = oldVal + val.(float64)
+		} else {
+			curlMap[key] = val.(float64)
+		}
+	}
+}
+
 // GetExecutionStats returns execution stats aggregated from Eventing.Consumer instances
 func (p *Producer) GetExecutionStats() map[string]interface{} {
 	executionStats := make(map[string]interface{})
 	executionStats["timestamp"] = make(map[int]string)
+	executionStats["curl"] = make(map[string]interface{})
+	curlMap := make(map[string]float64)
 
 	for _, c := range p.getConsumers() {
 		for k, v := range c.GetExecutionStats() {
 			if k == "timestamp" {
 				executionStats["timestamp"].(map[int]string)[c.Pid()] = v.(string)
+				continue
+			}
+
+			if k == "curl" {
+				p.AggregateCurlStats(v, curlMap)
 				continue
 			}
 
@@ -79,6 +96,7 @@ func (p *Producer) GetExecutionStats() map[string]interface{} {
 			executionStats[k] = executionStats[k].(float64) + v.(float64)
 		}
 	}
+	executionStats["curl"] = curlMap
 
 	return executionStats
 }
@@ -102,7 +120,6 @@ func (p *Producer) GetFailureStats() map[string]interface{} {
 			failureStats[k] = failureStats[k].(float64) + v.(float64)
 		}
 	}
-
 	return failureStats
 }
 

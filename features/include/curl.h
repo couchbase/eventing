@@ -13,6 +13,7 @@
 #define CURL_H
 
 #include <algorithm>
+#include <atomic>
 #include <cctype>
 #include <curl/curl.h>
 #include <list>
@@ -33,6 +34,45 @@ struct CurlBinding;
 struct CurlBindingInfo;
 struct HTTPPostResponse;
 
+class CurlStats {
+public:
+  CurlStats();
+  void UpdateCounters(const std::string &request_type);
+  inline void UpdateNon200Counter() { non_200_resp_counter_++; }
+
+  inline std::int64_t GetCurlGetStat() const {
+    return curl_get_counter_.load();
+  }
+
+  inline std::int64_t GetCurlPostStat() const {
+    return curl_post_counter_.load();
+  }
+
+  inline std::int64_t GetCurlDeleteStat() const {
+    return curl_delete_counter_.load();
+  }
+
+  inline std::int64_t GetCurlHeadStat() const {
+    return curl_head_counter_.load();
+  }
+
+  inline std::int64_t GetCurlPutStat() const {
+    return curl_put_counter_.load();
+  }
+
+  inline std::int64_t GetCurlFailureStat() const {
+    return non_200_resp_counter_.load();
+  }
+
+private:
+  std::atomic<std::int64_t> curl_get_counter_;
+  std::atomic<std::int64_t> curl_post_counter_;
+  std::atomic<std::int64_t> curl_delete_counter_;
+  std::atomic<std::int64_t> curl_head_counter_;
+  std::atomic<std::int64_t> curl_put_counter_;
+  std::atomic<std::int64_t> non_200_resp_counter_;
+};
+
 class CurlClient {
 public:
   static std::stringstream curl_debug_log_;
@@ -48,7 +88,7 @@ public:
 
   Info AddTransferInfo(v8::Isolate *isolate,
                        const v8::Local<v8::Context> &context,
-                       v8::Local<v8::Object> &response_obj);
+                       v8::Local<v8::Object> &response_obj, CurlStats &stats);
 
   static std::size_t BodyWriteCallback(void *contents_recv, std::size_t size,
                                        std::size_t nmemb, void *cookie);
@@ -84,6 +124,7 @@ public:
 
   Info CurlImpl(const v8::FunctionCallbackInfo<v8::Value> &args);
   static Info ValidateParams(const v8::FunctionCallbackInfo<v8::Value> &args);
+  inline static const CurlStats &GetStats() { return stats_; };
 
 private:
   std::string ConstructUrl(const CurlRequest &request) const;
@@ -100,6 +141,7 @@ private:
   v8::Isolate *isolate_;
   v8::Persistent<v8::Context> context_;
   std::string user_agent_;
+  static CurlStats stats_;
 };
 
 struct CurlCodex {
@@ -385,7 +427,7 @@ public:
   ~CurlResponseBuilder();
 
   Info NewResponse(CurlClient &curl_client, const CurlResponse &response,
-                   v8::Local<v8::Object> &resp_obj_out);
+                   v8::Local<v8::Object> &resp_obj_out, CurlStats &stats);
 
 private:
   std::string ExtractContentType(const std::string &header);
