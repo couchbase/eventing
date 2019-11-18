@@ -53,7 +53,7 @@ struct Options {
     v8::Persistent<v8::String> consistency_property_;
   };
 
-  int consistency{LCB_N1P_CONSISTENCY_REQUEST};
+  int consistency{LCB_N1P_CONSISTENCY_NONE};
   std::unique_ptr<std::string> client_context_id;
 };
 
