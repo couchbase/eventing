@@ -291,6 +291,7 @@ Query::Options::Extractor::~Extractor() {
 
 ::Info Query::Options::Extractor::Extract(
     const v8::FunctionCallbackInfo<v8::Value> &args, Options &opt_out) const {
+  opt_out.consistency = UnwrapData(isolate_)->n1ql_consistency;
   if (args.Length() < 3) {
     return {false};
   }
