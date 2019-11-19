@@ -22,9 +22,9 @@
 #include "lcb_utils.h"
 #include "timer_defs.h"
 #include "timer_iterator.h"
+#include "utils.h"
 
 namespace timer {
-
 class TimerStore {
 public:
   explicit TimerStore(v8::Isolate *isolate, const std::string &prefix,
@@ -38,13 +38,16 @@ public:
 
   Iterator GetIterator();
 
-  void UpdatePartition(const std::unordered_set<int64_t> &partitions);
+  void AddPartition(int64_t partition);
+
+  void RemovePartition(int64_t partition);
 
   void SyncSpan();
 
 private:
   void Connect();
   std::pair<bool, lcb_error_t> SyncSpan(int partition);
+  std::pair<bool, lcb_error_t> SyncSpanLocked(int partition);
 
   bool ExpandSpan(int64_t partition, int64_t point);
 
@@ -65,14 +68,12 @@ private:
   std::pair<lcb_error_t, Result> Get(const std::string &key);
 
   v8::Isolate *isolate_;
-  std::unordered_set<int64_t> new_partions_;
-  std::unordered_set<int64_t> partitons_;
-  std::atomic_bool is_dirty_;
+  std::vector<bool> partitons_;
   std::unordered_map<int64_t, TimerSpan> span_map_;
   std::string prefix_;
   std::string conn_str_;
   lcb_t crud_handle_{nullptr};
-  std::mutex sync_lock;
+  std::mutex store_lock_;
   friend class Iterator;
 };
 } // namespace timer

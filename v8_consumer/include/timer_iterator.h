@@ -27,7 +27,7 @@ public:
 private:
   std::pair<bool, bool> GetNextTimer(TimerEvent &tevent);
   TimerStore *store_;
-  std::unordered_set<int64_t>::iterator partn_iter_;
+  int64_t curr_partition_{0};
   int64_t stop_;
   std::string top_key_;
   lcb_CAS top_cas_{0};

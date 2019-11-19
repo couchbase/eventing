@@ -715,7 +715,7 @@ void AppWorker::RouteMessageWithResponse(
         if (kSuccess == workers_[worker_index]->ParseMetadata(
                             worker_msg->header.metadata, vb_no, seq_no)) {
           auto lck = workers_[worker_index]->GetAndLockFilterLock();
-          workers_[worker_index]->UpdateBucketopsSeqno(vb_no, seq_no);
+          workers_[worker_index]->UpdateBucketopsSeqnoLocked(vb_no, seq_no);
         }
       }
       break;
@@ -794,10 +794,6 @@ void AppWorker::RouteMessageWithResponse(
       for (size_t idx = 0; idx < thr_count_; ++idx) {
         auto worker = workers_[idx];
         worker->UpdatePartitions(partitions[idx]);
-        std::unique_ptr<WorkerMessage> msg(new WorkerMessage);
-        msg->header.event = eInternal + 1;
-        msg->header.opcode = oUpdateVbMap;
-        worker->PushFront(std::move(msg));
       }
       std::ostringstream oss;
       std::copy(vbuckets.begin(), vbuckets.end(),

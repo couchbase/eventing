@@ -56,8 +56,6 @@ typedef std::chrono::nanoseconds nsecs;
 
 #define SECS_TO_NS 1000 * 1000 * 1000ULL
 
-#define NUM_VBUCKETS 1024
-
 extern int64_t timer_context_size;
 
 using atomic_ptr_t = std::shared_ptr<std::atomic<uint64_t>>;
@@ -257,7 +255,7 @@ public:
 
   void EraseVbFilter(int vb_no);
 
-  void UpdateBucketopsSeqno(int vb_no, uint64_t seq_no);
+  void UpdateBucketopsSeqnoLocked(int vb_no, uint64_t seq_no);
 
   uint64_t GetBucketopsSeqno(int vb_no);
 
