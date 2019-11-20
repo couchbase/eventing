@@ -529,21 +529,6 @@ void V8Worker::RouteMessage() {
         break;
       }
       break;
-    case eFilter:
-      switch (getFilterOpcode(msg->header.opcode)) {
-      case oProcessedSeqNo: {
-        int vb_no = 0;
-        uint64_t seq_no = 0;
-        if (kSuccess == ParseMetadata(msg->header.metadata, vb_no, seq_no)) {
-          std::lock_guard<std::mutex> guard(bucketops_lock_);
-          UpdateBucketopsSeqno(vb_no, seq_no);
-        }
-      } break;
-      default:
-        LOG(logError) << "Received invalid filter opcode" << std::endl;
-        break;
-      }
-      break;
     default:
       LOG(logError) << "Received unsupported event " << evt << std::endl;
       break;
