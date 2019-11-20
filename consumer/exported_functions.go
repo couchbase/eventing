@@ -629,6 +629,11 @@ func (c *Consumer) SetRebalanceStatus(status bool) {
 		logPrefix, c.workerName, c.tcpPort, c.Pid(), status)
 }
 
+// GetRebalanceStatus returns rebalance status for consumer instance
+func (c *Consumer) GetRebalanceStatus() bool {
+	return c.isRebalanceOngoing
+}
+
 // VbSeqnoStats returns seq no stats, which can be useful in figuring out missed events during rebalance
 func (c *Consumer) VbSeqnoStats() map[int]map[string]interface{} {
 	seqnoStats := make(map[int]map[string]interface{})

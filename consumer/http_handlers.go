@@ -49,11 +49,21 @@ func (c *Consumer) RebalanceTaskProgress() *cm.RebalanceProgress {
 		}
 	}
 
-	if (c.isBootstrapping || c.isRebalanceOngoing) && progress.VbsRemainingToShuffle == 0 {
+	if (c.isBootstrapping || c.vbsStateUpdateRunning) && progress.VbsRemainingToShuffle == 0 {
 		// Wait till vbStateUpdate routine exits/returns. This should remain the last 'if' block
 		// Not faking any progress here because, vbStateUpdate routine may be stuck due to kv issues.
 		// A fixed increment will ensure rebalance is failed after a fixed time if there is no progress
 		progress.VbsRemainingToShuffle++
+	}
+
+	if progress.VbsRemainingToShuffle == 0 {
+		// this case is to handle a kv rebalance where we do not trigger vbsStateUpdate and let control_routine 
+		// take care of restreaming the closed VBs
+		if c.isRebalanceOngoing {
+			c.isRebalanceOngoing = false
+			logging.Infof("%s [%s:%s:%d] Updated isRebalanceOngoing to %t",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), c.isRebalanceOngoing)
+		}
 	}
 
 	return progress
@@ -64,6 +74,13 @@ func (c *Consumer) RebalanceTaskProgress() *cm.RebalanceProgress {
 // pausing of execution of a function
 func (c *Consumer) CheckIfQueuesAreDrained() error {
 	logPrefix := "Consumer::CheckIfQueuesAreDrained"
+
+	defer func() {
+		// This recover is put with a defensive intention. See MB-36326
+		if r := recover(); r != nil {
+			logging.Infof("%s [%s:%s:%d] Recovered from panic", logPrefix, c.workerName, c.tcpPort, c.Pid())
+		}
+	}()
 
 	vbsFilterAckYetToCome := c.getVbsFilterAckYetToCome()
 	if len(vbsFilterAckYetToCome) > 0 {

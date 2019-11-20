@@ -64,6 +64,7 @@ type Producer struct {
 	nsServerPort           string
 	nsServerHostPort       string
 	numVbuckets            int
+	isPausing              bool
 	pauseProducerCh        chan struct{}
 	pollBucketInterval     time.Duration
 	pollBucketStopCh       chan struct{}

@@ -476,6 +476,15 @@ func (c *Consumer) String() string {
 func (c *Consumer) NotifyClusterChange() {
 	logPrefix := "Consumer::NotifyClusterChange"
 
+	vbsRemainingToCloseStream := c.getVbRemainingToCloseStream()
+	vbsRemainingToStreamReq := c.getVbRemainingToStreamReq()
+
+	if len(vbsRemainingToCloseStream) == 0 && len(vbsRemainingToStreamReq) == 0 {
+		logging.Infof("%s [%s:%s:%d] Got notification about cluster state change, nothing to be done",
+			logPrefix, c.ConsumerName(), c.tcpPort, c.Pid())
+		return
+	}
+
 	c.isRebalanceOngoing = true
 	logging.Infof("%s [%s:%s:%d] Got notification about cluster state change, updated isRebalanceOngoing to %v",
 		logPrefix, c.ConsumerName(), c.tcpPort, c.Pid(), c.isRebalanceOngoing)

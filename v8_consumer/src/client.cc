@@ -619,7 +619,7 @@ void AppWorker::RouteMessageWithResponse(
       estats.clear();
 
       for (auto const &entry : agg_lcb_exceptions) {
-        estats[entry.first] = entry.second;
+        estats[std::to_string(entry.first)] = entry.second;
       }
 
       resp_msg_->msg.assign(estats.dump());

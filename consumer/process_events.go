@@ -28,7 +28,7 @@ func (c *Consumer) processDCPEvents() {
 
 	for {
 		if c.cppQueueSizes != nil {
-			if c.workerQueueCap < (c.numSentEvents-c.cppQueueSizes.NumProcessedEvents)||
+			if c.workerQueueCap < (c.numSentEvents-c.cppQueueSizes.NumProcessedEvents) ||
 				c.workerQueueMemCap < (c.sentEventsSize-c.cppQueueSizes.ProcessedEventsSize) {
 				logging.Debugf("%s [%s:%s:%d] Throttling, cpp queue sizes: %+v, num sent event: %d, events size: %d",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), c.cppQueueSizes, c.numSentEvents, c.sentEventsSize)
@@ -341,41 +341,39 @@ func (c *Consumer) processStatsEvents() {
 		case <-c.statsTicker.C:
 
 			vbsOwned := c.getCurrentlyOwnedVbs()
-			if len(vbsOwned) > 0 {
 
-				c.msgProcessedRWMutex.RLock()
-				countMsg, dcpOpCount, tStamp := util.SprintDCPCounts(c.dcpMessagesProcessed)
+			c.msgProcessedRWMutex.RLock()
+			countMsg, dcpOpCount, tStamp := util.SprintDCPCounts(c.dcpMessagesProcessed)
 
-				diff := tStamp.Sub(c.opsTimestamp)
+			diff := tStamp.Sub(c.opsTimestamp)
 
-				dcpOpsDiff := dcpOpCount - c.dcpOpsProcessed
-				timerOpsDiff := c.timerMessagesProcessed - timerMsgCounter
-				timerMsgCounter = c.timerMessagesProcessed
+			dcpOpsDiff := dcpOpCount - c.dcpOpsProcessed
+			timerOpsDiff := c.timerMessagesProcessed - timerMsgCounter
+			timerMsgCounter = c.timerMessagesProcessed
 
-				seconds := int(diff.Nanoseconds() / (1000 * 1000 * 1000))
-				if seconds > 0 {
-					c.dcpOpsProcessedPSec = int(dcpOpsDiff) / seconds
-					c.timerMessagesProcessedPSec = int(timerOpsDiff) / seconds
-				}
-
-				logging.Infof("%s [%s:%s:%d] DCP events: %s V8 events: %s Timer events: Doc: %v, vbs owned len: %d vbs owned: %v",
-					logPrefix, c.workerName, c.tcpPort, c.Pid(), countMsg, util.SprintV8Counts(c.v8WorkerMessagesProcessed),
-					c.timerMessagesProcessed, len(vbsOwned), util.Condense(vbsOwned))
-
-				c.statsRWMutex.Lock()
-				estats, eErr := json.Marshal(&c.executionStats)
-				fstats, fErr := json.Marshal(&c.failureStats)
-				c.statsRWMutex.Unlock()
-
-				if eErr == nil && fErr == nil {
-					logging.Infof("%s [%s:%s:%d] CPP worker stats. Failure stats: %s execution stats: %s",
-						logPrefix, c.workerName, c.tcpPort, c.Pid(), string(fstats), string(estats))
-				}
-
-				c.opsTimestamp = tStamp
-				c.dcpOpsProcessed = dcpOpCount
-				c.msgProcessedRWMutex.RUnlock()
+			seconds := int(diff.Nanoseconds() / (1000 * 1000 * 1000))
+			if seconds > 0 {
+				c.dcpOpsProcessedPSec = int(dcpOpsDiff) / seconds
+				c.timerMessagesProcessedPSec = int(timerOpsDiff) / seconds
 			}
+
+			logging.Infof("%s [%s:%s:%d] DCP events: %s V8 events: %s Timer events: Doc: %v, vbs owned len: %d vbs owned: %v",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), countMsg, util.SprintV8Counts(c.v8WorkerMessagesProcessed),
+				c.timerMessagesProcessed, len(vbsOwned), util.Condense(vbsOwned))
+
+			c.statsRWMutex.Lock()
+			estats, eErr := json.Marshal(&c.executionStats)
+			fstats, fErr := json.Marshal(&c.failureStats)
+			c.statsRWMutex.Unlock()
+
+			if eErr == nil && fErr == nil {
+				logging.Infof("%s [%s:%s:%d] CPP worker stats. Failure stats: %s execution stats: %s",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), string(fstats), string(estats))
+			}
+
+			c.opsTimestamp = tStamp
+			c.dcpOpsProcessed = dcpOpCount
+			c.msgProcessedRWMutex.RUnlock()
 
 		case <-c.stopConsumerCh:
 			logging.Infof("%s [%s:%s:%d] Exiting processStatsEvents routine",
