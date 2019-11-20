@@ -73,7 +73,9 @@ private:
     bool is_error{false};
     bool is_client_auth_error{false};
     bool is_client_error{false}; // Error reported by SDK client
-    bool is_query_error{false};  // Error reported by Query server
+    std::string client_error;
+    bool is_query_error{false}; // Error reported by Query server
+    std::string query_error;
     bool is_last{false};
     std::string data;
 

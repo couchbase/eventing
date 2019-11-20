@@ -202,25 +202,33 @@ Query::Helper::GetErrorCodes(const v8::Local<v8::Value> &errors_val) {
 
 Query::Helper::ErrorCodesInfo
 Query::Helper::GetErrorCodes(const std::string &error) {
+  if (error.empty()) {
+    return {true, "error message is empty"};
+  }
+
   v8::HandleScope handle_scope(isolate_);
   auto context = context_.Get(isolate_);
   std::vector<int64_t> errors;
+  std::stringstream msg;
 
   v8::Local<v8::Value> error_val;
   if (!TO_LOCAL(v8::JSON::Parse(isolate_, v8Str(isolate_, error)),
                 &error_val)) {
-    return {true, "Unable to parse error JSON"};
+    msg << "Unable to parse error JSON : " << RU(error);
+    return {true, msg.str()};
   }
 
   v8::Local<v8::Object> error_obj;
   if (!TO_LOCAL(error_val->ToObject(context), &error_obj)) {
-    return {true, "Unable to cast error to Object"};
+    msg << "Unable to cast error to Object : " << RU(error);
+    return {true, msg.str()};
   }
 
   v8::Local<v8::Value> errors_val;
   if (!TO_LOCAL(error_obj->Get(context, v8Str(isolate_, "errors")),
                 &errors_val)) {
-    return {true, "Unable to read errors property from message Object"};
+    msg << "Unable to read errors property from message Object : " << RU(error);
+    return {true, msg.str()};
   }
   return GetErrorCodes(errors_val);
 }
@@ -239,20 +247,22 @@ void Query::Helper::HandleRowError(const Query::Row &row) {
   if (row.is_client_auth_error) {
     comm->Refresh();
   }
-  // Error reported by RowCallback (coming from query server)
-  if (row.is_query_error) {
-    if (auto acc_info = AccountLCBError(row.data); acc_info.is_fatal) {
-      js_exception->ThrowN1QLError(acc_info.msg);
-      return;
-    }
-    js_exception->ThrowN1QLError(row.data);
-    return;
-  }
+
+  std::stringstream err_msg;
   // Error reported by RowCallback (coming from LCB client)
   if (row.is_client_error) {
     AccountLCBError(row.err_code);
-    js_exception->ThrowN1QLError(row.data);
+    err_msg << "SDK error : " << row.client_error;
   }
+
+  // Error reported by RowCallback (coming from query server)
+  if (row.is_query_error) {
+    err_msg << " Query error : " << row.query_error;
+    if (auto acc_info = AccountLCBError(row.query_error); acc_info.is_fatal) {
+      err_msg << " Error accounting LCB : " << acc_info.msg;
+    }
+  }
+  js_exception->ThrowN1QLError(err_msg.str());
 }
 
 std::string Query::Helper::ErrorFormat(const std::string &message,
