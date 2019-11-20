@@ -103,6 +103,7 @@ std::string GetExecutionStats(const std::map<int16_t, V8Worker *> &workers) {
   estats["curl"]["head"] = Curl::GetStats().GetCurlHeadStat();
   estats["curl"]["put"] = Curl::GetStats().GetCurlPutStat();
   estats["timestamp"] = GetTimestampNow();
+  estats["uv_msg_parse_failure"] = uv_msg_parse_failure.load();
   return estats.dump();
 }
 
