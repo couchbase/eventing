@@ -18,16 +18,21 @@
 namespace Query {
 struct Row {
   Row(bool is_done, bool is_error, bool is_auth_error, bool is_client_error,
-      bool is_query_error, lcb_error_t err_code, const std::string &data)
+      const std::string &client_error, bool is_query_error,
+      const std::string &query_error, lcb_error_t err_code,
+      const std::string &data)
       : is_done(is_done), is_error(is_error),
         is_client_auth_error(is_auth_error), is_client_error(is_client_error),
-        is_query_error(is_query_error), err_code(err_code), data(data) {}
+        client_error(client_error), is_query_error(is_query_error),
+        query_error(query_error), err_code(err_code), data(data) {}
 
   bool is_done{false};
   bool is_error{false};
   bool is_client_auth_error{false};
   bool is_client_error{false};
+  const std::string &client_error;
   bool is_query_error{false};
+  const std::string &query_error;
   lcb_error_t err_code{LCB_SUCCESS};
   const std::string &data;
 };

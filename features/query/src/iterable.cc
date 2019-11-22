@@ -9,6 +9,7 @@
 // or implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
+#include <sstream>
 #include <v8.h>
 
 #include "comm.h"
@@ -202,16 +203,20 @@ Query::IterableResult::NewObject(const Query::Row &row) {
     return {handle_scope.Escape(result_obj)};
   }
 
+  std::stringstream err_msg;
   v8::Local<v8::Value> value_val;
   // TODO : If JSON parse fails, try to provide (row, col) information
   if (!TO_LOCAL(v8::JSON::Parse(isolate_, v8Str(isolate_, row.data)),
                 &value_val)) {
-    return {true, "Unable to parse query row as JSON"};
+    err_msg << "Unable to parse query row as JSON : " << RU(row.data);
+    return {true, err_msg.str()};
   }
   result = false;
   if (!TO(result_obj->Set(context, v8Str(isolate_, "value"), value_val),
           &result)) {
-    return {true, "Unable to set value on iterable result object"};
+    err_msg << "Unable to set value on iterable result object : "
+            << RU(row.data);
+    return {true, err_msg.str()};
   }
   return {handle_scope.Escape(result_obj)};
 }

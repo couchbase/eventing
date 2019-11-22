@@ -96,11 +96,11 @@ void Query::Iterator::RowCallback(lcb_t connection, int,
   cursor->is_client_auth_error =
       cursor->is_error && (resp->rc == LCB_AUTH_ERROR);
 
-  // Ensure that the most specific error is delivered in the case where both
-  // client and query errors occur. That is, we expose the client error only
-  // when there is no query error
-  if (cursor->is_client_error && !cursor->is_query_error) {
-    cursor->data = lcb_strerror(connection, resp->rc);
+  if (cursor->is_client_error) {
+    cursor->client_error = lcb_strerror(connection, resp->rc);
+  }
+  if (cursor->is_query_error) {
+    cursor->query_error = cursor->data;
   }
 
   LOG(logDebug) << "Query::Iterator::RowCallback data : " << RU(cursor->data)
@@ -167,13 +167,9 @@ void Query::Iterator::Cursor::YieldTo(const ExecutionControl control) {
 }
 
 Query::Row Query::Iterator::Cursor::GetRow() const {
-  return {is_last,
-          is_error,
-          is_client_auth_error,
-          is_client_error,
-          is_query_error,
-          client_err_code,
-          data};
+  return {is_last,         is_error,        is_client_auth_error,
+          is_client_error, client_error,    is_query_error,
+          query_error,     client_err_code, data};
 }
 
 Query::Row Query::Iterator::Cursor::GetRowAsFinal() const {
