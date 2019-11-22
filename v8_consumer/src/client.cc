@@ -726,8 +726,7 @@ void AppWorker::RouteMessageWithResponse(
     for (size_t idx = 0; idx < thr_count_; ++idx) {
       auto worker = workers_[idx];
       worker->StopTimerScan();
-
-      auto lck = worker->GetAndLockPauseLock();
+      auto lck = worker->GetAndLockFilterLock();
       auto partitions = worker->GetPartitions();
       for (auto vb : partitions) {
         auto lps = worker->GetBucketopsSeqno(vb);

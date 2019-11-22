@@ -454,8 +454,6 @@ void V8Worker::RouteMessage() {
     if (!worker_queue_->PopFront(msg)) {
       continue;
     }
-    const auto payload = flatbuf::payload::GetPayload(
-        static_cast<const void *>(msg->payload.payload.c_str()));
 
     LOG(logTrace) << " event: " << static_cast<int16_t>(msg->header.event)
                   << " opcode: " << static_cast<int16_t>(msg->header.opcode)
@@ -466,22 +464,13 @@ void V8Worker::RouteMessage() {
     switch (evt) {
     case eDCP:
       switch (getDCPOpcode(msg->header.opcode)) {
-      case oDelete: {
-        std::unique_lock<std::mutex> lck(pause_lock_);
-        ++dcp_delete_msg_counter;
-        if (IsValidDCPEvent(msg, oDelete)) {
-          this->SendDelete(msg->header.metadata);
-        }
-      } break;
+      case oDelete:
+        HandleDeleteEvent(msg);
+        break;
 
-      case oMutation: {
-        std::unique_lock<std::mutex> lck(pause_lock_);
-
-        ++dcp_mutation_msg_counter;
-        if (IsValidDCPEvent(msg, oMutation)) {
-          this->SendUpdate(payload->value()->str(), msg->header.metadata);
-        }
-      } break;
+      case oMutation:
+        HandleMutationEvent(msg);
+        break;
 
       default:
         LOG(logError) << "Received invalid DCP opcode" << std::endl;
@@ -497,7 +486,6 @@ void V8Worker::RouteMessage() {
         auto iter = timer_store_->GetIterator();
         timer::TimerEvent evt;
         while (!stop_timer_scan_.load() && iter.GetNext(evt)) {
-          std::unique_lock<std::mutex> lck(pause_lock_);
           ++timer_msg_counter;
           this->SendTimer(evt.callback, evt.context);
           timer_store_->DeleteTimer(evt);
@@ -542,35 +530,74 @@ void V8Worker::RouteMessage() {
   }
 }
 
-bool V8Worker::IsValidDCPEvent(const std::unique_ptr<WorkerMessage> &msg,
-                               const dcp_opcode event_type) {
-  auto vb_no = 0;
-  uint64_t seq_no = 0;
-  if (kSuccess != ParseMetadata(msg->header.metadata, vb_no, seq_no)) {
-    if (event_type == oMutation) {
-      ++dcp_mutation_parse_failure;
-    } else if (event_type == oDelete) {
-      ++dcp_delete_parse_failure;
-    }
-    return false;
+void V8Worker::UpdateSeqNumLocked(const int vb, const uint64_t seq_num) {
+  currently_processed_vb_ = vb;
+  currently_processed_seqno_ = seq_num;
+  vb_seq_[vb]->store(seq_num, std::memory_order_seq_cst);
+  UpdateBucketopsSeqno(vb, seq_num);
+}
+
+void V8Worker::HandleDeleteEvent(const std::unique_ptr<WorkerMessage> &msg) {
+
+  ++dcp_delete_msg_counter;
+  auto [vb, seq_num, is_valid] = GetVbAndSeqNum(msg);
+  if (!is_valid) {
+    ++dcp_delete_parse_failure;
+    return;
   }
 
-  std::lock_guard<std::mutex> guard(bucketops_lock_);
-  const auto filter_seq_no = GetVbFilter(vb_no);
-  if (filter_seq_no > 0 && seq_no <= filter_seq_no) {
+  {
+    std::lock_guard<std::mutex> guard(bucketops_lock_);
+    if (IsFilteredEventLocked(vb, seq_num)) {
+      return;
+    }
+    UpdateSeqNumLocked(vb, seq_num);
+  }
+
+  SendDelete(msg->header.metadata);
+}
+
+void V8Worker::HandleMutationEvent(const std::unique_ptr<WorkerMessage> &msg) {
+
+  ++dcp_mutation_msg_counter;
+  auto [vb, seq_num, is_valid] = GetVbAndSeqNum(msg);
+  if (!is_valid) {
+    ++dcp_mutation_parse_failure;
+    return;
+  }
+
+  {
+    std::lock_guard<std::mutex> guard(bucketops_lock_);
+    if (IsFilteredEventLocked(vb, seq_num)) {
+      return;
+    }
+    UpdateSeqNumLocked(vb, seq_num);
+  }
+
+  const auto doc = flatbuf::payload::GetPayload(
+      static_cast<const void *>(msg->payload.payload.c_str()));
+  SendUpdate(doc->value()->str(), msg->header.metadata);
+}
+
+std::tuple<int, uint64_t, bool>
+V8Worker::GetVbAndSeqNum(const std::unique_ptr<WorkerMessage> &msg) const {
+  auto vb = 0;
+  uint64_t seq_num = 0;
+  auto result = ParseMetadata(msg->header.metadata, vb, seq_num);
+  return {vb, seq_num, result == kSuccess};
+}
+
+bool V8Worker::IsFilteredEventLocked(const int vb, const uint64_t seq_num) {
+  const auto filter_seq_no = GetVbFilter(vb);
+  if (filter_seq_no > 0 && seq_num <= filter_seq_no) {
     // Skip filtered event
     ++filtered_dcp_mutation_counter;
-    if (seq_no == filter_seq_no) {
-      EraseVbFilter(vb_no);
+    if (seq_num == filter_seq_no) {
+      EraseVbFilter(vb);
     }
-    return false;
+    return true;
   }
-
-  currently_processed_vb_ = vb_no;
-  currently_processed_seqno_ = seq_no;
-  vb_seq_[vb_no]->store(seq_no, std::memory_order_seq_cst);
-  UpdateBucketopsSeqno(vb_no, seq_no);
-  return true;
+  return false;
 }
 
 bool V8Worker::ExecuteScript(const v8::Local<v8::String> &script) {
@@ -1125,10 +1152,6 @@ void V8Worker::SetTimer(timer::TimerInfo &tinfo) {
 
 std::unique_lock<std::mutex> V8Worker::GetAndLockFilterLock() {
   return std::unique_lock<std::mutex>(bucketops_lock_);
-}
-
-std::unique_lock<std::mutex> V8Worker::GetAndLockPauseLock() {
-  return std::unique_lock<std::mutex>(pause_lock_);
 }
 
 void V8Worker::StopTimerScan() { stop_timer_scan_.store(true); }

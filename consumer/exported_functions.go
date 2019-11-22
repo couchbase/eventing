@@ -758,6 +758,7 @@ func (c *Consumer) GetInsight() *common.Insight {
 }
 
 func (c *Consumer) PauseConsumer() {
+	c.isPausing = true
 	c.sendPauseConsumer()
 	c.WorkerVbMapUpdate(nil)
 }

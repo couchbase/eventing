@@ -224,8 +224,6 @@ public:
 
   int V8WorkerLoad(std::string source_s);
   void RouteMessage();
-  bool IsValidDCPEvent(const std::unique_ptr<WorkerMessage> &msg,
-                       dcp_opcode event_type);
   void TaskDurationWatcher();
 
   int SendUpdate(const std::string &value, const std::string &meta);
@@ -264,8 +262,6 @@ public:
   uint64_t GetBucketopsSeqno(int vb_no);
 
   std::unique_lock<std::mutex> GetAndLockFilterLock();
-
-  std::unique_lock<std::mutex> GetAndLockPauseLock();
 
   int ParseMetadata(const std::string &metadata, int &vb_no,
                     uint64_t &seq_no) const;
@@ -316,6 +312,12 @@ public:
   IsolateData data_;
 
 private:
+  void UpdateSeqNumLocked(int vb, uint64_t seq_num);
+  void HandleDeleteEvent(const std::unique_ptr<WorkerMessage> &msg);
+  void HandleMutationEvent(const std::unique_ptr<WorkerMessage> &msg);
+  bool IsFilteredEventLocked(int vb, uint64_t seq_num);
+  std::tuple<int, uint64_t, bool>
+  GetVbAndSeqNum(const std::unique_ptr<WorkerMessage> &msg) const;
   v8::Local<v8::ObjectTemplate> NewGlobalObj() const;
   void InstallCurlBindings(const std::vector<CurlBinding> &curl_bindings) const;
   void InitializeIsolateData(const server_settings_t *server_settings,

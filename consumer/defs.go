@@ -185,6 +185,7 @@ type Consumer struct {
 	statsTickDuration             time.Duration
 	streamReqRWMutex              *sync.RWMutex
 	stoppingConsumer              bool
+	isPausing                     bool
 	superSup                      common.EventingSuperSup
 	timerContextSize              int64
 	usingTimer                    bool
