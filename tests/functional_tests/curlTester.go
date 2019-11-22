@@ -21,6 +21,7 @@ func (c *curlTester) test() {
 
 	ops := opsType{count: 100}
 	pumpBucketOps(ops, &rateLimit{})
+	waitForDeployToFinish(c.handler)
 
 	eventCount := verifyBucketOps(ops.count, statsLookupRetryCounter)
 	if ops.count != eventCount {
