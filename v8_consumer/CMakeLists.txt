@@ -31,6 +31,7 @@ SET(FEATURES_SRC
         ../../eventing-ee/features/src/timer_store.cc
         ../../eventing-ee/features/src/timer_iterator.cc
         ../features/src/lcb_util.cc
+        ../features/src/lang_compat.cc
         ../features/src/bucket.cc
         ../features/src/comm.cc
         ../features/src/log.cc

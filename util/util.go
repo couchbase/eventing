@@ -739,9 +739,14 @@ func ReadAppContent(appsPath, checksumPath, appName string) ([]byte, error) {
 
 	payload3, mErr := AppendCredentials(appsPath, appName, payload2)
 	if mErr != nil {
-		return nil, err
+		return nil, mErr
 	}
-	return payload3, nil
+
+	payload4, lErr := AppendLangCompat(appsPath, appName, payload3)
+	if lErr != nil {
+		return nil, lErr
+	}
+	return payload4, nil
 }
 
 //DeleteAppContent delete handler code
@@ -1871,4 +1876,30 @@ func AppendCredentials(path, appName string, payload []byte) ([]byte, error) {
 	appContent := EncodeAppPayload(&app)
 	return appContent, nil
 
+}
+
+func AppendLangCompat(path, appName string, payload []byte) ([]byte, error) {
+	logPrefix := "Util::AppendLangCompat"
+
+	if path == cm.MetakvTempAppsPath+appName {
+		var app cm.Application
+		if err := json.Unmarshal(payload, &app); err != nil {
+			logging.Errorf("%s Function: %s unmarshal failed for data from metakv", logPrefix, appName)
+			return nil, err
+		}
+
+		if _, ok := app.Settings["language_compatibility"]; !ok {
+			app.Settings["language_compatibility"] = cm.LanguageCompatibility[0]
+		}
+
+		data, mErr := json.MarshalIndent(app, "", " ")
+		if mErr != nil {
+			logging.Errorf("%s Function: %s failed to marshal data", logPrefix, appName)
+			return nil, mErr
+		}
+
+		return data, nil
+	}
+
+	return payload, nil
 }

@@ -101,6 +101,12 @@ private:
   BucketDeleteWithoutXattr(const v8::Local<v8::Name> &key,
                            const v8::PropertyCallbackInfo<v8::Boolean> &info);
 
+  static void HandleEnoEnt(v8::Isolate *isolate,
+                           const v8::PropertyCallbackInfo<v8::Value> &info,
+                           lcb_t instance);
+
+  static void HandleEnoEnt(v8::Isolate *isolate, lcb_t instance);
+
   v8::Local<v8::Object> WrapBucketMap();
 
   v8::Isolate *isolate_;

@@ -197,8 +197,13 @@ func createFunction(deploymentStatus, processingStatus bool, id int, s *commonSe
 	var app application
 	app.ID = id
 	app.Name = appName
+	app.Version = "evt-6.5.0-0000-ee"
 	app.AppHandlers = handlerCode
 	app.DeploymentConfig = dcfg
+
+	if s.version != "" {
+		app.Version = s.version
+	}
 
 	// default settings
 	settings := make(map[string]interface{})
@@ -269,6 +274,12 @@ func createFunction(deploymentStatus, processingStatus bool, id int, s *commonSe
 		settings["log_level"] = "INFO"
 	} else {
 		settings["log_level"] = s.logLevel
+	}
+
+	if s.languageCompatibility != "" {
+		settings["language_compatibility"] = s.languageCompatibility
+	} else {
+		settings["language_compatibility"] = "6.5.0"
 	}
 
 	settings["processing_status"] = processingStatus

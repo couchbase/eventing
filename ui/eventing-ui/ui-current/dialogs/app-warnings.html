@@ -1,0 +1,17 @@
+<!--Dialog for showing app warnings-->
+<div class="dialog-sm">
+    <div class="panel-header">
+        <h2>Function Warnings - {{appName}}</h2>
+    </div>
+    <div class="panel-content" style="padding-bottom: 0;">
+        <div class="max-height-500">
+            <div class="row" ng-hide="warnings.length > 0">
+                <p>No warnings.</p>
+            </div>
+            <p ng-repeat="message in warnings track by $index" class="margin-bottom-half">{{message}}</p>
+        </div>
+    </div>
+    <div class="panel-footer scroll-shadow">
+        <button ng-click="$close('dismiss')">Close</button>
+    </div>
+</div>

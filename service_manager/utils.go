@@ -137,6 +137,9 @@ func (m *ServiceMgr) fillMissingWithDefaults(appName string, settings map[string
 
 	// N1QL related configuration
 	fillMissingDefault(app, settings, "n1ql_consistency", "none")
+
+	// Language related configuration
+	fillMissingDefault(app, settings, "language_compatibility", common.LanguageCompatibility[0])
 }
 
 func fillMissingDefault(app application, settings map[string]interface{}, field string, defaultValue interface{}) {

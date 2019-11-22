@@ -98,6 +98,12 @@ func (p *Producer) parseDepcfg() error {
 
 	// Handler related configurations
 
+	if val, ok := settings["language_compatibility"]; ok {
+		p.handlerConfig.LanguageCompatibility = val.(string)
+	} else {
+		p.handlerConfig.LanguageCompatibility = common.LanguageCompatibility[0]
+	}
+
 	if val, ok := settings["checkpoint_interval"]; ok {
 		p.handlerConfig.CheckpointInterval = int(val.(float64))
 	} else {

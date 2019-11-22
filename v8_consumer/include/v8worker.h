@@ -153,6 +153,7 @@ typedef struct server_settings_s {
 typedef struct handler_config_s {
   std::string app_name;
   std::string dep_cfg;
+  std::string lang_compat;
   int execution_timeout;
   int lcb_inst_capacity;
   bool skip_lcb_bootstrap;

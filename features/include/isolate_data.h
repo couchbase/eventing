@@ -29,6 +29,7 @@ class CurlResponseBuilder;
 class Communicator;
 class CodeInsight;
 struct CurlCodex;
+struct LanguageCompatibility;
 
 namespace Query {
 class Manager;
@@ -62,6 +63,7 @@ struct IsolateData {
   CurlRequestBuilder *req_builder{nullptr};
   CurlResponseBuilder *resp_builder{nullptr};
   CodeInsight *code_insight{nullptr};
+  LanguageCompatibility *lang_compat{nullptr};
 
   std::mutex termination_lock_;
   bool is_executing_{false};

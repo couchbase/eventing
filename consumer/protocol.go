@@ -11,7 +11,7 @@ import (
 	"github.com/couchbase/eventing/gen/flatbuf/payload"
 	"github.com/couchbase/eventing/gen/flatbuf/response"
 	"github.com/couchbase/eventing/logging"
-	"github.com/google/flatbuffers/go"
+	flatbuffers "github.com/google/flatbuffers/go"
 )
 
 const (
@@ -320,6 +320,7 @@ func (c *Consumer) makeV8InitPayload(appName, debuggerPort, currHost, eventingDi
 	handlerHeaders := c.createHandlerHeaders(builder)
 	handlerFooters := c.createHandlerFooters(builder)
 	n1qlConsistency := builder.CreateString(c.n1qlConsistency)
+	languageCompatibility := builder.CreateString(c.languageCompatibility)
 
 	lcb := make([]byte, 1)
 	flatbuffers.WriteBool(lcb, skipLcbBootstrap)
@@ -337,6 +338,7 @@ func (c *Consumer) makeV8InitPayload(appName, debuggerPort, currHost, eventingDi
 	payload.PayloadAddCurrEventingSslport(builder, esp)
 	payload.PayloadAddDepcfg(builder, dcfg)
 	payload.PayloadAddLcbInstCapacity(builder, int32(capacity))
+	payload.PayloadAddLanguageCompatibility(builder, languageCompatibility)
 	payload.PayloadAddExecutionTimeout(builder, int32(executionTimeout))
 	payload.PayloadAddCheckpointInterval(builder, int32(checkpointInterval))
 	payload.PayloadAddTimerContextSize(builder, timerContextSize)

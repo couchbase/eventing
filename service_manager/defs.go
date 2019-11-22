@@ -2,11 +2,12 @@ package servicemanager
 
 import (
 	"errors"
+	"sync"
+	"time"
+
 	"github.com/couchbase/cbauth/service"
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/util"
-	"sync"
-	"time"
 )
 
 const (

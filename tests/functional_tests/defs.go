@@ -102,6 +102,7 @@ type application struct {
 	DeploymentConfig depCfg                 `json:"depcfg"`
 	Name             string                 `json:"appname"`
 	ID               int                    `json:"id"`
+	Version          string                 `json:"version"`
 	Settings         map[string]interface{} `json:"settings"`
 }
 
@@ -138,6 +139,8 @@ type commonSettings struct {
 	undeployedState          bool
 	workerCount              int
 	srcMutationEnabled       bool
+	languageCompatibility    string
+	version                  string
 }
 
 type rateLimit struct {

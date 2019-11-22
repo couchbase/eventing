@@ -14,6 +14,7 @@ const (
 )
 
 var MetakvMaxRetries int64 = 60
+var LanguageCompatibility = []string{"6.0.0", "6.5.0"}
 
 type ChangeType string
 type StatsData map[string]uint64
@@ -347,6 +348,7 @@ type PlannerNodeVbMapping struct {
 }
 
 type HandlerConfig struct {
+	LanguageCompatibility    string
 	AggDCPFeedMemCap         int64
 	CheckpointInterval       int
 	IdleCheckpointInterval   int
