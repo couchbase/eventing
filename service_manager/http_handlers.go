@@ -2862,6 +2862,10 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
+			if _, ok := app.Settings["language_compatibility"]; !ok {
+				app.Settings["language_compatibility"] = common.LanguageCompatibility[len(common.LanguageCompatibility)-1]
+			}
+
 			runtimeInfo := m.savePrimaryStore(&app)
 			if runtimeInfo.Code == m.statusCodes.ok.Code {
 				audit.Log(auditevent.SaveDraft, r, appName)
