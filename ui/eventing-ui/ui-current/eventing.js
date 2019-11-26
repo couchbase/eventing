@@ -526,7 +526,9 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                                     access: 'r'
                                 });
                             }
-
+                            if (!scope.appModel.settings.language_compatibility) {
+                                scope.appModel.settings.language_compatibility = '6.0.0';
+                            }
                             createApp(scope);
                         } catch (error) {
                             ApplicationService.server.showErrorAlert('The imported JSON file is not supported. Please check the format.');
