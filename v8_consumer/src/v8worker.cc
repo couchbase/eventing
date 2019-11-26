@@ -217,7 +217,7 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
           std::string bucket_access =
               config->component_configs["buckets"][bucket_alias][2];
           auto conn_str = GetConnectionStr(
-              Localhost(false) + ":" + ns_server_port_, bucket_name);
+              JoinHostPort(Localhost(false), ns_server_port_), bucket_name);
           bucket_handle = new Bucket(isolate_, context, conn_str, bucket_alias,
                                      bucket_access == "r",
                                      bucket_name == config->source_bucket);
