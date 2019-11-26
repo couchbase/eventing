@@ -29,6 +29,7 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 
 	var b *couchbase.Bucket
 	consumer := &Consumer{
+		isPausing:                       false,
 		languageCompatibility:           hConfig.LanguageCompatibility,
 		app:                             app,
 		aggDCPFeed:                      make(chan *memcached.DcpEvent, dcpConfig["dataChanSize"].(int)),
