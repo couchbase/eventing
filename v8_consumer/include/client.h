@@ -177,6 +177,8 @@ private:
   std::vector<char> read_buffer_feedback_;
 
   std::atomic<bool> thread_exit_cond_;
+  bool v8worker_init_done_{false};
+  std::mutex workers_map_mutex_;
 };
 
 #endif

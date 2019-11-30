@@ -536,19 +536,23 @@ void AppWorker::RouteMessageWithResponse(
       v8::V8::InitializePlatform(platform);
       v8::V8::Initialize();
 
-      for (int16_t i = 0; i < thr_count_; i++) {
-        V8Worker *w = new V8Worker(
-            platform, handler_config, server_settings, function_name_,
-            function_id_, handler_instance_id, user_prefix_, &latency_stats_,
-            &curl_latency_stats_, ns_server_port_);
+      {
+        std::lock_guard<std::mutex> lck(workers_map_mutex_);
+        for (int16_t i = 0; i < thr_count_; i++) {
+          V8Worker *w = new V8Worker(
+              platform, handler_config, server_settings, function_name_,
+              function_id_, handler_instance_id, user_prefix_, &latency_stats_,
+              &curl_latency_stats_, ns_server_port_);
 
-        LOG(logInfo) << "Init index: " << i << " V8Worker: " << w << std::endl;
-        workers_[i] = w;
+          LOG(logInfo) << "Init index: " << i << " V8Worker: " << w << std::endl;
+          workers_[i] = w;
+        }
+
+        delete handler_config;
+
+        msg_priority_ = true;
+        v8worker_init_done_ = true;
       }
-
-      delete handler_config;
-
-      msg_priority_ = true;
       break;
     case oLoad:
       LOG(logDebug) << "Loading app code:" << RM(worker_msg->header.metadata)
@@ -984,7 +988,8 @@ void AppWorker::ScanTimerLoop() {
   std::this_thread::sleep_for(std::chrono::seconds(2));
   auto evt_generator = [](AppWorker *worker) {
     while (!worker->thread_exit_cond_.load()) {
-      if (worker->using_timer_) {
+      std::lock_guard<std::mutex> lck(worker->workers_map_mutex_);
+      if (worker->using_timer_ && worker->v8worker_init_done_) {
         for (auto &v8_worker : worker->workers_) {
           std::unique_ptr<WorkerMessage> msg(new WorkerMessage);
           msg->header.event = eInternal + 1;
