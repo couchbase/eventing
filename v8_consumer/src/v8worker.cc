@@ -495,12 +495,6 @@ void V8Worker::RouteMessage() {
         }
         break;
       }
-      case oUpdateVbMap: {
-        if (timer_store_) {
-          timer_store_->SyncSpan();
-        }
-        break;
-      }
       default:
         LOG(logError) << "Received invalid internal opcode" << std::endl;
         break;
@@ -534,7 +528,7 @@ void V8Worker::UpdateSeqNumLocked(const int vb, const uint64_t seq_num) {
   currently_processed_vb_ = vb;
   currently_processed_seqno_ = seq_num;
   vb_seq_[vb]->store(seq_num, std::memory_order_seq_cst);
-  UpdateBucketopsSeqno(vb, seq_num);
+  processed_bucketops_[vb] = seq_num;
 }
 
 void V8Worker::HandleDeleteEvent(const std::unique_ptr<WorkerMessage> &msg) {
@@ -1035,6 +1029,9 @@ int V8Worker::ParseMetadataWithAck(const std::string &metadata_str, int &vb_no,
 
 void V8Worker::UpdateVbFilter(int vb_no, uint64_t seq_no) {
   vbfilter_map_[vb_no].push_back(seq_no);
+  if (timer_store_) {
+    timer_store_->RemovePartition(vb_no);
+  }
 }
 
 uint64_t V8Worker::GetVbFilter(int vb_no) {
@@ -1051,8 +1048,11 @@ void V8Worker::EraseVbFilter(int vb_no) {
   }
 }
 
-void V8Worker::UpdateBucketopsSeqno(int vb_no, uint64_t seq_no) {
+void V8Worker::UpdateBucketopsSeqnoLocked(int vb_no, uint64_t seq_no) {
   processed_bucketops_[vb_no] = seq_no;
+  if (timer_store_) {
+    timer_store_->AddPartition(vb_no);
+  }
 }
 
 uint64_t V8Worker::GetBucketopsSeqno(int vb_no) {
@@ -1137,8 +1137,6 @@ void V8Worker::TaskDurationWatcher() {
 
 void V8Worker::UpdatePartitions(const std::unordered_set<int64_t> &vbuckets) {
   partitions_ = vbuckets;
-  if (timer_store_)
-    timer_store_->UpdatePartition(vbuckets);
 }
 
 std::unordered_set<int64_t> V8Worker::GetPartitions() const {
