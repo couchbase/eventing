@@ -106,12 +106,9 @@ function getCodeVersion(code) {
                     tp = 1;
                     if (vp < 1) vp = 1;
                 }
-                // TODO : Change this to mad-hatter when we move CI to mad-hatter
                 if (node.callee.name === 'crc64' || node.callee.name === 'curl') {
-                    if (vp < 1) vp = 1;
+                    if (vp < 2) vp = 2;
                 }
-            } else if (/NewExpression/.test(node.type)) {
-                if (node.callee.name === 'N1qlQuery' && lp < 1) lp = 1;
             }
         }
     });
