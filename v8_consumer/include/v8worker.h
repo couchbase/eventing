@@ -276,6 +276,8 @@ public:
   std::unordered_set<int64_t> GetPartitions() const;
 
   void SetTimer(timer::TimerInfo &tinfo);
+  void AddTimerPartition(int vb_no);
+  void RemoveTimerPartition(int vb_no);
 
   inline std::string GetFunctionID() { return function_id_; }
 

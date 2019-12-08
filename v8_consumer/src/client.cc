@@ -696,6 +696,7 @@ void AppWorker::RouteMessageWithResponse(
           if (last_processed_seq_no < filter_seq_no) {
             worker->UpdateVbFilter(vb_no, filter_seq_no);
           }
+          worker->RemoveTimerPartition(vb_no);
           lck.unlock();
           SendFilterAck(oVbFilter, mFilterAck, vb_no, last_processed_seq_no,
                         skip_ack);
@@ -716,6 +717,7 @@ void AppWorker::RouteMessageWithResponse(
                             worker_msg->header.metadata, vb_no, seq_no)) {
           auto lck = workers_[worker_index]->GetAndLockFilterLock();
           workers_[worker_index]->UpdateBucketopsSeqnoLocked(vb_no, seq_no);
+          workers_[worker_index]->AddTimerPartition(vb_no);
         }
       }
       break;
@@ -726,6 +728,7 @@ void AppWorker::RouteMessageWithResponse(
     }
     break;
   case ePauseConsumer: {
+    pause_consumer_.store(true);
     std::unordered_map<int64_t, uint64_t> lps_map;
     for (size_t idx = 0; idx < thr_count_; ++idx) {
       auto worker = workers_[idx];
@@ -735,6 +738,7 @@ void AppWorker::RouteMessageWithResponse(
       for (auto vb : partitions) {
         auto lps = worker->GetBucketopsSeqno(vb);
         worker->UpdateVbFilter(vb, std::numeric_limits<uint64_t>::max());
+        worker->RemoveTimerPartition(vb);
         lps_map[vb] = lps;
       }
     }
@@ -919,6 +923,7 @@ void AppWorker::WriteResponseWithRetry(uv_stream_t *handle,
 
 AppWorker::AppWorker() : feedback_conn_handle_(nullptr), conn_handle_(nullptr) {
   thread_exit_cond_.store(false);
+  pause_consumer_.store(false);
   uv_loop_init(&feedback_loop_);
   uv_loop_init(&main_loop_);
   feedback_loop_async_.data = (void *)&feedback_loop_;
@@ -985,7 +990,7 @@ void AppWorker::ScanTimerLoop() {
   auto evt_generator = [](AppWorker *worker) {
     while (!worker->thread_exit_cond_.load()) {
       std::lock_guard<std::mutex> lck(worker->workers_map_mutex_);
-      if (worker->using_timer_ && worker->v8worker_init_done_) {
+      if (worker->using_timer_ && worker->v8worker_init_done_ && !worker->pause_consumer_.load()) {
         for (auto &v8_worker : worker->workers_) {
           std::unique_ptr<WorkerMessage> msg(new WorkerMessage);
           msg->header.event = eInternal + 1;
