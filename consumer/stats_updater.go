@@ -95,6 +95,40 @@ func (vbs vbStats) updateVbStat(vb uint16, statName string, val interface{}) {
 	vbstat.stats[statName] = val
 }
 
+func (c *Consumer) loadStatsFromConsumer() {
+	logPrefix := "Consumer::loadStatsFromConsumer"
+
+	for {
+		select {
+		case <-c.loadStatsTicker.C:
+			val := c.workerRespMainLoopTs.Load()
+			if val == nil {
+				continue
+			}
+
+			if lastTs, ok := val.(time.Time); ok {
+				if int(time.Now().Sub(lastTs).Seconds()) > c.workerRespMainLoopThreshold {
+					if c.stoppingConsumer {
+						logging.Errorf("%s [%s:%s:%d] stoppingConsumer: %t last response received at %s",
+							logPrefix, c.workerName, c.tcpPort, c.Pid(), c.stoppingConsumer, lastTs.String())
+						return
+					}
+
+					logging.Infof("%s [%s:%s:%d] stoppingConsumer: %t re-spawning eventing last response received at %s",
+						logPrefix, c.workerName, c.tcpPort, c.Pid(), c.stoppingConsumer, lastTs.String())
+					c.stoppingConsumer = true
+					c.producer.KillAndRespawnEventingConsumer(c)
+				}
+			}
+
+		case <-c.stopConsumerCh:
+			logging.Infof("%s [%s:%s:%d] Exiting cpp worker stats loader routine",
+				logPrefix, c.workerName, c.tcpPort, c.Pid())
+			return
+		}
+	}
+}
+
 func (c *Consumer) updateWorkerStats() {
 	logPrefix := "Consumer::updateWorkerStats"
 
@@ -113,27 +147,6 @@ func (c *Consumer) updateWorkerStats() {
 			c.sendGetLatencyStats()
 			c.sendGetLcbExceptionStats(false)
 			c.refreshCurlLatencyStats()
-
-			val := c.workerRespMainLoopTs.Load()
-			if val == nil {
-				continue
-			} else {
-				if lastTs, ok := val.(time.Time); ok {
-					if int(time.Now().Sub(lastTs).Seconds()) > c.workerRespMainLoopThreshold {
-
-						if c.stoppingConsumer {
-							logging.Errorf("%s [%s:%s:%d] stoppingConsumer: %t last response received at %s",
-								logPrefix, c.workerName, c.tcpPort, c.Pid(), c.stoppingConsumer, lastTs.String())
-							return
-						}
-
-						logging.Infof("%s [%s:%s:%d] stoppingConsumer: %t re-spawning eventing last response received at %s",
-							logPrefix, c.workerName, c.tcpPort, c.Pid(), c.stoppingConsumer, lastTs.String())
-						c.stoppingConsumer = true
-						c.producer.KillAndRespawnEventingConsumer(c)
-					}
-				}
-			}
 
 		case <-c.stopConsumerCh:
 			logging.Infof("%s [%s:%s:%d] Exiting cpp worker stats updater routine",

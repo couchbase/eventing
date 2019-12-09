@@ -107,6 +107,7 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		tcpPort:                         pConfig.SockIdentifier,
 		timerContextSize:                hConfig.TimerContextSize,
 		updateStatsTicker:               time.NewTicker(updateCPPStatsTickInterval),
+		loadStatsTicker:                 time.NewTicker(updateCPPStatsTickInterval),
 		usingTimer:                      hConfig.UsingTimer,
 		uuid:                            uuid,
 		vbDcpFeedMap:                    make(map[uint16]*couchbase.DcpFeed),
@@ -340,6 +341,7 @@ func (c *Consumer) HandleV8Worker() error {
 	go c.processDCPEvents()
 	go c.processFilterEvents()
 	go c.processStatsEvents()
+	go c.loadStatsFromConsumer()
 	return nil
 }
 
@@ -416,6 +418,10 @@ func (c *Consumer) Stop(context string) {
 
 	if c.updateStatsTicker != nil {
 		c.updateStatsTicker.Stop()
+	}
+
+	if c.loadStatsTicker != nil {
+		c.loadStatsTicker.Stop()
 	}
 
 	logging.Infof("%s [%s:%s:%d] Sent signal to stop cpp worker stat collection routine",
