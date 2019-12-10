@@ -989,13 +989,15 @@ void AppWorker::ScanTimerLoop() {
   std::this_thread::sleep_for(std::chrono::seconds(2));
   auto evt_generator = [](AppWorker *worker) {
     while (!worker->thread_exit_cond_.load()) {
-      std::lock_guard<std::mutex> lck(worker->workers_map_mutex_);
-      if (worker->using_timer_ && worker->v8worker_init_done_ && !worker->pause_consumer_.load()) {
-        for (auto &v8_worker : worker->workers_) {
-          std::unique_ptr<WorkerMessage> msg(new WorkerMessage);
-          msg->header.event = eInternal + 1;
-          msg->header.opcode = oScanTimer;
-          v8_worker.second->PushFront(std::move(msg));
+      {
+        std::lock_guard<std::mutex> lck(worker->workers_map_mutex_);
+        if (worker->using_timer_ && worker->v8worker_init_done_ && !worker->pause_consumer_.load()) {
+          for (auto &v8_worker : worker->workers_) {
+            std::unique_ptr<WorkerMessage> msg(new WorkerMessage);
+            msg->header.event = eInternal + 1;
+            msg->header.opcode = oScanTimer;
+            v8_worker.second->PushFront(std::move(msg));
+          }
         }
       }
       std::this_thread::sleep_for(std::chrono::seconds(7));
