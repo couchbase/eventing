@@ -1029,9 +1029,6 @@ int V8Worker::ParseMetadataWithAck(const std::string &metadata_str, int &vb_no,
 
 void V8Worker::UpdateVbFilter(int vb_no, uint64_t seq_no) {
   vbfilter_map_[vb_no].push_back(seq_no);
-  if (timer_store_) {
-    timer_store_->RemovePartition(vb_no);
-  }
 }
 
 uint64_t V8Worker::GetVbFilter(int vb_no) {
@@ -1050,6 +1047,15 @@ void V8Worker::EraseVbFilter(int vb_no) {
 
 void V8Worker::UpdateBucketopsSeqnoLocked(int vb_no, uint64_t seq_no) {
   processed_bucketops_[vb_no] = seq_no;
+}
+
+void V8Worker::RemoveTimerPartition(int vb_no) {
+  if (timer_store_) {
+    timer_store_->RemovePartition(vb_no);
+  }
+}
+
+void V8Worker::AddTimerPartition(int vb_no) {
   if (timer_store_) {
     timer_store_->AddPartition(vb_no);
   }

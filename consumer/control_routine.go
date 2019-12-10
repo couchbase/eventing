@@ -27,6 +27,11 @@ func (c *Consumer) controlRoutine() error {
 				return err
 			}
 
+			// If this node is going out of cluster, we need to pause the c++ consumer altogether (similar to pausing the handler)
+			if util.Contains(c.NodeUUID(), c.ejectNodesUUIDs) {
+				c.PauseConsumer()
+			}
+
 			c.CloseAllRunningDcpFeeds()
 
 			c.stopVbOwnerTakeoverCh = make(chan struct{})

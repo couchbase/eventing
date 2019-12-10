@@ -354,6 +354,7 @@ type Consumer struct {
 	restartVbDcpStreamTicker *time.Ticker
 	statsTicker              *time.Ticker
 	updateStatsTicker        *time.Ticker
+	loadStatsTicker          *time.Ticker
 
 	insight               chan *common.Insight
 	languageCompatibility string
