@@ -80,6 +80,8 @@ app_worker_setting_opcode getAppWorkerSettingOpcode(int8_t opcode) {
     return oTimerContextSize;
   if (opcode == 5)
     return oVbMap;
+  if (opcode == 6)
+    return oWorkerMemQuota;
   return App_Worker_Setting_Opcode_Unknown;
 }
 

@@ -126,6 +126,18 @@ func (c *Consumer) sendWorkerThrMap(thrPartitionMap map[int][]uint16, sendToDebu
 	c.sendMessage(m)
 }
 
+func (c *Consumer) sendWorkerMemQuota(memSize int64) {
+	header, hBuilder := c.makeHeader(appWorkerSetting, workerThreadMemQuota, 0, strconv.FormatInt(memSize, 10))
+	m := &msgToTransmit{
+		msg: &message{
+			Header: header,
+		},
+		prioritize:    true,
+		headerBuilder: hBuilder,
+	}
+	c.sendMessage(m)
+}
+
 func (c *Consumer) SendAssignedVbs() {
 	logPrefix := "Consumer::SendAssignedVbs"
 	vbuckets, err := c.GetAssignedVbs(c.ConsumerName())

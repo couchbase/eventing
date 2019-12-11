@@ -223,6 +223,7 @@ public:
   int V8WorkerLoad(std::string source_s);
   void RouteMessage();
   void TaskDurationWatcher();
+  size_t HeapSize();
 
   int SendUpdate(const std::string &value, const std::string &meta);
   int SendDelete(const std::string &meta);
@@ -330,6 +331,7 @@ private:
                                       int8_t msg_type, int8_t response_opcode);
   bool ExecuteScript(const v8::Local<v8::String> &script);
 
+  void ForceRunGarbageCollector();
   Histogram *latency_stats_;
   Histogram *curl_latency_stats_;
 

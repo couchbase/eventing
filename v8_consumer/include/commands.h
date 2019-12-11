@@ -49,7 +49,7 @@ enum dcp_opcode { oDelete, oMutation, DCP_Opcode_Unknown };
 
 enum filter_opcode { oVbFilter, oProcessedSeqNo, Filter_Opcode_Unknown };
 
-enum internal_opcode { oScanTimer, oUpdateVbMap, Internal_Opcode_Unknown };
+enum internal_opcode { oScanTimer, oUpdateVbMap, oRunGc, Internal_Opcode_Unknown };
 
 enum app_worker_setting_opcode {
   oLogLevel,
@@ -57,6 +57,7 @@ enum app_worker_setting_opcode {
   oWorkerThreadMap,
   oTimerContextSize,
   oVbMap,
+  oWorkerMemQuota,
   App_Worker_Setting_Opcode_Unknown
 };
 
