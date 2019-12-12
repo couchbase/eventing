@@ -73,7 +73,6 @@ const (
 	workerThreadPartitionMap
 	timerContextSize
 	vbMap
-	workerThreadMemQuota
 )
 
 // message and opcode types for interpreting messages from C++ To Go

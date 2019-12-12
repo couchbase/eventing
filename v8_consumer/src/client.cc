@@ -805,12 +805,6 @@ void AppWorker::RouteMessageWithResponse(
 
       LOG(logInfo) << "Updating vbucket map, vbmap :" << oss.str() << std::endl;
     } break;
-
-    case oWorkerMemQuota: {
-      memory_quota_ = std::stoll(worker_msg->header.metadata);
-      msg_priority_ = true;
-      break;
-    }
     default:
       LOG(logError) << "Opcode "
                     << getAppWorkerSettingOpcode(worker_msg->header.opcode)
@@ -955,10 +949,6 @@ AppWorker::~AppWorker() {
     feedback_uv_loop_thr_.join();
   }
 
-  if (event_gen_thr_.joinable()) {
-    event_gen_thr_.join();
-  }
-
   if (main_uv_loop_thr_.joinable()) {
     main_uv_loop_thr_.join();
   }
@@ -995,36 +985,18 @@ void AppWorker::ReadStdinLoop() {
   stdin_read_thr_ = std::move(thr);
 }
 
-void AppWorker::EventGenLoop() {
+void AppWorker::ScanTimerLoop() {
   std::this_thread::sleep_for(std::chrono::seconds(2));
   auto evt_generator = [](AppWorker *worker) {
     while (!worker->thread_exit_cond_.load()) {
       {
         std::lock_guard<std::mutex> lck(worker->workers_map_mutex_);
-        if (worker->v8worker_init_done_ && !worker->pause_consumer_.load()) {
-          // Scan for timers
-          if (worker->using_timer_) {
-            for (auto &v8_worker : worker->workers_) {
-              std::unique_ptr<WorkerMessage> msg(new WorkerMessage);
-              msg->header.event = eInternal + 1;
-              msg->header.opcode = oScanTimer;
-              v8_worker.second->PushFront(std::move(msg));
-            }
-          }
-
-          // Check for memory growth
-          int64_t approx_memory = 0;
-          for (const auto &w : worker->workers_) {
-            approx_memory += w.second->worker_queue_->GetMemory() + w.second->HeapSize();
-          }
-
-          if (approx_memory > worker->memory_quota_ * 0.8) {
-            for (auto &v8_worker : worker->workers_) {
-              std::unique_ptr<WorkerMessage> msg(new WorkerMessage);
-              msg->header.event = eInternal + 1;
-              msg->header.opcode = oRunGc;
-              v8_worker.second->PushFront(std::move(msg));
-            }
+        if (worker->using_timer_ && worker->v8worker_init_done_ && !worker->pause_consumer_.load()) {
+          for (auto &v8_worker : worker->workers_) {
+            std::unique_ptr<WorkerMessage> msg(new WorkerMessage);
+            msg->header.event = eInternal + 1;
+            msg->header.opcode = oScanTimer;
+            v8_worker.second->PushFront(std::move(msg));
           }
         }
       }
@@ -1032,7 +1004,7 @@ void AppWorker::EventGenLoop() {
     }
   };
   std::thread thr(evt_generator, this);
-  event_gen_thr_ = std::move(thr);
+  scan_timer_thr_ = std::move(thr);
 }
 
 void AppWorker::StopUvLoop(uv_async_t *async) {
@@ -1132,9 +1104,9 @@ int main(int argc, char **argv) {
   }
 
   worker->ReadStdinLoop();
-  worker->EventGenLoop();
+  worker->ScanTimerLoop();
   worker->stdin_read_thr_.join();
-  worker->event_gen_thr_.join();
+  worker->scan_timer_thr_.join();
   worker->main_uv_loop_thr_.join();
   worker->feedback_uv_loop_thr_.join();
 

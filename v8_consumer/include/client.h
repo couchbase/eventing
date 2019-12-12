@@ -81,7 +81,7 @@ public:
 
   void ReadStdinLoop();
 
-  void EventGenLoop();
+  void ScanTimerLoop();
 
   static void StopUvLoop(uv_async_t *);
 
@@ -93,9 +93,7 @@ public:
   std::thread main_uv_loop_thr_;
   std::thread feedback_uv_loop_thr_;
   std::thread stdin_read_thr_;
-  std::thread event_gen_thr_;
-
-  size_t memory_quota_;
+  std::thread scan_timer_thr_;
 
 protected:
   void WriteResponseWithRetry(uv_stream_t *handle,
