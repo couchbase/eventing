@@ -248,6 +248,17 @@ func (c *ClusterInfoCache) GetNodesByServiceType(srvc string) (nids []NodeId) {
 	return
 }
 
+func (c *ClusterInfoCache) GetAddressOfActiveKVNodes() (addresses []string, err error) {
+	for _, nodeID := range c.GetNodesByServiceType(DataService) {
+		address, err := c.GetServiceAddress(nodeID, DataService)
+		if err != nil {
+			return addresses, err
+		}
+		addresses = append(addresses, address)
+	}
+	return
+}
+
 func (c *ClusterInfoCache) GetAllNodes() []*Node {
 	var nodes []*Node
 	for _, n := range c.nodes {

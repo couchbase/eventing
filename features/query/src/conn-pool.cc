@@ -17,12 +17,19 @@
 #include "isolate_data.h"
 #include "lcb_utils.h"
 #include "query-helper.h"
+#include "utils.h"
 
 Connection::Info Connection::Pool::CreateConnection() const {
+  auto utils = UnwrapData(isolate_)->utils;
+  auto conn_str_info = utils->GetConnectionString(src_bucket_);
+  if (!conn_str_info.is_valid) {
+    return {true, conn_str_info.msg};
+  }
+
   std::stringstream error;
   lcb_create_st options = {nullptr};
   options.version = 3;
-  options.v.v3.connstr = conn_str_.c_str();
+  options.v.v3.connstr = conn_str_info.conn_str.c_str();
   options.v.v3.type = LCB_TYPE_BUCKET;
 
   lcb_t connection = nullptr;

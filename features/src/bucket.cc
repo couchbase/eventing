@@ -25,22 +25,32 @@ std::atomic<int64_t> bucket_op_exception_count = {0};
 std::atomic<int64_t> lcb_retry_failure = {0};
 
 Bucket::Bucket(v8::Isolate *isolate, const v8::Local<v8::Context> &context,
-               const std::string &conn_str, const std::string &alias,
+               const std::string &bucket_name, const std::string &alias,
                bool block_mutation, bool is_source_bucket)
     : isolate_(isolate), block_mutation_(block_mutation),
-      is_source_bucket_(is_source_bucket), conn_str_(conn_str),
+      is_source_bucket_(is_source_bucket), bucket_name_(bucket_name),
       bucket_alias_(alias) {
   context_.Reset(isolate_, context);
 
   auto init_success = true;
-  LOG(logInfo) << "Bucket: connstr " << RS(conn_str_) << std::endl;
+
+  auto utils = UnwrapData(isolate_)->utils;
+  auto conn_str_info = utils->GetConnectionString(bucket_name_);
+  if (!conn_str_info.is_valid) {
+    init_success = false;
+    LOG(logError) << "Bucket: Unable to get connection string, error : "
+                  << RS(conn_str_info.msg) << std::endl;
+    return;
+  }
+
+  LOG(logInfo) << "Bucket: connstr " << RS(conn_str_info.conn_str) << std::endl;
 
   // lcb related setup
   lcb_create_st crst;
   memset(&crst, 0, sizeof crst);
 
   crst.version = 3;
-  crst.v.v3.connstr = conn_str_.c_str();
+  crst.v.v3.connstr = conn_str_info.conn_str.c_str();
   crst.v.v3.type = LCB_TYPE_BUCKET;
 
   lcb_create(&bucket_lcb_obj_, &crst);
@@ -116,11 +126,11 @@ Bucket::Bucket(v8::Isolate *isolate, const v8::Local<v8::Context> &context,
   if (init_success) {
     LOG(logInfo) << "Bucket: lcb instance instantiated successfully with "
                     "connection string : "
-                 << RS(conn_str_) << std::endl;
+                 << RS(conn_str_info.conn_str) << std::endl;
   } else {
     LOG(logError)
         << "Bucket: Unable to initialize lcb instance with connection string : "
-        << RS(conn_str_) << std::endl;
+        << RS(conn_str_info.conn_str) << std::endl;
   }
 }
 
@@ -163,7 +173,7 @@ bool Bucket::InstallMaps() {
   auto context = v8::Local<v8::Context>::New(isolate_, context_);
 
   LOG(logInfo) << "Bucket: Registering handler for bucket_alias: "
-               << bucket_alias_ << " connection string : " << RS(conn_str_)
+               << bucket_alias_ << " connection string : " << RS(bucket_name_)
                << std::endl;
 
   auto global = context->Global();

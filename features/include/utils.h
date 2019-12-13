@@ -95,6 +95,12 @@ struct UrlDecode : public Info {
   std::string decoded;
 };
 
+struct ConnStrInfo {
+  bool is_valid{true};
+  std::string msg;
+  std::string conn_str;
+};
+
 class Utils {
 public:
   Utils(v8::Isolate *isolate, const v8::Local<v8::Context> &context);
@@ -124,6 +130,7 @@ public:
                         const char *ws = " \t\n\r\f\v") const;
   std::string Trim(const std::string &s, const char *ws = " \t\n\r\f\v") const;
   static Info ValidateDataType(const v8::Local<v8::Value> &arg);
+  ConnStrInfo GetConnectionString(const std::string &bucket) const;
 
 private:
   v8::Isolate *isolate_;

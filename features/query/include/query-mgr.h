@@ -24,9 +24,9 @@
 namespace Query {
 class Manager {
 public:
-  explicit Manager(v8::Isolate *isolate, const std::string &conn_str,
+  explicit Manager(v8::Isolate *isolate, const std::string &src_bucket,
                    const std::size_t pool_size)
-      : isolate_(isolate), conn_pool_(pool_size, conn_str, isolate) {}
+      : isolate_(isolate), conn_pool_(pool_size, src_bucket, isolate) {}
   ~Manager() { ClearQueries(); }
 
   Manager() = delete;

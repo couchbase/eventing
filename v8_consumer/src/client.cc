@@ -544,7 +544,8 @@ void AppWorker::RouteMessageWithResponse(
               function_id_, handler_instance_id, user_prefix_, &latency_stats_,
               &curl_latency_stats_, ns_server_port_);
 
-          LOG(logInfo) << "Init index: " << i << " V8Worker: " << w << std::endl;
+          LOG(logInfo) << "Init index: " << i << " V8Worker: " << w
+                       << std::endl;
           workers_[i] = w;
         }
 
@@ -991,7 +992,8 @@ void AppWorker::ScanTimerLoop() {
     while (!worker->thread_exit_cond_.load()) {
       {
         std::lock_guard<std::mutex> lck(worker->workers_map_mutex_);
-        if (worker->using_timer_ && worker->v8worker_init_done_ && !worker->pause_consumer_.load()) {
+        if (worker->using_timer_ && worker->v8worker_init_done_ &&
+            !worker->pause_consumer_.load()) {
           for (auto &v8_worker : worker->workers_) {
             std::unique_ptr<WorkerMessage> msg(new WorkerMessage);
             msg->header.event = eInternal + 1;

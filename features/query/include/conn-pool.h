@@ -35,8 +35,8 @@ class Pool {
 public:
   explicit Pool(std::size_t capacity, std::string conn_str,
                 v8::Isolate *isolate)
-      : isolate_(isolate), conn_str_(std::move(conn_str)), capacity_(capacity) {
-  }
+      : isolate_(isolate), src_bucket_(std::move(conn_str)),
+        capacity_(capacity) {}
   ~Pool();
 
   Pool() = delete;
@@ -55,7 +55,7 @@ private:
                                              lcb_error_t error) const;
 
   v8::Isolate *isolate_;
-  std::string conn_str_;
+  std::string src_bucket_;
   const std::size_t capacity_;
   std::size_t current_size_{0};
   std::queue<lcb_t> pool_;

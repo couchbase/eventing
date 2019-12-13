@@ -333,8 +333,6 @@ private:
   Histogram *latency_stats_;
   Histogram *curl_latency_stats_;
 
-  std::string src_bucket_connstr_;
-  std::string metadata_bucket_connstr_;
   std::string src_path_;
 
   vb_seq_map_t vb_seq_;
