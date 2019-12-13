@@ -22,7 +22,7 @@
 class Bucket {
 public:
   Bucket(v8::Isolate *isolate, const v8::Local<v8::Context> &context,
-         const std::string &conn_str, const std::string &alias,
+         const std::string &bucket_name, const std::string &alias,
          bool block_mutation, bool is_source_bucket);
   ~Bucket();
 
@@ -114,7 +114,7 @@ private:
 
   bool block_mutation_;
   bool is_source_bucket_;
-  std::string conn_str_;
+  std::string bucket_name_;
   std::string bucket_alias_;
 
   enum class InternalFields {

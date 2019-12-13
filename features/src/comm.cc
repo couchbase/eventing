@@ -9,6 +9,9 @@
 // or implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
+#include <nlohmann/json.hpp>
+#include <sstream>
+
 #include "comm.h"
 #include "isolate_data.h"
 #include "utils.h"
@@ -24,6 +27,7 @@ Communicator::Communicator(const std::string &host_ip,
   get_creds_url_ = base_url + "/getCreds";
   get_named_params_url_ = base_url + "/getNamedParams";
   write_debugger_url_ = base_url + "/writeDebuggerURL";
+  get_kv_nodes_url_ = base_url + "/getKVNodesAddresses";
   lo_usr_ = usr;
   lo_key_ = key;
 }
@@ -109,6 +113,42 @@ CredsInfo Communicator::GetCreds(const std::string &endpoint) {
   }
 
   return ExtractCredentials(response.body);
+}
+
+KVNodesInfo Communicator::GetKVNodes() {
+  // TODO : Use GET here instead of POST
+  auto response = curl_.HTTPPost({}, get_kv_nodes_url_, "", lo_usr_, lo_key_);
+
+  std::stringstream error;
+  KVNodesInfo info;
+  info.is_valid = false;
+
+  if (response.code != CURLE_OK) {
+    error << "Unable to get KV nodes addresses, error : "
+          << curl_easy_strerror(response.code);
+    info.msg = error.str();
+    return info;
+  }
+
+  auto resp_json = nlohmann::json::parse(response.body, nullptr, false);
+  if (resp_json.is_discarded()) {
+    error << "Failed to parse response as JSON : " << RS(response.body);
+    info.msg = error.str();
+    return info;
+  }
+
+  if (resp_json["is_error"].get<bool>()) {
+    info.msg = resp_json["error"].get<std::string>();
+    return info;
+  }
+
+  auto nodes = resp_json["kv_nodes"].get<std::vector<std::string>>();
+  info.kv_nodes.reserve(nodes.size());
+  for (const auto &node : nodes) {
+    info.kv_nodes.emplace_back(node);
+  }
+  info.is_valid = true;
+  return info;
 }
 
 NamedParamsInfo Communicator::GetNamedParams(const std::string &query) {

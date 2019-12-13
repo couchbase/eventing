@@ -41,6 +41,12 @@ struct NamedParamsInfo {
   std::vector<std::string> named_params;
 };
 
+struct KVNodesInfo {
+  std::vector<std::string> kv_nodes;
+  bool is_valid{true};
+  std::string msg;
+};
+
 // Channel to communicate to eventing-producer through CURL
 class Communicator {
 public:
@@ -49,6 +55,7 @@ public:
                const std::string &app_name, v8::Isolate *isolate);
 
   CredsInfo GetCreds(const std::string &endpoint);
+  KVNodesInfo GetKVNodes();
   NamedParamsInfo GetNamedParams(const std::string &query);
   ParseInfo ParseQuery(const std::string &query);
   void WriteDebuggerURL(const std::string &url);
@@ -65,6 +72,7 @@ private:
   std::string app_name_;
   std::string get_creds_url_;
   std::string get_named_params_url_;
+  std::string get_kv_nodes_url_;
   std::string lo_key_;
   std::string lo_usr_;
   std::string parse_query_url_;
