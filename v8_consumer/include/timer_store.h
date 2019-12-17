@@ -29,7 +29,7 @@ class TimerStore {
 public:
   explicit TimerStore(v8::Isolate *isolate, const std::string &prefix,
                       const std::vector<int64_t> &partitions,
-                      const std::string &conn_str);
+                      const std::string &metadata_bucket);
   ~TimerStore();
 
   lcb_error_t SetTimer(TimerInfo &timer);
@@ -71,7 +71,7 @@ private:
   std::vector<bool> partitons_;
   std::unordered_map<int64_t, TimerSpan> span_map_;
   std::string prefix_;
-  std::string conn_str_;
+  std::string metadata_bucket_;
   lcb_t crud_handle_{nullptr};
   std::mutex store_lock_;
   friend class Iterator;

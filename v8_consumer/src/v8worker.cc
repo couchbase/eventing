@@ -116,7 +116,7 @@ void V8Worker::InitializeIsolateData(const server_settings_t *server_settings,
   data_.curl_codex = new CurlCodex;
   data_.code_insight = new CodeInsight(isolate_);
   data_.query_mgr =
-      new Query::Manager(isolate_, src_bucket_connstr_,
+      new Query::Manager(isolate_, cb_source_bucket_,
                          static_cast<std::size_t>(h_config->lcb_inst_capacity));
   data_.query_iterable = new Query::Iterable(isolate_, context);
   data_.query_iterable_impl = new Query::IterableImpl(isolate_, context);
@@ -163,10 +163,6 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
           {"KVError", "N1QLError", "EventingError", "CurlError"}) {
   auto config = ParseDeployment(h_config->dep_cfg.c_str());
   cb_source_bucket_.assign(config->source_bucket);
-  src_bucket_connstr_ = GetConnectionStr(
-      JoinHostPort(Localhost(false), ns_server_port_), cb_source_bucket_);
-  metadata_bucket_connstr_ = GetConnectionStr(
-      JoinHostPort(Localhost(false), ns_server_port_), config->metadata_bucket);
   std::ostringstream oss;
   oss << "\"" << function_id << "-" << function_instance_id << "\"";
   function_instance_id_.assign(oss.str());
@@ -216,10 +212,8 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
               config->component_configs["buckets"][bucket_alias][0];
           std::string bucket_access =
               config->component_configs["buckets"][bucket_alias][2];
-          auto conn_str = GetConnectionStr(
-              JoinHostPort(Localhost(false), ns_server_port_), bucket_name);
-          bucket_handle = new Bucket(isolate_, context, conn_str, bucket_alias,
-                                     bucket_access == "r",
+          bucket_handle = new Bucket(isolate_, context, bucket_name,
+                                     bucket_alias, bucket_access == "r",
                                      bucket_name == config->source_bucket);
 
           bucket_handles_.push_back(bucket_handle);
@@ -248,7 +242,7 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
     std::vector<int64_t> partitions;
     auto prefix = user_prefix + "::" + function_id;
     timer_store_ = new timer::TimerStore(isolate_, prefix, partitions,
-                                         metadata_bucket_connstr_);
+                                         config->metadata_bucket);
   }
   delete config;
   this->worker_queue_ = new BlockingDeque<std::unique_ptr<WorkerMessage>>();

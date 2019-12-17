@@ -158,6 +158,7 @@ func (m *ServiceMgr) initService() {
 	mux.HandleFunc("/uuid", m.getNodeUUID)
 	mux.HandleFunc("/version", m.getNodeVersion)
 	mux.HandleFunc("/writeDebuggerURL/", m.writeDebuggerURLHandler)
+	mux.HandleFunc("/getKVNodesAddresses", m.getKVNodesAddresses)
 
 	// Public REST APIs
 	mux.HandleFunc("/api/v1/status", m.statusHandler)
