@@ -34,12 +34,12 @@ type kvPool struct {
 }
 
 type poolStats struct {
-	incrCounter    uint64 `json:"kvpool_incr"`
-	insertCounter  uint64 `json:"kvpool_insert"`
-	lookupCounter  uint64 `json:"kvpool_lookup"`
-	replaceCounter uint64 `json:"kvpool_replace"`
-	removeCounter  uint64 `json:"kvpool_remove"`
-	upsertCounter  uint64 `json:"kvpool_upsert"`
+	IncrCounter    uint64 `json:"kvpool_incr"`
+	InsertCounter  uint64 `json:"kvpool_insert"`
+	LookupCounter  uint64 `json:"kvpool_lookup"`
+	ReplaceCounter uint64 `json:"kvpool_replace"`
+	RemoveCounter  uint64 `json:"kvpool_remove"`
+	UpsertCounter  uint64 `json:"kvpool_upsert"`
 }
 
 func Pool(connstr string) *kvPool {
@@ -134,7 +134,7 @@ func (r *kvPool) Upsert(bucket, key string, value interface{}, expiry uint32) (c
 	if err != nil {
 		return
 	}
-	atomic.AddUint64(&r.stats.upsertCounter, 1)
+	atomic.AddUint64(&r.stats.UpsertCounter, 1)
 	cas, err = conn.Upsert(key, value, expiry)
 	return
 }
@@ -148,7 +148,7 @@ func (r *kvPool) Counter(bucket, key string, delta, initial int64, expiry uint32
 	if err != nil {
 		return
 	}
-	atomic.AddUint64(&r.stats.incrCounter, 1)
+	atomic.AddUint64(&r.stats.IncrCounter, 1)
 	ucount, cas, err := conn.Counter(key, delta, initial, expiry)
 	count = int64(ucount)
 	return
@@ -163,7 +163,7 @@ func (r *kvPool) Get(bucket, key string, valuePtr interface{}) (cas gocb.Cas, ab
 	if err != nil {
 		return
 	}
-	atomic.AddUint64(&r.stats.lookupCounter, 1)
+	atomic.AddUint64(&r.stats.LookupCounter, 1)
 	cas, err = conn.Get(key, valuePtr)
 	if err != nil && gocb.IsKeyNotFoundError(err) {
 		absent = true
@@ -181,7 +181,7 @@ func (r *kvPool) Insert(bucket, key string, value interface{}, expiry uint32) (r
 	if err != nil {
 		return
 	}
-	atomic.AddUint64(&r.stats.insertCounter, 1)
+	atomic.AddUint64(&r.stats.InsertCounter, 1)
 	rcas, err = conn.Insert(key, value, expiry)
 	if err != nil && gocb.IsKeyNotFoundError(err) {
 		mismatch = true
@@ -199,7 +199,7 @@ func (r *kvPool) Replace(bucket, key string, value interface{}, cas gocb.Cas, ex
 	if err != nil {
 		return
 	}
-	atomic.AddUint64(&r.stats.replaceCounter, 1)
+	atomic.AddUint64(&r.stats.ReplaceCounter, 1)
 	rcas, err = conn.Replace(key, value, cas, expiry)
 	if err != nil && gocb.IsKeyExistsError(err) {
 		mismatch = true
@@ -221,7 +221,7 @@ func (r *kvPool) Remove(bucket, key string, cas gocb.Cas) (rcas gocb.Cas, absent
 	if err != nil {
 		return
 	}
-	atomic.AddUint64(&r.stats.removeCounter, 1)
+	atomic.AddUint64(&r.stats.RemoveCounter, 1)
 	rcas, err = conn.Remove(key, cas)
 	if err != nil && gocb.IsKeyExistsError(err) {
 		mismatch = true
@@ -292,7 +292,8 @@ func MustRun(fn func() error) error {
 	}
 
 	_, file, line, _ := runtime.Caller(1)
-	fname := fmt.Sprintf("%v:%v[%v]", file, line, fn)
+	funcName := runtime.FuncForPC(reflect.ValueOf(fn).Pointer()).Name()
+	fname := fmt.Sprintf("%v:%v[%v]", file, line, funcName)
 
 	logging.Warnf("Call to %v failed due to %v, entering retry loop", fname, e)
 	start := time.Now()

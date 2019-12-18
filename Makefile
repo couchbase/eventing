@@ -137,3 +137,6 @@ test: install test_deps
 	make cluster_start
 	cd tests/functional_tests && GOMAXPROCS=16 $(goenv) $(goroot)/bin/go test -v -failfast -timeout 24h -tags "$(tests)" | tee $(workdir)/test.log
 	make cluster_stop
+
+vet: install test_deps
+	$(goenv) $(goroot)/bin/go vet ./...
