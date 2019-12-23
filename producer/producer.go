@@ -233,9 +233,8 @@ func (p *Producer) Serve() {
 					// once above). As a result oldVbucketSlice & newVbucketSlice will match and we skip rebalance below.
 					// firstRebalanceDone flag is used to identify this case and force rebalance on all consumers so that VBs can be
 					// properly owned
-					if !util.CompareSlices(oldVbucketSlice, newVbucketSlice) || !p.firstRebalanceDone {
-						logging.Infof("%s [%s:%d] Consumer: %s sent cluster state change message from producer",
-							logPrefix, p.appName, p.LenRunningConsumers(), consumerName)
+					if !util.CompareSlices(oldVbucketSlice, newVbucketSlice) || !p.firstRebalanceDone || c.GetPrevRebalanceInCompleteStatus() {
+						logging.Infof("%s [%s:%d] Consumer: %s sent cluster state change message from producer, firstRebalanceDone: %v, GetPrevRebalanceInCompleteStatus: %v", logPrefix, p.appName, p.LenRunningConsumers(), consumerName, p.firstRebalanceDone, c.GetPrevRebalanceInCompleteStatus())
 						c.NotifyClusterChange()
 					} else {
 						// set the rebalance status on the consumer as it uses this flag to control throttling in processDcpEvents()
