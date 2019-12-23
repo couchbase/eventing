@@ -91,11 +91,18 @@ func (c *Consumer) checkAndUpdateMetadata() {
 func (c *Consumer) vbsStateUpdate() {
 	logPrefix := "Consumer::vbsStateUpdate"
 
+	// Below flag is used to track if a rebalance is stopped in the middle. If it is, then we should not optimise next rebalance based on old/new slices
+	c.prevRebalanceInComplete = false
+
 	c.vbsStateUpdateRunning = true
 	logging.Infof("%s [%s:%s:%d] Updated vbsStateUpdateRunning to %t",
 		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.vbsStateUpdateRunning)
 
 	defer func() {
+		if len(c.vbsRemainingToOwn) > 0 || len(c.vbsRemainingToGiveUp) > 0 {
+			// likely this rebalance was stopped in the middle. Set the flag the next rebalance is not optimised by producer by checking oldSlice==newSlice
+			c.prevRebalanceInComplete = true
+		}
 		c.vbsStateUpdateRunning = false
 		// confirm rebalance is done
 		c.isRebalanceOngoing = false
@@ -181,14 +188,13 @@ retryStreamUpdate:
 
 	c.stopVbOwnerTakeoverCh = make(chan struct{})
 
-	if c.isRebalanceOngoing {
-		c.vbsRemainingToOwn = c.getVbRemainingToOwn()
-		c.vbsRemainingToGiveUp = c.getVbRemainingToGiveUp()
+	c.vbsRemainingToOwn = c.getVbRemainingToOwn()
+	c.vbsRemainingToGiveUp = c.getVbRemainingToGiveUp()
 
+	if c.isRebalanceOngoing {
 		logging.Infof("%s [%s:%s:%d] Post vbTakeover job execution, vbsRemainingToOwn => %v vbRemainingToGiveUp => %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(),
 			util.Condense(c.vbsRemainingToOwn), util.Condense(c.vbsRemainingToGiveUp))
-
 		// Retry logic in-case previous attempt to own/start dcp stream didn't succeed
 		// because some other node has already opened(or hasn't closed) the vb dcp stream
 		if (len(c.vbsRemainingToOwn) > 0 || len(c.vbsRemainingToGiveUp) > 0) && !c.dcpFeedsClosed {

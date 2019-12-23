@@ -222,6 +222,7 @@ type EventingConsumer interface {
 	SetFeedbackConnHandle(net.Conn)
 	SetRebalanceStatus(status bool)
 	GetRebalanceStatus() bool
+	GetPrevRebalanceInCompleteStatus() bool
 	SignalBootstrapFinish()
 	SignalConnected()
 	SignalFeedbackConnected()

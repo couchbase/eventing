@@ -202,6 +202,7 @@ type Consumer struct {
 	vbsRemainingToOwn             []uint16
 	vbsRemainingToRestream        []uint16 // Access controlled by default lock
 	vbsStateUpdateRunning         bool
+	prevRebalanceInComplete       bool
 	vbsStreamClosed               map[uint16]bool // Access controlled by vbsStreamClosedRWMutex
 	vbsStreamClosedRWMutex        *sync.RWMutex
 	vbStreamRequested             map[uint16]uint64 // map of vbs to start_seq_nos. Access controlled by vbsStreamRRWMutex

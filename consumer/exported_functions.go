@@ -634,6 +634,12 @@ func (c *Consumer) GetRebalanceStatus() bool {
 	return c.isRebalanceOngoing
 }
 
+// GetPrevRebalanceInCompleteStatus returns rebalance status for consumer instance
+func (c *Consumer) GetPrevRebalanceInCompleteStatus() bool {
+	return c.prevRebalanceInComplete
+}
+
+// VbSeqnoStats returns seq no stats, which can be useful in figuring out missed events during rebalance
 // VbSeqnoStats returns seq no stats, which can be useful in figuring out missed events during rebalance
 func (c *Consumer) VbSeqnoStats() map[int]map[string]interface{} {
 	seqnoStats := make(map[int]map[string]interface{})
