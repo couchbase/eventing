@@ -257,6 +257,8 @@ func (p *Producer) Serve() {
 				}
 			}
 
+			atomic.StoreInt32(&p.isRebalanceOngoing, 0)
+
 		case <-p.notifySettingsChangeCh:
 			logging.Infof("%s [%s:%d] Notifying consumers about settings change", logPrefix, p.appName, p.LenRunningConsumers())
 
@@ -769,6 +771,7 @@ func (p *Producer) NotifySupervisor() {
 
 // NotifyTopologyChange is used by super_supervisor to notify producer about topology change
 func (p *Producer) NotifyTopologyChange(msg *common.TopologyChangeMsg) {
+	atomic.StoreInt32(&p.isRebalanceOngoing, 1)
 	p.topologyChangeCh <- msg
 }
 
