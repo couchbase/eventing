@@ -55,6 +55,7 @@ type Producer struct {
 	isBootstrapping        bool
 	isPlannerRunning       bool
 	isTerminateRunning     bool
+	isRebalanceOngoing     int32
 	firstRebalanceDone     bool
 	kvPort                 string
 	kvHostPorts            []string
