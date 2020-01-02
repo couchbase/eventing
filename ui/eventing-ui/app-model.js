@@ -47,6 +47,23 @@ function ApplicationManager() {
     this.getApplications = function() {
         return applications;
     };
+
+    // Alpha sort the UI
+    this.sortApplications = function() {
+        // sort the object by appname by rebuilding
+        function objectWithKeySorted(object) {
+            var result = {};
+            _.forEach(Object.keys(object).sort(), function(key) {
+                result[key] = object[key];
+            });
+            return result;
+        }
+        var tempList = objectWithKeySorted(applications);
+        for (var appname of Object.keys(tempList)) {
+            delete applications[appname];
+            applications[appname] = tempList[appname];
+        }
+    }
 }
 
 // Creates a new app in the front-end.
@@ -63,6 +80,9 @@ ApplicationManager.prototype.createApp = function(appModel) {
 
     // Store the app - appname is the key for the application.
     appList[app.appname] = app;
+
+    // Alpha sort the UI
+    this.sortApplications();
 };
 
 ApplicationManager.prototype.pushApp = function(app) {
