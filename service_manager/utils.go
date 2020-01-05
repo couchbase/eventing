@@ -143,6 +143,7 @@ func (m *ServiceMgr) fillMissingWithDefaults(appName string, settings map[string
 
 	// Language related configuration
 	fillMissingDefault(app, settings, "language_compatibility", common.LanguageCompatibility[0])
+	fillMissingDefault(app, settings, "lcb_retry_count", float64(0))
 }
 
 func fillMissingDefault(app application, settings map[string]interface{}, field string, defaultValue interface{}) {

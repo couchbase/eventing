@@ -506,6 +506,7 @@ void AppWorker::RouteMessageWithResponse(
       handler_config->timer_context_size = payload->timer_context_size();
       handler_config->dep_cfg.assign(payload->depcfg()->str());
       handler_config->execution_timeout = payload->execution_timeout();
+      handler_config->lcb_retry_count = payload->lcb_retry_count();
       handler_config->lcb_inst_capacity = payload->lcb_inst_capacity();
       handler_config->n1ql_consistency = payload->n1ql_consistency()->str();
       handler_config->skip_lcb_bootstrap = payload->skip_lcb_bootstrap();

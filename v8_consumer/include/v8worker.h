@@ -154,6 +154,7 @@ typedef struct handler_config_s {
   std::string dep_cfg;
   std::string lang_compat;
   int execution_timeout;
+  int lcb_retry_count;
   int lcb_inst_capacity;
   bool skip_lcb_bootstrap;
   bool using_timer;
@@ -276,7 +277,9 @@ public:
 
   std::unordered_set<int64_t> GetPartitions() const;
 
-  void SetTimer(timer::TimerInfo &tinfo);
+  lcb_error_t SetTimer(timer::TimerInfo &tinfo);
+
+  lcb_t GetTimerLcbHandle() const;
   void AddTimerPartition(int vb_no);
   void RemoveTimerPartition(int vb_no);
 

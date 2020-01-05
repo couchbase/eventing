@@ -59,6 +59,7 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		eventingNodeUUIDs:               eventingNodeUUIDs,
 		executeTimerRoutineCount:        hConfig.ExecuteTimerRoutineCount,
 		executionTimeout:                hConfig.ExecutionTimeout,
+		lcbRetryCount:                   hConfig.LcbRetryCount,
 		feedbackQueueCap:                hConfig.FeedbackQueueCap,
 		feedbackReadBufferSize:          hConfig.FeedbackReadBufferSize,
 		feedbackTCPPort:                 pConfig.FeedbackSockIdentifier,

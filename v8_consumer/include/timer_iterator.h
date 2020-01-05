@@ -26,6 +26,7 @@ public:
 
 private:
   std::pair<bool, bool> GetNextTimer(TimerEvent &tevent);
+  void IncrementPartition();
   TimerStore *store_;
   int64_t curr_partition_{0};
   int64_t stop_;

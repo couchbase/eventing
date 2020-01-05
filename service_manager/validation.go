@@ -680,6 +680,31 @@ func (m *ServiceMgr) validatePositiveInteger(field string, settings map[string]i
 	return
 }
 
+func (m *ServiceMgr) validateNonNegativeInteger(field string, settings map[string]interface{}) (info *runtimeInfo) {
+	info = &runtimeInfo{}
+	info.Code = m.statusCodes.errInvalidConfig.Code
+
+	if val, ok := settings[field]; ok {
+		if info = m.validateNumber(field, settings); info.Code != m.statusCodes.ok.Code {
+			return
+		}
+
+		info.Code = m.statusCodes.errInvalidConfig.Code
+		if val.(float64) < 0 {
+			info.Info = fmt.Sprintf("%s can not be negative", field)
+			return
+		}
+
+		if math.Trunc(val.(float64)) != val.(float64) {
+			info.Info = fmt.Sprintf("%s must be a non negative integer", field)
+			return
+		}
+	}
+
+	info.Code = m.statusCodes.ok.Code
+	return
+}
+
 func (m *ServiceMgr) validateTimerContextSize(field string, settings map[string]interface{}) (info *runtimeInfo) {
 	info = &runtimeInfo{}
 	info.Code = m.statusCodes.errInvalidConfig.Code
@@ -912,6 +937,10 @@ func (m *ServiceMgr) validateSettings(appName string, settings map[string]interf
 	}
 
 	if info = m.validatePositiveInteger("lcb_inst_capacity", settings); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
+	if info = m.validateNonNegativeInteger("lcb_retry_count", settings); info.Code != m.statusCodes.ok.Code {
 		return
 	}
 

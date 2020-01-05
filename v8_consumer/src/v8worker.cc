@@ -138,6 +138,7 @@ void V8Worker::InitializeIsolateData(const server_settings_t *server_settings,
       Query::Helper::GetConsistency(h_config->n1ql_consistency);
   data_.n1ql_prepare_all = h_config->n1ql_prepare_all;
   data_.lang_compat = new LanguageCompatibility(h_config->lang_compat);
+  data_.lcb_retry_count = h_config->lcb_retry_count;
 }
 
 void V8Worker::InitializeCurlBindingValues(
@@ -1146,9 +1147,14 @@ std::unordered_set<int64_t> V8Worker::GetPartitions() const {
   return partitions_;
 }
 
-void V8Worker::SetTimer(timer::TimerInfo &tinfo) {
+lcb_error_t V8Worker::SetTimer(timer::TimerInfo &tinfo) {
   if (timer_store_)
-    timer_store_->SetTimer(tinfo);
+    return timer_store_->SetTimer(tinfo, data_.lcb_retry_count);
+  return LCB_SUCCESS;
+}
+
+lcb_t V8Worker::GetTimerLcbHandle() const {
+  return timer_store_->GetTimerStoreHandle();
 }
 
 std::unique_lock<std::mutex> V8Worker::GetAndLockFilterLock() {
