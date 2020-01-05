@@ -135,6 +135,114 @@ void counter_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
                 << lcb_strerror(nullptr, result->rc) << std::endl;
 }
 
+std::pair<lcb_error_t, Result> LcbGet(lcb_t instance, lcb_CMDGET &cmd) {
+  Result result;
+  auto err = lcb_get3(instance, &result, &cmd);
+  if (err != LCB_SUCCESS) {
+    LOG(logTrace) << "Bucket: Unable to set params for LCB_GET: "
+                  << lcb_strerror(instance, err) << std::endl;
+    return {err, result};
+  }
+  err = lcb_wait(instance);
+  if (err != LCB_SUCCESS) {
+    LOG(logTrace) << "Bucket: Unable to schedule LCB_GET: "
+                  << lcb_strerror(instance, err) << std::endl;
+  }
+  return {err, result};
+}
+
+std::pair<lcb_error_t, Result> LcbSet(lcb_t instance, lcb_CMDSTORE &cmd) {
+  Result result;
+  auto err = lcb_store3(instance, &result, &cmd);
+  if (err != LCB_SUCCESS) {
+    LOG(logTrace) << "Bucket: Unable to set params for LCB_SET: "
+                  << lcb_strerror(instance, err) << std::endl;
+    return {err, result};
+  }
+
+  err = lcb_wait(instance);
+  if (err != LCB_SUCCESS) {
+    LOG(logTrace) << "Bucket: Unable to schedule LCB_SET: "
+                  << lcb_strerror(instance, err) << std::endl;
+  }
+  return {err, result};
+}
+
+std::pair<lcb_error_t, Result> LcbDelete(lcb_t instance, lcb_CMDREMOVE &cmd) {
+  Result result;
+  auto err = lcb_remove3(instance, &result, &cmd);
+  if (err != LCB_SUCCESS) {
+    LOG(logTrace) << "Bucket: Unable to set params for LCB_REMOVE: "
+                  << lcb_strerror(instance, err) << std::endl;
+    return {err, result};
+  }
+
+  err = lcb_wait(instance);
+  if (err != LCB_SUCCESS) {
+    LOG(logTrace) << "Bucket: Unable to schedule LCB_REMOVE: "
+                  << lcb_strerror(instance, err) << std::endl;
+  }
+  return {err, result};
+}
+
+std::pair<lcb_error_t, Result> LcbSubdocSet(lcb_t instance,
+                                            lcb_CMDSUBDOC &cmd) {
+  Result result;
+  auto err = lcb_subdoc3(instance, &result, &cmd);
+  if (err != LCB_SUCCESS) {
+    LOG(logTrace) << "Bucket: Unable to set params for LCB_SUBDOC_SET: "
+                  << lcb_strerror(instance, err) << std::endl;
+    return {err, result};
+  }
+
+  err = lcb_wait(instance);
+  if (err != LCB_SUCCESS) {
+    LOG(logTrace) << "Bucket: Unable to schedule LCB_SUBDOC_SET: "
+                  << lcb_strerror(instance, err) << std::endl;
+  }
+  return {err, result};
+}
+
+std::pair<lcb_error_t, Result> LcbSubdocDelete(lcb_t instance,
+                                               lcb_CMDSUBDOC &cmd) {
+  Result result;
+  auto err = lcb_subdoc3(instance, &result, &cmd);
+  if (err != LCB_SUCCESS) {
+    LOG(logTrace) << "Bucket: Unable to set params for LCB_SUBDOC_REMOVE: "
+                  << lcb_strerror(instance, err) << std::endl;
+    return {err, result};
+  }
+
+  err = lcb_wait(instance);
+  if (err != LCB_SUCCESS) {
+    LOG(logTrace) << "Bucket: Unable to schedule LCB_SUBDOC_REMOVE: "
+                  << lcb_strerror(instance, err) << std::endl;
+  }
+  return {err, result};
+}
+
+std::pair<lcb_error_t, Result> LcbGetCounter(lcb_t instance,
+                                             lcb_CMDCOUNTER &cmd) {
+  Result result;
+  auto err = lcb_counter3(instance, &result, &cmd);
+  if (err != LCB_SUCCESS) {
+    LOG(logTrace) << "Bucket: Unable to set params for LCB_COUNTER: "
+                  << lcb_strerror(instance, err) << std::endl;
+    return {err, result};
+  }
+
+  err = lcb_wait(instance);
+  if (err != LCB_SUCCESS) {
+    LOG(logTrace) << "Bucket: Unable to schedule LCB_COUNTER: "
+                  << lcb_strerror(instance, err) << std::endl;
+  }
+  return {err, result};
+}
+
+bool IsRetriable(lcb_error_t error) {
+  return static_cast<bool>(LCB_EIFTMP(error));
+}
+
 void evt_log_formatter(char *buf, int buf_size, const char *subsystem,
                        int srcline, unsigned int instance_id, const char *fmt,
                        va_list ap) {

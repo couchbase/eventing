@@ -71,7 +71,6 @@ bool Timer::CreateTimerImpl(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
   auto utils = UnwrapData(isolate_)->utils;
   auto v8worker = UnwrapData(isolate_)->v8worker;
-
   timer::TimerInfo timer_info;
   timer_info.epoch = epoch_info.epoch;
   timer_info.vb = v8worker->currently_processed_vb_;
@@ -94,8 +93,11 @@ bool Timer::CreateTimerImpl(const v8::FunctionCallbackInfo<v8::Value> &args) {
     timer_context_size_exceeded_counter++;
     return false;
   }
-
-  v8worker->SetTimer(timer_info);
+  auto err = v8worker->SetTimer(timer_info);
+  if (err != LCB_SUCCESS) {
+    js_exception->ThrowKVError(v8worker->GetTimerLcbHandle(), err);
+    return false;
+  }
   args.GetReturnValue().Set(v8Str(isolate_, timer_info.reference));
   return true;
 }

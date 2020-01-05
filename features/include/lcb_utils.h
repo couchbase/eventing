@@ -13,7 +13,9 @@
 #define COUCHBASE_LCB_UTILS_H
 
 #include "log.h"
+#include "utils.h"
 #include <libcouchbase/couchbase.h>
+#include <thread>
 
 struct Result {
   lcb_CAS cas;
@@ -23,6 +25,8 @@ struct Result {
   int64_t counter;
   Result() : cas(0), rc(LCB_SUCCESS) {}
 };
+
+constexpr int max_lcb_retry_count = 5;
 
 const char *GetUsername(void *cookie, const char *host, const char *port,
                         const char *bucket);
@@ -40,6 +44,39 @@ void sdmutate_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb);
 void del_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb);
 
 void counter_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb);
+
+std::pair<lcb_error_t, Result> LcbGet(lcb_t instance, lcb_CMDGET &cmd);
+
+std::pair<lcb_error_t, Result> LcbSet(lcb_t instance, lcb_CMDSTORE &cmd);
+
+std::pair<lcb_error_t, Result> LcbDelete(lcb_t instance, lcb_CMDREMOVE &cmd);
+
+std::pair<lcb_error_t, Result> LcbSubdocSet(lcb_t instance, lcb_CMDSUBDOC &cmd);
+
+std::pair<lcb_error_t, Result> LcbSubdocDelete(lcb_t instance,
+                                               lcb_CMDSUBDOC &cmd);
+
+std::pair<lcb_error_t, Result> LcbGetCounter(lcb_t instance,
+                                             lcb_CMDCOUNTER &cmd);
+
+bool IsRetriable(lcb_error_t error);
+
+template <typename CmdType, typename Callable>
+std::pair<lcb_error_t, Result> RetryLcbCommand(lcb_t instance, CmdType &cmd,
+                                               int max_retry_count,
+                                               Callable &&callable) {
+  int retry_count = 0;
+  std::pair<lcb_error_t, Result> result;
+  while (true) {
+    result = callable(instance, cmd);
+    if (result.first == LCB_SUCCESS || !IsRetriable(result.first) ||
+        (!max_retry_count && retry_count >= max_retry_count))
+      break;
+    ++retry_count;
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+  }
+  return result;
+}
 
 extern struct lcb_logprocs_st evt_logger;
 #endif // COUCHBASE_LCB_UTILS_H

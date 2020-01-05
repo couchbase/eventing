@@ -9,6 +9,7 @@
 // or implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
+#include <chrono>
 #include <mutex>
 #include <ostream>
 
@@ -18,6 +19,7 @@
 #include "lcb_utils.h"
 #include "retry_util.h"
 #include "utils.h"
+#include "v8worker.h"
 
 #undef NDEBUG
 
@@ -190,9 +192,10 @@ void Bucket::BucketGet<v8::Local<v8::Name>>(
     const v8::Local<v8::Name> &name,
     const v8::PropertyCallbackInfo<v8::Value> &info) {
   auto isolate = info.GetIsolate();
-  auto js_exception = UnwrapData(isolate)->js_exception;
-  std::lock_guard<std::mutex> guard(UnwrapData(isolate)->termination_lock_);
-  if (!UnwrapData(isolate)->is_executing_) {
+  auto isolate_data = UnwrapData(isolate);
+  auto js_exception = isolate_data->js_exception;
+  std::lock_guard<std::mutex> guard(isolate_data->termination_lock_);
+  if (!isolate_data->is_executing_) {
     return;
   }
 
@@ -212,49 +215,27 @@ void Bucket::BucketGet<v8::Local<v8::Name>>(
   auto bucket_lcb_obj_ptr = UnwrapInternalField<lcb_t>(
       info.Holder(), static_cast<int>(InternalFields::kLcbInstance));
 
-  Result result;
   lcb_CMDGET gcmd = {0};
   LCB_CMD_SET_KEY(&gcmd, key.c_str(), key.length());
-  lcb_sched_enter(*bucket_lcb_obj_ptr);
-  auto err = RetryWithFixedBackoff(5, 200, IsRetriable, lcb_get3,
-                                   *bucket_lcb_obj_ptr, &result, &gcmd);
-  if (err != LCB_SUCCESS) {
-    LOG(logTrace) << "Bucket: Unable to set params for LCB_GET: "
-                  << lcb_strerror(*bucket_lcb_obj_ptr, err) << std::endl;
-    lcb_retry_failure++;
-    HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, err);
+
+  auto max_retry_count = isolate_data->lcb_retry_count;
+  auto result =
+      RetryLcbCommand(*bucket_lcb_obj_ptr, gcmd, max_retry_count, LcbGet);
+  if (result.first != LCB_SUCCESS) {
+    HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, result.first);
     return;
   }
-
-  lcb_sched_leave(*bucket_lcb_obj_ptr);
-
-  err =
-      RetryWithFixedBackoff(5, 200, IsRetriable, lcb_wait, *bucket_lcb_obj_ptr);
-  if (err != LCB_SUCCESS) {
-    LOG(logTrace) << "Bucket: Unable to schedule LCB_GET: "
-                  << lcb_strerror(*bucket_lcb_obj_ptr, err) << std::endl;
-    lcb_retry_failure++;
-    HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, err);
-    return;
-  }
-
-  if (result.rc == LCB_KEY_ENOENT) {
+  if (result.second.rc == LCB_KEY_ENOENT) {
     HandleEnoEnt(isolate, info, *bucket_lcb_obj_ptr);
     return;
   }
 
-  // Throw an exception in JavaScript if the bucket get call failed.
-  if (result.rc != LCB_SUCCESS) {
-    LOG(logTrace) << "Bucket: LCB_GET call failed: " << result.rc << std::endl;
-    HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, result.rc);
-    return;
-  }
-
   LOG(logTrace) << "Bucket: Get call result Key: " << RU(key)
-                << " Value: " << RU(result.value) << std::endl;
+                << " Value: " << RU(result.second.value) << std::endl;
 
   v8::Local<v8::Value> value_json;
-  TO_LOCAL(v8::JSON::Parse(context, v8Str(isolate, result.value)), &value_json);
+  TO_LOCAL(v8::JSON::Parse(context, v8Str(isolate, result.second.value)),
+           &value_json);
   info.GetReturnValue().Set(value_json);
 }
 
@@ -407,6 +388,7 @@ void Bucket::BucketSetWithXattr(
     const v8::Local<v8::Name> &name, const v8::Local<v8::Value> &value_obj,
     const v8::PropertyCallbackInfo<v8::Value> &info) {
   auto isolate = info.GetIsolate();
+  auto isolate_data = UnwrapData(isolate);
   v8::HandleScope handle_scope(isolate);
   v8::String::Utf8Value utf8_key(isolate, name.As<v8::String>());
   std::string key(*utf8_key);
@@ -417,7 +399,6 @@ void Bucket::BucketSetWithXattr(
 
   auto bucket_lcb_obj_ptr = UnwrapInternalField<lcb_t>(
       info.Holder(), static_cast<int>(InternalFields::kLcbInstance));
-  Result mres;
 
   lcb_SDSPEC function_id_spec = {0};
   std::string function_instance_id = GetFunctionInstanceID(isolate);
@@ -465,32 +446,21 @@ void Bucket::BucketSetWithXattr(
   mcmd.nspecs = specs.size();
   mcmd.cmdflags = LCB_CMDSUBDOC_F_UPSERT_DOC;
 
-  lcb_sched_enter(*bucket_lcb_obj_ptr);
-  auto err = RetryWithFixedBackoff(5, 200, IsRetriable, lcb_subdoc3,
-                                   *bucket_lcb_obj_ptr, &mres, &mcmd);
-  if (err != LCB_SUCCESS) {
-    LOG(logTrace) << "Bucket: Unable to set params for LCB_SET: "
-                  << lcb_strerror(*bucket_lcb_obj_ptr, err) << std::endl;
-    lcb_retry_failure++;
-    HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, err);
-    return;
-  }
-
-  lcb_sched_leave(*bucket_lcb_obj_ptr);
-  err =
-      RetryWithFixedBackoff(5, 200, IsRetriable, lcb_wait, *bucket_lcb_obj_ptr);
-  if (err != LCB_SUCCESS) {
-    LOG(logTrace) << "Bucket: Unable to schedule LCB_SET: "
-                  << lcb_strerror(*bucket_lcb_obj_ptr, err) << std::endl;
-    lcb_retry_failure++;
-    HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, err);
+  auto max_retry_count = isolate_data->lcb_retry_count;
+  auto result =
+      RetryLcbCommand(*bucket_lcb_obj_ptr, mcmd, max_retry_count, LcbSubdocSet);
+  if (result.first != LCB_SUCCESS) {
+    LOG(logTrace) << "Bucket: LCB_SUBDOC_STORE call failed: " << result.first
+                  << std::endl;
+    HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, result.first);
     return;
   }
 
   // Throw an exception in JavaScript if the bucket set call failed.
-  if (mres.rc != LCB_SUCCESS) {
-    LOG(logTrace) << "Bucket: LCB_STORE call failed: " << mres.rc << std::endl;
-    HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, mres.rc);
+  if (result.second.rc != LCB_SUCCESS) {
+    LOG(logTrace) << "Bucket: LCB_SUBDOC_STORE call failed: "
+                  << result.second.rc << std::endl;
+    HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, result.second.rc);
     return;
   }
 
@@ -501,6 +471,7 @@ void Bucket::BucketSetWithoutXattr(
     const v8::Local<v8::Name> &name, const v8::Local<v8::Value> &value_obj,
     const v8::PropertyCallbackInfo<v8::Value> &info) {
   auto isolate = info.GetIsolate();
+  auto isolate_data = UnwrapData(isolate);
   v8::HandleScope handle_scope(isolate);
   v8::String::Utf8Value utf8_key(isolate, name.As<v8::String>());
   std::string key(*utf8_key);
@@ -511,7 +482,6 @@ void Bucket::BucketSetWithoutXattr(
 
   auto bucket_lcb_obj_ptr = UnwrapInternalField<lcb_t>(
       info.Holder(), static_cast<int>(InternalFields::kLcbInstance));
-  Result sres;
 
   lcb_CMDSTORE scmd = {0};
   LCB_CMD_SET_KEY(&scmd, key.c_str(), key.length());
@@ -519,32 +489,24 @@ void Bucket::BucketSetWithoutXattr(
   scmd.operation = LCB_SET;
   scmd.flags = 0x2000000;
 
-  lcb_sched_enter(*bucket_lcb_obj_ptr);
-  auto err = RetryWithFixedBackoff(5, 200, IsRetriable, lcb_store3,
-                                   *bucket_lcb_obj_ptr, &sres, &scmd);
-  if (err != LCB_SUCCESS) {
-    LOG(logTrace) << "Bucket: Unable to set params for LCB_SET: "
-                  << lcb_strerror(*bucket_lcb_obj_ptr, err) << std::endl;
-    lcb_retry_failure++;
-    HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, err);
-    return;
-  }
+  auto max_retry_count = isolate_data->lcb_retry_count;
 
-  lcb_sched_leave(*bucket_lcb_obj_ptr);
-  err =
-      RetryWithFixedBackoff(5, 200, IsRetriable, lcb_wait, *bucket_lcb_obj_ptr);
-  if (err != LCB_SUCCESS) {
-    LOG(logTrace) << "Bucket: Unable to schedule LCB_SET: "
-                  << lcb_strerror(*bucket_lcb_obj_ptr, err) << std::endl;
-    lcb_retry_failure++;
-    HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, err);
+  auto result =
+      RetryLcbCommand(*bucket_lcb_obj_ptr, scmd, max_retry_count, LcbSet);
+
+  if (result.first != LCB_SUCCESS) {
+    LOG(logTrace) << "Bucket: LCB_STORE call failed: "
+                  << lcb_strerror(*bucket_lcb_obj_ptr, result.first)
+                  << std::endl;
+    HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, result.first);
     return;
   }
 
   // Throw an exception in JavaScript if the bucket set call failed.
-  if (sres.rc != LCB_SUCCESS) {
-    LOG(logTrace) << "Bucket: LCB_STORE call failed: " << sres.rc << std::endl;
-    HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, sres.rc);
+  if (result.second.rc != LCB_SUCCESS) {
+    LOG(logTrace) << "Bucket: LCB_STORE call failed: " << result.second.rc
+                  << std::endl;
+    HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, result.second.rc);
     return;
   }
 
@@ -555,6 +517,8 @@ void Bucket::BucketDeleteWithXattr(
     const v8::Local<v8::Name> &name,
     const v8::PropertyCallbackInfo<v8::Boolean> &info) {
   auto isolate = info.GetIsolate();
+  auto isolate_data = UnwrapData(isolate);
+
   v8::HandleScope handle_scope(isolate);
   v8::String::Utf8Value utf8_key(isolate, name.As<v8::String>());
   std::string key(*utf8_key);
@@ -562,7 +526,6 @@ void Bucket::BucketDeleteWithXattr(
   auto bucket_lcb_obj_ptr = UnwrapInternalField<lcb_t>(
       info.Holder(), static_cast<int>(InternalFields::kLcbInstance));
 
-  Result result;
   lcb_SDSPEC function_id_spec = {0};
   std::string function_instance_id = GetFunctionInstanceID(isolate);
   std::string function_instance_id_path("_eventing.fiid");
@@ -608,39 +571,28 @@ void Bucket::BucketDeleteWithXattr(
   mcmd.specs = specs.data();
   mcmd.nspecs = specs.size();
 
-  lcb_sched_enter(*bucket_lcb_obj_ptr);
-  auto err = RetryWithFixedBackoff(5, 200, IsRetriable, lcb_subdoc3,
-                                   *bucket_lcb_obj_ptr, &result, &mcmd);
-  if (err != LCB_SUCCESS) {
-    LOG(logTrace) << "Bucket: Unable to set params for LCB_REMOVE: "
-                  << lcb_strerror(*bucket_lcb_obj_ptr, err) << std::endl;
-    lcb_retry_failure++;
-    HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, err);
+  auto max_retry_count = isolate_data->lcb_retry_count;
+  auto result = RetryLcbCommand(*bucket_lcb_obj_ptr, mcmd, max_retry_count,
+                                LcbSubdocDelete);
+
+  if (result.first != LCB_SUCCESS) {
+    LOG(logTrace) << "Bucket: LCB_SUDOC_REMOVE call failed: "
+                  << lcb_strerror(*bucket_lcb_obj_ptr, result.first)
+                  << std::endl;
+    HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, result.first);
     return;
   }
 
-  lcb_sched_leave(*bucket_lcb_obj_ptr);
-  err =
-      RetryWithFixedBackoff(5, 200, IsRetriable, lcb_wait, *bucket_lcb_obj_ptr);
-  if (err != LCB_SUCCESS) {
-    LOG(logTrace) << "Bucket: Unable to schedule LCB_REMOVE: "
-                  << lcb_strerror(*bucket_lcb_obj_ptr, err) << std::endl;
-    lcb_retry_failure++;
-    HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, err);
-    return;
-  }
-
-  if (result.rc == LCB_KEY_ENOENT) {
+  if (result.second.rc == LCB_KEY_ENOENT) {
     HandleEnoEnt(isolate, *bucket_lcb_obj_ptr);
     return;
   }
 
   // Throw an exception in JavaScript if the bucket delete call failed.
-  if (result.rc != LCB_SUCCESS) {
-    LOG(logTrace) << "Bucket: LCB_REMOVE call failed: " << result.rc
-                  << std::endl;
-    lcb_retry_failure++;
-    HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, result.rc);
+  if (result.second.rc != LCB_SUCCESS) {
+    LOG(logTrace) << "Bucket: LCB_SUBDOC_REMOVE call failed: "
+                  << result.second.rc << std::endl;
+    HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, result.second.rc);
     return;
   }
 
@@ -651,6 +603,8 @@ void Bucket::BucketDeleteWithoutXattr(
     const v8::Local<v8::Name> &name,
     const v8::PropertyCallbackInfo<v8::Boolean> &info) {
   auto isolate = info.GetIsolate();
+  auto isolate_data = UnwrapData(isolate);
+
   v8::HandleScope handle_scope(isolate);
   v8::String::Utf8Value utf8_key(isolate, name.As<v8::String>());
   std::string key(*utf8_key);
@@ -658,43 +612,31 @@ void Bucket::BucketDeleteWithoutXattr(
   auto bucket_lcb_obj_ptr = UnwrapInternalField<lcb_t>(
       info.Holder(), static_cast<int>(InternalFields::kLcbInstance));
 
-  Result result;
   lcb_CMDREMOVE rcmd = {0};
   LCB_CMD_SET_KEY(&rcmd, key.c_str(), key.length());
 
-  lcb_sched_enter(*bucket_lcb_obj_ptr);
-  auto err = RetryWithFixedBackoff(5, 200, IsRetriable, lcb_remove3,
-                                   *bucket_lcb_obj_ptr, &result, &rcmd);
-  if (err != LCB_SUCCESS) {
-    LOG(logTrace) << "Bucket: Unable to set params for LCB_REMOVE: "
-                  << lcb_strerror(*bucket_lcb_obj_ptr, err) << std::endl;
-    lcb_retry_failure++;
-    HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, err);
+  auto max_retry_count = isolate_data->lcb_retry_count;
+  auto result =
+      RetryLcbCommand(*bucket_lcb_obj_ptr, rcmd, max_retry_count, LcbDelete);
+
+  if (result.first != LCB_SUCCESS) {
+    LOG(logTrace) << "Bucket: LCB_REMOVE call failed: "
+                  << lcb_strerror(*bucket_lcb_obj_ptr, result.first)
+                  << std::endl;
+    HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, result.first);
     return;
   }
 
-  lcb_sched_leave(*bucket_lcb_obj_ptr);
-  err =
-      RetryWithFixedBackoff(5, 200, IsRetriable, lcb_wait, *bucket_lcb_obj_ptr);
-  if (err != LCB_SUCCESS) {
-    LOG(logTrace) << "Bucket: Unable to schedule LCB_REMOVE: "
-                  << lcb_strerror(*bucket_lcb_obj_ptr, err) << std::endl;
-    lcb_retry_failure++;
-    HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, err);
-    return;
-  }
-
-  if (result.rc == LCB_KEY_ENOENT) {
+  if (result.second.rc == LCB_KEY_ENOENT) {
     HandleEnoEnt(isolate, *bucket_lcb_obj_ptr);
     return;
   }
 
   // Throw an exception in JavaScript if the bucket delete call failed.
-  if (result.rc != LCB_SUCCESS) {
-    LOG(logTrace) << "Bucket: LCB_REMOVE call failed: " << result.rc
+  if (result.second.rc != LCB_SUCCESS) {
+    LOG(logTrace) << "Bucket: LCB_REMOVE call failed: " << result.second.rc
                   << std::endl;
-    lcb_retry_failure++;
-    HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, result.rc);
+    HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, result.second.rc);
     return;
   }
 
