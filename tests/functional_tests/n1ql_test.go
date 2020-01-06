@@ -4,7 +4,11 @@ package eventing
 
 import (
 	"encoding/json"
+	"fmt"
+	"strings"
 	"testing"
+
+	"gopkg.in/couchbase/gocb.v1"
 )
 
 func testFlexReset(handler string, t *testing.T) {
@@ -182,4 +186,126 @@ func TestN1QLExhaustConnPool(t *testing.T) {
 
 	dumpStats()
 	flushFunctionAndBucket(functionName)
+}
+
+func TestN1QLGraceLowTimeOut(t *testing.T) {
+	functionName := t.Name()
+	handler := "n1ql_timeout_query"
+
+	flushFunctionAndBucket(functionName)
+	pumpBucketOpsSrc(opsType{count: 30000}, "default", &rateLimit{})
+	pumpBucketOpsSrc(opsType{count: 30000}, "hello-world", &rateLimit{})
+
+	createAndDeployFunction(functionName, handler, &commonSettings{
+		deadlineTimeout:  60,
+		executionTimeout: 17,
+		streamBoundary:   "from_now",
+		aliasSources:     []string{dstBucket},
+		aliasHandles:     []string{"dst_bucket"},
+		metaBucket:       metaBucket,
+		sourceBucket:     srcBucket,
+	})
+	waitForDeployToFinish(functionName)
+
+	defer func() {
+		flushFunctionAndBucket(functionName)
+	}()
+
+	pumpBucketOpsSrc(opsType{count: 1}, "default", &rateLimit{})
+	eventCount := verifyBucketOps(30001, statsLookupRetryCounter*2)
+	if eventCount != 30001 {
+		t.Error("For", "TestN1QLGraceLowTimeOut",
+			"expected", 3001,
+			"got", eventCount,
+		)
+		return
+	}
+
+	//Check Timeout error from n1ql
+	cluster, _ := gocb.Connect("couchbase://127.0.0.1:12000")
+	cluster.Authenticate(gocb.PasswordAuthenticator{
+		Username: rbacuser,
+		Password: rbacpass,
+	})
+	bucket, err := cluster.OpenBucket(dstBucket, "")
+	if err != nil {
+		fmt.Println("Bucket open, err: ", err)
+		t.Error("Error open result bucket")
+		return
+	}
+	defer bucket.Close()
+	var val string
+	_, err = bucket.Get("result_key", &val)
+	if err != nil {
+		t.Error("Error getting result from bucket:", err)
+		return
+	}
+
+	if !strings.Contains(val, "Timeout 15s exceeded") {
+		fmt.Println("Result Value: ", val)
+		t.Error("Error: Expected timeout error from n1ql")
+	}
+
+	dumpStats()
+}
+
+func TestN1QLGraceSufficientTimeOut(t *testing.T) {
+	functionName := t.Name()
+	handler := "n1ql_timeout_query"
+
+	flushFunctionAndBucket(functionName)
+	pumpBucketOpsSrc(opsType{count: 30000}, "default", &rateLimit{})
+	pumpBucketOpsSrc(opsType{count: 30000}, "hello-world", &rateLimit{})
+
+	createAndDeployFunction(functionName, handler, &commonSettings{
+		deadlineTimeout:  60,
+		executionTimeout: 50,
+		streamBoundary:   "from_now",
+		aliasSources:     []string{dstBucket},
+		aliasHandles:     []string{"dst_bucket"},
+		metaBucket:       metaBucket,
+		sourceBucket:     srcBucket,
+	})
+	waitForDeployToFinish(functionName)
+
+	defer func() {
+		flushFunctionAndBucket(functionName)
+	}()
+
+	pumpBucketOpsSrc(opsType{count: 1}, "default", &rateLimit{})
+	eventCount := verifyBucketOps(30001, statsLookupRetryCounter*2)
+	if eventCount != 30001 {
+		t.Error("For", "TestN1QLGraceLowTimeOut",
+			"expected", 30001,
+			"got", eventCount,
+		)
+		return
+	}
+
+	//Check onupdate success in result
+	cluster, _ := gocb.Connect("couchbase://127.0.0.1:12000")
+	cluster.Authenticate(gocb.PasswordAuthenticator{
+		Username: rbacuser,
+		Password: rbacpass,
+	})
+	bucket, err := cluster.OpenBucket(dstBucket, "")
+	if err != nil {
+		fmt.Println("Bucket open, err: ", err)
+		t.Error("Error open result bucket")
+		return
+	}
+	defer bucket.Close()
+	var val string
+	_, err = bucket.Get("result_key", &val)
+	if err != nil {
+		t.Error("Error getting result from bucket:", err)
+		return
+	}
+
+	if !strings.Contains(val, "onupdate success") {
+		fmt.Println("Result Value: ", val)
+		t.Error("Error: Expected onupdate success")
+	}
+
+	dumpStats()
 }

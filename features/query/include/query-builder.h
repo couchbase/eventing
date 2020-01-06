@@ -22,6 +22,7 @@
 #include "query-helper.h"
 
 namespace Query {
+const lcb_U32 n1ql_grace_period = 2000000;
 class Builder {
 public:
   Builder(v8::Isolate *isolate, Query::Info query_info, lcb_t connection)
