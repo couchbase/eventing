@@ -280,6 +280,11 @@ template <typename HandlerType> void N1QL::ExecQuery(QueryHandler &q_handler) {
     }
   }
 
+  err = lcb_n1p_setconsistency(n1ql_params, q_handler.consistency);
+  if (err != LCB_SUCCESS) {
+    ConnectionPool::Error(instance, "N1QL: Unable to set consistency", err);
+  }
+
   std::string err_msg;
   auto must_retry = RetryWithFixedBackoff(
       5, 0, [](bool retry) -> bool { return retry; },
@@ -399,6 +404,40 @@ ExtractNamedParams(const v8::FunctionCallbackInfo<v8::Value> &args) {
   return named_params;
 }
 
+int ExtractConsistency(const v8::FunctionCallbackInfo<v8::Value> &args) {
+  auto isolate = args.GetIsolate();
+  v8::HandleScope handle_scope(isolate);
+  auto context = isolate->GetCurrentContext();
+
+  auto consistency = LCB_N1P_CONSISTENCY_NONE;
+  v8::Local<v8::Value> options_val;
+  if (!TO_LOCAL(args.This()->Get(context, v8Str(isolate, "options")),
+                &options_val)) {
+    return consistency;
+  }
+
+  v8::Local<v8::Object> options_obj;
+  if (!TO_LOCAL(options_val->ToObject(context), &options_obj)) {
+    return consistency;
+  }
+
+  v8::Local<v8::Value> consistency_val;
+  if (!TO_LOCAL(options_obj->Get(context, v8Str(isolate, "consistency")),
+                &consistency_val)) {
+    return consistency;
+  }
+
+  if (consistency_val->IsUndefined() || !consistency_val->IsString()) {
+    return consistency;
+  }
+
+  v8::String::Utf8Value consistency_utf8(consistency_val);
+  if (std::string(*consistency_utf8) == "request") {
+    consistency = LCB_N1P_CONSISTENCY_REQUEST;
+  }
+  return consistency;
+}
+
 // iter() function that is exposed to JavaScript.
 void IterFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
   auto isolate = args.GetIsolate();
@@ -424,6 +463,7 @@ void IterFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
     v8::String::Utf8Value query_string(query);
     auto named_params = ExtractNamedParams(args);
+    auto consistency = ExtractConsistency(args);
 
     // Callback function to execute.
     auto func = args[0].As<v8::Function>();
@@ -436,6 +476,7 @@ void IterFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
     q_handler.query = *query_string;
     q_handler.named_params = &named_params;
     q_handler.iter_handler = &iter_handler;
+    q_handler.consistency = consistency;
 
     auto n1ql_handle = UnwrapData(isolate)->n1ql_handle;
     n1ql_handle->ExecQuery<IterQueryHandler>(q_handler);
@@ -511,6 +552,7 @@ void ExecQueryFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
     v8::String::Utf8Value query_string(query);
     auto named_params = ExtractNamedParams(args);
+    auto consistency = ExtractConsistency(args);
 
     // Prepare data for query execution.
     BlockingQueryHandler block_handler;
@@ -519,6 +561,7 @@ void ExecQueryFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
     q_handler.query = *query_string;
     q_handler.named_params = &named_params;
     q_handler.block_handler = &block_handler;
+    q_handler.consistency = consistency;
 
     auto n1ql_handle = UnwrapData(isolate)->n1ql_handle;
     n1ql_handle->ExecQuery<BlockingQueryHandler>(q_handler);

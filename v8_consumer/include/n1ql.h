@@ -141,6 +141,7 @@ struct BlockingQueryHandler {
 struct QueryHandler {
   std::string hash;
   std::string query;
+  int consistency = LCB_N1P_CONSISTENCY_NONE;
   lcb_t instance = nullptr;
   IterQueryHandler *iter_handler = nullptr;
   BlockingQueryHandler *block_handler = nullptr;
@@ -340,5 +341,6 @@ void PopScopeStack(const v8::FunctionCallbackInfo<v8::Value> &args);
 template <typename T> v8::Local<T> ToLocal(const v8::MaybeLocal<T> &handle);
 std::unordered_map<std::string, std::string>
 ExtractNamedParams(const v8::FunctionCallbackInfo<v8::Value> &args);
+int ExtractConsistency(const v8::FunctionCallbackInfo<v8::Value> &args);
 
 #endif
