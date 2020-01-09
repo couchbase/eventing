@@ -223,7 +223,6 @@ public:
   N1QL(ConnectionPool *inst_pool, v8::Isolate *isolate)
       : isolate_(isolate), inst_pool_(inst_pool) {}
   HashedStack qhandler_stack;
-  std::vector<std::string> ExtractErrorMsg(const char *metadata);
   // Schedules operations for execution.
   template <typename> void ExecQuery(QueryHandler &q_handler);
 
@@ -236,7 +235,7 @@ private:
   template <typename>
   static void RowCallback(lcb_t instance, int callback_type,
                           const lcb_RESPN1QL *resp);
-  static void HandleRowCallbackFailure(const lcb_RESPN1QL *resp,
+  static void HandleRowCallbackFailure(lcb_t instance, const lcb_RESPN1QL *resp,
                                        v8::Isolate *isolate,
                                        HandlerCookie *cookie);
   static bool IsStatusSuccess(const char *row);

@@ -9,6 +9,8 @@
 // or implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
+#include <sstream>
+
 #include "n1ql.h"
 #include "retry_util.h"
 #include "utils.h"
@@ -138,60 +140,6 @@ void HashedStack::Pop() {
   qstack_.pop();
 }
 
-// Extracts error messages from the metadata JSON.
-std::vector<std::string> N1QL::ExtractErrorMsg(const char *metadata) {
-  v8::HandleScope handle_scope(isolate_);
-
-  std::vector<std::string> errors;
-  auto context = isolate_->GetCurrentContext();
-  v8::Local<v8::Value> metadata_val;
-  if (!TO_LOCAL(v8::JSON::Parse(context, v8Str(isolate_, metadata)),
-                &metadata_val)) {
-    return errors;
-  }
-
-  v8::Local<v8::Object> metadata_obj;
-  if (!TO_LOCAL(metadata_val->ToObject(context), &metadata_obj)) {
-    return errors;
-  }
-
-  if (!metadata_obj.IsEmpty()) {
-    v8::Local<v8::Value> errors_v8val;
-    if (!TO_LOCAL(metadata_obj->Get(context, v8Str(isolate_, "errors")),
-                  &errors_v8val)) {
-      return errors;
-    }
-
-    auto errors_v8arr = errors_v8val.As<v8::Array>();
-    for (uint32_t i = 0; i < errors_v8arr->Length(); ++i) {
-      v8::Local<v8::Value> error_val;
-      if (!TO_LOCAL(errors_v8arr->Get(context, i), &error_val)) {
-        return errors;
-      }
-
-      v8::Local<v8::Object> error_obj;
-      if (!TO_LOCAL(error_val->ToObject(context), &error_obj)) {
-        return errors;
-      }
-
-      v8::Local<v8::Value> msg_val;
-      if (!TO_LOCAL(error_obj->Get(context, v8Str(isolate_, "msg")),
-                    &msg_val)) {
-        return errors;
-      }
-
-      v8::String::Utf8Value msg(msg_val);
-      errors.emplace_back(*msg);
-    }
-  } else {
-    LOG(logError)
-        << "N1QL: Error parsing JSON while extracting N1QL error message"
-        << std::endl;
-  }
-
-  return errors;
-}
-
 // Row-callback for iterator.
 template <>
 void N1QL::RowCallback<IterQueryHandler>(lcb_t instance, int callback_type,
@@ -232,7 +180,7 @@ void N1QL::RowCallback<IterQueryHandler>(lcb_t instance, int callback_type,
     free(row_str);
   } else {
     if (resp->rc != LCB_SUCCESS || !IsStatusSuccess(resp->row)) {
-      HandleRowCallbackFailure(resp, isolate, cookie);
+      HandleRowCallbackFailure(instance, resp, isolate, cookie);
     }
 
     q_handler.iter_handler->metadata = resp->row;
@@ -264,14 +212,14 @@ void N1QL::RowCallback<BlockingQueryHandler>(lcb_t instance, int callback_type,
     free(row_str);
   } else {
     if (resp->rc != LCB_SUCCESS || !IsStatusSuccess(resp->row)) {
-      HandleRowCallbackFailure(resp, isolate, cookie);
+      HandleRowCallbackFailure(instance, resp, isolate, cookie);
     }
 
     q_handler.block_handler->metadata = resp->row;
   }
 }
 
-void N1QL::HandleRowCallbackFailure(const lcb_RESPN1QL *resp,
+void N1QL::HandleRowCallbackFailure(lcb_t instance, const lcb_RESPN1QL *resp,
                                     v8::Isolate *isolate,
                                     HandlerCookie *cookie) {
   n1ql_op_exception_count++;
@@ -284,7 +232,10 @@ void N1QL::HandleRowCallbackFailure(const lcb_RESPN1QL *resp,
   N1QLErrorExtractor extractor(isolate);
   const auto info = extractor.GetErrorCodes(resp->row);
   if (info.is_fatal) {
-    js_exception->ThrowN1QLError(info.msg);
+    std::stringstream err_msg;
+    err_msg << "SDK error : " << lcb_strerror(instance, resp->rc)
+            << " Query error : " << info.msg;
+    js_exception->ThrowN1QLError(err_msg.str());
     return;
   }
 
@@ -878,7 +829,9 @@ ErrorCodesInfo N1QLErrorExtractor::GetErrorCodes(const char *err_str) {
   v8::Local<v8::Value> error_val;
   if (!TO_LOCAL(v8::JSON::Parse(isolate_, v8Str(isolate_, err_str)),
                 &error_val)) {
-    return {true, "Unable to parse error JSON"};
+    std::stringstream err_msg;
+    err_msg << "Unable to parse error JSON : " << err_str;
+    return {true, err_msg.str()};
   }
 
   v8::Local<v8::Object> error_obj;
