@@ -37,7 +37,7 @@ const (
 	DataService          = "kv"
 	MgmtService          = "mgmt"
 
-	HTTPRequestTimeout = time.Duration(5000) * time.Millisecond
+	HTTPRequestTimeout = time.Duration(10000) * time.Millisecond
 
 	EPSILON = 1e-5
 )
