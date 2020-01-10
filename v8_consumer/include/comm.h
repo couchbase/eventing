@@ -25,11 +25,10 @@ struct CURLResponse {
   std::unordered_map<std::string, std::string> headers;
 };
 
-struct DecodeKVInfo {
-  bool is_valid;
+struct KVNodesInfo {
+  std::vector<std::string> kv_nodes;
+  bool is_valid{true};
   std::string msg;
-  std::string key;
-  std::string value;
 };
 
 struct CredsInfo {
@@ -104,6 +103,7 @@ public:
 
   CredsInfo GetCreds(const std::string &endpoint);
   CredsInfo GetCredsCached(const std::string &endpoint);
+  KVNodesInfo GetKVNodes();
   NamedParamsInfo GetNamedParams(const std::string &query);
   ParseInfo ParseQuery(const std::string &query);
   void WriteDebuggerURL(const std::string &url);
@@ -119,6 +119,7 @@ private:
   std::string app_name_;
   std::string get_creds_url_;
   std::string get_named_params_url_;
+  std::string get_kv_nodes_url_;
   std::string lo_key_;
   std::string lo_usr_;
   std::string parse_query_url_;

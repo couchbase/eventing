@@ -527,17 +527,17 @@ func MetakvGet(path string) ([]byte, error) {
 }
 
 var metakvSetCallback = func(args ...interface{}) error {
-        logPrefix := "Util::metakvSetCallback"
+	logPrefix := "Util::metakvSetCallback"
 
-        metakvPath := args[0].(string)
-        data := args[1].([]byte)
-        rev := args[2]
+	metakvPath := args[0].(string)
+	data := args[1].([]byte)
+	rev := args[2]
 
-        err := metakv.Set(metakvPath, data, rev)
-        if err != nil {
-                logging.Errorf("%s metakv set failed for path: %s, err: %v", logPrefix, metakvPath, err)
-        }
-        return err
+	err := metakv.Set(metakvPath, data, rev)
+	if err != nil {
+		logging.Errorf("%s metakv set failed for path: %s, err: %v", logPrefix, metakvPath, err)
+	}
+	return err
 }
 
 func MetakvSet(path string, value []byte, rev interface{}) error {
@@ -545,16 +545,16 @@ func MetakvSet(path string, value []byte, rev interface{}) error {
 }
 
 var metakvDelCallback = func(args ...interface{}) error {
-        logPrefix := "Util::metakvDelCallback"
+	logPrefix := "Util::metakvDelCallback"
 
-        metakvPath := args[0].(string)
-        rev := args[1]
+	metakvPath := args[0].(string)
+	rev := args[1]
 
-        err := metakv.Delete(metakvPath, rev)
-        if err != nil {
-                logging.Errorf("%s metakv delete failed for path: %s, err: %v", logPrefix, metakvPath, err)
-        }
-        return err
+	err := metakv.Delete(metakvPath, rev)
+	if err != nil {
+		logging.Errorf("%s metakv delete failed for path: %s, err: %v", logPrefix, metakvPath, err)
+	}
+	return err
 }
 
 func MetaKvDelete(path string, rev interface{}) error {
@@ -562,15 +562,15 @@ func MetaKvDelete(path string, rev interface{}) error {
 }
 
 var metakvRecDelCallback = func(args ...interface{}) error {
-        logPrefix := "Util::metakvRecDelCallback"
+	logPrefix := "Util::metakvRecDelCallback"
 
-        metakvPath := args[0].(string)
+	metakvPath := args[0].(string)
 
-        err := metakv.RecursiveDelete(metakvPath)
-        if err != nil {
-                logging.Errorf("%s metakv recursive delete failed for path: %s, err: %v", logPrefix, metakvPath, err)
-        }
-        return err
+	err := metakv.RecursiveDelete(metakvPath)
+	if err != nil {
+		logging.Errorf("%s metakv recursive delete failed for path: %s, err: %v", logPrefix, metakvPath, err)
+	}
+	return err
 }
 
 func MetakvRecursiveDelete(dirpath string) error {

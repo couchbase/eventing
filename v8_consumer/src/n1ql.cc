@@ -9,33 +9,31 @@
 // or implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
+#include <exception>
 #include <sstream>
+#include <stdexcept>
 
 #include "n1ql.h"
 #include "retry_util.h"
 #include "utils.h"
 
-ConnectionPool::ConnectionPool(v8::Isolate *isolate, int capacity,
-                               std::string cb_kv_endpoint,
-                               std::string cb_source_bucket)
-    : capacity_(capacity), inst_count_(0), isolate_(isolate) {
-
-  conn_str_ = "couchbase://" + cb_kv_endpoint + "/" + cb_source_bucket +
-              "?select_bucket=true";
-  if (IsIPv6()) {
-    conn_str_ += "&ipv6=allow";
-  }
-}
-
 // Creates and adds one lcb instance into the pool.
 void ConnectionPool::AddResource() {
+  auto utils = UnwrapData(isolate_)->utils;
+  auto conn_str_info = utils->GetConnectionString(source_bucket_);
+  if (!conn_str_info.is_valid) {
+    throw std::runtime_error(
+        "ConnectionPool::AddResource invalid connection string : " +
+        conn_str_info.msg);
+  }
+
   // Initialization of lcb instances pool.
   auto init_success = true;
   lcb_create_st options;
   lcb_error_t err;
   memset(&options, 0, sizeof(options));
   options.version = 3;
-  options.v.v3.connstr = conn_str_.c_str();
+  options.v.v3.connstr = conn_str_info.conn_str.c_str();
   options.v.v3.type = LCB_TYPE_BUCKET;
 
   lcb_t instance = nullptr;
@@ -103,7 +101,7 @@ lcb_t ConnectionPool::GetResource() {
   // Dynamically expand the pool size if it's within the pool capacity.
   if (instances_.empty()) {
     if (inst_count_ >= capacity_) {
-      throw "N1QL: Maximum pool capacity reached";
+      throw std::runtime_error("N1QL: Maximum pool capacity reached");
     } else {
       AddResource();
     }
@@ -487,11 +485,11 @@ void IterFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
     args.This() = n1ql_obj;
 
     PopScopeStack(args);
-  } catch (const char *e) {
-    LOG(logError) << e << std::endl;
+  } catch (const std::exception &e) {
+    LOG(logError) << e.what() << std::endl;
     ++n1ql_op_exception_count;
     auto js_exception = UnwrapData(isolate)->js_exception;
-    js_exception->ThrowN1QLError(e);
+    js_exception->ThrowN1QLError(e.what());
   }
 }
 
@@ -583,11 +581,11 @@ void ExecQueryFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
     AddQueryMetadata(block_handler, isolate, result_array);
 
     args.GetReturnValue().Set(result_array);
-  } catch (const char *e) {
-    LOG(logError) << e << std::endl;
+  } catch (const std::exception &e) {
+    LOG(logError) << e.what() << std::endl;
     ++n1ql_op_exception_count;
     auto js_exception = UnwrapData(isolate)->js_exception;
-    js_exception->ThrowN1QLError(e);
+    js_exception->ThrowN1QLError(e.what());
   }
 }
 
@@ -697,7 +695,7 @@ void PushScopeStack(const v8::FunctionCallbackInfo<v8::Value> &args,
     auto result = scope_stack->Set(
         context, v8::Number::New(isolate, scope_stack->Size()), unique_hash);
     if (result.IsEmpty()) {
-      throw "Unable to set scope stack";
+      throw std::runtime_error("Unable to set scope stack");
     }
   } else {
     // Otherwise, create a new stack and push the base hash onto it.
@@ -729,13 +727,13 @@ void PopScopeStack(const v8::FunctionCallbackInfo<v8::Value> &args) {
       auto result = scope_stack->Delete(
           context, v8::Number::New(isolate, scope_stack->Size() - 1));
       if (result.IsNothing()) {
-        throw "N1QL: Unable to delete from scope stack";
+        throw std::runtime_error("N1QL: Unable to delete from scope stack");
       }
     } else {
-      throw "N1QL: Scope stack not set";
+      throw std::runtime_error("N1QL: Scope stack not set");
     }
   } else {
-    throw "N1QL: Base hash not set";
+    throw std::runtime_error("N1QL: Base hash not set");
   }
 }
 
@@ -764,10 +762,10 @@ std::string GetUniqueHash(const v8::FunctionCallbackInfo<v8::Value> &args) {
       v8::String::Utf8Value hash(top_value);
       return *hash;
     } else {
-      throw "N1QL: Scope stack not set";
+      throw std::runtime_error("N1QL: Scope stack not set");
     }
   } else {
-    throw "N1QL: Base hash not set";
+    throw std::runtime_error("N1QL: Base hash not set");
   }
 }
 
@@ -831,7 +829,7 @@ bool HasKey(const v8::FunctionCallbackInfo<v8::Value> &args,
   // Checking for FromJust would crash the v8 process if has_key is empty
   // https://v8.paulfryzel.com/docs/master/classv8_1_1_maybe.html#a6c35f4870a5b5049d09ba5f13c67ede9
   if (has_key.IsNothing()) {
-    throw "N1QL: Key was empty";
+    throw std::runtime_error("N1QL: Key was empty");
   }
 
   return !has_key.IsNothing() && has_key.IsJust() && has_key.FromJust();
@@ -840,7 +838,7 @@ bool HasKey(const v8::FunctionCallbackInfo<v8::Value> &args,
 // Utility method to convert a MaybeLocal handle to a local handle.
 template <typename T> v8::Local<T> ToLocal(const v8::MaybeLocal<T> &handle) {
   if (handle.IsEmpty()) {
-    throw "N1QL: Handle is empty";
+    throw std::runtime_error("N1QL: Handle is empty");
   }
 
   auto isolate = v8::Isolate::GetCurrent();

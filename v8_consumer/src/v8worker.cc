@@ -275,7 +275,7 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
 
   if (!h_config->skip_lcb_bootstrap) {
     conn_pool_ = new ConnectionPool(isolate_, h_config->lcb_inst_capacity,
-                                    settings_->kv_host_port, cb_source_bucket_);
+                                    cb_source_bucket_);
   }
   src_path_ = settings_->eventing_dir + "/" + app_name_ + ".t.js";
 

@@ -1676,6 +1676,38 @@ func (m *ServiceMgr) getCreds(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (m *ServiceMgr) getKVNodesAddresses(w http.ResponseWriter, r *http.Request) {
+	logPrefix := "ServiceMgr::getKVNodesAddresses"
+	if !m.validateLocalAuth(w, r) {
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	nsServer := net.JoinHostPort(util.Localhost(), m.restPort)
+	clusterInfo, err := util.FetchNewClusterInfoCache(nsServer)
+	if err != nil {
+		logging.Errorf("%s Failed to get cluster info cache, err : %v", logPrefix, err)
+		return
+	}
+
+	kvNodes, err := clusterInfo.GetAddressOfActiveKVNodes()
+	if err != nil {
+		logging.Errorf("%s Failed to get KV nodes addresses, err : %v", logPrefix, err)
+		return
+	}
+
+	response := make(map[string]interface{})
+	response["is_error"] = false
+	response["kv_nodes"] = kvNodes
+	data, err := json.Marshal(response)
+	if err != nil {
+		fmt.Fprintf(w, `{"is_error" : true, "error" : %s}`, strconv.Quote(err.Error()))
+		return
+	}
+	w.Write(data)
+}
+
 func (m *ServiceMgr) clearEventStats(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "ServiceMgr::clearEventStats"
 	if !m.validateAuth(w, r, EventingPermissionManage) {

@@ -121,6 +121,12 @@ bool IsEmpty(const T &obj, const char *file = "", const char *caller = "",
   return false;
 }
 
+struct ConnStrInfo {
+  bool is_valid{true};
+  std::string msg;
+  std::string conn_str;
+};
+
 class Utils {
 public:
   Utils(v8::Isolate *isolate, const v8::Local<v8::Context> &context);
@@ -134,6 +140,7 @@ public:
   std::string GetFunctionName(const v8::Local<v8::Value> &func_val);
   std::string ToCPPString(const v8::Local<v8::Value> &str_val);
   bool IsFuncGlobal(const v8::Local<v8::Value> &func);
+  ConnStrInfo GetConnectionString(const std::string &bucket) const;
 
 private:
   v8::Isolate *isolate_;

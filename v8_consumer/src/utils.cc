@@ -413,3 +413,29 @@ bool Utils::IsFuncGlobal(const v8::Local<v8::Value> &func) {
 
   return true;
 }
+
+std::string GetConnectionStr(const std::string &end_point,
+                             const std::string &bucket_name) {
+  std::stringstream conn_str;
+  conn_str << "couchbase://" << end_point << '/' << bucket_name
+           << "?select_bucket=true&detailed_errcodes=1";
+  if (IsIPv6()) {
+    conn_str << "&ipv6=allow";
+  }
+  return conn_str.str();
+}
+
+ConnStrInfo Utils::GetConnectionString(const std::string &bucket) const {
+  auto comm = UnwrapData(isolate_)->comm;
+  auto nodes_info = comm->GetKVNodes();
+
+  ConnStrInfo conn_info;
+  conn_info.is_valid = false;
+  if (!nodes_info.is_valid) {
+    conn_info.msg = nodes_info.msg;
+    return conn_info;
+  }
+  conn_info.is_valid = true;
+  conn_info.conn_str = GetConnectionStr(nodes_info.kv_nodes.front(), bucket);
+  return conn_info;
+}

@@ -159,8 +159,9 @@ struct HandlerCookie {
 // Pool of lcb instances and routines for pool management.
 class ConnectionPool {
 public:
-  ConnectionPool(v8::Isolate *isolate, int capacity, std::string cb_kv_endpoint,
-                 std::string cb_source_bucket);
+  ConnectionPool(v8::Isolate *isolate, int capacity, std::string source_bucket)
+      : capacity_(capacity), inst_count_(0), isolate_(isolate),
+        source_bucket_(std::move(source_bucket)) {}
 
   void Restore(lcb_t instance) { instances_.push(instance); }
   lcb_t GetResource();
@@ -175,6 +176,7 @@ private:
   std::string conn_str_;
   std::queue<lcb_t> instances_;
   v8::Isolate *isolate_;
+  std::string source_bucket_;
 };
 
 // Data structure for maintaining the operations.

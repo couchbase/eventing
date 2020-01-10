@@ -15,6 +15,7 @@ INCLUDE (FindCouchbaseJemalloc)
 INCLUDE (FindCouchbaseLibuv)
 INCLUDE (FindCouchbaseV8)
 INCLUDE (FindCouchbaseBreakpad)
+INCLUDE (FindCouchbaseNlohmannJson)
 
 INCLUDE_DIRECTORIES(BEFORE
                      "${libcouchbase_SOURCE_DIR}/include"

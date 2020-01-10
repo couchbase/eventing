@@ -115,6 +115,7 @@ func (m *ServiceMgr) initService() {
 	mux.HandleFunc("/getConsumerPids", m.getEventingConsumerPids)
 	mux.HandleFunc("/getCpuCount", m.getCpuCount)
 	mux.HandleFunc("/getCreds", m.getCreds)
+	mux.HandleFunc("/getKVNodesAddresses", m.getKVNodesAddresses)
 	mux.HandleFunc("/getDcpEventsRemaining", m.getDcpEventsRemaining)
 	mux.HandleFunc("/getDebuggerUrl/", m.getDebuggerURL)
 	mux.HandleFunc("/getDeployedApps", m.getDeployedApps)
