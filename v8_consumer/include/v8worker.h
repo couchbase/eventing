@@ -161,6 +161,7 @@ typedef struct handler_config_s {
   int execution_timeout;
   int lcb_inst_capacity;
   bool skip_lcb_bootstrap;
+  bool n1ql_prepare_all;
   int64_t timer_context_size;
   std::vector<std::string> handler_headers;
   std::vector<std::string> handler_footers;

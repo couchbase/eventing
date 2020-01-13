@@ -78,6 +78,12 @@ func (p *Producer) parseDepcfg() error {
 
 	// Handler related configurations
 
+	if val, ok := settings["n1ql_prepare_all"]; ok {
+		p.handlerConfig.N1qlPrepareAll = val.(bool)
+	} else {
+		p.handlerConfig.N1qlPrepareAll = true
+	}
+
 	if val, ok := settings["checkpoint_interval"]; ok {
 		p.handlerConfig.CheckpointInterval = int(val.(float64))
 	} else {

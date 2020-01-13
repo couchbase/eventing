@@ -565,6 +565,10 @@ func (m *ServiceMgr) validateSettings(settings map[string]interface{}) (info *ru
 	fillMissingWithDefaults(settings)
 
 	// Handler related configurations
+	if info = m.validateBoolean("n1ql_prepare_all", settings); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
 	if info = m.validateStringMustExist("user_prefix", maxPrefixLength, settings); info.Code != m.statusCodes.ok.Code {
 		return
 	}

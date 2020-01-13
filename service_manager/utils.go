@@ -35,6 +35,7 @@ func encodeRev(rev uint64) service.Revision {
 
 func fillMissingWithDefaults(settings map[string]interface{}) {
 	// Handler related configurations
+	fillMissingDefault(settings, "n1ql_prepare_all", true)
 	fillMissingDefault(settings, "checkpoint_interval", float64(60000))
 	fillMissingDefault(settings, "cleanup_timers", false)
 	fillMissingDefault(settings, "cpp_worker_thread_count", float64(2))

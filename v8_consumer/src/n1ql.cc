@@ -306,7 +306,9 @@ bool N1QL::ExecQueryImpl(v8::Isolate *isolate, lcb_t &instance,
   lcb_N1QLHANDLE handle = nullptr;
   cmd.handle = &handle;
   cmd.callback = RowCallback<HandlerType>;
-  cmd.cmdflags |= LCB_CMDN1QL_F_PREPCACHE;
+  if (UnwrapData(isolate)->n1ql_prepare_all) {
+    cmd.cmdflags |= LCB_CMDN1QL_F_PREPCACHE;
+  }
 
   lcb_n1p_mkcmd(n1ql_params, &cmd);
 

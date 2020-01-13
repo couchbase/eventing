@@ -56,6 +56,7 @@ struct Data {
   N1QLCodex *n1ql_codex;
   CURL *curl_handle;
   N1QL *n1ql_handle;
+  bool n1ql_prepare_all{true};
   V8Worker *v8worker;
   JsException *js_exception;
   Communicator *comm;

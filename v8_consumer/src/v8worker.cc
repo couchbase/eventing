@@ -219,6 +219,7 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
       static_cast<lcb_U32>(h_config->execution_timeout < 3
                                ? 500000
                                : (h_config->execution_timeout - 2) * 1000000);
+  data_.n1ql_prepare_all = h_config->n1ql_prepare_all;
   execute_start_time_ = Time::now();
 
   deployment_config *config = ParseDeployment(h_config->dep_cfg.c_str());
@@ -261,7 +262,8 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
                << " execution_timeout: " << h_config->execution_timeout
                << " curl_timeout: " << curl_timeout
                << " timer_context_size: " << h_config->timer_context_size
-               << " version: " << EventingVer() << std::endl;
+               << " version: " << EventingVer()
+               << " n1ql_prepare_all: " << data_.n1ql_prepare_all << std::endl;
 
   connstr_ = "couchbase://" + settings_->kv_host_port + "/" +
              cb_source_bucket_ + "?select_bucket=true";

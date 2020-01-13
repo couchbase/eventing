@@ -262,6 +262,7 @@ type PlannerNodeVbMapping struct {
 }
 
 type HandlerConfig struct {
+	N1qlPrepareAll           bool
 	AggDCPFeedMemCap         int64
 	CheckpointInterval       int
 	IdleCheckpointInterval   int

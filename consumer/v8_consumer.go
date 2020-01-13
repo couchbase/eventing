@@ -30,6 +30,7 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 
 	var b *couchbase.Bucket
 	consumer := &Consumer{
+		n1qlPrepareAll:                  hConfig.N1qlPrepareAll,
 		app:                             app,
 		aggDCPFeed:                      make(chan *memcached.DcpEvent, dcpConfig["dataChanSize"].(int)),
 		aggDCPFeedMemCap:                hConfig.AggDCPFeedMemCap,

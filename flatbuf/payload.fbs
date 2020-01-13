@@ -40,6 +40,7 @@ table Payload {
   // CPP worker config
   partitionCount:short; // Virtual partitions for sharding workload among c++ workers
   thr_map: [VbsThreadMap]; // Mapping of vbuckets to std::thread associated with V8Worker instance;
+  n1ql_prepare_all:bool; // Prepares all N1QL queries if set to true.
 
 }
 
