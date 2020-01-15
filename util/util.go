@@ -1761,8 +1761,8 @@ func StripCurlCredentials(path, appName string, payload []byte) ([]byte, error) 
 
 		var creds []cm.Credential
 		for i, binding := range app.DeploymentConfig.Curl {
-			creds = append(creds, cm.Credential{binding.Username,
-				binding.Password, binding.BearerKey})
+			creds = append(creds, cm.Credential{Username: binding.Username,
+				Password: binding.Password, BearerKey: binding.BearerKey})
 			app.DeploymentConfig.Curl[i].Username = ""
 			app.DeploymentConfig.Curl[i].Password = ""
 			app.DeploymentConfig.Curl[i].BearerKey = ""
@@ -1791,8 +1791,8 @@ func StripCurlCredentials(path, appName string, payload []byte) ([]byte, error) 
 
 	var creds []cm.Credential
 	for i, binding := range app.DeploymentConfig.Curl {
-		creds = append(creds, cm.Credential{binding.Username,
-			binding.Password, binding.BearerKey})
+		creds = append(creds, cm.Credential{Username: binding.Username,
+			Password: binding.Password, BearerKey: binding.BearerKey})
 		app.DeploymentConfig.Curl[i].Username = ""
 		app.DeploymentConfig.Curl[i].Password = ""
 		app.DeploymentConfig.Curl[i].BearerKey = ""

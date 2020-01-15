@@ -424,8 +424,6 @@ func (c *Client) runObserveStreamingEndpoint(path string,
 			return err
 		}
 	}
-
-	return nil
 }
 
 func (c *Client) parseURLResponse(path string, out interface{}) error {

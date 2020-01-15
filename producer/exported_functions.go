@@ -527,7 +527,7 @@ func (p *Producer) RebalanceTaskProgress() *common.RebalanceProgress {
 		producerLevelProgress.VbsOwnedPerPlan += progress.VbsOwnedPerPlan
 	}
 
-	if p.isBootstrapping {
+	if p.isBootstrapping || atomic.LoadInt32(&p.isRebalanceOngoing) == 1 {
 		producerLevelProgress.VbsRemainingToShuffle++
 		logging.Infof("%s [%s:%d] Producer bootstrapping", logPrefix, p.appName, p.LenRunningConsumers())
 	}
