@@ -3,11 +3,14 @@ package supervisor
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"runtime"
 	"sort"
 	"strconv"
 	"time"
 
+	"github.com/couchbase/eventing/common"
+	"github.com/couchbase/eventing/gen/flatbuf/cfg"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
 )
@@ -115,6 +118,24 @@ func (s *SuperSupervisor) getStatuses(data []byte) (bool, bool, bool, map[string
 	}
 
 	return pStatus, dStatus, cTimers, settings, nil
+}
+
+func (s *SuperSupervisor) getSourceAndMetaBucketNodeCount(appName string) (sourceNodeCount int, metaNodeCount int, err error) {
+	logPrefix := "SuperSupervisor::getSourceAndMetaBucketNodeCount"
+	var appData []byte
+	err = util.Retry(util.NewFixedBackoff(time.Second), nil, metakvAppCallback, s, MetakvAppsPath, MetakvChecksumPath, appName, &appData)
+	if err == common.ErrRetryTimeout {
+		logging.Errorf("%s [%s] Exiting due to timeout", logPrefix, appName)
+		return
+	}
+	config := cfg.GetRootAsConfig(appData, 0)
+	depcfg := config.DepCfg(new(cfg.DepCfg))
+	source := string(depcfg.SourceBucket())
+	meta := string(depcfg.MetadataBucket())
+	hostAddress := net.JoinHostPort(util.Localhost(), s.restPort)
+	sourceNodeCount = util.CountActiveKVNodes(source, hostAddress)
+	metaNodeCount = util.CountActiveKVNodes(meta, hostAddress)
+	return
 }
 
 func printMemoryStats() {

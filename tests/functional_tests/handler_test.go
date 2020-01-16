@@ -1577,3 +1577,45 @@ func TestAllowInterBucketRecursion(t *testing.T) {
 		return
 	}
 }
+
+func TestBucketDeleteWithRebOut(t *testing.T) {
+	functionName := t.Name()
+	time.Sleep(5 * time.Second)
+	handler := "bucket_op_on_update"
+
+	removeAllNodesAtOnce()
+
+	addNodeFromRest("http://127.0.0.1:9001", "kv")
+	rebalanceFromRest([]string{""})
+	waitForRebalanceFinish()
+	metaStateDump()
+
+	addNodeFromRest("http://127.0.0.1:9002", "eventing")
+	rebalanceFromRest([]string{"127.0.0.1:9001"})
+	waitForRebalanceFinish()
+	metaStateDump()
+
+	flushFunctionAndBucket(functionName)
+	time.Sleep(5 * time.Second)
+	createAndDeployFunction(functionName, handler, &commonSettings{})
+
+	waitForDeployToFinish(functionName)
+	metaStateDump()
+
+	rebalanceFromRest([]string{"127.0.0.1:9002"})
+	waitForRebalanceFinish()
+	metaStateDump()
+
+	log.Println("Deleting source bucket:", srcBucket)
+	deleteBucket(srcBucket)
+
+	addNodeFromRest("http://127.0.0.1:9002", "eventing")
+	rebalanceFromRest([]string{"127.0.0.1:9001"})
+	waitForRebalanceFinish()
+	metaStateDump()
+
+	waitForStatusChange(functionName, "undeployed", statsLookupRetryCounter)
+
+	createBucket(srcBucket, bucketmemQuota)
+	flushFunctionAndBucket(functionName)
+}
