@@ -45,6 +45,28 @@ var metakvGetCallback = func(args ...interface{}) error {
 	return err
 }
 
+var metakvAppCallback = func(args ...interface{}) error {
+	logPrefix := "SuperSupervisor::metakvAppCallback"
+
+	s := args[0].(*SuperSupervisor)
+	appPath := args[1].(string)
+	checksumPath := args[2].(string)
+	appName := args[3].(string)
+	cfgData := args[4].(*[]byte)
+
+	var err error
+	*cfgData, err = util.ReadAppContent(appPath, checksumPath, appName)
+	if err != nil {
+		logging.Errorf("%s [%d] Failed to lookup path: %v from metakv, err: %v", logPrefix, s.runningFnsCount(), appPath, err)
+		return err
+	}
+	if len(*cfgData) == 0 {
+		logging.Errorf("%s [%s:%d] Looked up path: %v from metakv, but got empty value", logPrefix, s.runningFnsCount(), appPath)
+		return fmt.Errorf("Empty value from metakv lookup")
+	}
+	return nil
+}
+
 var metakvDeleteCallback = func(args ...interface{}) error {
 	logPrefix := "SuperSupervisor::metakvDeleteCallback"
 

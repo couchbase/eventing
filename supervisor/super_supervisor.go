@@ -273,6 +273,22 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 
 			switch processingStatus {
 			case true:
+				sourceNodeCount, metaNodeCount, err := s.getSourceAndMetaBucketNodeCount(appName)
+				if err != nil {
+					logging.Errorf("%s [%d] getSourceAndMetaBucketNodeCount failed for Function: %s  runningProducer: %v",
+						logPrefix, s.runningFnsCount(), appName, s.runningFns()[appName])
+					return nil
+				}
+				if sourceNodeCount < 1 || metaNodeCount < 1 {
+					util.Retry(util.NewExponentialBackoff(), &s.retryCount, undeployFunctionCallback, s, appName)
+					s.appRWMutex.Lock()
+					s.appDeploymentStatus[appName] = false
+					s.appProcessingStatus[appName] = false
+					s.appRWMutex.Unlock()
+					logging.Errorf("%s [%d] Source bucket or metadata bucket is deleted, Function: %s is undeployed",
+						logPrefix, s.runningFnsCount(), appName)
+					return nil
+				}
 				logging.Infof("%s [%d] Function: %s begin deployment process", logPrefix, s.runningFnsCount(), appName)
 				state := s.GetAppState(appName)
 
@@ -452,15 +468,30 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(path string, value []byte,
 
 			processingStatus, deploymentStatus, _, _, err := s.getStatuses(sData)
 			if err != nil {
-				return nil
+				logging.Errorf("%s [%d] getStatuses failed for Function: %s  runningProducer: %v",
+					logPrefix, s.runningFnsCount(), appName, s.runningFns()[appName])
+				continue
 			}
 
 			logging.Infof("%s [%d] Function: %s deployment_status: %t processing_status: %t runningProducer: %v",
 				logPrefix, s.runningFnsCount(), appName, deploymentStatus, processingStatus, s.runningFns()[appName])
 
+			sourceNodeCount, metaNodeCount, err := s.getSourceAndMetaBucketNodeCount(appName)
+			if err != nil {
+				logging.Errorf("%s [%d] getSourceAndMetaBucketNodeCount failed for Function: %s  runningProducer: %v",
+					logPrefix, s.runningFnsCount(), appName, s.runningFns()[appName])
+				continue
+			}
+
 			if _, ok := s.runningFns()[appName]; !ok {
 
 				if deploymentStatus && processingStatus {
+					if sourceNodeCount < 1 || metaNodeCount < 1 {
+						util.Retry(util.NewExponentialBackoff(), &s.retryCount, undeployFunctionCallback, s, appName)
+						logging.Errorf("%s [%d] Source bucket or metadata bucket is deleted, Function: %s is undeployed",
+							logPrefix, s.runningFnsCount(), appName)
+						continue
+					}
 					logging.Infof("%s [%d] Function: %s begin deployment process", logPrefix, s.runningFnsCount(), appName)
 
 					s.appListRWMutex.Lock()
