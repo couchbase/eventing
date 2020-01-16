@@ -476,6 +476,14 @@ void V8Worker::RouteMessage() {
         }
         break;
       }
+      case oUpdateV8HeapSize: {
+        UpdateV8HeapSize();
+        break;
+      }
+      case oRunGc: {
+        ForceRunGarbageCollector();
+        break;
+      }
       default:
         LOG(logError) << "Received invalid internal opcode" << std::endl;
         break;
@@ -1179,6 +1187,18 @@ void UpdateCurlLatencyHistogram(
     const std::chrono::high_resolution_clock::time_point &start) {
   auto w = UnwrapData(isolate)->v8worker;
   w->UpdateCurlLatencyHistogram(start);
+}
+
+void V8Worker::UpdateV8HeapSize() {
+  v8::HeapStatistics stats;
+  v8::Locker locker(isolate_);
+  isolate_->GetHeapStatistics(&stats);
+  v8_heap_size_ = stats.total_heap_size();
+}
+
+void V8Worker::ForceRunGarbageCollector() {
+  v8::Locker locker(isolate_);
+  isolate_->LowMemoryNotification();
 }
 
 std::string V8Worker::AddHeadersAndFooters(std::string code) {
