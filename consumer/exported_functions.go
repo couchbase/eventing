@@ -711,13 +711,13 @@ func (c *Consumer) GetAssignedVbs(workerName string) ([]uint16, error) {
 // UpdateWorkerQueueMemCap revises the memory cap for cpp worker, dcp and timer queues
 func (c *Consumer) UpdateWorkerQueueMemCap(quota int64) {
 	logPrefix := "Consumer::updateWorkerQueueMemCap"
-
 	prevWorkerMemCap := c.workerQueueMemCap
 	prevDCPFeedMemCap := c.aggDCPFeedMemCap
 
 	divisor := int64(2)
 	c.workerQueueMemCap = (quota / divisor) * 1024 * 1024
 	c.aggDCPFeedMemCap = (quota / divisor) * 1024 * 1024
+	c.sendWorkerMemQuota(quota * 1024 * 1024)
 
 	logging.Infof("%s [%s:%s:%d] Updated memory quota: %d MB previous worker quota: %d MB dcp feed quota: %d MB",
 		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.workerQueueMemCap/(1024*1024),
