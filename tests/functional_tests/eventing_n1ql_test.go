@@ -179,3 +179,34 @@ func TestN1QLNestedForLoop(t *testing.T) {
 	fireQuery("DROP PRIMARY INDEX on default;")
 	flushFunctionAndBucket(handler)
 }
+
+func TestN1QLConsistency(t *testing.T) {
+	time.Sleep(time.Second * 5)
+	handler := "n1ql_consistency"
+
+	fireQuery("DROP PRIMARY INDEX on `hello-world`;")
+	flushFunctionAndBucket(handler)
+
+	setIndexStorageMode()
+	time.Sleep(time.Second * 5)
+	fireQuery("CREATE PRIMARY INDEX on `hello-world`;")
+	time.Sleep(time.Second * 5)
+	pumpBucketOpsSrc(opsType{count:5}, "hello-world", &rateLimit{})
+
+	createAndDeployFunction(handler, handler, &commonSettings{})
+	waitForDeployToFinish(handler)
+	pumpBucketOps(opsType{}, &rateLimit{})
+
+	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
+	if itemCount != eventCount {
+		t.Error("For", t.Name(),
+			"expected", itemCount,
+			"got", eventCount,
+		)
+	}
+
+	dumpStats()
+	fireQuery("DROP PRIMARY INDEX on `hello-world`;")
+	flushFunctionAndBucket(handler)
+	waitForUndeployToFinish(handler)
+}
