@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/couchbase/cbauth"
+	"github.com/couchbase/cbauth/metakv"
 	"github.com/couchbase/eventing/audit"
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/consumer"
@@ -914,11 +915,28 @@ func (m *ServiceMgr) getRebalanceProgress(w http.ResponseWriter, r *http.Request
 
 // Report back state of rebalance on current node
 func (m *ServiceMgr) getRebalanceStatus(w http.ResponseWriter, r *http.Request) {
+	logPrefix := "ServiceMgr::getRebalanceStatus"
 	if !m.validateAuth(w, r, EventingPermissionManage) {
 		return
 	}
 
-	w.Write([]byte(strconv.FormatBool(m.superSup.RebalanceStatus())))
+	children, err := metakv.ListAllChildren(metakvRebalanceTokenPath)
+	if err != nil {
+		logging.Errorf("%s failed to list children from rebalance path. error: %v", logPrefix, err)
+		w.Write([]byte(strconv.FormatBool(m.superSup.RebalanceStatus())))
+		return
+	}
+
+	status := false
+	for _, child := range children {
+		if string(child.Value) != stopRebalance {
+			status = true
+			break
+		} else {
+			status = m.superSup.RebalanceStatus()
+		}
+	}
+	w.Write([]byte(strconv.FormatBool(status)))
 }
 
 // Report back state of bootstrap on current node

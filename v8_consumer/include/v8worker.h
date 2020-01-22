@@ -307,6 +307,7 @@ public:
   std::thread *terminator_thr_;
   BlockingDeque<std::unique_ptr<WorkerMessage>> *worker_queue_;
 
+  size_t v8_heap_size_;
   std::mutex lcb_exception_mtx_;
   std::map<int, int64_t> lcb_exceptions_;
   IsolateData data_;
@@ -330,6 +331,8 @@ private:
                                       int8_t msg_type, int8_t response_opcode);
   bool ExecuteScript(const v8::Local<v8::String> &script);
 
+  void UpdateV8HeapSize();
+  void ForceRunGarbageCollector();
   Histogram *latency_stats_;
   Histogram *curl_latency_stats_;
 

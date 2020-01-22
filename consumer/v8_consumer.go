@@ -307,6 +307,7 @@ func (c *Consumer) HandleV8Worker() error {
 	c.sendLogLevel(c.logLevel, false)
 	c.sendWorkerThrMap(nil, false)
 	c.sendWorkerThrCount(0, false)
+	c.sendWorkerMemQuota(c.aggDCPFeedMemCap * int64(2))
 	err := util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), c.retryCount, getEventingNodeAddrOpCallback, c)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())

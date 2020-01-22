@@ -26,6 +26,7 @@ const size_t MAX_BUF_SIZE = 65536;
 const int HEADER_FRAGMENT_SIZE = 4;  // uint32
 const int PAYLOAD_FRAGMENT_SIZE = 4; // uint32
 const int SIZEOF_UINT32 = 4;
+const size_t MAX_V8_HEAP_SIZE = 1.4 * 1024 * 1024 * 1024;
 
 int64_t timer_context_size;
 
@@ -81,7 +82,7 @@ public:
 
   void ReadStdinLoop();
 
-  void ScanTimerLoop();
+  void EventGenLoop();
 
   static void StopUvLoop(uv_async_t *);
 
@@ -93,7 +94,9 @@ public:
   std::thread main_uv_loop_thr_;
   std::thread feedback_uv_loop_thr_;
   std::thread stdin_read_thr_;
-  std::thread scan_timer_thr_;
+  std::thread event_gen_thr_;
+
+  size_t memory_quota_;
 
 protected:
   void WriteResponseWithRetry(uv_stream_t *handle,
