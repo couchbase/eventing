@@ -234,6 +234,11 @@ func (p *Producer) parseDepcfg() error {
 		p.handlerConfig.WorkerResponseTimeout = 5 * 60 // in seconds
 	}
 
+	if val, ok := settings["lcb_retry_count"]; ok {
+		p.handlerConfig.LcbRetryCount = int(val.(float64))
+	} else {
+		p.handlerConfig.LcbRetryCount = 0
+	}
 	// Metastore related configuration
 
 	if val, ok := settings["execute_timer_routine_count"]; ok {

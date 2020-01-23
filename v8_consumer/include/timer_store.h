@@ -32,7 +32,7 @@ public:
                       const std::string &metadata_bucket);
   ~TimerStore();
 
-  lcb_error_t SetTimer(TimerInfo &timer);
+  lcb_error_t SetTimer(TimerInfo &timer, int max_retry_count);
 
   void DeleteTimer(TimerEvent &event);
 
@@ -44,6 +44,8 @@ public:
 
   void SyncSpan();
 
+  lcb_t GetTimerStoreHandle() const;
+
 private:
   void Connect();
   std::pair<bool, lcb_error_t> SyncSpan(int partition);
@@ -53,19 +55,25 @@ private:
 
   void ShrinkSpan(int64_t partition, int64_t start);
 
-  std::pair<lcb_error_t, Result> GetCounter(const std::string &key);
+  std::pair<lcb_error_t, Result> GetCounter(const std::string &key,
+                                            int max_retry_count);
 
   std::pair<lcb_error_t, Result> Insert(const std::string &key,
-                                        const nlohmann::json &value);
+                                        const nlohmann::json &value,
+                                        int max_retry_count);
 
   std::pair<lcb_error_t, Result> Upsert(const std::string &key,
-                                        const nlohmann::json &value);
-  std::pair<lcb_error_t, Result>
-  Replace(const std::string &key, const nlohmann::json &value, lcb_CAS cas);
+                                        const nlohmann::json &value,
+                                        int max_retry_count);
 
-  lcb_error_t Delete(const std::string &key, uint64_t cas);
+  std::pair<lcb_error_t, Result> Replace(const std::string &key,
+                                         const nlohmann::json &value,
+                                         lcb_CAS cas, int max_retry_count);
 
-  std::pair<lcb_error_t, Result> Get(const std::string &key);
+  lcb_error_t Delete(const std::string &key, uint64_t cas, int max_retry_count);
+
+  std::pair<lcb_error_t, Result> Get(const std::string &key,
+                                     int max_retry_count);
 
   v8::Isolate *isolate_;
   std::vector<bool> partitons_;
