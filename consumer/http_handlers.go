@@ -57,7 +57,7 @@ func (c *Consumer) RebalanceTaskProgress() *cm.RebalanceProgress {
 	}
 
 	if progress.VbsRemainingToShuffle == 0 {
-		// this case is to handle a kv rebalance where we do not trigger vbsStateUpdate and let control_routine 
+		// this case is to handle a kv rebalance where we do not trigger vbsStateUpdate and let control_routine
 		// take care of restreaming the closed VBs
 		if c.isRebalanceOngoing {
 			c.isRebalanceOngoing = false
@@ -133,7 +133,7 @@ func (c *Consumer) dcpEventsRemainingToProcess() error {
 	for _, vb := range vbsTohandle {
 		seqNo := c.vbProcessingStats.getVbStat(vb, "last_read_seq_no").(uint64)
 
-		if seqNos[int(vb)] > seqNo {
+		if seqNo != 0 && seqNos[int(vb)] > seqNo {
 			c.statsRWMutex.Lock()
 			c.vbDcpEventsRemaining[int(vb)] = int64(seqNos[int(vb)] - seqNo)
 			c.statsRWMutex.Unlock()
