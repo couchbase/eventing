@@ -1,7 +1,7 @@
 angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault'])
     // Controller for the summary page.
-    .controller('SummaryCtrl', ['$q', '$scope', '$rootScope', '$state', '$uibModal', '$timeout', '$location', 'ApplicationService', 'serverNodes', 'isEventingRunning',
-        function($q, $scope, $rootScope, $state, $uibModal, $timeout, $location, ApplicationService, serverNodes, isEventingRunning) {
+    .controller('SummaryCtrl', ['$q', '$scope', '$rootScope', '$state', '$uibModal', '$timeout', '$location', 'ApplicationService', 'serverNodes', 'isEventingRunning', 'mnPoller',
+        function($q, $scope, $rootScope, $state, $uibModal, $timeout, $location, ApplicationService, serverNodes, isEventingRunning, mnPoller) {
             var self = this;
 
             self.errorState = !ApplicationService.status.isErrorCodesLoaded();
@@ -12,7 +12,10 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
             self.workerCount = 0;
             self.cpuCount = 0;
             self.appList = ApplicationService.local.getAllApps();
+            self.needAppList = new Set();
             self.disableEditButton = false;
+            self.appListStaleCount = 0;
+            self.statusPollMillis = 2000;
 
             // Broadcast on channel 'isEventingRunning'
             $rootScope.$broadcast('isEventingRunning', self.isEventingRunning);
@@ -22,40 +25,101 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                 self.appList[app].warnings = getWarnings(self.appList[app]);
             }
 
+            // run deployedAppsTicker() every 2 seconds, but only while Eventing view is active
+            new mnPoller($scope, deployedAppsTicker).setInterval(self.statusPollMillis).cycle();
+
             // Poll to get the App status and reflect the same in the UI
             function deployedAppsTicker() {
                 if (!self.isEventingRunning) {
-                    return;
+                    return Promise.resolve(); // need for mnPoller
                 }
 
-                ApplicationService.public.status()
+                return ApplicationService.public.status()
                     .then(function(response) {
                         response = response.data;
-                        var appList = new Set();
-                        for (var app of response.apps ? response.apps : []) {
-                            if (!(app.name in self.appList)) {
-                                console.error('Abnormal case : UI app list is stale');
-                                continue;
-                            }
+                        var rspAppList = new Set(); // appname in UI
+                        var updAppList = new Set(); // appname not in UI
+                        var rspAppStat = new Map(); // composite_status by appname (in UI and not in UI)
+                        var uiIsStale = false; // if we need to reload somehting new App or state change
 
-                            appList.add(app.name);
-                            self.appList[app.name].status = app.composite_status;
+                        for (var rspApp of response.apps ? response.apps : []) {
+
+                            rspAppStat.set(rspApp.name, rspApp.composite_status);
+
+                            if (!(rspApp.name in self.appList)) {
+                                // An App from the recuring status does not exist in the UI's current list
+                                updAppList.add(rspApp.name);
+                                uiIsStale = true;
+
+                                // add to update list to process later e.g. a remote add
+                                self.needAppList.add(rspApp.name);
+                            } else {
+                                rspAppList.add(rspApp.name);
+                                self.appList[rspApp.name].status = rspApp.composite_status;
+
+                                var uiApp = self.appList[rspApp.name];
+                                if (rspApp.deployment_status != uiApp.settings.deployment_status ||
+                                    rspApp.processing_status != uiApp.settings.processing_status
+                                ) {
+                                    // add to update list to process later e.g. local or remote status change
+                                    self.needAppList.add(rspApp.name);
+                                    uiIsStale = true;
+                                }
+                            }
                         }
                         for (var app of Object.keys(self.appList)) {
-                            if (!appList.has(app)) {
-                                self.appList[app].status = 'undeployed';
+                            if (!rspAppList.has(app)) {
+                                // An App from the UI's current list doesn't exisit in the recurring status
+                                uiIsStale = true;
+                            } else {
+                                self.appList[app].uiState = determineUIStatus(self.appList[app].status);
+                                self.appList[app].warnings = getWarnings(self.appList[app]);
                             }
-                            self.appList[app].uiState = determineUIStatus(self.appList[app].status);
-                            self.appList[app].warnings = getWarnings(self.appList[app]);
+                        }
+                        if (!uiIsStale) {
+                            // 1:1 match between all Apps in the UI's and all Apps in the recuring status
+                            self.appListStaleCount = 0;
+                        } else {
+                            if (self.appListStaleCount == 0) {
+                                // since were stale we want to update self.workerCount at start
+                                fetchWorkerCount();
+                            }
+                            self.appListStaleCount++;
+                            // we refreash or resync the UI if needed once about every 20 to 25 seconds
+                            if (self.appListStaleCount >= (20 / (self.statusPollMillis / 1000))) {
+                                self.appListStaleCount = 0;
+
+                                // since were stale we want to update self.workerCount when done
+                                fetchWorkerCount();
+
+                                // remove stale Apps if any
+                                removeStaleApps(rspAppList);
+
+                                // add missing Apps if any
+                                updateStaleApps(rspAppList, updAppList, rspAppStat);
+                            }
+                        }
+
+                        // Only load this if non-zero or if uiIsStale
+                        if (self.workerCount == 0) {
+                            fetchWorkerCount();
+                        }
+
+                        // Only load this if non-zero the cpuCount or core count doesn't change
+                        if (self.cpuCount == 0) {
+                            fetchCpuCount();
                         }
 
                     }).catch(function(errResponse) {
                         self.errorCode = errResponse && errResponse.status || 500;
-                        console.error('Unable to list apps');
+                        // Do not log the occasional HTTP abort when we leave the Eventing view
+                        if (!(errResponse.status === -1 && errResponse.xhrStatus === 'abort')) {
+                            console.error('Unable to list apps');
+                        }
                     });
+            }
 
-                setTimeout(deployedAppsTicker, 2000);
-
+            function fetchWorkerCount() {
                 ApplicationService.server.getWorkerCount()
                     .then(function(response) {
                         if (response && response.data) {
@@ -66,7 +130,9 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         console.error('Unable to get worker count', errResponse);
                         self.workerCount = 0;
                     });
+            }
 
+            function fetchCpuCount() {
                 ApplicationService.server.getCpuCount()
                     .then(function(response) {
                         if (response && response.data) {
@@ -79,7 +145,85 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                     });
             }
 
-            deployedAppsTicker();
+            function removeStaleApps(rspAppList) {
+                // Remove, e.g. delete, all stale functions from the UI
+                var delAppCnt = 0;
+                for (var appName of Object.keys(self.appList)) {
+                    if (rspAppList.size == 0 || !rspAppList.has(appName)) {
+                        delAppCnt++;
+                        var tstApp = ApplicationService.local.getAppByName(appName)
+                        if (tstApp) {
+                            ApplicationService.local.deleteApp(appName);
+                        }
+                        delete self.appList[appName];
+                    }
+                }
+                if (delAppCnt > 0) {
+                    // display to the user (and/or log) how many Apps were deleted
+                    var msg = 'Eventing: resync removing ' + delAppCnt +
+                        ' full ' + ((delAppCnt == 1) ? 'definition' : 'definitions');
+                    // console.info(msg);
+                    ApplicationService.server.showWarningAlert(msg);
+                }
+            }
+
+            function updateStaleApps(rspAppList, updAppList, rspAppStat) {
+
+                // Update via a full function definition fetch, to resync on state changes and new items
+                //
+                //     rspAppList is the list of apps in both the UI and current remote status response
+                //     updAppList is the list of apps in only the remote status response
+                //     rspAppStat is a Map by appname to get composite_status for the current response
+                //
+                //     self.appList has the UI current set of Apps
+                //     self.needAppList has added Apps and all Apps that had a state change
+
+                if (self.needAppList.size == 0) return;
+
+                var missingAppCnt = 0;
+                var stateUpdCnt = 0;
+                var appsToFetch = new Set()
+                for (var appname of self.needAppList) {
+                    if (updAppList.has(appname)) {
+                        missingAppCnt++;
+                        appsToFetch.add(appname);
+                    } else
+                    if (rspAppList.has(appname)) {
+                        stateUpdCnt++
+                        appsToFetch.add(appname);
+                    }
+                }
+
+                if (appsToFetch.size == 0) return;
+
+                // display to the user (and/or log) how many Apps were reloaded and why
+                var msg = 'Eventing: resync fetching ' + appsToFetch.size +
+                    ' full ' + ((appsToFetch.size == 1) ? 'definition' : 'definitions') +
+                    ' (missing ' + missingAppCnt + ', state-update ' + stateUpdCnt + ')';
+                ApplicationService.server.showWarningAlert(msg);
+                // console.info(msg);
+
+                // For any new apps created remotely we need more information than just the status
+                var responses = new Map();
+                var thePromises = [];
+                for (var name of appsToFetch ? appsToFetch : []) {
+                    var curPromise = ApplicationService.public.getFunction(name);
+                    thePromises.push(curPromise);
+                }
+
+                // Sometimes we will have an error getting status for something just deleted, that's okay
+                return $q.all(thePromises).then(function(result) {
+                    for (var i = 0; i < result.length; i++) {
+                        var appname = result[i].data.appname;
+                        ApplicationService.local.createApp(result[i].data);
+                        self.appList[appname] = ApplicationService.local.getAppByName(appname);
+                        self.appList[appname].status = rspAppStat.get(appname);
+                        self.appList[appname].uiState = determineUIStatus(self.appList[appname].status);
+                        self.appList[appname].warnings = getWarnings(self.appList[appname]);
+                    }
+                    self.needAppList.clear();
+                });
+            }
 
             self.isAppListEmpty = function() {
                 return Object.keys(self.appList).length === 0;
@@ -274,6 +418,9 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
 
                         ApplicationService.server.showSuccessAlert(
                             `${app.appname} will ${operation} ${warnings?'with warnings':''}`);
+
+                        // since the UI is changing state update the count
+                        fetchWorkerCount();
                     })
                     .catch(function(errResponse) {
                         if (errResponse.data && (errResponse.data.name === 'ERR_HANDLER_COMPILATION')) {
@@ -320,6 +467,10 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         app.settings.deployment_status = false;
                         app.settings.processing_status = false;
                         ApplicationService.server.showSuccessAlert(`${app.appname} will be undeployed`);
+
+                        // since the UI is changing state via undeploy update the count
+                        fetchWorkerCount();
+
                     })
                     .catch(function(errResponse) {
                         ApplicationService.server.showErrorAlert(`Undeploy failed due to "${errResponse.data.description}"`);
@@ -642,7 +793,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
             self.bindings = ApplicationService.getBindingFromConfig(appModel.depcfg);
 
             // TODO : The following two lines may not be needed as we don't allow the user to edit
-            //			the source and metadata buckets in the settings page.
+            //        the source and metadata buckets in the settings page.
 
             self.sourceBuckets = bucketsResolve;
             self.metadataBuckets = bucketsResolve.reverse();
@@ -1056,6 +1207,9 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                     for (var app of response.data) {
                         appManager.pushApp(new Application(app));
                     }
+
+                    // Alpha sort the UI on the initial load and any browser refreshes
+                    appManager.sortApplications();
                 })
                 .catch(function(errResponse) {
                     console.error('Failed to get the data:', errResponse);
@@ -1100,6 +1254,9 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                             },
                             data: [app]
                         });
+                    },
+                    getFunction: function(fname) {
+                        return $http.get('/_p/event/api/v1/functions/' + fname);
                     },
                     updateSettings: function(appModel) {
                         return $http({

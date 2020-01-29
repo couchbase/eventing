@@ -56,6 +56,7 @@ curl(method, binding[, requestObj])
     3. encoding : A hint to parse the body. Must be a string having one of the following values - `FORM`/`JSON`/`TEXT`/`BINARY`.
     4. path : This must be a string, it will be appended to the hostname URL of the binding while making the cURL request.
     5. params : This must be a JavaScript Object of Key-Value pairs. This will be url-encoded as Key-Value pairs and appended to the request URL.
+    6. redirect : This field is optional and must be a boolean value. HTTP 3xx redirection is **enabled** by default. Set this to `false` to disable HTTP 3xx redirection.
 
 #### Returns
 A JavaScript Object containing -
@@ -66,7 +67,7 @@ A JavaScript Object containing -
 #### Throws
 A JavaScript exception of type `CurlError`, inheriting from the JavaScript `Error` class will be thrown if the curl call could not succeed. This can be handled in a try...catch… block. It will abide by the standard JavaScript error reporting scheme as outlined in https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Error#Custom_Error_Types
 
-# Example
+# Example 1
 Suppose we want to `POST` to endpoint http://www.example.com/person?name=abc&value=10 with data `{ ‘someKey’ : ‘someValue’ }` and use Basic authentication with username `Administrator` and password as `Couchbase`.
 
 A URL binding needs to be created as follows -
@@ -93,6 +94,35 @@ var request = {
 
 try {
 	var response = curl('POST', exampleServer, request);
+	log('response body received from server:', response.body);
+	log('response headers received from server:', response.headers);
+	log('response status received from server:', response.status);
+} catch (e) {
+	log('error:', e);
+}
+```
+
+# Example 2
+Suppose we want to `GET` from endpoint http://www.example.com/getPath with `HTTP Redirection` as `false` and use Basic authentication with username `Administrator` and password as `Couchbase`.
+
+A URL binding needs to be created as follows -
+
+| Hostname | Value |
+|:----------:|:-------:|
+| http://www.example.com | exampleServer |
+
+| Auth type | Username | Password |
+|:---------:|:--------:|:--------:|
+| Basic | Administrator | Couchbase |
+
+```javascript
+var request = {
+	path : '/getPath',
+	redirect : false
+};
+
+try {
+	var response = curl('GET', exampleServer, request);
 	log('response body received from server:', response.body);
 	log('response headers received from server:', response.headers);
 	log('response status received from server:', response.status);

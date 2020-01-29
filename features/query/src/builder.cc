@@ -63,6 +63,12 @@
   if (result != LCB_SUCCESS) {
     return ErrorFormat("Unable to set timeout for query", connection_, result);
   }
+  lcb_U32 n1ql_grace_period = Query::n1ql_grace_period;
+  result =
+      lcb_cntl(connection_, LCB_CNTL_SET, LCB_CNTL_N1QL_GRACE_PERIOD, &n1ql_grace_period);
+  if (result != LCB_SUCCESS) {
+    return ErrorFormat("Unable to set n1ql grace period for query", connection_, result);
+  }
   return {false};
 }
 

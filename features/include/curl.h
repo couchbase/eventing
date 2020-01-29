@@ -254,6 +254,7 @@ struct CurlRequest : public Info {
   CurlRequest(bool is_fatal, std::string msg)
       : Info(is_fatal, std::move(msg)) {}
 
+  bool redirect{true};
   std::string method;
   std::string host;
   std::string path;
@@ -398,6 +399,8 @@ private:
                      std::string &value_out);
   Info ExtractHeaders(const v8::Local<v8::Value> &headers_val,
                       Headers &value_out);
+  Info ExtractRedirect(const v8::Local<v8::Value> &redirect_val,
+                       bool &value_out);
   Info FillContentType(const v8::Local<v8::Value> &body_val,
                        CurlRequest &request, const BodyEncoding &encoding);
 

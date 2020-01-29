@@ -136,6 +136,15 @@ func TestCurlGetRedirect(t *testing.T) {
 	curl.testGet()
 }
 
+func TestCurlGetRedirectFail(t *testing.T) {
+        curl := curlTester{
+                handler:    "curl_get_redirect_fail",
+                testName:   "TestCurlGetRedirectFail",
+                testHandle: t,
+        }
+        curl.testGet()
+}
+
 func TestCurlGetRedirectMax(t *testing.T) {
 	curl := curlTester{
 		handler:    "curl_get_max_redirect",
