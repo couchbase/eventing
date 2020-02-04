@@ -80,106 +80,25 @@ v8::Local<v8::Value> Transpiler::ExecTranspiler(const std::string &function,
 }
 
 CompilationInfo Transpiler::Compile(const std::string &n1ql_js_src) {
-  // Comment-out N1QL queries and obtain the list of insertions that was made
-  auto cmt_info = CommentN1QL(n1ql_js_src, true, source_bucket_);
-  if (cmt_info.code != Jsify::kOK) {
-    return ComposeErrorInfo(cmt_info);
-  }
-
-  // CommentN1QL went through fine, move ahead to check JavaScript errors
   v8::HandleScope handle_scope(isolate_);
   v8::Local<v8::Value> args[3];
-  args[0] = v8Str(isolate_, cmt_info.handler_code);
+  args[0] = v8Str(isolate_, n1ql_js_src);
   args[1] = v8Array(isolate_, handler_headers_);
   args[2] = v8Array(isolate_, handler_footers_);
   auto result = ExecTranspiler("compile", args, 3);
-  return ComposeCompilationInfo(result, cmt_info.insertions);
+
+  return ComposeCompilationInfo(result);
 }
 
-// Rectify line and column offset by discounting the insertions
-void Transpiler::RectifyCompilationInfo(
-    CompilationInfo &info, const std::list<InsertedCharsInfo> &insertions) {
-  for (const auto &pos : insertions) {
-    // Discount the index from info only if it's after the insertion
-    if (pos.index < info.index) {
-      info.index -= pos.type_len;
-      // Discount the column number only if it's in the same line as the
-      // insertion and is after the insertion (checked by the enclosing if)
-      if (pos.line_no == info.line_no) {
-        info.col_no -= pos.type_len;
-      }
-    }
-  }
-}
-
-void TranspiledInfo::AppendSourceMap() {
-  auto source_map_encoded = base64Encode(source_map);
-  std::string prefix = "\n//# sourceMappingURL=data:application/json;base64,";
-  final_code = transpiled_code + prefix + source_map_encoded + "\n";
-}
-
-TranspiledCode Transpiler::Transpile(const std::string &jsified_code,
-                                     const std::string &src_filename,
-                                     const std::string &handler_code) {
-  v8::HandleScope handle_scope(isolate_);
-  auto context = context_.Get(isolate_);
-
-  v8::Local<v8::Value> args[4];
-  args[0] = v8Str(isolate_, jsified_code);
-  args[1] = v8Str(isolate_, src_filename);
-  args[2] = v8Array(isolate_, handler_headers_);
-  args[3] = v8Array(isolate_, handler_footers_);
-  auto result = ExecTranspiler("transpile", args, 4);
-
-  TranspiledInfo info(isolate_, context, result);
-  if (!info.ReplaceSource(handler_code)) {
-    LOG(logError) << "Transpiler: Unable to replace sources in source map"
-                  << std::endl;
-  }
-
-  info.AppendSourceMap();
-  return info;
-}
-
-UniLineN1QLInfo Transpiler::UniLineN1QL(const std::string &handler_code) {
-  auto info = ::UniLineN1QL(handler_code, true, source_bucket_);
-  if (info.code != Jsify::kOK) {
-    return info;
-  }
-
+std::string Transpiler::AddHeadersAndFooters(const std::string &handler_code) {
   v8::HandleScope handle_scope(isolate_);
   v8::Local<v8::Value> args[3];
-  args[0] = v8Str(isolate_, info.handler_code);
+  args[0] = v8Str(isolate_, handler_code);
   args[1] = v8Array(isolate_, handler_headers_);
   args[2] = v8Array(isolate_, handler_footers_);
   auto result = ExecTranspiler("AddHeadersAndFooters", args, 3);
 
   v8::String::Utf8Value utf8result(isolate_, result);
-  info.handler_code = *utf8result;
-  return info;
-}
-
-std::string Transpiler::TranspileQuery(const std::string &query,
-                                       const NamedParamsInfo &info) {
-  v8::HandleScope handle_scope(isolate_);
-
-  auto named_params_arr =
-      v8::Array::New(isolate_, static_cast<int>(info.named_params.size()));
-  auto is_select_query_bool =
-      v8::Boolean::New(isolate_, info.p_info.is_select_query);
-  for (std::size_t i = 0; i < info.named_params.size(); ++i) {
-    named_params_arr->Set(static_cast<uint32_t>(i),
-                          v8Str(isolate_, info.named_params[i].c_str()));
-  }
-
-  v8::Local<v8::Value> args[3];
-  args[0] = v8Str(isolate_, query);
-  args[1] = named_params_arr;
-  args[2] = is_select_query_bool;
-
-  auto result = ExecTranspiler("transpileQuery", args, 3);
-  v8::String::Utf8Value utf8result(isolate_, result);
-
   return *utf8result;
 }
 
@@ -214,14 +133,6 @@ CodeVersion Transpiler::GetCodeVersion(const std::string &handler_code) {
   return CodeVersion{*version, *level, *using_timer};
 }
 
-bool Transpiler::IsJsExpression(const std::string &str) {
-  v8::HandleScope handle_scope(isolate_);
-  v8::Local<v8::Value> args[1];
-  args[0] = v8Str(isolate_, str);
-  auto result = ExecTranspiler("isJsExpression", args, 1);
-  return result.As<v8::Boolean>()->Value();
-}
-
 void Transpiler::LogCompilationInfo(const CompilationInfo &info) {
   if (info.compile_success) {
     LOG(logInfo) << "Compilation successful."
@@ -234,31 +145,9 @@ void Transpiler::LogCompilationInfo(const CompilationInfo &info) {
   }
 }
 
-// Composes error info based on the code and recent position returned by
-// CommentN1QL
-CompilationInfo Transpiler::ComposeErrorInfo(const CommentN1QLInfo &cmt_info) {
-  CompilationInfo info;
-  info.compile_success = false;
-  info.line_no = cmt_info.last_pos.line_no;
-  info.col_no = cmt_info.last_pos.col_no;
-  info.index = cmt_info.last_pos.index;
-  if (cmt_info.code == Jsify::kN1QLParserError) {
-    info.language = "N1QL";
-    info.description = cmt_info.parse_info.info;
-  } else {
-    info.language = "JavaScript";
-    info.description = ComposeDescription(cmt_info.code);
-  }
-
-  // Rectify position info
-  RectifyCompilationInfo(info, cmt_info.insertions);
-  return info;
-}
-
 // Composes compilation info returned by transpiler.js
 CompilationInfo Transpiler::ComposeCompilationInfo(
-    v8::Local<v8::Value> &compiler_result,
-    const std::list<InsertedCharsInfo> &insertions) {
+  v8::Local<v8::Value> &compiler_result) {
   if (IS_EMPTY(compiler_result)) {
     throw "Result of ExecTranspiler is empty";
   }
@@ -357,11 +246,6 @@ CompilationInfo Transpiler::ComposeCompilationInfo(
   info.line_no = static_cast<int32_t>(line_no->Value());
   info.col_no = static_cast<int32_t>(col_no->Value());
 
-  // Rectify position info only if error is in handler code
-  if (info.area == "handlerCode") {
-    RectifyCompilationInfo(info, insertions);
-  }
-
   return info;
 }
 
@@ -446,60 +330,4 @@ std::string Transpiler::ComposeDescription(int code) {
 
   std::string description = keyword + " is a reserved name in N1QLJs";
   return description;
-}
-
-TranspiledInfo::TranspiledInfo(v8::Isolate *isolate,
-                               const v8::Local<v8::Context> &context,
-                               const v8::Local<v8::Value> &transpiler_result)
-    : isolate_(isolate) {
-  v8::HandleScope handle_scope(isolate);
-  Utils utils(isolate, context);
-
-  auto code_val = utils.GetPropertyFromObject(transpiler_result, "code");
-  v8::String::Utf8Value code_utf8(isolate, code_val);
-  transpiled_code = *code_utf8;
-
-  auto map_val = utils.GetPropertyFromObject(transpiler_result, "map");
-  v8::String::Utf8Value map_utf8(isolate, map_val);
-  source_map = *map_utf8;
-
-  context_.Reset(isolate, context);
-}
-
-TranspiledInfo::~TranspiledInfo() { context_.Reset(); }
-
-bool TranspiledInfo::ReplaceSource(const std::string &handler_code) {
-  v8::HandleScope handle_scope(isolate_);
-  auto context = context_.Get(isolate_);
-
-  v8::Local<v8::Value> source_map_val;
-  if (!TO_LOCAL(v8::JSON::Parse(context, v8Str(isolate_, source_map)),
-                &source_map_val)) {
-    return false;
-  }
-
-  v8::Local<v8::Object> source_map_obj;
-  if (!TO_LOCAL(source_map_val->ToObject(context), &source_map_obj)) {
-    return false;
-  }
-
-  v8::Local<v8::Value> sources_val;
-  if (!TO_LOCAL(source_map_obj->Get(context, v8Str(isolate_, "sources")),
-                &sources_val)) {
-    return false;
-  }
-
-  Utils utils(isolate_, context);
-  std::string prefix = "data:text/plain;base64,";
-  auto handler_code_encoded =
-      v8Str(isolate_, prefix + base64Encode(handler_code));
-
-  auto sources_arr = sources_val.As<v8::Array>();
-  auto success = false;
-  if (!TO(sources_arr->Set(context, 0, handler_code_encoded), &success)) {
-    return false;
-  }
-
-  source_map = JSONStringify(isolate_, source_map_obj);
-  return true;
 }

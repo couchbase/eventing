@@ -1,4 +1,4 @@
-package main
+package parser
 
 // Transpile embedded N1QL in JavaScript while preserving
 // line numbers and whitespace as far as possible
@@ -87,9 +87,10 @@ type Match struct {
 	Begin  int
 	End    int
 	Params string
+	Info   NamedParamsInfo
 }
 
-func WrapQuery(query string, params string) string {
+func WrapQuery(query string, params string, n1ql_params string) string {
 	lines := strings.Split(query, "\n")
 	js_lines := []string{}
 	for i, line := range lines {
@@ -112,7 +113,11 @@ func WrapQuery(query string, params string) string {
 		}
 		result += line
 		if i == len(js_lines)-1 {
-			result += ", " + params + ");"
+			if n1ql_params == "" {
+				result += ", " + params + ");"
+			} else {
+				result += ", " + params + ", " + n1ql_params +");"
+			}
 		}
 		if i < len(js_lines)-1 {
 			result += "+\n"
@@ -145,13 +150,16 @@ func FindQueries(input string) []Match {
 		m.Begin = pos[2]
 		m.End = pos[3]
 		m.Params = params
+		m.Info = *info
 		matches = append(matches, m)
 	}
 	return matches
 }
 
-func TranspileQueries(input string) string {
-	result := ""
+func TranspileQueries(input string, n1ql_params string) (result string, info []NamedParamsInfo) {
+	result = ""
+	info = []NamedParamsInfo{}
+
 	matches := FindQueries(input)
 	sort.SliceStable(matches, func(i, j int) bool {
 		return matches[i].Begin < matches[j].Begin
@@ -159,9 +167,10 @@ func TranspileQueries(input string) string {
 	pos := 0
 	for _, match := range matches {
 		result += input[pos:match.Begin]
-		result += WrapQuery(input[match.Begin:match.End], match.Params)
+		result += WrapQuery(input[match.Begin:match.End], match.Params, n1ql_params)
 		pos = match.End
+		info = append(info, match.Info)
 	}
 	result += input[pos:]
-	return result
+	return
 }
