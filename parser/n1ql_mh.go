@@ -1,6 +1,6 @@
 //+build !alice
 
-package main
+package parser
 
 import (
 	"github.com/couchbase/query/algebra"

@@ -31,7 +31,6 @@ type InsightLine struct {
 
 type Insight struct {
 	Script string              `json:"script"`
-	SrcMap string              `json:"srcmap"`
 	Lines  map[int]InsightLine `json:"lines"`
 }
 
@@ -305,6 +304,7 @@ type Config map[string]interface{}
 // AppConfig Application/Event handler configuration
 type AppConfig struct {
 	AppCode            string
+	ParsedAppCode      string
 	AppDeployState     string
 	AppName            string
 	AppState           string
@@ -476,9 +476,6 @@ func (dst *Insight) Accumulate(src *Insight) {
 	}
 	if len(src.Script) > 0 {
 		dst.Script = src.Script
-	}
-	if len(src.SrcMap) > 0 {
-		dst.SrcMap = src.SrcMap
 	}
 }
 

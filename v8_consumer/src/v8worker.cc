@@ -369,30 +369,12 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
     DeriveFromError(isolate_, context, type_name);
   }
 
-  auto cmt_info = CommentN1QL(script_to_execute, false, "");
-  auto uniline_info = transpiler->UniLineN1QL(script_to_execute);
-  LOG(logTrace) << "code after Unilining N1QL: "
-                << RM(uniline_info.handler_code) << std::endl;
-  if (uniline_info.code != kOK) {
-    LOG(logError) << "failed to uniline N1QL" << std::endl;
-    return uniline_info.code;
-  }
-
-  auto jsify_info = Jsify(script_to_execute, true, cb_source_bucket_);
-  LOG(logTrace) << "jsified code: " << RM(jsify_info.handler_code) << std::endl;
-  if (jsify_info.code != kOK) {
-    LOG(logError) << "failed to jsify" << std::endl;
-    return jsify_info.code;
-  }
-
-  auto transpiled_info = transpiler->Transpile(
-      jsify_info.handler_code, app_name_ + ".js", uniline_info.handler_code);
-  script_to_execute = transpiled_info.final_code + '\n';
+  auto final_code = transpiler->AddHeadersAndFooters(script_to_execute);
+  script_to_execute = final_code + '\n';
   LOG(logTrace) << "script to execute: " << RM(script_to_execute) << std::endl;
   script_to_execute_ = script_to_execute;
 
-  CodeInsight::Get(isolate_).Setup(
-      script_to_execute, transpiled_info.source_map, cmt_info.insertions);
+  CodeInsight::Get(isolate_).Setup(script_to_execute);
 
   auto source = v8Str(isolate_, script_to_execute);
   if (!ExecuteScript(source)) {
@@ -945,19 +927,8 @@ CodeVersion V8Worker::IdentifyVersion(std::string handler) {
   auto transpiler = UnwrapData(isolate_)->transpiler;
   v8::Context::Scope context_scope(context);
 
-  auto uniline_info = transpiler->UniLineN1QL(handler);
-  if (uniline_info.code != Jsify::kOK) {
-    throw "Unline N1QL failed when trying to identify version";
-  }
-
-  auto jsify_info = Jsify(handler, true, cb_source_bucket_);
-  if (jsify_info.code != Jsify::kOK) {
-    throw "Jsify failed when trying to identify version";
-  }
-
-  auto transpiled_info = transpiler->Transpile(
-      jsify_info.handler_code, app_name_ + ".js", uniline_info.handler_code);
-  auto script_to_execute = transpiled_info.final_code + '\n';
+  auto final_code = transpiler->AddHeadersAndFooters(handler);
+  auto script_to_execute = final_code + '\n';
 
   auto ver = transpiler->GetCodeVersion(script_to_execute);
   return ver;

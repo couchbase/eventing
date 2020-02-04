@@ -41,8 +41,7 @@ class CodeInsight {
 public:
   explicit CodeInsight(v8::Isolate *isolate);
 
-  void Setup(const std::string &script, const std::string &srcmap,
-             const std::list<InsertedCharsInfo> &insertions);
+  void Setup(const std::string &script);
 
   void AccumulateTime(uint64_t nanotime);
   void AccumulateException(v8::TryCatch &);
@@ -57,15 +56,12 @@ private:
   CodeInsight(const CodeInsight &) = delete;
   CodeInsight &operator=(const CodeInsight &) = delete;
 
-  int RectifyLine(int line) const;
   void Log(LineEntry &line, const std::string &msg);
 
   std::mutex lock_;
   Insight insight_;
   v8::Isolate *isolate_;
   std::string script_;
-  std::string srcmap_;
-  std::list<InsertedCharsInfo> insertions_;
 
   // sliding window
   static constexpr double window_size = 100;

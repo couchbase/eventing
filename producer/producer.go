@@ -17,6 +17,7 @@ import (
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/consumer"
 	"github.com/couchbase/eventing/logging"
+	"github.com/couchbase/eventing/parser"
 	"github.com/couchbase/eventing/suptree"
 	"github.com/couchbase/eventing/util"
 )
@@ -106,6 +107,9 @@ func (p *Producer) Serve() {
 		logging.Fatalf("%s [%s:%d] Failure parsing depcfg, err: %v", logPrefix, p.appName, p.LenRunningConsumers(), err)
 		return
 	}
+
+	n1qlParams := "{ 'consistency': '" + p.handlerConfig.N1qlConsistency + "' }"
+	p.app.ParsedAppCode, _ = parser.TranspileQueries(p.app.AppCode, n1qlParams)
 
 	p.updateStatsTicker = time.NewTicker(time.Duration(p.handlerConfig.CheckpointInterval) * time.Millisecond)
 

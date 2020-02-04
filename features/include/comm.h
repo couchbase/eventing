@@ -27,20 +27,6 @@ struct CredsInfo {
   time_t time_fetched;
 };
 
-// Info about parsing N1QL query
-struct ParseInfo {
-  bool is_valid;
-  bool is_select_query;
-  bool is_dml_query;
-  std::string keyspace_name;
-  std::string info;
-};
-
-struct NamedParamsInfo {
-  ParseInfo p_info;
-  std::vector<std::string> named_params;
-};
-
 struct KVNodesInfo {
   std::vector<std::string> kv_nodes;
   bool is_valid{true};
@@ -56,15 +42,11 @@ public:
 
   CredsInfo GetCreds(const std::string &endpoint);
   KVNodesInfo GetKVNodes();
-  NamedParamsInfo GetNamedParams(const std::string &query);
-  ParseInfo ParseQuery(const std::string &query);
   void WriteDebuggerURL(const std::string &url);
   void Refresh();
 
 private:
   CredsInfo ExtractCredentials(const std::string &encoded_str);
-  NamedParamsInfo ExtractNamedParams(const std::string &encoded_str);
-  ParseInfo ExtractParseInfo(const std::string &encoded_str);
 
   v8::Isolate *isolate_;
   std::unordered_map<std::string, CredsInfo> creds_cache_;

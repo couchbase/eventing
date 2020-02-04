@@ -40,10 +40,6 @@ func TestCodeInsight(t *testing.T) {
 		t.Error("For", functionName, "got response", string(response), "script not okay")
 	}
 
-	if !strings.Contains(insight.SrcMap, `"version":3`) {
-		t.Error("For", functionName, "got response", string(response), "srcmap not okay")
-	}
-
 	end_ok, begin_ok, err_ct1, err_ct2 := false, false, 0, 0
 	for _, line := range insight.Lines {
 		if strings.Contains(line.LastLog, `"Begin"`) {
