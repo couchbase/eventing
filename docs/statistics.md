@@ -34,13 +34,21 @@ This will return the stats regardings events processing, events remaining, execu
      "on_delete_failure": 0,
      "on_delete_success": 14,
      "on_update_failure": 0,
-     "on_update_success": 1
+     "on_update_success": 1,
+     "curl": {
+	  "get": 55,
+	  "post": 68,
+	  "head": 43,
+	  "put": 22,
+	  "delete": 12
+     }
    },
    "failure_stats": {
      "bucket_op_exception_count": 0,
      "checkpoint_failure_count": 66,
      "n1ql_op_exception_count": 0,
-     "timeout_count": 0
+     "timeout_count": 0,
+     "curl_non_200_response": 32
    },
    "latency_stats": {
      "100": 12,
@@ -120,7 +128,14 @@ curl http://user:pass@localhost:8096/getExecutionStats?name=function_name
   "on_delete_failure": 5108,
   "on_delete_success": 6400893,
   "on_update_failure": 0,
-  "on_update_success": 11510282
+  "on_update_success": 11510282,
+  "curl": {
+    "get": 55,
+    "post": 68,
+    "head": 43,
+    "put": 22,
+    "delete": 12
+  }
 }
 ```
 
@@ -178,7 +193,8 @@ curl http://user:password@localhost:8096/getFailureStats?name=function_name
   "bucket_op_exception_count": 5108,
   "checkpoint_failure_count": 0,
   "n1ql_op_exception_count": 0,
-  "timeout_count": 0
+  "timeout_count": 0,
+  "curl_non_200_response": 32
 }
 ```
 
