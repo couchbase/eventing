@@ -98,24 +98,29 @@ func (vbs vbStats) updateVbStat(vb uint16, statName string, val interface{}) {
 func (c *Consumer) loadStatsFromConsumer() {
 	logPrefix := "Consumer::loadStatsFromConsumer"
 
+	// initialise workerInitMainLoopTs. This is to ensure we can respawn the consumer in case it never responds after bootstrapping
+	c.workerInitMainLoopTs.Store(time.Now())
+
 	for {
 		select {
 		case <-c.loadStatsTicker.C:
 			val := c.workerRespMainLoopTs.Load()
+			stopReason := "last response received"
 			if val == nil {
-				continue
+				val = c.workerInitMainLoopTs.Load() // grab initialisation TS if there was no response from worker yet
+				stopReason = "worker initialised"
 			}
 
 			if lastTs, ok := val.(time.Time); ok {
 				if int(time.Now().Sub(lastTs).Seconds()) > c.workerRespMainLoopThreshold {
 					if c.stoppingConsumer {
-						logging.Errorf("%s [%s:%s:%d] stoppingConsumer: %t last response received at %s",
-							logPrefix, c.workerName, c.tcpPort, c.Pid(), c.stoppingConsumer, lastTs.String())
+						logging.Errorf("%s [%s:%s:%d] stoppingConsumer: %t %s at %s",
+							logPrefix, c.workerName, c.tcpPort, c.Pid(), c.stoppingConsumer, stopReason, lastTs.String())
 						return
 					}
 
-					logging.Infof("%s [%s:%s:%d] stoppingConsumer: %t re-spawning eventing last response received at %s",
-						logPrefix, c.workerName, c.tcpPort, c.Pid(), c.stoppingConsumer, lastTs.String())
+					logging.Infof("%s [%s:%s:%d] stoppingConsumer: %t re-spawning eventing, %s at %s",
+						logPrefix, c.workerName, c.tcpPort, c.Pid(), c.stoppingConsumer, stopReason, lastTs.String())
 					c.stoppingConsumer = true
 					c.producer.KillAndRespawnEventingConsumer(c)
 				}
