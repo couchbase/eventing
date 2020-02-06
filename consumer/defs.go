@@ -221,6 +221,8 @@ type Consumer struct {
 
 	// Time when last response from CPP worker was received on main loop
 	workerRespMainLoopTs        atomic.Value
+	// Time when go side of cpp worker was initialised
+	workerInitMainLoopTs        atomic.Value
 	workerRespMainLoopThreshold int
 
 	// DCP config, as they need to be tunable
