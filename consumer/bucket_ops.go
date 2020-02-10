@@ -740,7 +740,8 @@ var getFailoverLogOpCallback = func(args ...interface{}) error {
 	c.cbBucketRWMutex.Lock()
 	defer c.cbBucketRWMutex.Unlock()
 
-	err := c.cbBucket.Refresh()
+	var err error
+	c.cbBucket, err = c.superSup.GetBucket(c.cbBucket.Name)
 	if err != nil {
 		logging.Errorf("%s [%s:%s:%d] Failed to refresh bucket handle, err: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
@@ -772,7 +773,8 @@ var getEFFailoverLogOpAllVbucketsCallback = func(args ...interface{}) error {
 	c.cbBucketRWMutex.Lock()
 	defer c.cbBucketRWMutex.Unlock()
 
-	err := c.cbBucket.Refresh()
+	var err error
+	c.cbBucket, err = c.superSup.GetBucket(c.cbBucket.Name)
 	if err != nil {
 		logging.Errorf("%s [%s:%s:%d] vb: %d failed to refresh vbmap, err: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, err)
@@ -804,7 +806,8 @@ var startDCPFeedOpCallback = func(args ...interface{}) error {
 	c.cbBucketRWMutex.Lock()
 	defer c.cbBucketRWMutex.Unlock()
 
-	err := c.cbBucket.Refresh()
+	var err error
+	c.cbBucket, err = c.superSup.GetBucket(c.cbBucket.Name)
 	if err != nil {
 		logging.Errorf("%s [%s:%s:%d] Bucket: %s kv node: %rs failed to refresh vbmap, err: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), c.cbBucket.Name, kvHostPort, err)
@@ -866,7 +869,8 @@ var populateDcpFeedVbEntriesCallback = func(args ...interface{}) error {
 			c.cbBucketRWMutex.Lock()
 			defer c.cbBucketRWMutex.Unlock()
 
-			err := c.cbBucket.Refresh()
+			var err error
+			c.cbBucket, err = c.superSup.GetBucket(c.cbBucket.Name)
 			if err != nil {
 				logging.Errorf("%s [%s:%s:%d] feed: %s failed to refresh vbmap, err: %v",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), feedName.Raw(), err)

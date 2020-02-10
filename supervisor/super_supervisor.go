@@ -12,6 +12,7 @@ import (
 	"sync/atomic"
 
 	"github.com/couchbase/eventing/common"
+	"github.com/couchbase/eventing/dcp"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/producer"
 	"github.com/couchbase/eventing/service_manager"
@@ -51,6 +52,9 @@ func NewSuperSupervisor(adminPort AdminPortConfig, eventingDir, kvPort, restPort
 	s.appRWMutex = &sync.RWMutex{}
 	s.appListRWMutex = &sync.RWMutex{}
 	s.mu = &sync.RWMutex{}
+	s.buckets = make(map[string]*couchbase.Bucket)
+	s.bucketsCount = make(map[string]uint)
+	s.bucketsRWMutex = &sync.RWMutex{}
 	s.superSup.ServeBackground("SuperSupervisor")
 
 	config, _ := util.NewConfig(nil)
@@ -82,6 +86,8 @@ func NewSuperSupervisor(adminPort AdminPortConfig, eventingDir, kvPort, restPort
 			}
 		}
 	}()
+
+	go s.watchBucketChanges()
 	return s
 }
 
@@ -369,6 +375,8 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 
 						p.PauseProducer()
 						p.NotifySupervisor()
+						s.UnwatchBucket(p.SourceBucket())
+						s.UnwatchBucket(p.MetadataBucket())
 						logging.Infof("%s [%d] Function: %s Cleaned up running Eventing.Producer instance", logPrefix, s.runningFnsCount(), appName)
 
 					}
@@ -840,6 +848,9 @@ func (s *SuperSupervisor) CleanupProducer(appName string, skipMetaCleanup bool, 
 
 		p.StopRunningConsumers()
 		p.CleanupUDSs()
+
+		s.UnwatchBucket(p.SourceBucket())
+		s.UnwatchBucket(p.MetadataBucket())
 
 		if !skipMetaCleanup {
 			p.CleanupMetadataBucket(false)

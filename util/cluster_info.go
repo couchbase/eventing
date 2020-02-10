@@ -1,6 +1,8 @@
 package util
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -10,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/dcp"
 	"github.com/couchbase/eventing/logging"
 )
@@ -22,6 +25,12 @@ var (
 )
 
 var ServiceAddrMap map[string]string
+
+// Helper object to refresh the cluster info cache
+// based on service change notifier's notification.
+var cicSingleton *ClusterInfoClient
+var once sync.Once
+var onretry = &sync.Mutex{}
 
 const (
 	EVENTING_ADMIN_SERVICE = "eventingAdminPort"
@@ -37,7 +46,7 @@ const BUCKET_UUID_NIL = ""
 // local management service for obtaining cluster information.
 // Info cache can be updated by using Refresh() method.
 type ClusterInfoCache struct {
-	sync.Mutex
+	sync.RWMutex
 	url       string
 	poolName  string
 	logPrefix string
@@ -55,6 +64,14 @@ type ClusterInfoCache struct {
 	addNodes     []couchbase.Node
 	version      uint32
 	minorVersion uint32
+}
+
+type ClusterInfoClient struct {
+	cinfo                   *ClusterInfoCache
+	clusterURL              string
+	pool                    string
+	servicesNotifierRetryTm uint
+	finch                   chan bool
 }
 
 type NodeId int
@@ -624,4 +641,133 @@ func (c *ClusterInfoCache) getStaticServicePort(srvc string) (string, error) {
 		return "", ErrInvalidService
 	}
 
+}
+
+func (c *ClusterInfoCache) FetchWithLock() error {
+	c.Lock()
+	defer c.Unlock()
+	return c.Fetch()
+}
+
+func FetchClusterInfoClient(clusterURL string) (c *ClusterInfoClient, err error) {
+	once.Do(func() {
+		cicSingleton = &ClusterInfoClient{
+			clusterURL: clusterURL,
+			pool:       "default",
+			finch:      make(chan bool),
+		}
+
+		config := getConfig()
+		cicSingleton.servicesNotifierRetryTm = 6000
+		if tm, ok := config["service_notifier_timeout"]; ok {
+			retryTm, tOk := tm.(float64)
+			if tOk {
+				cicSingleton.servicesNotifierRetryTm = uint(retryTm)
+			}
+		}
+
+		cinfo, err := FetchNewClusterInfoCache(clusterURL)
+		if err != nil {
+			cicSingleton.cinfo = nil
+			logging.Errorf("FetchClusterInfoClient(%s) inital FetchNewClusterInfoCache try once.Do failed %v\n", clusterURL, err)
+			return
+		}
+		cicSingleton.cinfo = cinfo
+		if cicSingleton.cinfo != nil {
+			go cicSingleton.watchClusterChanges()
+		}
+	})
+	if cicSingleton.cinfo == nil {
+		// Recovery process in case cluster info client is nil
+		onretry.Lock()
+		defer onretry.Unlock()
+		cinfo, err := FetchNewClusterInfoCache(clusterURL)
+		if err != nil {
+			logging.Errorf("FetchClusterInfoClient(%s) retry FetchNewClusterInfoCache failed %v\n", clusterURL, err)
+			return nil, err
+		}
+		cicSingleton.cinfo = cinfo
+		if cicSingleton.cinfo != nil {
+			go cicSingleton.watchClusterChanges()
+		}
+	}
+	return cicSingleton, nil
+}
+
+// Consumer must lock returned cinfo before using it
+func (c *ClusterInfoClient) GetClusterInfoCache() *ClusterInfoCache {
+	return c.cinfo
+}
+
+func (c *ClusterInfoClient) watchClusterChanges() {
+	selfRestart := func() {
+		time.Sleep(time.Duration(c.servicesNotifierRetryTm) * time.Millisecond)
+		go c.watchClusterChanges()
+	}
+
+	clusterAuthURL, err := ClusterAuthUrl(c.clusterURL)
+	if err != nil {
+		logging.Errorf("ClusterInfoClient ClusterAuthUrl(): %v\n", err)
+		selfRestart()
+		return
+	}
+
+	scn, err := NewServicesChangeNotifier(clusterAuthURL, c.pool)
+	if err != nil {
+		logging.Errorf("ClusterInfoClient NewServicesChangeNotifier(): %v\n", err)
+		selfRestart()
+		return
+	}
+	defer scn.Close()
+
+	ticker := time.NewTicker(time.Duration(c.servicesNotifierRetryTm) * time.Minute)
+	defer ticker.Stop()
+
+	// For observing node services config
+	ch := scn.GetNotifyCh()
+	for {
+		select {
+		case _, ok := <-ch:
+			if !ok {
+				selfRestart()
+				return
+			} else if err := c.cinfo.FetchWithLock(); err != nil {
+				logging.Errorf("cic.cinfo.FetchWithLock(): %v\n", err)
+				selfRestart()
+				return
+			}
+		case <-ticker.C:
+			if err := c.cinfo.FetchWithLock(); err != nil {
+				logging.Errorf("cic.cinfo.FetchWithLock(): %v\n", err)
+				selfRestart()
+				return
+			}
+		case <-c.finch:
+			return
+		}
+	}
+}
+
+func (c *ClusterInfoClient) Close() {
+	defer func() { recover() }()
+
+	close(c.finch)
+}
+
+func getConfig() (c common.Config) {
+
+	data, err := MetakvGet(common.MetakvConfigPath)
+	if err != nil {
+		logging.Errorf("Failed to get config, err: %v", err)
+		return
+	}
+
+	if !bytes.Equal(data, nil) {
+		err = json.Unmarshal(data, &c)
+		if err != nil {
+			logging.Errorf("Failed to unmarshal payload from metakv, err: %v", err)
+			return
+		}
+	}
+	return
 }

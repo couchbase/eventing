@@ -1,6 +1,7 @@
 package supervisor
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -190,4 +191,92 @@ func parseNano(n uint64) string {
 	}
 
 	return strconv.Itoa(int(n)) + suffix
+}
+
+func (s *SuperSupervisor) bucketRefresh() error {
+	s.bucketsRWMutex.Lock()
+	defer s.bucketsRWMutex.Unlock()
+	for bucketName := range s.buckets {
+		if err := s.buckets[bucketName].Refresh(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *SuperSupervisor) watchBucketChanges() {
+	config := s.getConfig()
+	s.servicesNotifierRetryTm = 6000
+	if tm, ok := config["service_notifier_timeout"]; ok {
+		retryTm, tOk := tm.(float64)
+		if tOk {
+			s.servicesNotifierRetryTm = uint(retryTm)
+		}
+	}
+
+	selfRestart := func() {
+		time.Sleep(time.Duration(s.servicesNotifierRetryTm) * time.Millisecond)
+		go s.watchBucketChanges()
+	}
+
+	hostPortAddr := net.JoinHostPort(util.Localhost(), s.restPort)
+	clusterAuthURL, err := util.ClusterAuthUrl(hostPortAddr)
+	if err != nil {
+		logging.Errorf("WatchBucketChanges ClusterAuthUrl(): %v\n", err)
+		selfRestart()
+		return
+	}
+
+	scn, err := util.NewServicesChangeNotifier(clusterAuthURL, "default")
+	if err != nil {
+		logging.Errorf("ClusterInfoClient NewServicesChangeNotifier(): %v\n", err)
+		selfRestart()
+		return
+	}
+	defer scn.Close()
+
+	ticker := time.NewTicker(time.Duration(s.servicesNotifierRetryTm) * time.Millisecond)
+	defer ticker.Stop()
+
+	// For observing node services config
+	ch := scn.GetNotifyCh()
+	for {
+		select {
+		case _, ok := <-ch:
+			if !ok {
+				selfRestart()
+				return
+			} else if err := s.bucketRefresh(); err != nil {
+				logging.Errorf("s.bucketRefresh(): %v\n", err)
+				selfRestart()
+				return
+			}
+		case <-ticker.C:
+			if err := s.bucketRefresh(); err != nil {
+				logging.Errorf("s.bucketRefresh(): %v\n", err)
+				selfRestart()
+				return
+			}
+		case <-s.finch:
+			return
+		}
+	}
+}
+
+func (s *SuperSupervisor) getConfig() (c common.Config) {
+
+	data, err := util.MetakvGet(common.MetakvConfigPath)
+	if err != nil {
+		logging.Errorf("Failed to get config, err: %v", err)
+		return
+	}
+
+	if !bytes.Equal(data, nil) {
+		err = json.Unmarshal(data, &c)
+		if err != nil {
+			logging.Errorf("Failed to unmarshal payload from metakv, err: %v", err)
+			return
+		}
+	}
+	return
 }

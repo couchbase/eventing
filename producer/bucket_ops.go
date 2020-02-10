@@ -61,7 +61,8 @@ var cleanupMetadataCallback = func(args ...interface{}) error {
 
 	feedName := couchbase.NewDcpFeedName(fmt.Sprintf("%s_%s_%d_undeploy", p.uuid, p.appName, workerID))
 
-	err := (*b).Refresh()
+	var err error
+	(*b), err = p.superSup.GetBucket((*b).Name)
 	if err != nil {
 		logging.Errorf("%s [%s:%d] Failed to refresh vb map for bucket: %s, err: %v",
 			logPrefix, p.appName, p.LenRunningConsumers(), p.metadatabucket, err)
