@@ -4,6 +4,7 @@ import (
 	"sync"
 
 	"github.com/couchbase/eventing/common"
+	"github.com/couchbase/eventing/dcp"
 	"github.com/couchbase/eventing/suptree"
 )
 
@@ -77,6 +78,12 @@ type SuperSupervisor struct {
 	supCmdCh    chan supCmdMsg
 	uuid        string
 	diagDir     string
+
+	bucketsRWMutex          *sync.RWMutex
+	servicesNotifierRetryTm uint
+	finch                   chan bool
+	buckets                 map[string]*couchbase.Bucket // Access controlled by bucketsRWMutex
+	bucketsCount            map[string]uint              // Access controlled by bucketsRWMutex
 
 	appRWMutex *sync.RWMutex
 

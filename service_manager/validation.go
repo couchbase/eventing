@@ -270,12 +270,15 @@ func (m *ServiceMgr) validateBucketExists(bucketName string) (info *runtimeInfo)
 	info = &runtimeInfo{}
 
 	nsServerEndpoint := net.JoinHostPort(util.Localhost(), m.restPort)
-	clusterInfo, err := util.FetchNewClusterInfoCache(nsServerEndpoint)
+	cic, err := util.FetchClusterInfoClient(nsServerEndpoint)
 	if err != nil {
 		info.Code = m.statusCodes.errConnectNsServer.Code
 		info.Info = fmt.Sprintf("Failed to get cluster info cache, err: %v", err)
 		return
 	}
+	clusterInfo := cic.GetClusterInfoCache()
+	clusterInfo.RLock()
+	defer clusterInfo.RUnlock()
 
 	if clusterInfo.GetBucketUUID(bucketName) == "" {
 		info.Code = m.statusCodes.errBucketMissing.Code
@@ -323,6 +326,10 @@ func (m *ServiceMgr) validateConfig(c map[string]interface{}) (info *runtimeInfo
 		return
 	}
 
+	if info = m.validatePositiveInteger("service_notifier_timeout", c); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
 	info.Code = m.statusCodes.ok.Code
 	return
 }
@@ -331,12 +338,15 @@ func (m *ServiceMgr) validateNonMemcached(bucketName string) (info *runtimeInfo)
 	info = &runtimeInfo{}
 
 	nsServerEndpoint := net.JoinHostPort(util.Localhost(), m.restPort)
-	clusterInfo, err := util.FetchNewClusterInfoCache(nsServerEndpoint)
+	cic, err := util.FetchClusterInfoClient(nsServerEndpoint)
 	if err != nil {
 		info.Code = m.statusCodes.errConnectNsServer.Code
 		info.Info = fmt.Sprintf("Failed to get cluster info cache, err: %v", err)
 		return
 	}
+	clusterInfo := cic.GetClusterInfoCache()
+	clusterInfo.RLock()
+	defer clusterInfo.RUnlock()
 
 	isMemcached, err := clusterInfo.IsMemcached(bucketName)
 	if err != nil {

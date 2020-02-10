@@ -2071,10 +2071,13 @@ func (m *ServiceMgr) determineWarnings(app *application, compilationInfo *common
 
 func (m *ServiceMgr) determineCurlWarning(app *application) (string, error) {
 	nsServerEndpoint := net.JoinHostPort(util.Localhost(), m.restPort)
-	clusterInfo, err := util.FetchNewClusterInfoCache(nsServerEndpoint)
+	cic, err := util.FetchClusterInfoClient(nsServerEndpoint)
 	if err != nil {
 		return "", err
 	}
+	clusterInfo := cic.GetClusterInfoCache()
+	clusterInfo.RLock()
+	defer clusterInfo.RUnlock()
 
 	allNodes := clusterInfo.GetAllNodes()
 	for _, curl := range app.DeploymentConfig.Curl {
@@ -3448,12 +3451,15 @@ func (m *ServiceMgr) isMixedModeCluster() (bool, *runtimeInfo) {
 	info := &runtimeInfo{}
 
 	nsServerEndpoint := net.JoinHostPort(util.Localhost(), m.restPort)
-	clusterInfo, err := util.FetchNewClusterInfoCache(nsServerEndpoint)
+	cic, err := util.FetchClusterInfoClient(nsServerEndpoint)
 	if err != nil {
 		info.Code = m.statusCodes.errConnectNsServer.Code
 		info.Info = fmt.Sprintf("Failed to get cluster info cache, err: %v", err)
 		return false, info
 	}
+	clusterInfo := cic.GetClusterInfoCache()
+	clusterInfo.RLock()
+	defer clusterInfo.RUnlock()
 
 	info.Code = m.statusCodes.ok.Code
 	nodes := clusterInfo.GetActiveEventingNodes()
@@ -3495,13 +3501,16 @@ func (m *ServiceMgr) checkVersionCompat(required string, info *runtimeInfo) {
 	logPrefix := "ServiceMgr::checkVersionCompat"
 
 	nsServerEndpoint := net.JoinHostPort(util.Localhost(), m.restPort)
-	clusterInfo, err := util.FetchNewClusterInfoCache(nsServerEndpoint)
+	cic, err := util.FetchClusterInfoClient(nsServerEndpoint)
 	if err != nil {
 		info.Code = m.statusCodes.errConnectNsServer.Code
 		info.Info = fmt.Sprintf("Failed to get cluster info cache, err: %v", err)
 		logging.Errorf("%s %s", logPrefix, info.Info)
 		return
 	}
+	clusterInfo := cic.GetClusterInfoCache()
+	clusterInfo.RLock()
+	defer clusterInfo.RUnlock()
 
 	var need, have version
 	have.major, have.minor = clusterInfo.GetClusterVersion()
