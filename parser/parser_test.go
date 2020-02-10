@@ -48,6 +48,8 @@ var input = []string{
 	`,
 	"var bar = select * from beerbkt where arg = $foo and bar = `$bar`;",
 	"var bar = select * from beerbkt where\narg = $foo and bar = `$bar`;",
+	`var bar = select /* hello *`,
+	`var bar = select * /**/ from foo;`,
 }
 
 var output = []string{
@@ -93,6 +95,8 @@ var output = []string{
 	`,
 	"var bar = N1QL('select * from beerbkt where arg = $foo and bar = `$bar`;', {'$foo':foo});",
 	"var bar = N1QL('select * from beerbkt where\\n'+\n'arg = $foo and bar = `$bar`;', {'$foo':foo});",
+	`var bar = select /* hello *`,
+	`var bar = N1QL('select * /**/ from foo;', {});`,
 }
 
 func TestTranspile(t *testing.T) {

@@ -45,7 +45,7 @@ func whitewash(str string) string {
 			if end > len(str) {
 				end = len(str)
 			}
-			sub = str[pos : pos+len(esc)]
+			sub = str[pos:end]
 			if sub == esc {
 				for b := 1; b < len(esc); b++ {
 					washed[pos+b] = ' '
