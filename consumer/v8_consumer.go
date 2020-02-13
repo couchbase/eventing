@@ -29,6 +29,7 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 
 	var b *couchbase.Bucket
 	consumer := &Consumer{
+		n1qlPrepareAll:                  hConfig.N1qlPrepareAll,
 		isPausing:                       false,
 		languageCompatibility:           hConfig.LanguageCompatibility,
 		app:                             app,

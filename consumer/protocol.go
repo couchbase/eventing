@@ -350,6 +350,11 @@ func (c *Consumer) makeV8InitPayload(appName, debuggerPort, currHost, eventingDi
 	payload.PayloadAddHandlerFooters(builder, handlerFooters)
 	payload.PayloadAddN1qlConsistency(builder, n1qlConsistency)
 	payload.PayloadAddLcbRetryCount(builder, int32(c.lcbRetryCount))
+
+	if c.n1qlPrepareAll {
+		payload.PayloadAddN1qlPrepareAll(builder, 0x1)
+	}
+
 	msgPos := payload.PayloadEnd(builder)
 	builder.Finish(msgPos)
 
