@@ -55,7 +55,10 @@
 
   cmd_.handle = &handle_;
   cmd_.callback = row_callback;
-  cmd_.cmdflags |= LCB_CMDN1QL_F_PREPCACHE;
+  if (query_info_.options.is_prepared != nullptr &&
+      *query_info_.options.is_prepared) {
+    cmd_.cmdflags |= LCB_CMDN1QL_F_PREPCACHE;
+  }
   lcb_set_cookie(connection_, cookie);
 
   result =

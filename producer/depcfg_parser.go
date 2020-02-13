@@ -97,6 +97,11 @@ func (p *Producer) parseDepcfg() error {
 	}
 
 	// Handler related configurations
+	if val, ok := settings["n1ql_prepare_all"]; ok {
+		p.handlerConfig.N1qlPrepareAll = val.(bool)
+	} else {
+		p.handlerConfig.N1qlPrepareAll = false
+	}
 
 	if val, ok := settings["language_compatibility"]; ok {
 		p.handlerConfig.LanguageCompatibility = val.(string)

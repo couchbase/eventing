@@ -710,6 +710,9 @@ func (m *ServiceMgr) validateSettings(appName string, settings map[string]interf
 	m.fillMissingWithDefaults(appName, settings)
 
 	// Handler related configurations
+	if info = m.validateBoolean("n1ql_prepare_all", true, settings); info.Code != m.statusCodes.ok.Code {
+		return
+	}
 	if info = m.validatePossibleValues("language_compatibility", settings, common.LanguageCompatibility); info.Code != m.statusCodes.ok.Code {
 		return
 	}

@@ -45,6 +45,7 @@ struct IsolateData {
   lcb_U32 n1ql_timeout{0};
   long curl_timeout{0};
   int n1ql_consistency{0};
+  bool n1ql_prepare_all{false};
 
   Query::Manager *query_mgr{nullptr};
   Query::Iterable *query_iterable{nullptr};

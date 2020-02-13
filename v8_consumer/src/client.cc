@@ -499,6 +499,7 @@ void AppWorker::RouteMessageWithResponse(
       handler_config = new handler_config_t;
       server_settings = new server_settings_t;
 
+      handler_config->n1ql_prepare_all = payload->n1ql_prepare_all();
       handler_config->app_name.assign(payload->app_name()->str());
       handler_config->lang_compat.assign(
           payload->language_compatibility()->str());

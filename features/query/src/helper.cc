@@ -291,12 +291,14 @@ Query::Options::Extractor::Extractor(v8::Isolate *isolate,
   context_.Reset(isolate_, context);
   consistency_property_.Reset(isolate_, v8Str(isolate_, "consistency"));
   client_ctx_id_property_.Reset(isolate_, v8Str(isolate_, "clientContextId"));
+  is_prepared_property_.Reset(isolate_, v8Str(isolate_, "isPrepared"));
 }
 
 Query::Options::Extractor::~Extractor() {
   context_.Reset();
   consistency_property_.Reset();
   client_ctx_id_property_.Reset();
+  is_prepared_property_.Reset();
 }
 
 ::Info Query::Options::Extractor::Extract(
@@ -317,7 +319,11 @@ Query::Options::Extractor::~Extractor() {
   if (info.is_fatal) {
     return info;
   }
-  return ExtractClientCtxId(options_obj, opt_out.client_context_id);
+  info = ExtractClientCtxId(options_obj, opt_out.client_context_id);
+  if (info.is_fatal) {
+    return info;
+  }
+  return ExtractIsPrepared(options_obj, opt_out.is_prepared);
 }
 
 ::Info Query::Options::Extractor::ExtractConsistency(
@@ -363,5 +369,35 @@ Query::Options::Extractor::~Extractor() {
   }
   auto client_ctx_id = JSONStringify(isolate_, client_ctx_id_val);
   client_ctx_id_out.reset(new std::string(std::move(client_ctx_id)));
+  return {false};
+}
+
+::Info Query::Options::Extractor::ExtractIsPrepared(
+    const v8::Local<v8::Object> &options_obj,
+    std::unique_ptr<bool> &is_prepared_out) const {
+  v8::HandleScope handle_scope(isolate_);
+  auto context = context_.Get(isolate_);
+  auto is_prepared = UnwrapData(isolate_)->n1ql_prepare_all;
+  if (is_prepared) {
+    is_prepared_out.reset(new bool(true));
+  }
+
+  const auto is_prepared_property = is_prepared_property_.Get(isolate_);
+  v8::Local<v8::Value> is_prepared_val;
+  if (!TO_LOCAL(options_obj->Get(context, is_prepared_property),
+                &is_prepared_val)) {
+    return {true, "Unable to read isPrepared value"};
+  }
+  if (is_prepared_val->IsUndefined()) {
+    return {false};
+  }
+  if (!is_prepared_val->IsBoolean()) {
+    return {true, "Expecting a boolean for isPrepared property"};
+  }
+
+  if (!TO(is_prepared_val->BooleanValue(context), &is_prepared)) {
+    return {true, "Unable to cast isPrepared to boolean"};
+  }
+  is_prepared_out.reset(new bool(is_prepared));
   return {false};
 }

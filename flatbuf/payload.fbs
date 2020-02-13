@@ -45,6 +45,7 @@ table Payload {
   vb_map:[short];
   n1ql_consistency:string; // N1QL consistency
   language_compatibility:string;
+  n1ql_prepare_all:bool; // Prepares all N1QL queries if set to true.
 }
 
 root_type Payload;

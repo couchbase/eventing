@@ -149,6 +149,7 @@ typedef struct server_settings_s {
 } server_settings_t;
 
 typedef struct handler_config_s {
+  bool n1ql_prepare_all;
   std::string app_name;
   std::string dep_cfg;
   std::string lang_compat;

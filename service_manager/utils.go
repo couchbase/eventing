@@ -89,6 +89,7 @@ func (m *ServiceMgr) fillMissingWithDefaults(appName string, settings map[string
 	app, _ := m.getTempStore(appName)
 
 	// Handler related configurations
+	fillMissingDefault(app, settings, "n1ql_prepare_all", true)
 	fillMissingDefault(app, settings, "checkpoint_interval", float64(60000))
 	fillMissingDefault(app, settings, "cleanup_timers", false)
 	fillMissingDefault(app, settings, "cpp_worker_thread_count", float64(2))
