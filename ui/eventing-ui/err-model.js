@@ -1,3 +1,4 @@
+export {ErrorMessage, ErrorHandler};
 // Base template for error messages.
 function ErrorMessage(version, revision, error, details) {
     this.version = version;
@@ -7,7 +8,7 @@ function ErrorMessage(version, revision, error, details) {
 }
 
 ErrorMessage.prototype.hasRetry = function(errorCode) {
-    return $.inArray('retry', this.error[errorCode].attrs) !== -1;
+  return this.error[errorCode].attrs.includes('retry');
 };
 
 // Provides error handling capabilities according to attributes of errors.

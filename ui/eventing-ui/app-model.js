@@ -1,3 +1,11 @@
+import _ from "/ui/web_modules/lodash.js"
+export {Application,
+        ApplicationManager,
+        ApplicationModel,
+        formatCode,
+        determineUIStatus,
+        getWarnings};
+
 function Application(data) {
     for (var key of Object.keys(data)) {
         this[key] = data[key];

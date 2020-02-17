@@ -1,3 +1,4 @@
+export default Adapter;
 // Config is the format required by the server
 // Binding is the format required by the front-end
 
