@@ -1051,7 +1051,7 @@ func TestUndeployDuringBootstrap(t *testing.T) {
 
 	pumpBucketOps(opsType{}, &rateLimit{})
 
-	time.Sleep(15 * time.Second)
+	time.Sleep(10 * time.Second)
 
 	dumpStats()
 	setSettings(functionName, false, false, &commonSettings{})

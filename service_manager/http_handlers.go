@@ -2161,7 +2161,7 @@ func (m *ServiceMgr) getDcpEventsRemaining(w http.ResponseWriter, r *http.Reques
 }
 
 func (m *ServiceMgr) getAggPausingApps(w http.ResponseWriter, r *http.Request) {
-	logPrefix := "ServiceMgr::getAggBootstrappingApps"
+	logPrefix := "ServiceMgr::getAggPausingApps"
 
 	if !m.validateAuth(w, r, EventingPermissionManage) {
 		return
@@ -2178,6 +2178,15 @@ func (m *ServiceMgr) getAggPausingApps(w http.ResponseWriter, r *http.Request) {
 			"Node list: %v", logPrefix, m.eventingNodeAddrs)
 		return
 	}
+
+	if err != nil {
+		logging.Errorf("%s Failed to grab pausing function list from all eventing nodes."+
+			"Node list: %v", logPrefix, m.eventingNodeAddrs)
+		return
+	}
+
+	w.Write([]byte(strconv.FormatBool(appsPausing)))
+
 }
 
 func (m *ServiceMgr) getAggBootstrappingApps(w http.ResponseWriter, r *http.Request) {
@@ -2198,6 +2207,14 @@ func (m *ServiceMgr) getAggBootstrappingApps(w http.ResponseWriter, r *http.Requ
 			"Node list: %v", logPrefix, m.eventingNodeAddrs)
 		return
 	}
+
+	if err != nil {
+		logging.Errorf("%s Failed to grab bootstrapping function list from all eventing nodes or some functions."+
+			"Node list: %v", logPrefix, m.eventingNodeAddrs)
+		return
+	}
+
+	w.Write([]byte(strconv.FormatBool(appsBootstrapping)))
 }
 
 func (m *ServiceMgr) getPausingApps(w http.ResponseWriter, r *http.Request) {

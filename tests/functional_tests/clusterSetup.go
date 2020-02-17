@@ -326,8 +326,8 @@ func waitForDeployToFinish(appName string) {
 func bootstrapCheck(appName string, startCheck bool) {
 	for {
 		bStatus, err := getBootstrappingApps()
-		if err != nil {
-			if !startCheck && err == errStatusParsingFailed {
+		if !bStatus {
+			if !startCheck {
 				log.Println("No apps undergoing bootstrap")
 				return
 			}
