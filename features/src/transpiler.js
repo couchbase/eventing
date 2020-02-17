@@ -74,16 +74,6 @@ function compile(code, headers, footers) {
     };
 }
 
-function transpile(code, sourceFileName, headers, footers) {
-    code = AddHeadersAndFooters(code, headers, footers);
-    let ast = getAst(code, sourceFileName);
-    return escodegen.generate(ast, {
-        sourceMap: true,
-        sourceMapWithCode: true,
-        comment: true
-    });
-}
-
 // Gets compatability level of code. Returns [<release>, <ga/beta/dp>, <using_timer>]
 function getCodeVersion(code) {
     var versions = ["vulcan", "alice", "mad-hatter"],
@@ -114,16 +104,6 @@ function getCodeVersion(code) {
     });
 
     return [versions[vp], levels[lp], using_timer[tp]];
-}
-
-// Checks if the given statement is a valid JavaScript expression.
-function isJsExpression(stmt) {
-    try {
-        esprima.parse(stmt);
-        return true;
-    } catch (e) {
-        return false;
-    }
 }
 
 function transpileQuery(query, namedParams, isSelectQuery) {
@@ -227,21 +207,4 @@ function N1QLExprAst(query, namedParams) {
             "shorthand": false
         });
     }
-}
-
-// TODO : Handle the case when comment appears inside a string - /* this is 'a comm*/'ent */ - must be
-// handled in the lex.
-function getAst(code, sourceFileName) {
-    // Get the Abstract Syntax Tree (ast) of the input code.
-    let ast = esprima.parse(code, {
-        range: true,
-        tokens: true,
-        comment: true,
-        sourceType: 'script',
-        loc: true,
-        source: sourceFileName
-    });
-
-    // Attaching comments is a separate step.
-    return escodegen.attachComments(ast, ast.comments, ast.tokens);
 }

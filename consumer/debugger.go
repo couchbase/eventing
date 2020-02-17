@@ -307,7 +307,7 @@ func (c *Consumer) startDebugger(e *cb.DcpEvent, instance common.DebuggerInstanc
 
 	c.sendInitV8Worker(payload, true, pBuilder)
 	c.sendDebuggerStart()
-	c.sendLoadV8Worker(c.app.AppCode, true)
+	c.sendLoadV8Worker(c.app.ParsedAppCode, true)
 	c.sendDcpEvent(e, true)
 }
 

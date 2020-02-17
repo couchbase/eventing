@@ -207,6 +207,11 @@ func (p *Producer) MetadataBucket() string {
 	return p.metadatabucket
 }
 
+// SourceBucket returns the source bucket for event handler
+func (p *Producer) SourceBucket() string {
+	return p.handlerConfig.SourceBucket
+}
+
 // NotifyInit notifies the supervisor about producer initialisation
 func (p *Producer) NotifyInit() {
 	<-p.notifyInitCh

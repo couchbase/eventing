@@ -28,6 +28,7 @@ import (
 	"github.com/couchbase/eventing/gen/auditevent"
 	"github.com/couchbase/eventing/gen/flatbuf/cfg"
 	"github.com/couchbase/eventing/logging"
+	"github.com/couchbase/eventing/parser"
 	"github.com/couchbase/eventing/util"
 	"github.com/google/flatbuffers/go"
 )
@@ -299,7 +300,6 @@ func (m *ServiceMgr) getInsight(w http.ResponseWriter, r *http.Request) {
 		pspec := logging.RedactFormat("%ru")
 		for name, insight := range *insights {
 			insight.Script = fmt.Sprintf(pspec, insight.Script)
-			insight.SrcMap = fmt.Sprintf(pspec, insight.SrcMap)
 			for num, line := range insight.Lines {
 				line.LastLog = fmt.Sprintf(pspec, line.LastLog)
 				insight.Lines[num] = line
@@ -829,34 +829,6 @@ func (m *ServiceMgr) getLocallyDeployedApps(w http.ResponseWriter, r *http.Reque
 	}
 
 	fmt.Fprintf(w, "%s", string(buf))
-}
-
-func (m *ServiceMgr) getNamedParamsHandler(w http.ResponseWriter, r *http.Request) {
-	if !m.validateLocalAuth(w, r) {
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/x-www-form-urlencoded")
-
-	data, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errReadReq.Code))
-		return
-	}
-
-	query := string(data)
-	info := util.GetNamedParams(query)
-	response := url.Values{}
-
-	info.PInfo.FlattenParseInfo(&response)
-	response.Add("named_params_size", strconv.Itoa(len(info.NamedParams)))
-
-	for i, namedParam := range info.NamedParams {
-		response.Add(strconv.Itoa(i), namedParam)
-	}
-
-	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
-	fmt.Fprintf(w, "%s", response.Encode())
 }
 
 // Reports progress across all producers on current node
@@ -1989,8 +1961,23 @@ func (m *ServiceMgr) savePrimaryStore(app *application) (info *runtimeInfo) {
 		handlerHeaders = common.GetDefaultHandlerHeaders()
 	}
 
+	var n1qlParams string
+	if consistency, exists := app.Settings["n1ql_consistency"]; exists {
+		n1qlParams = "{ 'consistency': '" + consistency.(string) + "' }"
+	}
+	parsedCode, pinfos := parser.TranspileQueries(app.AppHandlers, n1qlParams)
+	// Prevent deployment of handler with N1QL writing to source bucket
+	for _, pinfo := range pinfos {
+		if pinfo.PInfo.KeyspaceName == app.DeploymentConfig.SourceBucket {
+			info.Code = m.statusCodes.errHandlerCompile.Code
+			info.Info = fmt.Sprintf("Function: %s N1QL dml to source bucket %s", app.Name, pinfo.PInfo.KeyspaceName)
+			logging.Errorf("%s %s", logPrefix, info.Info)
+			return
+		}
+	}
+
 	handlerFooters := util.ToStringArray(app.Settings["handler_footers"])
-	compilationInfo, err := c.SpawnCompilationWorker(app.AppHandlers, string(appContent), app.Name, m.adminHTTPPort,
+	compilationInfo, err := c.SpawnCompilationWorker(parsedCode, string(appContent), app.Name, m.adminHTTPPort,
 		handlerHeaders, handlerFooters)
 	if err != nil || !compilationInfo.CompileSuccess {
 		info.Code = m.statusCodes.errHandlerCompile.Code
@@ -2084,10 +2071,13 @@ func (m *ServiceMgr) determineWarnings(app *application, compilationInfo *common
 
 func (m *ServiceMgr) determineCurlWarning(app *application) (string, error) {
 	nsServerEndpoint := net.JoinHostPort(util.Localhost(), m.restPort)
-	clusterInfo, err := util.FetchNewClusterInfoCache(nsServerEndpoint)
+	cic, err := util.FetchClusterInfoClient(nsServerEndpoint)
 	if err != nil {
 		return "", err
 	}
+	clusterInfo := cic.GetClusterInfoCache()
+	clusterInfo.RLock()
+	defer clusterInfo.RUnlock()
 
 	allNodes := clusterInfo.GetAllNodes()
 	for _, curl := range app.DeploymentConfig.Curl {
@@ -2326,28 +2316,6 @@ func (m *ServiceMgr) clearEventStats(w http.ResponseWriter, r *http.Request) {
 
 	logging.Infof("%s Got request to clear event stats from host: %rs", logPrefix, r.Host)
 	m.superSup.ClearEventStats()
-}
-
-func (m *ServiceMgr) parseQueryHandler(w http.ResponseWriter, r *http.Request) {
-	if !m.validateLocalAuth(w, r) {
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/x-www-form-urlencoded")
-
-	data, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errReadReq.Code))
-		return
-	}
-
-	query := string(data)
-	info, _ := util.Parse(query)
-	response := url.Values{}
-	info.FlattenParseInfo(&response)
-
-	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
-	fmt.Fprintf(w, "%s", response.Encode())
 }
 
 func (m *ServiceMgr) getConfig() (c common.Config, info *runtimeInfo) {
@@ -3483,12 +3451,15 @@ func (m *ServiceMgr) isMixedModeCluster() (bool, *runtimeInfo) {
 	info := &runtimeInfo{}
 
 	nsServerEndpoint := net.JoinHostPort(util.Localhost(), m.restPort)
-	clusterInfo, err := util.FetchNewClusterInfoCache(nsServerEndpoint)
+	cic, err := util.FetchClusterInfoClient(nsServerEndpoint)
 	if err != nil {
 		info.Code = m.statusCodes.errConnectNsServer.Code
 		info.Info = fmt.Sprintf("Failed to get cluster info cache, err: %v", err)
 		return false, info
 	}
+	clusterInfo := cic.GetClusterInfoCache()
+	clusterInfo.RLock()
+	defer clusterInfo.RUnlock()
 
 	info.Code = m.statusCodes.ok.Code
 	nodes := clusterInfo.GetActiveEventingNodes()
@@ -3530,13 +3501,16 @@ func (m *ServiceMgr) checkVersionCompat(required string, info *runtimeInfo) {
 	logPrefix := "ServiceMgr::checkVersionCompat"
 
 	nsServerEndpoint := net.JoinHostPort(util.Localhost(), m.restPort)
-	clusterInfo, err := util.FetchNewClusterInfoCache(nsServerEndpoint)
+	cic, err := util.FetchClusterInfoClient(nsServerEndpoint)
 	if err != nil {
 		info.Code = m.statusCodes.errConnectNsServer.Code
 		info.Info = fmt.Sprintf("Failed to get cluster info cache, err: %v", err)
 		logging.Errorf("%s %s", logPrefix, info.Info)
 		return
 	}
+	clusterInfo := cic.GetClusterInfoCache()
+	clusterInfo.RLock()
+	defer clusterInfo.RUnlock()
 
 	var need, have version
 	have.major, have.minor = clusterInfo.GetClusterVersion()

@@ -803,7 +803,8 @@ func (c *Consumer) dcpRequestStreamHandle(vb uint16, vbBlob *vbucketKVBlob, star
 		c.cbBucketRWMutex.Lock()
 		defer c.cbBucketRWMutex.Unlock()
 
-		err := c.cbBucket.Refresh()
+		var err error
+		c.cbBucket, err = c.superSup.GetBucket(c.cbBucket.Name)
 		if err != nil {
 			logging.Infof("%s [%s:%s:%d] vb: %d failed to refresh vbmap",
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)

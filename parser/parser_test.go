@@ -1,4 +1,4 @@
-package main
+package parser
 
 import (
 	"fmt"
@@ -48,6 +48,17 @@ var input = []string{
 	`,
 	"var bar = select * from beerbkt where arg = $foo and bar = `$bar`;",
 	"var bar = select * from beerbkt where\narg = $foo and bar = `$bar`;",
+	`var bar = select /* hello *`,
+	`var bar = select * /**/ from foo;`,
+	`	var foo = 23;
+		var bar = select * from beerbkt where arg = $foo and bar = $bar and xx = 23;
+		var origin = "BLR"
+		var destn = "LONDON"
+		var bar = select * from travelsim where origin = $origin and destn = $destn and xx = 23;
+		var val = 'Hello World'
+		var bar = UPSERT INTO gamesim (KEY, VALUE) VALUES ('reskey', $val);
+		var upsert_query5 = N1QL('UPSERT INTO eventing-bucket-1 (KEY, VALUE) VALUES ($docId5, \'Hello World5\');', {'$docId5':docId5}, {'consistency' : 'request'});
+	`,
 }
 
 var output = []string{
@@ -93,11 +104,22 @@ var output = []string{
 	`,
 	"var bar = N1QL('select * from beerbkt where arg = $foo and bar = `$bar`;', {'$foo':foo});",
 	"var bar = N1QL('select * from beerbkt where\\n'+\n'arg = $foo and bar = `$bar`;', {'$foo':foo});",
+	`var bar = select /* hello *`,
+	`var bar = N1QL('select * /**/ from foo;', {});`,
+	`	var foo = 23;
+		var bar = N1QL('select * from beerbkt where arg = $foo and bar = $bar and xx = 23;', {'$bar':bar, '$foo':foo});
+		var origin = "BLR"
+		var destn = "LONDON"
+		var bar = N1QL('select * from travelsim where origin = $origin and destn = $destn and xx = 23;', {'$destn':destn, '$origin':origin});
+		var val = 'Hello World'
+		var bar = N1QL('UPSERT INTO gamesim (KEY, VALUE) VALUES (\'reskey\', $val);', {'$val':val});
+		var upsert_query5 = N1QL('UPSERT INTO eventing-bucket-1 (KEY, VALUE) VALUES ($docId5, \'Hello World5\');', {'$docId5':docId5}, {'consistency' : 'request'});
+	`,
 }
 
 func TestTranspile(t *testing.T) {
 	for i := 0; i < len(input); i++ {
-		result := TranspileQueries(input[i])
+		result, _ := TranspileQueries(input[i], "")
 		if result != output[i] {
 			t.Errorf("Mismatch: %s\nExpected:\n%s\nGot:\n%s\n", Diff(output[i], result), output[i], result)
 		}

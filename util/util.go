@@ -154,10 +154,13 @@ func SprintV8Counts(counts map[string]uint64) string {
 }
 
 func NsServerNodesAddresses(auth, hostaddress string) ([]string, error) {
-	cinfo, err := FetchNewClusterInfoCache(hostaddress)
+	cic, err := FetchClusterInfoClient(hostaddress)
 	if err != nil {
 		return nil, err
 	}
+	cinfo := cic.GetClusterInfoCache()
+	cinfo.RLock()
+	defer cinfo.RUnlock()
 
 	nsServerAddrs := cinfo.GetNodesByServiceType(MgmtService)
 
@@ -173,10 +176,13 @@ func NsServerNodesAddresses(auth, hostaddress string) ([]string, error) {
 }
 
 func KVNodesAddresses(auth, hostaddress, bucket string) ([]string, error) {
-	cinfo, err := FetchNewClusterInfoCache(hostaddress)
+	cic, err := FetchClusterInfoClient(hostaddress)
 	if err != nil {
 		return nil, err
 	}
+	cinfo := cic.GetClusterInfoCache()
+	cinfo.RLock()
+	defer cinfo.RUnlock()
 
 	kvAddrs, err := cinfo.GetNodesByBucket(bucket)
 	if err != nil {
@@ -196,11 +202,13 @@ func KVNodesAddresses(auth, hostaddress, bucket string) ([]string, error) {
 
 func EventingNodesAddresses(auth, hostaddress string) ([]string, error) {
 	logPrefix := "util::EventingNodesAddresses"
-
-	cinfo, err := FetchNewClusterInfoCache(hostaddress)
+	cic, err := FetchClusterInfoClient(hostaddress)
 	if err != nil {
 		return nil, err
 	}
+	cinfo := cic.GetClusterInfoCache()
+	cinfo.RLock()
+	defer cinfo.RUnlock()
 
 	eventingAddrs := cinfo.GetNodesByServiceType(EventingAdminService)
 
@@ -222,10 +230,14 @@ func EventingNodesAddresses(auth, hostaddress string) ([]string, error) {
 func CurrentEventingNodeAddress(auth, hostaddress string) (string, error) {
 	logPrefix := "util::CurrentEventingNodeAddress"
 
-	cinfo, err := FetchNewClusterInfoCache(hostaddress)
+	cic, err := FetchClusterInfoClient(hostaddress)
 	if err != nil {
 		return "", err
 	}
+
+	cinfo := cic.GetClusterInfoCache()
+	cinfo.RLock()
+	defer cinfo.RUnlock()
 
 	cNodeID := cinfo.GetCurrentNode()
 	eventingNode, err := cinfo.GetServiceAddress(cNodeID, EventingAdminService)
@@ -251,10 +263,13 @@ func LocalEventingServiceHost(auth, hostaddress string) (string, error) {
 }
 
 func CountActiveKVNodes(bucket, hostaddress string) int {
-	cinfo, err := FetchNewClusterInfoCache(hostaddress)
+	cic, err := FetchClusterInfoClient(hostaddress)
 	if err != nil {
 		return -1
 	}
+	cinfo := cic.GetClusterInfoCache()
+	cinfo.RLock()
+	defer cinfo.RUnlock()
 
 	kvAddrs, err := cinfo.GetNodesByBucket(bucket)
 	if err != nil {
@@ -269,11 +284,13 @@ func CountActiveKVNodes(bucket, hostaddress string) int {
 
 func KVVbMap(auth, bucket, hostaddress string) (map[uint16]string, error) {
 	logPrefix := "util::KVVbMap"
-
-	cinfo, err := FetchNewClusterInfoCache(hostaddress)
+	cic, err := FetchClusterInfoClient(hostaddress)
 	if err != nil {
 		return nil, err
 	}
+	cinfo := cic.GetClusterInfoCache()
+	cinfo.RLock()
+	defer cinfo.RUnlock()
 
 	kvAddrs := cinfo.GetNodesByServiceType(DataService)
 

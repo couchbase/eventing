@@ -332,7 +332,7 @@ func (c *Consumer) HandleV8Worker() error {
 
 	c.sendInitV8Worker(payload, false, pBuilder)
 
-	c.sendLoadV8Worker(c.app.AppCode, false)
+	c.sendLoadV8Worker(c.app.ParsedAppCode, false)
 
 	c.workerExited = false
 

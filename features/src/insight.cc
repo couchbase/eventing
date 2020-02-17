@@ -69,12 +69,6 @@ void CodeInsight::Accumulate(CodeInsight &other) {
   if (other.script_.length() > 0) {
     script_ = other.script_;
   }
-  if (other.srcmap_.length() > 0) {
-    srcmap_ = other.srcmap_;
-  }
-  if (other.insertions_.size() > 0) {
-    insertions_ = other.insertions_;
-  }
 }
 
 void CodeInsight::Log(LineEntry &line, const std::string &msg) {
@@ -97,12 +91,9 @@ CodeInsight &CodeInsight::Get(v8::Isolate *isolate) {
   return *(UnwrapData(isolate)->code_insight);
 }
 
-void CodeInsight::Setup(const std::string &script, const std::string &srcmap,
-                        const std::list<InsertedCharsInfo> &insertions) {
+void CodeInsight::Setup(const std::string &script) {
   std::lock_guard<std::mutex> lock(lock_);
   script_ = script;
-  srcmap_ = srcmap;
-  insertions_ = insertions;
 }
 
 static std::string escape(const std::string &str) {
@@ -124,12 +115,11 @@ std::string CodeInsight::ToJSON() {
   std::ostringstream os;
   os << "{" << std::endl;
   os << R"( "script": ")" << escape(script_) << R"(",)" << std::endl;
-  os << R"( "srcmap": ")" << escape(srcmap_) << R"(",)" << std::endl;
   os << R"( "lines": {)" << std::endl;
   for (auto i = insight_.begin(); i != insight_.end(); ++i) {
     if (i != insight_.begin())
       os << "," << std::endl;
-    os << R"( ")" << RectifyLine(i->first) << R"(": {)" << std::endl;
+    os << R"( ")" << i->first << R"(": {)" << std::endl;
     os << R"(  "call_count": )" << i->second.count_ << "," << std::endl;
     os << R"(  "call_time": )" << i->second.time_ << "," << std::endl;
     os << R"(  "error_count": )" << i->second.err_count_ << "," << std::endl;
@@ -142,16 +132,6 @@ std::string CodeInsight::ToJSON() {
   os << std::endl << " }" << std::endl;
   os << std::endl << "}" << std::endl;
   return os.str();
-}
-
-// Use transpiler's logic to account for N1QL generated expansions
-int CodeInsight::RectifyLine(int line) const {
-  for (const auto &pos : insertions_) {
-    if (pos.line_no < line) {
-      line -= pos.type_len;
-    }
-  }
-  return line;
 }
 
 RateLimiter::Action RateLimiter::Tick() {

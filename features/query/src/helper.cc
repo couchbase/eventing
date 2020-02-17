@@ -358,6 +358,9 @@ Query::Options::Extractor::~Extractor() {
                 &client_ctx_id_val)) {
     return {true, "Unable to read clientContextId value"};
   }
+  if (client_ctx_id_val->IsUndefined()) {
+    return {false};
+  }
   if (auto info = Utils::ValidateDataType(client_ctx_id_val); info.is_fatal) {
     return {true, "Invalid data type for clientContextId: " + info.msg};
   }

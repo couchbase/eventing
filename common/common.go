@@ -3,6 +3,8 @@ package common
 import (
 	"errors"
 	"net"
+
+	"github.com/couchbase/eventing/dcp"
 )
 
 type DcpStreamBoundary string
@@ -29,7 +31,6 @@ type InsightLine struct {
 
 type Insight struct {
 	Script string              `json:"script"`
-	SrcMap string              `json:"srcmap"`
 	Lines  map[int]InsightLine `json:"lines"`
 }
 
@@ -60,6 +61,7 @@ const (
 	MetakvDebuggerPath    = MetakvEventingPath + "debugger/"
 	MetakvTempAppsPath    = MetakvEventingPath + "tempApps/"
 	MetakvCredentialsPath = MetakvEventingPath + "credentials/"
+	MetakvConfigPath      = MetakvEventingPath + "settings/config"
 )
 
 type DebuggerInstance struct {
@@ -172,6 +174,7 @@ type EventingProducer interface {
 	SetRetryCount(retryCount int64)
 	SpanBlobDump() map[string]interface{}
 	Serve()
+	SourceBucket() string
 	Stop(context string)
 	StopProducer()
 	StopRunningConsumers()
@@ -271,6 +274,7 @@ type EventingSuperSup interface {
 	GetLcbExceptionsStats(appName string) map[string]uint64
 	GetLocallyDeployedApps() map[string]string
 	GetMetaStoreStats(appName string) map[string]uint64
+	GetBucket(bucketName string) (*couchbase.Bucket, error)
 	GetSeqsProcessed(appName string) map[int]int64
 	InternalVbDistributionStats(appName string) map[string]string
 	KillAllConsumers()
@@ -278,6 +282,7 @@ type EventingSuperSup interface {
 	PlannerStats(appName string) []*PlannerNodeVbMapping
 	RebalanceStatus() bool
 	RebalanceTaskProgress(appName string) (*RebalanceProgress, error)
+	UnwatchBucket(bucketName string)
 	RemoveProducerToken(appName string)
 	RestPort() string
 	SignalStopDebugger(appName string) error
@@ -299,6 +304,7 @@ type Config map[string]interface{}
 // AppConfig Application/Event handler configuration
 type AppConfig struct {
 	AppCode            string
+	ParsedAppCode      string
 	AppDeployState     string
 	AppName            string
 	AppState           string
@@ -469,9 +475,6 @@ func (dst *Insight) Accumulate(src *Insight) {
 	}
 	if len(src.Script) > 0 {
 		dst.Script = src.Script
-	}
-	if len(src.SrcMap) > 0 {
-		dst.SrcMap = src.SrcMap
 	}
 }
 

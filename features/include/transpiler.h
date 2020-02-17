@@ -52,17 +52,6 @@ struct CodeVersion {
   std::string using_timer;
 };
 
-// Keeps track of the type of literal inserted during CommentN1QL
-struct InsertedCharsInfo {
-  InsertedCharsInfo(InsertType type)
-      : type(type), type_len(0), line_no(0), index(0) {}
-
-  InsertType type;
-  int type_len;
-  int32_t line_no;
-  int32_t index;
-};
-
 // Represents position of each char in the source code
 struct Pos {
   Pos() : line_no(0), col_no(0), index(0) {}
@@ -84,14 +73,6 @@ struct UniLineN1QLInfo {
   Pos last_pos;
 };
 
-struct CommentN1QLInfo {
-  int code;
-  std::string handler_code;
-  std::list<InsertedCharsInfo> insertions;
-  Pos last_pos;
-  ParseInfo parse_info;
-};
-
 // Represents compilation status
 struct CompilationInfo {
   CompilationInfo() : compile_success(false), index(0), line_no(0), col_no(0) {}
@@ -107,25 +88,6 @@ struct CompilationInfo {
   std::string area;
 };
 
-struct TranspiledCode {
-  std::string transpiled_code;
-  std::string source_map;
-  std::string final_code;
-};
-
-struct TranspiledInfo : public TranspiledCode {
-  TranspiledInfo(v8::Isolate *isolate, const v8::Local<v8::Context> &context,
-                 const v8::Local<v8::Value> &transpiler_result);
-  ~TranspiledInfo();
-
-  bool ReplaceSource(const std::string &handler_code);
-  void AppendSourceMap();
-
-private:
-  v8::Isolate *isolate_;
-  v8::Persistent<v8::Context> context_;
-};
-
 class Transpiler {
 public:
   Transpiler(v8::Isolate *isolate, const std::string &transpiler_src,
@@ -138,24 +100,15 @@ public:
                                       v8::Local<v8::Value> args[],
                                       const int &args_len);
   CompilationInfo Compile(const std::string &plain_js);
-  TranspiledCode Transpile(const std::string &jsified_code,
-                           const std::string &src_filename,
-                           const std::string &handler_code);
-  std::string TranspileQuery(const std::string &query,
-                             const NamedParamsInfo &info);
+  std::string AddHeadersAndFooters(const std::string &handler_code);
   UniLineN1QLInfo UniLineN1QL(const std::string &handler_code);
   CodeVersion GetCodeVersion(const std::string &handler_code);
-  bool IsJsExpression(const std::string &str);
   static void LogCompilationInfo(const CompilationInfo &info);
 
 private:
   static void Log(const v8::FunctionCallbackInfo<v8::Value> &args);
-  void RectifyCompilationInfo(CompilationInfo &info,
-                              const std::list<InsertedCharsInfo> &n1ql_pos);
-  CompilationInfo ComposeErrorInfo(const CommentN1QLInfo &cmt_info);
   CompilationInfo
-  ComposeCompilationInfo(v8::Local<v8::Value> &compiler_result,
-                         const std::list<InsertedCharsInfo> &ins_list);
+  ComposeCompilationInfo(v8::Local<v8::Value> &compiler_result);
   std::string ComposeDescription(int code);
 
   v8::Persistent<v8::Context> context_;
@@ -165,15 +118,5 @@ private:
   std::vector<std::string> handler_headers_;
   std::vector<std::string> handler_footers_;
 };
-
-// Functions usable from jsify.lex
-JsifyInfo Jsify(const std::string &input, bool validate_source_bucket,
-                const std::string &source_bucket);
-UniLineN1QLInfo UniLineN1QL(const std::string &info,
-                            bool validate_source_bucket,
-                            const std::string &source_bucket);
-CommentN1QLInfo CommentN1QL(const std::string &input,
-                            bool validate_source_bucket,
-                            const std::string &source_bucket);
 
 #endif

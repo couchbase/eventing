@@ -2,11 +2,14 @@ package supervisor
 
 import (
 	"fmt"
+	"net"
 	"time"
 
 	"github.com/couchbase/eventing/common"
+	"github.com/couchbase/eventing/dcp"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/timers"
+	"github.com/couchbase/eventing/util"
 )
 
 // ClearEventStats flushes event processing stats
@@ -601,4 +604,49 @@ func (s *SuperSupervisor) GetAppLog(fnName string, sz int64) []string {
 	}
 	return p.GetAppLog(sz)
 
+}
+
+func (s *SuperSupervisor) watchBucketWithLock(bucketName string) error {
+	if _, ok := s.buckets[bucketName]; !ok {
+		hostPortAddr := net.JoinHostPort(util.Localhost(), s.restPort)
+		b, err := util.ConnectBucket(hostPortAddr, "default", bucketName)
+		if err != nil {
+			logging.Errorf("Could not connect to bucket %s", bucketName)
+			return err
+		} else {
+			s.buckets[bucketName] = b
+		}
+	}
+	s.bucketsCount[bucketName]++
+	return nil
+}
+
+// UnwatchBucket removes the bucket from supervisor
+func (s *SuperSupervisor) UnwatchBucket(bucketName string) {
+	s.bucketsRWMutex.Lock()
+	defer s.bucketsRWMutex.Unlock()
+	if _, ok := s.buckets[bucketName]; ok {
+		s.bucketsCount[bucketName]--
+		if s.bucketsCount[bucketName] == 0 {
+			delete(s.buckets, bucketName)
+		}
+	}
+}
+
+// GetBucket returns the bucket to the caller
+func (s *SuperSupervisor) GetBucket(bucketName string) (*couchbase.Bucket, error) {
+	s.bucketsRWMutex.Lock()
+	defer s.bucketsRWMutex.Unlock()
+	if _, ok := s.buckets[bucketName]; ok {
+		return s.buckets[bucketName], nil
+	}
+
+	if err := s.watchBucketWithLock(bucketName); err != nil {
+		return nil, err
+	}
+
+	if err := s.buckets[bucketName].Refresh(); err != nil {
+		return nil, err
+	}
+	return s.buckets[bucketName], nil
 }
