@@ -1,4 +1,33 @@
-angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault'])
+import angular from "/ui/web_modules/angular.js";
+import _ from "/ui/web_modules/lodash.js";
+
+import uiRouter from "/ui/web_modules/@uirouter/angularjs.js";
+import mnPoolDefault from "/ui/app/components/mn_pool_default.js";
+import mnPluggableUiRegistry from "/ui/app/components/mn_pluggable_ui_registry.js";
+import mnJquery from "/ui/app/components/mn_jquery.js";
+import mnPermissions from "/ui/app/components/mn_permissions.js";
+
+import Adapter from "./adapter.js";
+
+import {
+  Application,
+  ApplicationManager,
+  ApplicationModel,
+  formatCode,
+  determineUIStatus,
+  getWarnings} from "../app-model.js";
+
+import {ErrorMessage, ErrorHandler} from "../err-model.js";
+
+export default 'eventing';
+
+angular.module('eventing', [
+  mnPluggableUiRegistry,
+  uiRouter,
+  mnPoolDefault,
+  mnJquery,
+  mnPermissions
+])
     // Controller for the summary page.
     .controller('SummaryCtrl', ['$q', '$scope', '$rootScope', '$state', '$uibModal', '$timeout', '$location', 'ApplicationService', 'serverNodes', 'isEventingRunning', 'mnPoller',
         function($q, $scope, $rootScope, $state, $uibModal, $timeout, $location, ApplicationService, serverNodes, isEventingRunning, mnPoller) {
@@ -541,8 +570,8 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
         }
     ])
     // Controller for the buttons in header.
-    .controller('HeaderCtrl', ['$q', '$scope', '$uibModal', '$state', 'mnPoolDefault', 'ApplicationService',
-        function($q, $scope, $uibModal, $state, mnPoolDefault, ApplicationService) {
+  .controller('HeaderCtrl', ['$q', '$scope', '$uibModal', '$state', 'mnPoolDefault', 'ApplicationService', 'jQuery',
+        function($q, $scope, $uibModal, $state, mnPoolDefault, ApplicationService, $) {
             var self = this;
             self.isEventingRunning = true;
 
@@ -881,8 +910,8 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
         }
     ])
     // Controller for editing handler code.
-    .controller('HandlerCtrl', ['$q', '$uibModal', '$timeout', '$state', '$scope', '$rootScope', '$stateParams', '$transitions', 'ApplicationService',
-        function($q, $uibModal, $timeout, $state, $scope, $rootScope, $stateParams, $transitions, ApplicationService) {
+    .controller('HandlerCtrl', ['$q', '$uibModal', '$timeout', '$state', '$scope', '$rootScope', '$stateParams', '$transitions', 'ApplicationService', 'jQuery',
+        function($q, $uibModal, $timeout, $state, $scope, $rootScope, $stateParams, $transitions, ApplicationService, $) {
             var self = this,
                 isDebugOn = false,
                 debugScope = $scope.$new(true),
@@ -1184,7 +1213,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
         }
     ])
     // Controller to copy the debug URL.
-    .controller('DebugCtrl', [function() {
+    .controller('DebugCtrl', ['jQuery', function ($) {
         var self = this;
 
         self.copyUrl = function() {
@@ -1691,9 +1720,9 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         bindingError,
                         hostnameValid,
                         hostnameError,
-                        bindingsValidList = []
-                    hostnameValidList = []
-                    form = formCtrl.createAppForm;
+                        bindingsValidList = [],
+                        hostnameValidList = [],
+                        form = formCtrl.createAppForm;
 
                     for (var binding of bindings) {
                         if (binding.value.length) {
@@ -1807,4 +1836,3 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
             });
         }
     ]);
-angular.module('mnAdmin').requires.push('eventing');
