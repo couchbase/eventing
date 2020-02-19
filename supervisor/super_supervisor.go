@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"sync/atomic"
 
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/logging"
@@ -426,6 +427,9 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(path string, value []byte,
 		logging.Infof("%s [%d] Node not part of cluster. Exiting callback", logPrefix, s.runningFnsCount())
 		return nil
 	}
+
+	atomic.StoreInt32(&s.isRebalanceOngoing, 1)
+	defer atomic.StoreInt32(&s.isRebalanceOngoing, 0)
 
 	topologyChangeMsg := &common.TopologyChangeMsg{}
 

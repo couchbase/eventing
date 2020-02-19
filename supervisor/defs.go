@@ -78,6 +78,8 @@ type SuperSupervisor struct {
 	uuid        string
 	diagDir     string
 
+	isRebalanceOngoing      int32
+
 	appRWMutex *sync.RWMutex
 
 	appDeploymentStatus map[string]bool // Access controlled by appRWMutex
