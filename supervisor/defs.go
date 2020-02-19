@@ -84,6 +84,7 @@ type SuperSupervisor struct {
 	finch                   chan bool
 	buckets                 map[string]*couchbase.Bucket // Access controlled by bucketsRWMutex
 	bucketsCount            map[string]uint              // Access controlled by bucketsRWMutex
+	isRebalanceOngoing      int32
 
 	appRWMutex *sync.RWMutex
 

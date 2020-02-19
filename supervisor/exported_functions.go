@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"time"
+	"sync/atomic"
 
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/dcp"
@@ -343,6 +344,10 @@ func (s *SuperSupervisor) BootstrapStatus() bool {
 // RebalanceStatus reports back status of rebalance for all running apps on current node
 func (s *SuperSupervisor) RebalanceStatus() bool {
 	logPrefix := "SuperSupervisor::RebalanceStatus"
+
+	if atomic.LoadInt32(&s.isRebalanceOngoing) == 1 {
+		return true
+	}
 
 	rebalanceStatuses := make(map[string]bool)
 	for appName, p := range s.runningFns() {
