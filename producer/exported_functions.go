@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -356,6 +357,8 @@ func (p *Producer) WriteAppLog(log string) {
 	fmt.Fprintf(p.appLogWriter, "%s [INFO] %s\n", ts, log)
 }
 
+var valid_logline = regexp.MustCompile(`^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}`)
+
 // GetAppLog returns tail of app log, trying to fetch up to 'sz' bytes
 func (p *Producer) GetAppLog(sz int64) []string {
 	if p.appLogWriter == nil {
@@ -371,8 +374,8 @@ func (p *Producer) GetAppLog(sz int64) []string {
 	for scanner.Scan() {
 		lines = append(lines, scanner.Text())
 	}
-	if len(lines) > 1 {
-		// drop first line as it may be truncated
+	if len(lines) > 1 && !valid_logline.MatchString(lines[0]) {
+		// drop first line as it appears truncated
 		lines = lines[1:]
 	}
 	return lines
