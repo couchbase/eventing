@@ -1752,3 +1752,194 @@ func TestCancelTimerBucketop(t *testing.T) {
 	dumpStats()
 	flushFunctionAndBucket(functionName)
 }
+
+func TestN1QLRecursion(t *testing.T) {
+
+	rsp, err := addNodeFromRest("http://127.0.0.1:9003", "eventing")
+	log.Printf("Error in adding nodes : %v, response: %s\n", err, string(rsp))
+	rebalanceFromRest([]string{""})
+	waitForRebalanceFinish()
+
+	setting1 := &commonSettings{
+		aliasSources: make([]string, 0),
+		aliasHandles: make([]string, 0),
+		metaBucket:   metaBucket,
+		sourceBucket: "bucket-1",
+	}
+
+	setting2 := &commonSettings{
+		aliasSources: make([]string, 0),
+		aliasHandles: make([]string, 0),
+		metaBucket:   metaBucket,
+		sourceBucket: "bucket-2",
+	}
+
+	setting3 := &commonSettings{
+		aliasSources: make([]string, 0),
+		aliasHandles: make([]string, 0),
+		metaBucket:   metaBucket,
+		sourceBucket: "bucket-3",
+	}
+
+	functionName1 := fmt.Sprintf("%s_function1", t.Name())
+	functionName2 := fmt.Sprintf("%s_function2", t.Name())
+	functionName3 := fmt.Sprintf("%s_function3", t.Name())
+
+	time.Sleep(time.Second * 5)
+
+	createBucket("bucket-1", bucketmemQuota)
+	bucketFlush("bucket-1")
+
+	createBucket("bucket-2", bucketmemQuota)
+	bucketFlush("bucket-2")
+
+	createBucket("bucket-3", bucketmemQuota)
+	bucketFlush("bucket-3")
+
+	jsFileName := "n1ql_1_2"
+	resp := createAndDeployFunction(functionName1, jsFileName, setting1)
+	log.Printf("response body %s err %v", string(resp.body), resp.err)
+	waitForDeployToFinish(functionName1)
+	status := getFnStatus(functionName1)
+	if status != "deployed" {
+		t.Errorf("%s must be deployed", functionName1)
+	}
+	log.Printf("%s is deployed", functionName1)
+
+	jsFileName = "n1ql_3_1"
+	resp = createAndDeployFunction(functionName3, jsFileName, setting3)
+	log.Printf("response body %s err %v", string(resp.body), resp.err)
+	waitForDeployToFinish(functionName3)
+	status = getFnStatus(functionName3)
+	if status != "deployed" {
+		t.Errorf("%s must be deployed", functionName3)
+	}
+	log.Printf("%s is deployed", functionName3)
+
+	defer func() {
+		flushFunctionAndBucket(functionName1)
+		flushFunctionAndBucket(functionName3)
+		deleteBucket("bucket-1")
+		deleteBucket("bucket-2")
+		deleteBucket("bucket-3")
+		rebalanceFromRest([]string{"127.0.0.1:9003"})
+		waitForRebalanceFinish()
+	}()
+
+	jsFileName = "n1ql_2_3"
+	resp = createAndDeployFunction(functionName2, jsFileName, setting2)
+	log.Printf("response body %s err %v", string(resp.body), resp.err)
+
+	var response map[string]interface{}
+	err = json.Unmarshal(resp.body, &response)
+	if err != nil {
+		t.Errorf("Failed to unmarshal response, err : %v\n", err)
+		return
+	}
+
+	if response["name"].(string) != "ERR_INTER_BUCKET_RECURSION" {
+		t.Errorf("Deployment of %s must fail", functionName2)
+		return
+	}
+	log.Printf("Success: %s is not deployed", functionName2)
+}
+
+func TestN1QLAllowRecursion(t *testing.T) {
+
+	rsp, err := addNodeFromRest("http://127.0.0.1:9003", "eventing")
+	log.Printf("Error in adding nodes : %v, response: %s\n", err, string(rsp))
+	rebalanceFromRest([]string{""})
+	waitForRebalanceFinish()
+
+	setting1 := &commonSettings{
+		aliasSources: make([]string, 0),
+		aliasHandles: make([]string, 0),
+		metaBucket:   metaBucket,
+		sourceBucket: "bucket-1",
+	}
+
+	setting2 := &commonSettings{
+		aliasSources: make([]string, 0),
+		aliasHandles: make([]string, 0),
+		metaBucket:   metaBucket,
+		sourceBucket: "bucket-2",
+	}
+
+	setting3 := &commonSettings{
+		aliasSources: make([]string, 0),
+		aliasHandles: make([]string, 0),
+		metaBucket:   metaBucket,
+		sourceBucket: "bucket-3",
+	}
+
+	functionName1 := fmt.Sprintf("%s_function1", t.Name())
+	functionName2 := fmt.Sprintf("%s_function2", t.Name())
+	functionName3 := fmt.Sprintf("%s_function3", t.Name())
+
+	time.Sleep(time.Second * 5)
+
+	createBucket("bucket-1", bucketmemQuota)
+	bucketFlush("bucket-1")
+
+	createBucket("bucket-2", bucketmemQuota)
+	bucketFlush("bucket-2")
+
+	createBucket("bucket-3", bucketmemQuota)
+	bucketFlush("bucket-3")
+
+	jsFileName := "n1ql_1_2"
+	resp := createAndDeployFunction(functionName1, jsFileName, setting1)
+	log.Printf("response body %s err %v", string(resp.body), resp.err)
+	waitForDeployToFinish(functionName1)
+	status := getFnStatus(functionName1)
+	if status != "deployed" {
+		t.Errorf("%s must be deployed", functionName1)
+	}
+	log.Printf("%s is deployed", functionName1)
+
+	jsFileName = "n1ql_3_1"
+	resp = createAndDeployFunction(functionName3, jsFileName, setting3)
+	log.Printf("response body %s err %v", string(resp.body), resp.err)
+	waitForDeployToFinish(functionName3)
+	status = getFnStatus(functionName3)
+	if status != "deployed" {
+		t.Errorf("%s must be deployed", functionName3)
+	}
+	log.Printf("%s is deployed", functionName3)
+
+	defer func() {
+		flushFunctionAndBucket(functionName1)
+		flushFunctionAndBucket(functionName2)
+		flushFunctionAndBucket(functionName3)
+		deleteBucket("bucket-1")
+		deleteBucket("bucket-2")
+		deleteBucket("bucket-3")
+		rebalanceFromRest([]string{"127.0.0.1:9003"})
+		waitForRebalanceFinish()
+	}()
+
+	payload := fmt.Sprintf("{\"allow_interbucket_recursion\":%v}", true)
+	_, err = configChange(payload)
+	if err != nil {
+		t.Errorf("Failed to change setting allow_interbucket_recursion, err : %v\n", err)
+		return
+	}
+
+	jsFileName = "n1ql_2_3"
+	resp = createAndDeployFunction(functionName2, jsFileName, setting2)
+	log.Printf("response body %s err %v", string(resp.body), resp.err)
+	waitForDeployToFinish(functionName2)
+	status = getFnStatus(functionName2)
+	if status != "deployed" {
+		t.Errorf("%s must be deployed after allow_interbucket_recursion", functionName2)
+	}
+
+	payload = fmt.Sprintf("{\"allow_interbucket_recursion\":%v}", false)
+	_, err = configChange(payload)
+	if err != nil {
+		t.Errorf("Failed to change setting allow_interbucket_recursion, err : %v\n", err)
+		return
+	}
+
+	log.Printf("Success: %s is deployed after allow_interbucket_recursion", functionName2)
+}

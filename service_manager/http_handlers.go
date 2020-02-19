@@ -1962,16 +1962,7 @@ func (m *ServiceMgr) savePrimaryStore(app *application) (info *runtimeInfo) {
 	if consistency, exists := app.Settings["n1ql_consistency"]; exists {
 		n1qlParams = "{ 'consistency': '" + consistency.(string) + "' }"
 	}
-	parsedCode, pinfos := parser.TranspileQueries(app.AppHandlers, n1qlParams)
-	// Prevent deployment of handler with N1QL writing to source bucket
-	for _, pinfo := range pinfos {
-		if pinfo.PInfo.KeyspaceName == app.DeploymentConfig.SourceBucket {
-			info.Code = m.statusCodes.errHandlerCompile.Code
-			info.Info = fmt.Sprintf("Function: %s N1QL dml to source bucket %s", app.Name, pinfo.PInfo.KeyspaceName)
-			logging.Errorf("%s %s", logPrefix, info.Info)
-			return
-		}
-	}
+	parsedCode, _ := parser.TranspileQueries(app.AppHandlers, n1qlParams)
 
 	handlerFooters := util.ToStringArray(app.Settings["handler_footers"])
 	compilationInfo, err := c.SpawnCompilationWorker(parsedCode, string(appContent), app.Name, m.adminHTTPPort,
