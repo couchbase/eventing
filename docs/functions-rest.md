@@ -75,29 +75,31 @@ members must be included in the body of the post. (Undeployed function's setting
 and hence must be edited with functions definition editor, and not this endpoint).
 
 ## Deploy
-Currently, a function is deployed by setting its deployment and processing status to true. This may change in
-the future to provide an explicit endpoint to accomplish the same. Note that deployment status and processing
-status must always be equal in 5.5 release as we do not yet support pause/resume functionality.
-
+A function can be deployed by making the following POST request.
 >
-> `POST /api/v1/functions/<name>/settings`
->
-> {"deployment_status": true, "processing_status": true}
+> `POST /api/v1/functions/<name>/deploy`
 >
 
 ## Undeploy
-Currently, a function is undeployed by setting its deployment and processing status to false. This may change in
-the future to provide an explicit endpoint to accomplish the same. Note that deployment status and processing
-status must always be equal in 5.5 release as we do not yet support pause/resume functionality.
+A function can be undeployed by making the following POST request.
+>
+> `POST /api/v1/functions/<name>/undeploy`
+>
 
+## Pause
+A function can be paused by making the following POST request.
 >
-> `POST /api/v1/functions/<name>/settings`
+> `POST /api/v1/functions/<name>/pause`
 >
-> {"deployment_status": false, "processing_status": false}
+
+## Resume
+A function can be resumed by making the following POST request.
+>
+> `POST /api/v1/functions/<name>/resume`
 >
 
 ## Get eventing global config
-> 
+>
 > `GET /api/v1/config`
 >
 
