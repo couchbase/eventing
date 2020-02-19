@@ -14,6 +14,7 @@ import (
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/gen/flatbuf/cfg"
 	"github.com/couchbase/eventing/logging"
+	"github.com/couchbase/eventing/parser"
 	"github.com/couchbase/eventing/util"
 )
 
@@ -396,6 +397,10 @@ func (m *ServiceMgr) UpdateBucketGraphFromMetakv(functionName string) error {
 	}
 	app := m.parseFunctionPayload(appData, functionName)
 	source, destinations := m.getSourceAndDestinationsFromDepCfg(&app.DeploymentConfig)
+	_, pinfos := parser.TranspileQueries(app.AppHandlers, "")
+	for _, pinfo := range pinfos {
+		destinations[pinfo.PInfo.KeyspaceName] = struct{}{}
+	}
 	if len(destinations) != 0 {
 		m.graph.insertEdges(functionName, source, destinations)
 	}

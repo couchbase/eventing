@@ -20,6 +20,7 @@ import (
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
+	"github.com/couchbase/eventing/parser"
 )
 
 //NewServiceMgr creates handle for ServiceMgr, which implements cbauth service.Manager
@@ -298,6 +299,16 @@ func (m *ServiceMgr) primaryStoreChangeCallback(path string, value []byte, rev i
 			m.graph.insertEdges(fnName, source, destinations)
 		}
 
+		//Find keyspace names from N1QL statements in handler code and add edges
+		_, pinfos := parser.TranspileQueries(app.AppHandlers, "")
+		dstBuckets := make(map[string]struct{})
+		for _, pinfo := range pinfos {
+			logging.Infof("%s Adding allowed edge label %s, source %s to destination %s",
+				logPrefix, fnName, source, pinfo.PInfo.KeyspaceName)
+			dstBuckets[pinfo.PInfo.KeyspaceName] = struct{}{}
+		}
+		m.graph.insertEdges(fnName, source, dstBuckets)
+
 		//Update BucketFunctionMap
 		functions, ok := m.bucketFunctionMap[app.DeploymentConfig.SourceBucket]
 		if !ok {
@@ -394,9 +405,21 @@ func (m *ServiceMgr) settingChangeCallback(path string, value []byte, rev interf
 	cfg := m.fnsInPrimaryStore[functionName]
 
 	source, destinations := m.getSourceAndDestinationsFromDepCfg(&cfg)
-	if deploymentStatus == false && processingStatus == false {
+	if processingStatus == false {
 		if len(destinations) != 0 {
 			m.graph.removeEdges(functionName, source, destinations)
+		}
+		data, err := util.ReadAppContent(metakvAppsPath, metakvChecksumPath, functionName)
+		if err == nil && data != nil {
+			app := m.parseFunctionPayload(data, functionName)
+			_, pinfos := parser.TranspileQueries(app.AppHandlers, "")
+			dstBuckets := make(map[string]struct{})
+			for _, pinfo := range pinfos {
+				logging.Infof("%s Removing N1QL edge label %s, source %s to destination %s",
+					logPrefix, functionName, source, pinfo.PInfo.KeyspaceName)
+				dstBuckets[pinfo.PInfo.KeyspaceName] = struct{}{}
+			}
+			m.graph.removeEdges(functionName, source, dstBuckets)
 		}
 	}
 
