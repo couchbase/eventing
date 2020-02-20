@@ -105,7 +105,7 @@ error_exit() {
 echo "Started testing at `date +'%Y/%m/%d %H:%M:%S'`"
 echo "Testing mode: $MODE"
 stop_cluster
-rm -f $WORKSPACE/logs.tar.* $WORKSPACE/test.log $WORKSPACE/stats.log $WORKSPACE/run.log /tmp/core-*
+rm -f $WORKSPACE/logs.tar.* $WORKSPACE/test.log $WORKSPACE/test-full.log $WORKSPACE/stats.log $WORKSPACE/run.log /tmp/core-*
 > $WORKSPACE/test.log
 > $WORKSPACE/stats.log
 
