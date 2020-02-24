@@ -251,7 +251,7 @@ func TestN1QLGraceLowTimeOut(t *testing.T) {
 
 func TestN1QLGraceSufficientTimeOut(t *testing.T) {
 	functionName := t.Name()
-	handler := "n1ql_timeout_query"
+	handler := "n1ql_notimeout_query"
 
 	flushFunctionAndBucket(functionName)
 	pumpBucketOpsSrc(opsType{count: 30000}, "default", &rateLimit{})
@@ -259,7 +259,7 @@ func TestN1QLGraceSufficientTimeOut(t *testing.T) {
 
 	createAndDeployFunction(functionName, handler, &commonSettings{
 		deadlineTimeout:  60,
-		executionTimeout: 50,
+		executionTimeout: 55,
 		streamBoundary:   "from_now",
 		aliasSources:     []string{dstBucket},
 		aliasHandles:     []string{"dst_bucket"},

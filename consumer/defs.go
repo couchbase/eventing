@@ -107,6 +107,7 @@ type vbSeqNo struct {
 
 // Consumer is responsible interacting with c++ v8 worker over local tcp port
 type Consumer struct {
+	n1qlPrepareAll bool
 	app         *common.AppConfig
 	bucket      string // source bucket
 	builderPool *sync.Pool

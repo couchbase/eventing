@@ -45,16 +45,20 @@ struct Options {
     ::Info
     ExtractClientCtxId(const v8::Local<v8::Object> &options_obj,
                        std::unique_ptr<std::string> &client_ctx_id_out) const;
+    ::Info ExtractIsPrepared(const v8::Local<v8::Object> &options_obj,
+                             std::unique_ptr<bool> &is_prepared_out) const;
 
     v8::Isolate *isolate_;
     v8::Persistent<v8::Context> context_;
     const std::unordered_set<std::string> consistencies_{"none", "request"};
     v8::Persistent<v8::String> client_ctx_id_property_;
     v8::Persistent<v8::String> consistency_property_;
+    v8::Persistent<v8::String> is_prepared_property_;
   };
 
   int consistency{LCB_N1P_CONSISTENCY_NONE};
   std::unique_ptr<std::string> client_context_id;
+  std::unique_ptr<bool> is_prepared;
 };
 
 struct Info : public ::Info {

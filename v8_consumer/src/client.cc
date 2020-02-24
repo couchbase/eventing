@@ -499,6 +499,7 @@ void AppWorker::RouteMessageWithResponse(
       handler_config = new handler_config_t;
       server_settings = new server_settings_t;
 
+      handler_config->n1ql_prepare_all = payload->n1ql_prepare_all();
       handler_config->app_name.assign(payload->app_name()->str());
       handler_config->lang_compat.assign(
           payload->language_compatibility()->str());
@@ -1026,11 +1027,13 @@ void AppWorker::EventGenLoop() {
           // Check for memory growth
           int64_t approx_memory = 0;
           for (const auto &v8_worker : worker->workers_) {
-            approx_memory += v8_worker.second->worker_queue_->GetMemory() + v8_worker.second->v8_heap_size_;
+            approx_memory += v8_worker.second->worker_queue_->GetMemory() +
+                             v8_worker.second->v8_heap_size_;
           }
 
           for (auto &v8_worker : worker->workers_) {
-            if (v8_worker.second->v8_heap_size_ > MAX_V8_HEAP_SIZE || approx_memory > worker->memory_quota_ * 0.8) {
+            if (v8_worker.second->v8_heap_size_ > MAX_V8_HEAP_SIZE ||
+                approx_memory > worker->memory_quota_ * 0.8) {
               std::unique_ptr<WorkerMessage> msg(new WorkerMessage);
               msg->header.event = eInternal + 1;
               msg->header.opcode = oRunGc;

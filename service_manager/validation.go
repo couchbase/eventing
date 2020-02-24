@@ -13,6 +13,7 @@ import (
 	"github.com/couchbase/cbauth"
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/logging"
+	"github.com/couchbase/eventing/parser"
 	"github.com/couchbase/eventing/util"
 )
 
@@ -31,9 +32,64 @@ func (m *ServiceMgr) sanitiseApplication(app *application) (info *runtimeInfo) {
 	return info
 }
 
+func (m *ServiceMgr) validateAppRecursion(app *application) (info *runtimeInfo) {
+	info = &runtimeInfo{}
+	info.Code = m.statusCodes.errInvalidConfig.Code
+	logPrefix := "ServiceMgr::validateAppRecursion"
+
+	var config common.Config
+	if config, info = m.getConfig(); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
+	var allowInterBucketRecursion bool
+	if flag, ok := config["allow_interbucket_recursion"]; ok {
+		allowInterBucketRecursion = flag.(bool)
+	}
+
+	if allowInterBucketRecursion == false && m.isAppDeployable(app) == false {
+		info.Code = m.statusCodes.errInterFunctionRecursion.Code
+		info.Info = fmt.Sprintf("Inter handler recursion error")
+		return
+	}
+
+	source, destinations := m.getSourceAndDestinationsFromDepCfg(&app.DeploymentConfig)
+	_, pinfos := parser.TranspileQueries(app.AppHandlers, "")
+	// Prevent deployment of handler with N1QL writing to source bucket
+	for _, pinfo := range pinfos {
+		if pinfo.PInfo.KeyspaceName == app.DeploymentConfig.SourceBucket {
+			info.Code = m.statusCodes.errHandlerCompile.Code
+			info.Info = fmt.Sprintf("Function: %s N1QL dml to source bucket %s", app.Name, pinfo.PInfo.KeyspaceName)
+			logging.Errorf("%s %s", logPrefix, info.Info)
+			return
+		}
+		destinations[pinfo.PInfo.KeyspaceName] = struct{}{}
+	}
+	if len(destinations) != 0 {
+		if possible, path := m.graph.isAcyclicInsertPossible(app.Name, source, destinations); !possible && !allowInterBucketRecursion {
+			info.Code = m.statusCodes.errInterBucketRecursion.Code
+			info.Info = fmt.Sprintf("Inter bucket recursion error; function: %s causes a cycle "+
+				"involving functions: %v, hence deployment is disallowed", app.Name, path)
+			return
+		}
+
+		functions := m.graph.getAcyclicInsertSideEffects(destinations)
+		if len(functions) > 0 {
+			info.Code = m.statusCodes.ok.Code
+			var wInfo warningsInfo
+			wInfo.Status = "Validated function config"
+			wInfo.Warnings = append(wInfo.Warnings, fmt.Sprintf("Function %s will modify source buckets of following functions %v", app.Name, functions))
+			info.Info = wInfo
+		}
+	}
+	info.Code = m.statusCodes.ok.Code
+	return
+}
+
 func (m *ServiceMgr) validateApplication(app *application) (info *runtimeInfo) {
 	info = &runtimeInfo{}
 	info.Code = m.statusCodes.errInvalidConfig.Code
+	logPrefix := "ServiceMgr::validateApplication"
 
 	if info = m.sanitiseApplication(app); info.Code != m.statusCodes.ok.Code {
 		return
@@ -55,40 +111,11 @@ func (m *ServiceMgr) validateApplication(app *application) (info *runtimeInfo) {
 		return
 	}
 
-	var config common.Config
-	if config, info = m.getConfig(); info.Code != m.statusCodes.ok.Code {
+	if info = m.validateAppRecursion(app); info.Code != m.statusCodes.ok.Code {
+		logging.Errorf("%s Function: %s recursion error %d: %s", logPrefix, app.Name, info.Code, info.Info)
 		return
 	}
 
-	var allowInterBucketRecursion bool
-	if flag, ok := config["allow_interbucket_recursion"]; ok {
-		allowInterBucketRecursion = flag.(bool)
-	}
-
-	if allowInterBucketRecursion == false && m.isAppDeployable(app) == false {
-		info.Code = m.statusCodes.errInterFunctionRecursion.Code
-		info.Info = fmt.Sprintf("Inter handler recursion error")
-		return
-	}
-
-	source, destinations := m.getSourceAndDestinationsFromDepCfg(&app.DeploymentConfig)
-	if len(destinations) != 0 {
-		if possible, path := m.graph.isAcyclicInsertPossible(app.Name, source, destinations); !possible && !allowInterBucketRecursion {
-			info.Code = m.statusCodes.errInterBucketRecursion.Code
-			info.Info = fmt.Sprintf("Inter bucket recursion error; function: %s causes a cycle "+
-				"involving functions: %v, hence deployment is disallowed", app.Name, path)
-			return
-		}
-
-		functions := m.graph.getAcyclicInsertSideEffects(destinations)
-		if len(functions) > 0 {
-			info.Code = m.statusCodes.ok.Code
-			var wInfo warningsInfo
-			wInfo.Status = "Validated function config"
-			wInfo.Warnings = append(wInfo.Warnings, fmt.Sprintf("Function %s will modify source buckets of following functions %v", app.Name, functions))
-			info.Info = wInfo
-		}
-	}
 	info.Code = m.statusCodes.ok.Code
 	return
 }
@@ -745,6 +772,9 @@ func (m *ServiceMgr) validateSettings(appName string, settings map[string]interf
 	m.fillMissingWithDefaults(appName, settings)
 
 	// Handler related configurations
+	if info = m.validateBoolean("n1ql_prepare_all", false, settings); info.Code != m.statusCodes.ok.Code {
+		return
+	}
 	if info = m.validatePossibleValues("language_compatibility", settings, common.LanguageCompatibility); info.Code != m.statusCodes.ok.Code {
 		return
 	}

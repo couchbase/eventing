@@ -64,8 +64,8 @@
           <div class="width-12 text-right">
             <button
               class="outline"
-              ng-click="$event.stopPropagation();summaryCtrl.deleteApp(app.appname)"
-              ng-disabled="app.settings.processing_status || app.settings.deployment_status || app.uiState === 'healthy'">
+              ng-disabled="app.status !== 'undeployed' || app.settings.processing_status || app.settings.deployment_status || app.uiState === 'healthy'"
+              ng-click="$event.stopPropagation();summaryCtrl.deleteApp(app.appname)">
               Delete
             </button>
             <button
@@ -86,10 +86,11 @@
                 {{app.getProcessingStatus(true)}}
             </button>
             <button
-              ng-click="$event.stopPropagation();"
+              class="outline"
               ui-sref="app.admin.eventing.handler({appName:app.appname})"
-              ng-disabled="summaryCtrl.disableEditButton">
-              Edit JavaScript
+              ng-disabled="summaryCtrl.disableEditButton"
+              ng-click="$event.stopPropagation();">
+		{{app.status === 'deployed' || app.status === 'deploying' ? 'View JavaScript' : 'Edit JavaScript'}}
             </button>
           </div>
         </div>

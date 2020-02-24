@@ -1965,16 +1965,7 @@ func (m *ServiceMgr) savePrimaryStore(app *application) (info *runtimeInfo) {
 	if consistency, exists := app.Settings["n1ql_consistency"]; exists {
 		n1qlParams = "{ 'consistency': '" + consistency.(string) + "' }"
 	}
-	parsedCode, pinfos := parser.TranspileQueries(app.AppHandlers, n1qlParams)
-	// Prevent deployment of handler with N1QL writing to source bucket
-	for _, pinfo := range pinfos {
-		if pinfo.PInfo.KeyspaceName == app.DeploymentConfig.SourceBucket {
-			info.Code = m.statusCodes.errHandlerCompile.Code
-			info.Info = fmt.Sprintf("Function: %s N1QL dml to source bucket %s", app.Name, pinfo.PInfo.KeyspaceName)
-			logging.Errorf("%s %s", logPrefix, info.Info)
-			return
-		}
-	}
+	parsedCode, _ := parser.TranspileQueries(app.AppHandlers, n1qlParams)
 
 	handlerFooters := util.ToStringArray(app.Settings["handler_footers"])
 	compilationInfo, err := c.SpawnCompilationWorker(parsedCode, string(appContent), app.Name, m.adminHTTPPort,
@@ -2148,7 +2139,7 @@ func (m *ServiceMgr) getDcpEventsRemaining(w http.ResponseWriter, r *http.Reques
 }
 
 func (m *ServiceMgr) getAggPausingApps(w http.ResponseWriter, r *http.Request) {
-	logPrefix := "ServiceMgr::getAggBootstrappingApps"
+	logPrefix := "ServiceMgr::getAggPausingApps"
 
 	if !m.validateAuth(w, r, EventingPermissionManage) {
 		return
@@ -2165,6 +2156,15 @@ func (m *ServiceMgr) getAggPausingApps(w http.ResponseWriter, r *http.Request) {
 			"Node list: %v", logPrefix, m.eventingNodeAddrs)
 		return
 	}
+
+	if err != nil {
+		logging.Errorf("%s Failed to grab pausing function list from all eventing nodes."+
+			"Node list: %v", logPrefix, m.eventingNodeAddrs)
+		return
+	}
+
+	w.Write([]byte(strconv.FormatBool(appsPausing)))
+
 }
 
 func (m *ServiceMgr) getAggBootstrappingApps(w http.ResponseWriter, r *http.Request) {
@@ -2185,6 +2185,14 @@ func (m *ServiceMgr) getAggBootstrappingApps(w http.ResponseWriter, r *http.Requ
 			"Node list: %v", logPrefix, m.eventingNodeAddrs)
 		return
 	}
+
+	if err != nil {
+		logging.Errorf("%s Failed to grab bootstrapping function list from all eventing nodes or some functions."+
+			"Node list: %v", logPrefix, m.eventingNodeAddrs)
+		return
+	}
+
+	w.Write([]byte(strconv.FormatBool(appsBootstrapping)))
 }
 
 func (m *ServiceMgr) getPausingApps(w http.ResponseWriter, r *http.Request) {
