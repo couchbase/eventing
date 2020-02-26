@@ -417,7 +417,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         }
 
                         ApplicationService.server.showSuccessAlert(
-                            `${app.appname} will ${operation} ${warnings?'with warnings':''}`);
+                            `${app.appname} will ${operation} ${warnings ? 'with warnings' : ''}`);
 
                         // since the UI is changing state update the count
                         fetchWorkerCount();
