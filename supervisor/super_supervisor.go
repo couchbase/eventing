@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 	"sync/atomic"
+	"time"
 
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/dcp"
@@ -158,50 +158,7 @@ func (s *SuperSupervisor) EventHandlerLoadCallback(path string, value []byte, re
 		return nil
 	}
 
-	if value != nil {
-		appName := util.GetAppNameFromPath(path)
-		msg := supCmdMsg{
-			ctx: appName,
-			cmd: cmdAppLoad,
-		}
-
-		var sData []byte
-		path := MetakvAppSettingsPath + appName
-		util.Retry(util.NewFixedBackoff(time.Second), nil, metakvGetCallback, s, path, &sData)
-
-		s.appRWMutex.Lock()
-		if _, ok := s.appDeploymentStatus[appName]; !ok {
-			s.appDeploymentStatus[appName] = false
-		}
-
-		if _, ok := s.appProcessingStatus[appName]; !ok {
-			s.appProcessingStatus[appName] = false
-		}
-		s.appRWMutex.Unlock()
-
-		pStatus, _, cTimers, _, err := s.getStatuses(sData)
-		if err != nil {
-			logging.Errorf("%s [%d] Missing processing_status", logPrefix, s.runningFnsCount())
-			return nil // Returning nil, otherwise metakv callback would keep getting invoked over and over again
-		}
-
-		msg.cleanupTimers = cTimers
-
-		s.appRWMutex.RLock()
-		appProcessingStatus := s.appProcessingStatus[appName]
-		s.appRWMutex.RUnlock()
-
-		if appProcessingStatus == false && pStatus {
-			s.supCmdCh <- msg
-
-			s.appRWMutex.Lock()
-			s.appProcessingStatus[appName] = true
-			s.appDeploymentStatus[appName] = true
-			s.appRWMutex.Unlock()
-
-		}
-	} else {
-
+	if value == nil {
 		// Delete application request
 		splitRes := strings.Split(path, "/")
 		appName := splitRes[len(splitRes)-1]
@@ -725,70 +682,6 @@ func (s *SuperSupervisor) HandleSupCmdMsg() {
 					}
 				}
 				d.Close()
-
-			case cmdAppLoad:
-				logging.Infof("%s [%d] Function: %s begin deployment process", logPrefix, s.runningFnsCount(), appName)
-
-				s.appListRWMutex.Lock()
-				if _, ok := s.bootstrappingApps[appName]; ok {
-					logging.Infof("%s [%d] Function: %s already bootstrapping", logPrefix, s.runningFnsCount(), appName)
-					s.appListRWMutex.Unlock()
-					continue
-				}
-
-				logging.Infof("%s [%d] Function: %s adding to bootstrap list", logPrefix, s.runningFnsCount(), appName)
-				s.bootstrappingApps[appName] = time.Now().String()
-				s.appListRWMutex.Unlock()
-
-				// Clean previous running instance of app producers
-				if p, ok := s.runningFns()[appName]; ok {
-					logging.Infof("%s [%d] Function: %s cleaning up previous running instance", logPrefix, s.runningFnsCount(), appName)
-					p.NotifyInit()
-
-					s.stopAndDeleteProducer(p)
-					s.deleteFromRunningProducers(appName)
-
-					p.NotifySupervisor()
-					logging.Infof("%s [%d] Function: %s cleaned up previous running producer instance", logPrefix, s.runningFnsCount(), appName)
-				}
-
-				s.spawnApp(appName, msg.cleanupTimers)
-
-				var sData []byte
-				path := MetakvAppSettingsPath + appName
-				util.Retry(util.NewFixedBackoff(time.Second), nil, metakvGetCallback, s, path, &sData)
-
-				pStatus, dStatus, _, _, err := s.getStatuses(sData)
-				if err != nil {
-					continue
-				}
-
-				if !dStatus && !pStatus {
-					logging.Infof("%s [%d] Function: %s skipping bootstrap as processing & deployment status suggests function isn't supposed to be deployed",
-						logPrefix, s.runningFnsCount(), appName)
-					continue
-				}
-
-				if eventingProducer, ok := s.runningFns()[appName]; ok {
-					eventingProducer.SignalBootstrapFinish()
-
-					logging.Infof("%s [%d] Function: %s bootstrap finished", logPrefix, s.runningFnsCount(), appName)
-					// double check that handler is still present in s.runningFns() after eventingProducer.SignalBootstrapFinish() above
-					// as handler may have been undeployed due to src and/or meta bucket delete
-					if _, ok := s.runningFns()[appName]; ok {
-						s.addToDeployedApps(appName)
-						s.addToLocallyDeployedApps(appName)
-						logging.Infof("%s [%d] Function: %s added to deployed apps map", logPrefix, s.runningFnsCount(), appName)
-					}
-
-					s.deleteFromCleanupApps(appName)
-
-					s.appListRWMutex.Lock()
-					logging.Infof("%s [%d] Function: %s deleting from bootstrap list", logPrefix, s.runningFnsCount(), appName)
-					delete(s.bootstrappingApps, appName)
-					s.appListRWMutex.Unlock()
-				}
-				logging.Infof("%s [%d] Function: %s deployment done", logPrefix, s.runningFnsCount(), appName)
 
 			case cmdSettingsUpdate:
 				if p, ok := s.runningFns()[appName]; ok {

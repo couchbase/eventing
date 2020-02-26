@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"time"
 
 	"github.com/couchbase/cbauth/service"
 	"github.com/couchbase/eventing/common"
@@ -569,4 +570,44 @@ func (m *ServiceMgr) getFunctionList(query url.Values) (fnlist functionList, inf
 		}
 	}
 	return
+}
+
+func (m *ServiceMgr) getStatuses(appName string) (bool, bool, error) {
+	logPrefix := "ServiceMgr::getStatuses"
+
+	var sData []byte
+	metakvPath := metakvAppSettingsPath + appName
+	util.Retry(util.NewFixedBackoff(time.Second), nil, metakvGetCallback, metakvPath, &sData)
+	settings := make(map[string]interface{})
+	err := json.Unmarshal(sData, &settings)
+	if err != nil {
+		logging.Errorf("%s Failed to unmarshal settings", logPrefix)
+		return false, false, err
+	}
+
+	val, ok := settings["deployment_status"]
+	if !ok {
+		logging.Errorf("%s Missing deployment_status", logPrefix)
+		return false, false, fmt.Errorf("missing deployment_status")
+	}
+
+	dStatus, ok := val.(bool)
+	if !ok {
+		logging.Errorf("%s Supplied deployment_status unexpected", logPrefix)
+		return false, false, fmt.Errorf("non boolean deployment_status")
+	}
+
+	val, ok = settings["processing_status"]
+	if !ok {
+		logging.Errorf("%s Missing processing_status", logPrefix)
+		return false, false, fmt.Errorf("missing processing_status")
+	}
+
+	pStatus, ok := val.(bool)
+	if !ok {
+		logging.Errorf("%s Supplied processing_status unexpected", logPrefix)
+		return false, false, fmt.Errorf("non boolean processing_status")
+	}
+
+	return dStatus, pStatus, nil
 }

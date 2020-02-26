@@ -1362,14 +1362,13 @@ func TestInterHandlerRecursion(t *testing.T) {
 	flushFunctionAndBucket(functionName2)
 
 	defer func() {
-		// Required, otherwise function delete request in subsequent call would fail
-		waitForDeployToFinish(functionName1)
 		flushFunctionAndBucket(functionName1)
 		flushFunctionAndBucket(functionName2)
 	}()
 
 	resp := createAndDeployFunction(functionName1, handler1, &commonSettings{srcMutationEnabled: true})
 	log.Printf("response body %s err %v", string(resp.body), resp.err)
+	waitForDeployToFinish(functionName1)
 	resp = createAndDeployFunction(functionName2, handler2, &commonSettings{srcMutationEnabled: true})
 	log.Printf("response body %s err %v", string(resp.body), resp.err)
 
