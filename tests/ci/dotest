@@ -81,7 +81,7 @@ error_email() {
   touch ~/.cinotify
 
   if [ "$WATCHERS" = "" -o ! -f ~/.cicred ]; then return; fi
-  cat /var/www/eventing-current.html | \
+  echo "$1" | \
      sendemail -q \
        -s smtp.gmail.com \
        -o tls=yes \
@@ -97,7 +97,7 @@ error_exit() {
   echo "$2"
   collect_logs
   stop_cluster
-  error_email
+  error_email "Testing Failed: $1\n$2"
   exit 2
 }
 
