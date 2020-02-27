@@ -28,7 +28,7 @@ CRC64::~CRC64() {
 uint64_t CRC64::Checksum(const uint8_t* data, uint64_t len) const {
     auto crc = uint64_t(0);
     crc = ~crc;
-    for (auto i = 0; i < len; i++) {
+    for (uint64_t i = 0; i < len; i++) {
         auto v = data[i];
         crc = table_[uint8_t(crc) ^ v] ^ (crc >> 8);
     }

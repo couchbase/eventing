@@ -733,7 +733,7 @@ void AppWorker::RouteMessageWithResponse(
   case ePauseConsumer: {
     pause_consumer_.store(true);
     std::unordered_map<int64_t, uint64_t> lps_map;
-    for (size_t idx = 0; idx < thr_count_; ++idx) {
+    for (int16_t idx = 0; idx < thr_count_; ++idx) {
       auto worker = workers_[idx];
       worker->StopTimerScan();
       auto lck = worker->GetAndLockFilterLock();
@@ -798,7 +798,7 @@ void AppWorker::RouteMessageWithResponse(
 
       auto partitions = PartitionVbuckets(vbuckets);
 
-      for (size_t idx = 0; idx < thr_count_; ++idx) {
+      for (int16_t idx = 0; idx < thr_count_; ++idx) {
         auto worker = workers_[idx];
         worker->UpdatePartitions(partitions[idx]);
       }
