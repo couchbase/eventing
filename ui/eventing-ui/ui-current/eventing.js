@@ -1019,20 +1019,37 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
 
             self.saveEdit = function() {
                 app.appcode = self.handler;
-                ApplicationService.tempStore.saveApp(app)
+                ApplicationService.public.status()
                     .then(function(response) {
-                        ApplicationService.server.showSuccessAlert('Code saved successfully!');
-                        ApplicationService.server.showWarningAlert('Deploy for changes to take effect!');
+                        response = response.data;
+                        var pos = response.apps.map(function(e) {
+                            return e.name;
+                        }).indexOf(app.appname);
+                        if (response.apps[pos].composite_status !== 'undeployed' && response.apps[pos].composite_status !== 'paused') {
+                            self.handler = app.appcode = self.pristineHandler;
+                            self.disableDeployButton = self.disableCancelButton = self.disableSaveButton = true;
+                            self.warning = false;
+                            ApplicationService.server.showErrorAlert('Changes cannot be saved. Function can be edited only when it is undeployed or paused');
+                        } else {
+                            ApplicationService.tempStore.saveApp(app)
+                                .then(function(response) {
+                                    ApplicationService.server.showSuccessAlert('Code saved successfully!');
+                                    ApplicationService.server.showWarningAlert('Deploy for changes to take effect!');
 
-                        self.disableCancelButton = self.disableSaveButton = true;
-                        self.disableDeployButton = false;
-                        self.warning = false;
+                                    self.disableCancelButton = self.disableSaveButton = true;
+                                    self.disableDeployButton = false;
+                                    self.warning = false;
 
-                        // Optimistic that the user has fixed the errors
-                        // If not the errors will anyway show up when he deploys again
-                        self.aceEditor.clearMarkersAndAnnotations();
-                        delete app.compilationInfo;
-                        console.log(response.data);
+                                    // Optimistic that the user has fixed the errors
+                                    // If not the errors will anyway show up when he deploys again
+                                    self.aceEditor.clearMarkersAndAnnotations();
+                                    delete app.compilationInfo;
+                                    console.log(response.data);
+                                })
+                                .catch(function(errResponse) {
+                                    console.error(errResponse);
+                                });
+                        }
                     })
                     .catch(function(errResponse) {
                         console.error(errResponse);
