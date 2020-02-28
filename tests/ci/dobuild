@@ -107,10 +107,10 @@ note_version ns_server    $WORKSPACE/ns_server
 note_version couchstore   $WORKSPACE/couchstore
 note_version couchdb      $WORKSPACE/couchdb
 
-switch_version eventing    $WORKSPACE/goproj/src/github.com/couchbase/eventing     unstable
-switch_version eventing-ee $WORKSPACE/goproj/src/github.com/couchbase/eventing-ee  unstable
-switch_version query       $WORKSPACE/goproj/src/github.com/couchbase/query        master
-switch_version testrunner  $WORKSPACE/testrunner                                   master
+#switch_version eventing    $WORKSPACE/goproj/src/github.com/couchbase/eventing     mad-hatter
+#switch_version eventing-ee $WORKSPACE/goproj/src/github.com/couchbase/eventing-ee  mad-hatter
+#switch_version query       $WORKSPACE/goproj/src/github.com/couchbase/query        mad-hatter
+#switch_version testrunner  $WORKSPACE/testrunner                                   mad-hatter
 
 > ~/gerrit.list
 if [ "$CIBOT" = "true" ]; then
