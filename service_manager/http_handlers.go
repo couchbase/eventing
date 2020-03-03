@@ -3023,9 +3023,8 @@ func (m *ServiceMgr) statusHandlerImpl() (response appStatusResponse, info *runt
 
 	response.NumEventingNodes = numEventingNodes
 	for _, app := range m.getTempStoreAll() {
-		deploymentStatus, dOk := app.Settings["deployment_status"].(bool)
-		processingStatus, pOk := app.Settings["processing_status"].(bool)
-		if !dOk || !pOk {
+		deploymentStatus, processingStatus, err := m.getStatuses(app.Name)
+		if err != nil {
 			info.Code = m.statusCodes.errInvalidConfig.Code
 			return
 		}
