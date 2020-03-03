@@ -3,45 +3,8 @@
 package eventing
 
 import (
-	"log"
-	"net/http"
 	"testing"
 )
-
-func TestMain(m *testing.M) {
-	server := startHttpServer(":9090")
-	m.Run()
-	if err := server.Shutdown(nil); err != nil {
-		log.Printf("Unable to shutdown server, err : %v\n", err)
-	}
-}
-
-func startHttpServer(port string) *http.Server {
-	server := &http.Server{Addr: port}
-
-	http.HandleFunc("/empty", emptyHandler)
-	http.HandleFunc("/large", largeHandler)
-	http.HandleFunc("/get", getOrDeleteHandler)
-	http.HandleFunc("/get/", getOrDeleteHandler)
-	http.HandleFunc("/getRedirect", getRedirectHandler)
-	http.HandleFunc("/getRedirect/", getRedirectHandler)
-	http.HandleFunc("/delete", getOrDeleteHandler)
-	http.HandleFunc("/delete/", getOrDeleteHandler)
-	http.HandleFunc("/post", postOrPutHandler)
-	http.HandleFunc("/post/", postOrPutHandler)
-	http.HandleFunc("/put", postOrPutHandler)
-	http.HandleFunc("/put/", postOrPutHandler)
-	http.HandleFunc("/head", headHandler)
-	http.HandleFunc("/head/", headHandler)
-
-	go func() {
-		err := server.ListenAndServe()
-		if err != nil {
-			log.Printf("Unable to start the HTTP Server, err : %v", err)
-		}
-	}()
-	return server
-}
 
 // HEAD
 func TestCurlHead(t *testing.T) {
@@ -137,12 +100,12 @@ func TestCurlGetRedirect(t *testing.T) {
 }
 
 func TestCurlGetRedirectFail(t *testing.T) {
-        curl := curlTester{
-                handler:    "curl_get_redirect_fail",
-                testName:   "TestCurlGetRedirectFail",
-                testHandle: t,
-        }
-        curl.testGet()
+	curl := curlTester{
+		handler:    "curl_get_redirect_fail",
+		testName:   "TestCurlGetRedirectFail",
+		testHandle: t,
+	}
+	curl.testGet()
 }
 
 func TestCurlGetRedirectMax(t *testing.T) {

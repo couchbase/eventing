@@ -23,7 +23,7 @@ static constexpr int resolution = 7;
 static constexpr int init_seq = 128;
 static constexpr int tail_time = 60;
 static constexpr int encode_base = 10;
-static const char *dict =
+static const char *const dict =
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789*&";
 
 struct EpochInfo {

@@ -4,7 +4,7 @@ top:=$(realpath ../../../../..)
 workdir:=$(realpath .)/build
 binaries:=eventing-producer eventing-consumer cbevent
 
-goroot := $(shell find ~/.cbdepscache/exploded/x86_64 -type d -name 'go-1.1?.*' -print -quit)/go
+goroot := $(shell find ~/.cbdepscache/exploded/x86_64 -type d -name 'go-1.13.7' -print -quit)/go
 ccache := $(shell which ccache)
 cc_src := $(shell find features/ v8_consumer/ third_party/ gen/ ../eventing-ee/features/ -name '*.cc' -o -name '*.c')
 go_src := $(shell find . ../eventing-ee/ -name '*.go')

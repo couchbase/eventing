@@ -581,10 +581,11 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         Object.assign(creationScope.appModel.depcfg, ApplicationService.convertBindingToConfig(creationScope.bindings));
                         creationScope.appModel.fillWithMissingDefaults();
 
-                        // When we import the application, we want it to be in
-                        // disabled and undeployed state.
+                        // When we import the application, we want it to be in disabled and
+                        // undeployed state with feed bondary "everything" ("from_prior" is not legal)
                         creationScope.appModel.settings.processing_status = false;
                         creationScope.appModel.settings.deployment_status = false;
+                        creationScope.appModel.settings.dcp_stream_boundary = "everything";
 
                         // Deadline timeout must be greater and execution timeout.
                         if (creationScope.appModel.settings.hasOwnProperty('execution_timeout')) {
