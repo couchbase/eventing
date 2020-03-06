@@ -90,8 +90,9 @@ rm -rf ~/.manifests
 git clone ssh://github.com/couchbase/build-manifests ~/.manifests 1>>$WORKSPACE/make.log 2>&1
 cd ~/.manifests
 
-test "$BLD_NUM" = "0" && BLD_NUM="`git log --oneline | grep "couchbase-server" | grep -F "$RELEASE-" | head -1 | sed "s/^.*$RELEASE-\([0-9]*\).*$/\1/g"`"
-SHA=`git log --oneline | grep "couchbase-server" | grep "$RELEASE-$BLD_NUM" | head -1 | awk '{print $1}'`
+codename="`echo $MANIFEST | awk -F/ '{print $2}'`"
+test "$BLD_NUM" = "0" && BLD_NUM="`git log --oneline | grep "couchbase-server $codename" | grep -F "$RELEASE-" | head -1 | sed "s/^.*$RELEASE-\([0-9]*\).*$/\1/g"`"
+SHA=`git log --oneline | grep "couchbase-server $codename" | grep "$RELEASE-$BLD_NUM" | head -1 | awk '{print $1}'`
 git branch thisrun $SHA 1>>$WORKSPACE/make.log 2>&1
 
 echo "Updating mirror"
