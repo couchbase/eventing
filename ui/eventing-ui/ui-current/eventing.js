@@ -1048,6 +1048,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                                     console.log(response.data);
                                 })
                                 .catch(function(errResponse) {
+                                    ApplicationService.server.showErrorAlert("Changes cannot be saved. Reason: " + errResponse.data.runtime_info.info);
                                     console.error(errResponse);
                                 });
                         }
