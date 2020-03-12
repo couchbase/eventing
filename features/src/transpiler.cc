@@ -146,8 +146,8 @@ void Transpiler::LogCompilationInfo(const CompilationInfo &info) {
 }
 
 // Composes compilation info returned by transpiler.js
-CompilationInfo
-Transpiler::ComposeCompilationInfo(v8::Local<v8::Value> &compiler_result) {
+CompilationInfo Transpiler::ComposeCompilationInfo(
+  v8::Local<v8::Value> &compiler_result) {
   if (IS_EMPTY(compiler_result)) {
     throw "Result of ExecTranspiler is empty";
   }

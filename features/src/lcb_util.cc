@@ -9,11 +9,10 @@
 // or implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-#include <thread>
-
 #include "isolate_data.h"
 #include "lcb_utils.h"
 #include "utils.h"
+#include <v8.h>
 
 #define EVT_LOG_MSG_SIZE 1024
 
@@ -56,7 +55,7 @@ const char *GetPassword(void *cookie, const char *host, const char *port,
 }
 
 // lcb related callbacks
-void GetCallback(lcb_t instance, int, const lcb_RESPBASE *rb) {
+void get_callback(lcb_t instance, int, const lcb_RESPBASE *rb) {
   auto resp = reinterpret_cast<const lcb_RESPGET *>(rb);
   auto result = reinterpret_cast<Result *>(rb->cookie);
 
@@ -80,7 +79,7 @@ void GetCallback(lcb_t instance, int, const lcb_RESPBASE *rb) {
   }
 }
 
-void SetCallback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
+void set_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
   auto resp = reinterpret_cast<const lcb_RESPSTORE *>(rb);
   auto result = reinterpret_cast<Result *>(rb->cookie);
 
@@ -97,7 +96,7 @@ void SetCallback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
                 << std::endl;
 }
 
-void SubDocumentCallback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
+void sdmutate_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
   auto result = reinterpret_cast<Result *>(rb->cookie);
   result->rc = rb->rc;
 
@@ -110,7 +109,7 @@ void SubDocumentCallback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
                 << lcb_strerror(nullptr, result->rc) << std::endl;
 }
 
-void DeleteCallback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
+void del_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
   auto result = reinterpret_cast<Result *>(rb->cookie);
   result->rc = rb->rc;
 

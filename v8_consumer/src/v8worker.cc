@@ -12,7 +12,6 @@
 #include <mutex>
 #include <nlohmann/json.hpp>
 #include <string>
-#include <unordered_map>
 
 #include "bucket.h"
 #include "curl.h"
@@ -80,6 +79,7 @@ v8::Local<v8::ObjectTemplate> V8Worker::NewGlobalObj() const {
   return handle_scope.Escape(global);
 }
 
+// TODO : Use vector
 void V8Worker::InstallCurlBindings(
     const std::vector<CurlBinding> &curl_bindings) const {
   v8::HandleScope handle_scope(isolate_);
@@ -87,24 +87,6 @@ void V8Worker::InstallCurlBindings(
   auto context = context_.Get(isolate_);
   for (const auto &binding : curl_bindings) {
     binding.InstallBinding(isolate_, context);
-  }
-}
-
-void V8Worker::InstallBucketBindings(
-    const std::unordered_map<
-        std::string, std::unordered_map<std::string, std::vector<std::string>>>
-        &config) {
-  auto buckets_it = config.find("buckets");
-  if (buckets_it == config.end()) {
-    return;
-  }
-
-  for (const auto &[bucket_alias, bucket_info] : buckets_it->second) {
-    const auto &bucket_name = bucket_info[0];
-    const auto &bucket_access = bucket_info[2];
-    bucket_bindings_.emplace_back(isolate_, bucket_factory_, bucket_name,
-                                  bucket_alias, bucket_access == "r",
-                                  bucket_name == cb_source_bucket_);
   }
 }
 
@@ -215,15 +197,32 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
   InstallCurlBindings(config->curl_bindings);
   InitializeCurlBindingValues(config->curl_bindings);
 
-  bucket_factory_ = std::make_shared<BucketFactory>(isolate_, context);
-  if (!h_config->skip_lcb_bootstrap) {
-    InstallBucketBindings(config->component_configs);
-  }
-
   execute_start_time_ = Time::now();
-  max_task_duration_ = SECS_TO_NS * h_config->execution_timeout;
 
+  Bucket *bucket_handle = nullptr;
+  max_task_duration_ = SECS_TO_NS * h_config->execution_timeout;
   timer_context_size = h_config->timer_context_size;
+
+  if (!h_config->skip_lcb_bootstrap) {
+    for (auto it = config->component_configs.begin();
+         it != config->component_configs.end(); it++) {
+      if (it->first == "buckets") {
+        auto bucket = config->component_configs["buckets"].begin();
+        for (; bucket != config->component_configs["buckets"].end(); bucket++) {
+          std::string bucket_alias = bucket->first;
+          std::string bucket_name =
+              config->component_configs["buckets"][bucket_alias][0];
+          std::string bucket_access =
+              config->component_configs["buckets"][bucket_alias][2];
+          bucket_handle = new Bucket(isolate_, context, bucket_name,
+                                     bucket_alias, bucket_access == "r",
+                                     bucket_name == config->source_bucket);
+
+          bucket_handles_.push_back(bucket_handle);
+        }
+      }
+    }
+  }
 
   LOG(logInfo) << "Initialised V8Worker handle, app_name: "
                << h_config->app_name
@@ -409,11 +408,16 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
     on_delete_.Reset(isolate_, on_delete_fun);
   }
 
-  for (auto &binding : bucket_bindings_) {
-    auto error = binding.InstallBinding(isolate_, context);
-    if (error != nullptr) {
-      LOG(logError) << "Unable to install bucket binding, err : " << *error
-                    << std::endl;
+  if (!bucket_handles_.empty()) {
+    auto bucket_handle = bucket_handles_.begin();
+
+    for (; bucket_handle != bucket_handles_.end(); bucket_handle++) {
+      if (*bucket_handle) {
+        if (!(*bucket_handle)->InstallMaps()) {
+          LOG(logError) << "Error initializing bucket handle" << std::endl;
+          return kFailedInitBucketHandle;
+        }
+      }
     }
   }
 

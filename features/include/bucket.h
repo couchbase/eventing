@@ -13,92 +13,30 @@
 #define BUCKET_H
 
 #include <libcouchbase/couchbase.h>
-#include <memory>
 #include <string>
-#include <tuple>
-#include <utility>
 #include <v8.h>
 
-#include "error.h"
 #include "info.h"
 #include "isolate_data.h"
-#include "lcb_utils.h"
-
-class BucketFactory {
-public:
-  BucketFactory(v8::Isolate *isolate, const v8::Local<v8::Context> &context);
-  ~BucketFactory();
-
-  BucketFactory(const BucketFactory &) = delete;
-  BucketFactory(BucketFactory &&) = delete;
-  BucketFactory &operator=(const BucketFactory &) = delete;
-  BucketFactory &operator=(BucketFactory &&) = delete;
-
-  std::pair<Error, std::unique_ptr<v8::Local<v8::Object>>> NewBucketObj() const;
-
-private:
-  v8::Isolate *isolate_;
-  v8::Persistent<v8::Context> context_;
-  v8::Persistent<v8::ObjectTemplate> bucket_template_;
-};
 
 class Bucket {
 public:
-  Bucket(v8::Isolate *isolate, std::string bucket_name)
-      : isolate_(isolate), bucket_name_(std::move(bucket_name)) {}
+  Bucket(v8::Isolate *isolate, const v8::Local<v8::Context> &context,
+         const std::string &bucket_name, const std::string &alias,
+         bool block_mutation, bool is_source_bucket);
   ~Bucket();
 
-  Bucket(const Bucket &) = default;
-  Bucket(Bucket &&) = delete;
-  Bucket &operator=(const Bucket &) = delete;
-  Bucket &operator=(Bucket &&) = delete;
+  bool InstallMaps();
 
-  Error Connect();
-
-  std::tuple<Error, std::unique_ptr<lcb_error_t>, std::unique_ptr<Result>>
-  Get(const std::string &key);
-
-  std::tuple<Error, std::unique_ptr<lcb_error_t>, std::unique_ptr<Result>>
-  SetWithXattr(const std::string &key, const std::string &value);
-
-  std::tuple<Error, std::unique_ptr<lcb_error_t>, std::unique_ptr<Result>>
-  SetWithoutXattr(const std::string &key, const std::string &value);
-
-  std::tuple<Error, std::unique_ptr<lcb_error_t>, std::unique_ptr<Result>>
-  DeleteWithXattr(const std::string &key);
-
-  std::tuple<Error, std::unique_ptr<lcb_error_t>, std::unique_ptr<Result>>
-  DeleteWithoutXattr(const std::string &key);
-
-  lcb_t GetConnection() const { return connection_; }
+  v8::Global<v8::ObjectTemplate> bucket_map_template_;
+  lcb_t bucket_lcb_obj_;
 
 private:
-  Error FormatErrorAndDestroyConn(const std::string &message,
-                                  const lcb_error_t &error) const;
-
-  v8::Isolate *isolate_{nullptr};
-  std::string bucket_name_;
-  lcb_t connection_{nullptr};
-  bool is_connected_{false};
-};
-
-class BucketBinding {
-  friend BucketFactory;
-
-public:
-  BucketBinding(v8::Isolate *isolate, std::shared_ptr<BucketFactory> factory,
-                const std::string &bucket_name, std::string alias,
-                bool block_mutation, bool is_source_bucket)
-      : block_mutation_(block_mutation), is_source_bucket_(is_source_bucket),
-        bucket_name_(bucket_name), bucket_alias_(std::move(alias)),
-        factory_(std::move(factory)), bucket_(isolate, bucket_name) {}
-
-  Error InstallBinding(v8::Isolate *isolate,
-                       const v8::Local<v8::Context> &context);
-
-private:
-  static void HandleBucketOpFailure(v8::Isolate *isolate, lcb_t connection,
+  static void HandleBucketOpFailure(v8::Isolate *isolate,
+                                    lcb_t bucket_lcb_obj_ptr,
                                     lcb_error_t error);
+  v8::Local<v8::ObjectTemplate> MakeBucketMapTemplate();
+
   static Info ValidateKey(const v8::Local<v8::Name> &arg);
   static Info ValidateValue(const v8::Local<v8::Value> &arg);
   static Info ValidateKeyValue(const v8::Local<v8::Name> &key,
@@ -109,7 +47,7 @@ private:
   // object in JavaScript
   template <typename T>
   static void
-  BucketGetDelegate(T name, const v8::PropertyCallbackInfo<v8::Value> &info);
+  BucketGetDelegate(T key, const v8::PropertyCallbackInfo<v8::Value> &info);
   template <typename T>
   static void
   BucketSetDelegate(T key, v8::Local<v8::Value> value,
@@ -138,11 +76,6 @@ private:
   static void BucketSet(uint32_t key, const v8::Local<v8::Value> &value,
                         const v8::PropertyCallbackInfo<v8::Value> &info);
 
-  static std::tuple<Error, std::unique_ptr<lcb_error_t>,
-                    std::unique_ptr<Result>>
-  BucketSet(const std::string &key, const std::string &value,
-            bool is_source_bucket, Bucket *bucket);
-
   template <typename>
   static void BucketDelete(const v8::Local<v8::Name> &key,
                            const v8::PropertyCallbackInfo<v8::Boolean> &info);
@@ -150,9 +83,15 @@ private:
   static void BucketDelete(uint32_t key,
                            const v8::PropertyCallbackInfo<v8::Boolean> &info);
 
-  static std::tuple<Error, std::unique_ptr<lcb_error_t>,
-                    std::unique_ptr<Result>>
-  BucketDelete(const std::string &key, bool is_source_bucket, Bucket *bucket);
+  static void
+  BucketSetWithXattr(const v8::Local<v8::Name> &key,
+                     const v8::Local<v8::Value> &value,
+                     const v8::PropertyCallbackInfo<v8::Value> &info);
+
+  static void
+  BucketSetWithoutXattr(const v8::Local<v8::Name> &key,
+                        const v8::Local<v8::Value> &value,
+                        const v8::PropertyCallbackInfo<v8::Value> &info);
 
   static void
   BucketDeleteWithXattr(const v8::Local<v8::Name> &key,
@@ -168,18 +107,21 @@ private:
 
   static void HandleEnoEnt(v8::Isolate *isolate, lcb_t instance);
 
+  v8::Local<v8::Object> WrapBucketMap();
+
+  v8::Isolate *isolate_;
+  v8::Persistent<v8::Context> context_;
+
   bool block_mutation_;
   bool is_source_bucket_;
   std::string bucket_name_;
   std::string bucket_alias_;
-  std::shared_ptr<BucketFactory> factory_;
-  Bucket bucket_;
 
-  enum InternalFields {
-    kBucketInstance,
+  enum class InternalFields {
+    kLcbInstance,
     kBlockMutation,
     kIsSourceBucket,
-    kInternalFieldsCount
+    kMaxInternalFields
   };
 };
 

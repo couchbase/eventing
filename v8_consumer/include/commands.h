@@ -49,12 +49,7 @@ enum dcp_opcode { oDelete, oMutation, DCP_Opcode_Unknown };
 
 enum filter_opcode { oVbFilter, oProcessedSeqNo, Filter_Opcode_Unknown };
 
-enum internal_opcode {
-  oScanTimer,
-  oUpdateV8HeapSize,
-  oRunGc,
-  Internal_Opcode_Unknown
-};
+enum internal_opcode { oScanTimer, oUpdateV8HeapSize, oRunGc, Internal_Opcode_Unknown };
 
 enum app_worker_setting_opcode {
   oLogLevel,
