@@ -35,7 +35,8 @@
     }
   }
 
-  result = lcb_n1p_setconsistency(params_, query_info_.options.consistency);
+  result = lcb_n1p_setconsistency(
+      params_, query_info_.options.GetOrDefaultConsistency(isolate_));
   if (result != LCB_SUCCESS) {
     return ErrorFormat("Unable to set consistency", connection_, result);
   }
@@ -55,8 +56,7 @@
 
   cmd_.handle = &handle_;
   cmd_.callback = row_callback;
-  if (query_info_.options.is_prepared != nullptr &&
-      *query_info_.options.is_prepared) {
+  if (query_info_.options.GetOrDefaultIsPrepared(isolate_)) {
     cmd_.cmdflags |= LCB_CMDN1QL_F_PREPCACHE;
   }
   lcb_set_cookie(connection_, cookie);
@@ -67,10 +67,11 @@
     return ErrorFormat("Unable to set timeout for query", connection_, result);
   }
   lcb_U32 n1ql_grace_period = Query::n1ql_grace_period;
-  result =
-      lcb_cntl(connection_, LCB_CNTL_SET, LCB_CNTL_N1QL_GRACE_PERIOD, &n1ql_grace_period);
+  result = lcb_cntl(connection_, LCB_CNTL_SET, LCB_CNTL_N1QL_GRACE_PERIOD,
+                    &n1ql_grace_period);
   if (result != LCB_SUCCESS) {
-    return ErrorFormat("Unable to set n1ql grace period for query", connection_, result);
+    return ErrorFormat("Unable to set n1ql grace period for query", connection_,
+                       result);
   }
   return {false};
 }

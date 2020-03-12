@@ -41,7 +41,7 @@ struct Options {
 
   private:
     ::Info ExtractConsistency(const v8::Local<v8::Object> &options_obj,
-                              int &consistency_out) const;
+                              std::unique_ptr<int> &consistency_out) const;
     ::Info
     ExtractClientCtxId(const v8::Local<v8::Object> &options_obj,
                        std::unique_ptr<std::string> &client_ctx_id_out) const;
@@ -56,7 +56,10 @@ struct Options {
     v8::Persistent<v8::String> is_prepared_property_;
   };
 
-  int consistency{LCB_N1P_CONSISTENCY_NONE};
+  bool GetOrDefaultIsPrepared(v8::Isolate *isolate) const;
+  int GetOrDefaultConsistency(v8::Isolate *isolate) const;
+
+  std::unique_ptr<int> consistency;
   std::unique_ptr<std::string> client_context_id;
   std::unique_ptr<bool> is_prepared;
 };

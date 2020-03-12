@@ -19,6 +19,7 @@
 
 #include "js_exception.h"
 #include "query-helper.h"
+#include "query-info.h"
 #include "utils.h"
 
 extern std::atomic<int64_t> n1ql_op_exception_count;
@@ -303,7 +304,6 @@ Query::Options::Extractor::~Extractor() {
 
 ::Info Query::Options::Extractor::Extract(
     const v8::FunctionCallbackInfo<v8::Value> &args, Options &opt_out) const {
-  opt_out.consistency = UnwrapData(isolate_)->n1ql_consistency;
   if (args.Length() < 3) {
     return {false};
   }
@@ -327,10 +327,10 @@ Query::Options::Extractor::~Extractor() {
 }
 
 ::Info Query::Options::Extractor::ExtractConsistency(
-    const v8::Local<v8::Object> &options_obj, int &consistency_out) const {
+    const v8::Local<v8::Object> &options_obj,
+    std::unique_ptr<int> &consistency_out) const {
   v8::HandleScope handle_scope(isolate_);
   auto context = context_.Get(isolate_);
-  consistency_out = UnwrapData(isolate_)->n1ql_consistency;
 
   auto consistency_property = consistency_property_.Get(isolate_);
   v8::Local<v8::Value> consistency_val;
@@ -348,7 +348,8 @@ Query::Options::Extractor::~Extractor() {
   if (consistencies_.find(*consistency_utf8) == consistencies_.end()) {
     return {true, "consistency must be one of 'none', 'request'"};
   }
-  consistency_out = Query::Helper::GetConsistency(*consistency_utf8);
+  consistency_out =
+      std::make_unique<int>(Query::Helper::GetConsistency(*consistency_utf8));
   return {false};
 }
 
@@ -364,6 +365,9 @@ Query::Options::Extractor::~Extractor() {
                 &client_ctx_id_val)) {
     return {true, "Unable to read clientContextId value"};
   }
+  if (client_ctx_id_val->IsUndefined()) {
+    return {false};
+  }
   if (auto info = Utils::ValidateDataType(client_ctx_id_val); info.is_fatal) {
     return {true, "Invalid data type for clientContextId: " + info.msg};
   }
@@ -377,10 +381,6 @@ Query::Options::Extractor::~Extractor() {
     std::unique_ptr<bool> &is_prepared_out) const {
   v8::HandleScope handle_scope(isolate_);
   auto context = context_.Get(isolate_);
-  auto is_prepared = UnwrapData(isolate_)->n1ql_prepare_all;
-  if (is_prepared) {
-    is_prepared_out.reset(new bool(true));
-  }
 
   const auto is_prepared_property = is_prepared_property_.Get(isolate_);
   v8::Local<v8::Value> is_prepared_val;
@@ -395,9 +395,24 @@ Query::Options::Extractor::~Extractor() {
     return {true, "Expecting a boolean for isPrepared property"};
   }
 
+  auto is_prepared = false;
   if (!TO(is_prepared_val->BooleanValue(context), &is_prepared)) {
     return {true, "Unable to cast isPrepared to boolean"};
   }
   is_prepared_out.reset(new bool(is_prepared));
   return {false};
+}
+
+bool Query::Options::GetOrDefaultIsPrepared(v8::Isolate *isolate) const {
+  if (is_prepared != nullptr) {
+    return *is_prepared;
+  }
+  return UnwrapData(isolate)->n1ql_prepare_all;
+}
+
+int Query::Options::GetOrDefaultConsistency(v8::Isolate *isolate) const {
+  if (consistency != nullptr) {
+    return *consistency;
+  }
+  return UnwrapData(isolate)->n1ql_consistency;
 }
