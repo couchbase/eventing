@@ -13,6 +13,7 @@
 #define COUCHBASE_LCB_UTILS_H
 
 #include <libcouchbase/couchbase.h>
+#include <string>
 #include <thread>
 
 struct Result {
