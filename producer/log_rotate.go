@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"fmt"
 	"io"
-	"math"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -148,26 +147,28 @@ func (wc *appLogCloser) init() {
 	go wc.cleanupTask()
 }
 
-func getFileIndexRange(path string) (int64, int64) {
+func getFileIndexRange(path string) (lowIndex, highIndex int64) {
+	lowIndex = 1
+	highIndex = 0
+
 	files, err := filepath.Glob(path + ".*")
 	if err != nil || len(files) == 0 {
-		return 1, 0
+		return
 	}
-	var lowIndex int64 = math.MaxInt64
-	var highIndex int64
+	first := true
 	for _, file := range files {
 		tokens := strings.Split(file, ".")
 		if index, err := strconv.ParseInt(tokens[len(tokens)-1], 10, 64); err == nil {
-			if index < lowIndex {
+			if first || index < lowIndex {
 				lowIndex = index
 			}
-
-			if index > highIndex {
+			if first || index > highIndex {
 				highIndex = index
 			}
+			first = false
 		}
 	}
-	return lowIndex, highIndex
+	return
 }
 
 func openAppLog(path string, perm os.FileMode, maxSize, maxFiles int64) (*appLogCloser, error) {
