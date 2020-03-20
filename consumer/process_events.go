@@ -639,19 +639,15 @@ func (c *Consumer) addToAggChan(dcpFeed *couchbase.DcpFeed) {
 			select {
 			case e, ok := <-dcpFeed.C:
 				if ok == false {
-					var kvAddr string
-					c.hostDcpFeedRWMutex.RLock()
+					c.hostDcpFeedRWMutex.Lock()
 					for addr, feed := range c.kvHostDcpFeedMap {
 						if feed == dcpFeed {
-							kvAddr = addr
+							delete(c.kvHostDcpFeedMap, addr)
+							logging.Infof("%s [%s:%s:%d] Closing dcp feed: %v, count: %d for bucket: %s",
+								logPrefix, c.workerName, c.tcpPort, c.Pid(), dcpFeed.GetName(),
+								len(dcpFeed.C), c.bucket)
 						}
 					}
-					c.hostDcpFeedRWMutex.RUnlock()
-
-					logging.Infof("%s [%s:%s:%d] Closing dcp feed: %v, count: %d for bucket: %s",
-						logPrefix, c.workerName, c.tcpPort, c.Pid(), dcpFeed.GetName(), len(dcpFeed.C), c.bucket)
-					c.hostDcpFeedRWMutex.Lock()
-					delete(c.kvHostDcpFeedMap, kvAddr)
 					c.hostDcpFeedRWMutex.Unlock()
 					return
 				}
