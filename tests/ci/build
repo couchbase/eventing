@@ -11,6 +11,7 @@ while true; do
   git pull -q
   find tests/ci -not -name 'build' -and -not -name '.*' -type f -exec cp -v {} ~/bin/ \;
   domain
+  (source ~/.cienv; test -f $WORKSPACE/.repo/repo/repo && cp -u $WORKSPACE/.repo/repo/repo ~/bin)
   sleep 600
 done
 

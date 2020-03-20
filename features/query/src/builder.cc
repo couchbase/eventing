@@ -35,7 +35,8 @@
     }
   }
 
-  result = lcb_n1p_setconsistency(params_, query_info_.options.consistency);
+  result = lcb_n1p_setconsistency(
+      params_, query_info_.options.GetOrDefaultConsistency(isolate_));
   if (result != LCB_SUCCESS) {
     return ErrorFormat("Unable to set consistency", connection_, result);
   }
@@ -55,8 +56,7 @@
 
   cmd_.handle = &handle_;
   cmd_.callback = row_callback;
-  if (query_info_.options.is_prepared != nullptr &&
-      *query_info_.options.is_prepared) {
+  if (query_info_.options.GetOrDefaultIsPrepared(isolate_)) {
     cmd_.cmdflags |= LCB_CMDN1QL_F_PREPCACHE;
   }
   lcb_set_cookie(connection_, cookie);

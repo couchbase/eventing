@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"runtime/debug"
 	"strconv"
 	"time"
 
@@ -572,14 +573,22 @@ func (m *ServiceMgr) getFunctionList(query url.Values) (fnlist functionList, inf
 	return
 }
 
-func (m *ServiceMgr) getStatuses(appName string) (bool, bool, error) {
+func (m *ServiceMgr) getStatuses(appName string) (dStatus bool, pStatus bool, err error) {
 	logPrefix := "ServiceMgr::getStatuses"
+
+	defer func() {
+		if r := recover(); r != nil {
+			trace := debug.Stack()
+			logging.Errorf("%s getStatuses recovered from panic,  stack trace: %rm", logPrefix, string(trace))
+			err = fmt.Errorf("%s Error getting statuses for appName: %s, please see logs for more information", logPrefix, appName)
+		}
+	}()
 
 	var sData []byte
 	metakvPath := metakvAppSettingsPath + appName
 	util.Retry(util.NewFixedBackoff(time.Second), nil, metakvGetCallback, metakvPath, &sData)
 	settings := make(map[string]interface{})
-	err := json.Unmarshal(sData, &settings)
+	err = json.Unmarshal(sData, &settings)
 	if err != nil {
 		logging.Errorf("%s Failed to unmarshal settings", logPrefix)
 		return false, false, err
@@ -591,7 +600,7 @@ func (m *ServiceMgr) getStatuses(appName string) (bool, bool, error) {
 		return false, false, fmt.Errorf("missing deployment_status")
 	}
 
-	dStatus, ok := val.(bool)
+	dStatus, ok = val.(bool)
 	if !ok {
 		logging.Errorf("%s Supplied deployment_status unexpected", logPrefix)
 		return false, false, fmt.Errorf("non boolean deployment_status")
@@ -603,7 +612,7 @@ func (m *ServiceMgr) getStatuses(appName string) (bool, bool, error) {
 		return false, false, fmt.Errorf("missing processing_status")
 	}
 
-	pStatus, ok := val.(bool)
+	pStatus, ok = val.(bool)
 	if !ok {
 		logging.Errorf("%s Supplied processing_status unexpected", logPrefix)
 		return false, false, fmt.Errorf("non boolean processing_status")

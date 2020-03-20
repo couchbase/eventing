@@ -107,8 +107,7 @@ public:
 
 private:
   static void Log(const v8::FunctionCallbackInfo<v8::Value> &args);
-  CompilationInfo
-  ComposeCompilationInfo(v8::Local<v8::Value> &compiler_result);
+  CompilationInfo ComposeCompilationInfo(v8::Local<v8::Value> &compiler_result);
   std::string ComposeDescription(int code);
 
   v8::Persistent<v8::Context> context_;

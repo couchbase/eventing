@@ -40,3 +40,4 @@
 |worker_count|3|eventing-consumer instances to spawn for parallelism w.r.t. event processing|
 |worker_feedback_queue_cap|500|Capacity of timer feedback queue on eventing-consumer|
 |worker_queue_cap|100000|Capacity of queue for main loop queue on eventing-consumer|
+|allow_interbucket_recursion|false|Allow deployment of handlers with inter bucket/inter handler recursion|
