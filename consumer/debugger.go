@@ -55,7 +55,7 @@ func (c *debugClient) Spawn(debuggerSpawned chan struct{}) {
 		c.consumerHandle.app.UserPrefix,
 		c.consumerHandle.nsServerPort,
 		c.eventingPort, // not read, for tagging
-		"debug") // not read, for tagging
+		"debug")        // not read, for tagging
 
 	user, key := util.LocalKey()
 	c.cmd.Env = append(os.Environ(),

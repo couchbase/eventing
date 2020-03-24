@@ -108,12 +108,12 @@ type vbSeqNo struct {
 // Consumer is responsible interacting with c++ v8 worker over local tcp port
 type Consumer struct {
 	n1qlPrepareAll bool
-	app         *common.AppConfig
-	bucket      string // source bucket
-	builderPool *sync.Pool
-	breakpadOn  bool
-	uuid        string
-	retryCount  *int64
+	app            *common.AppConfig
+	bucket         string // source bucket
+	builderPool    *sync.Pool
+	breakpadOn     bool
+	uuid           string
+	retryCount     *int64
 
 	handlerFooters []string
 	handlerHeaders []string
@@ -219,7 +219,7 @@ type Consumer struct {
 	statsRWMutex      *sync.RWMutex
 
 	// Time when last response from CPP worker was received on main loop
-	workerRespMainLoopTs        atomic.Value
+	workerRespMainLoopTs atomic.Value
 	// Time when go side of cpp worker was initialised
 	workerInitMainLoopTs        atomic.Value
 	workerRespMainLoopThreshold int
