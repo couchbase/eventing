@@ -281,15 +281,6 @@ func (c *Consumer) processDCPEvents() {
 						vb:             e.VBucket,
 					}
 
-					c.vbsStreamRRWMutex.Lock()
-					if _, ok := c.vbStreamRequested[e.VBucket]; ok {
-						logging.Infof("%s [%s:%s:%d] vb: %d STREAMREQ failed, purging entry from vbStreamRequested",
-							logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket)
-
-						delete(c.vbStreamRequested, e.VBucket)
-					}
-					c.vbsStreamRRWMutex.Unlock()
-
 					vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppName, e.VBucket)
 
 					entry := OwnershipEntry{
@@ -306,7 +297,7 @@ func (c *Consumer) processDCPEvents() {
 						return
 					}
 
-					logging.Infof("%s [%s:%s:%d] vb: %d STREAMREQ Inserting entry: %#v to vbFlogChan",
+					logging.Infof("%s [%s:%s:%d] vb: %d STREAMREQ Failed. Inserting entry: %#v to vbFlogChan",
 						logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket, vbFlog)
 					c.vbFlogChan <- vbFlog
 				}
@@ -893,14 +884,7 @@ func (c *Consumer) dcpRequestStreamHandle(vb uint16, vbBlob *vbucketKVBlob, star
 		logging.Errorf("%s [%s:%s:%d] vb: %d STREAMREQ call failed on dcpFeed: %v, err: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, dcpFeed.GetName(), err)
 
-		c.vbsStreamRRWMutex.Lock()
-		if _, ok := c.vbStreamRequested[vb]; ok {
-			logging.Infof("%s [%s:%s:%d] vb: %d purging entry from vbStreamRequested",
-				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
-
-			delete(c.vbStreamRequested, vb)
-		}
-		c.vbsStreamRRWMutex.Unlock()
+		c.purgeVbStreamRequested(logPrefix, vb)
 
 		if c.checkIfCurrentConsumerShouldOwnVb(vb) {
 			c.Lock()
@@ -1025,6 +1009,7 @@ func (c *Consumer) handleFailoverLog() {
 						c.Lock()
 						c.vbsRemainingToRestream = append(c.vbsRemainingToRestream, vbFlog.vb)
 						c.Unlock()
+						c.purgeVbStreamRequested(logPrefix, vbFlog.vb)
 						continue
 					}
 				}
@@ -1044,14 +1029,8 @@ func (c *Consumer) handleFailoverLog() {
 					if err != nil {
 						logging.Errorf("%s [%s:%s:%d] updateCheckpoint failed, err: %v", logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
 					}
-					c.vbsStreamRRWMutex.Lock()
-					if _, ok := c.vbStreamRequested[vbFlog.vb]; ok {
-						logging.Infof("%s [%s:%s:%d] vb: %d purging entry from vbStreamRequested",
-							logPrefix, c.workerName, c.tcpPort, c.Pid(), vbFlog.vb)
 
-						delete(c.vbStreamRequested, vbFlog.vb)
-					}
-					c.vbsStreamRRWMutex.Unlock()
+					c.purgeVbStreamRequested(logPrefix, vbFlog.vb)
 
 					if c.checkIfAlreadyEnqueued(vbFlog.vb) {
 						continue
@@ -1102,6 +1081,8 @@ func (c *Consumer) handleFailoverLog() {
 					logging.Infof("%s [%s:%s:%d] vb: %d Retrying DCP stream start vbuuid: %d vbFlog startSeq: %d last processed seq: %d",
 						logPrefix, c.workerName, c.tcpPort, c.Pid(), vbFlog.vb, vbBlob.VBuuid,
 						vbFlog.seqNo, vbBlob.LastSeqNoProcessed)
+
+					c.purgeVbStreamRequested(logPrefix, vbFlog.vb)
 
 					if c.checkIfAlreadyEnqueued(vbFlog.vb) {
 						continue
@@ -1285,13 +1266,7 @@ func (c *Consumer) processReqStreamMessages() {
 func (c *Consumer) handleStreamEnd(vBucket uint16, last_processed_seqno uint64) {
 	logPrefix := "Consumer::handleStreamEnd"
 
-	c.vbsStreamRRWMutex.Lock()
-	if _, ok := c.vbStreamRequested[vBucket]; ok {
-		logging.Infof("%s [%s:%s:%d] vb: %d purging entry from vbStreamRequested",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), vBucket)
-		delete(c.vbStreamRequested, vBucket)
-	}
-	c.vbsStreamRRWMutex.Unlock()
+	c.purgeVbStreamRequested(logPrefix, vBucket)
 
 	c.inflightDcpStreamsRWMutex.Lock()
 	if _, exists := c.inflightDcpStreams[vBucket]; exists {

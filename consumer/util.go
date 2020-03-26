@@ -92,3 +92,13 @@ func (c *Consumer) isRecursiveDCPEvent(evt *memcached.DcpEvent, functionInstance
 	}
 	return false, nil
 }
+
+func (c *Consumer) purgeVbStreamRequested(logPrefix string, vb uint16) {
+	c.vbsStreamRRWMutex.Lock()
+	if _, ok := c.vbStreamRequested[vb]; ok {
+		delete(c.vbStreamRequested, vb)
+		logging.Infof("%s [%s:%s:%d] vb: %d purging entry from vbStreamRequested",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
+	}
+	c.vbsStreamRRWMutex.Unlock()
+}
