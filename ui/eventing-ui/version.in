@@ -1,3 +1,4 @@
+export default getVersion;
 function getVersion() {
     return '${EVENTING_VER}';
 }
