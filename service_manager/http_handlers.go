@@ -1594,22 +1594,19 @@ func (m *ServiceMgr) getTempStoreAll() []application {
 	m.fnMu.RLock()
 	defer m.fnMu.RUnlock()
 
-	applications := make([]application, len(m.fnsInTempStore))
-	i := -1
+	applications := []application{}
 
 	for fnName := range m.fnsInTempStore {
 		data, err := util.ReadAppContent(metakvTempAppsPath, metakvTempChecksumPath, fnName)
 		if err == nil && data != nil {
 			var app application
-			i++
 			uErr := json.Unmarshal(data, &app)
 			if uErr != nil {
 				logging.Errorf("%s Function: %s failed to unmarshal data from metakv, err: %v data: %v",
 					logPrefix, fnName, uErr, string(data))
 				continue
 			}
-
-			applications[i] = app
+			applications = append(applications, app)
 		} else if err != nil {
 			logging.Errorf("%s Function: %s failed to read data from metakv, err: %v", logPrefix, fnName, err)
 		} else {
