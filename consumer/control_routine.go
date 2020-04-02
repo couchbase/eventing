@@ -148,7 +148,8 @@ func (c *Consumer) controlRoutine() error {
 
 			c.Lock()
 			diff := util.VbsSliceDiff(metadataCorrectedVbs, c.vbsRemainingToCleanup)
-			c.vbsRemainingToCleanup = diff
+			c.vbsRemainingToCleanup = make([]uint16, len(diff))
+			copy(c.vbsRemainingToCleanup, diff)
 
 			sort.Sort(util.Uint16Slice(c.vbsRemainingToCleanup))
 			if len(c.vbsRemainingToCleanup) > 0 {
@@ -250,7 +251,8 @@ func (c *Consumer) controlRoutine() error {
 
 			c.Lock()
 			diff = util.VbsSliceDiff(vbsToRestream, c.vbsRemainingToRestream)
-			c.vbsRemainingToRestream = diff
+			c.vbsRemainingToRestream = make([]uint16, len(diff))
+			copy(c.vbsRemainingToRestream, diff)
 			vbsRemainingToRestream := len(c.vbsRemainingToRestream)
 			c.Unlock()
 
