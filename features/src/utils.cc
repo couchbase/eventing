@@ -716,3 +716,4 @@ std::string BuildUrl(const std::string &host, const std::string &path) {
   }
   return host + path;
 }
+

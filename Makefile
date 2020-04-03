@@ -26,6 +26,7 @@ includes:=\
 	-I $(top)/libcouchbase/include/ \
 	-I third_party/inspector/ \
 	-I third_party/crc64/ \
+	-I third_party/crc32/ \
 	-I third_party/inspector/ \
 	-I features/query/include \
 	-I features/include/ \
@@ -117,7 +118,7 @@ cluster_stop:
 cluster_start: cluster_stop $(workdir)
 	make -C $(top)/ns_server dataclean
 	rm -rf $(top)/ns_server/logs/n_*/*
-	cd $(top)/ns_server && LD_LIBRARY_PATH=$(top)/install/lib COUCHBASE_NUM_VBUCKETS=8 ./cluster_run -n4 1>$(workdir)/server.log 2>&1 &
+	cd $(top)/ns_server && LD_LIBRARY_PATH=$(top)/install/lib COUCHBASE_NUM_VBUCKETS=1024 ./cluster_run -n4 1>$(workdir)/server.log 2>&1 &
 	while ! grep -qs 'Finished compaction for' $(top)/ns_server/logs/n_*/debug.log; do sleep 3; done
 
 test_deps:

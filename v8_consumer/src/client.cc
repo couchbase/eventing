@@ -735,8 +735,8 @@ void AppWorker::RouteMessageWithResponse(
     std::unordered_map<int64_t, uint64_t> lps_map;
     for (size_t idx = 0; idx < thr_count_; ++idx) {
       auto worker = workers_[idx];
-      worker->StopTimerScan();
       auto lck = worker->GetAndLockFilterLock();
+      worker->StopTimerScan();
       auto partitions = worker->GetPartitions();
       for (auto vb : partitions) {
         auto lps = worker->GetBucketopsSeqno(vb);
