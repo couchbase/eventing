@@ -48,6 +48,9 @@ public:
 
 private:
   void Connect();
+  std::pair<bool, lcb_error_t> InitSpan(int partition);
+  std::pair<bool, lcb_error_t> InitSpanLocked(int partition);
+
   std::pair<bool, lcb_error_t> SyncSpan(int partition);
   std::pair<bool, lcb_error_t> SyncSpanLocked(int partition);
 

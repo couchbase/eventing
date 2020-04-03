@@ -16,6 +16,7 @@
 #include "timer.h"
 #include "utils.h"
 #include "v8worker.h"
+#include "crc32.h"
 
 std::atomic<int64_t> timer_context_size_exceeded_counter = {0};
 thread_local std::mt19937_64
@@ -73,11 +74,10 @@ bool Timer::CreateTimerImpl(const v8::FunctionCallbackInfo<v8::Value> &args) {
   auto v8worker = UnwrapData(isolate_)->v8worker;
   timer::TimerInfo timer_info;
   timer_info.epoch = epoch_info.epoch;
-  timer_info.vb = v8worker->currently_processed_vb_;
   timer_info.seq_num = v8worker->currently_processed_seqno_;
   timer_info.callback = utils->GetFunctionName(args[0]);
   timer_info.context = JSONStringify(isolate_, args[3]);
-  //
+
   // if reference is null or undefined, generate one
   if (args[2]->IsString()) {
     timer_info.reference = utils->ToCPPString(args[2]);
@@ -85,6 +85,11 @@ bool Timer::CreateTimerImpl(const v8::FunctionCallbackInfo<v8::Value> &args) {
     timer_info.reference =
         std::to_string(rng()) + std::to_string(timer_info.seq_num);
   }
+
+  auto ref = timer_info.callback + ":" + timer_info.reference;
+  uint32_t hash = crc32_8(ref.c_str(), ref.size(), 0 /*crc_in*/);
+  timer_info.vb = hash % NUM_VBUCKETS;
+  LOG(logTrace) << "ref: " << ref << "hash: " << hash  << "Timer Partition is: " << timer_info.vb << " " << std::endl;
 
   if (timer_info.context.size() > static_cast<unsigned>(timer_context_size)) {
     js_exception->ThrowEventingError(
