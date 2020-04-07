@@ -1,5 +1,7 @@
 import angular from "/ui/web_modules/angular.js";
 import _ from "/ui/web_modules/lodash.js";
+import saveAs from "/ui/web_modules/file-saver.js"
+import ace from '/ui/libs/ace/ace-wrapper.js';
 
 import uiRouter from "/ui/web_modules/@uirouter/angularjs.js";
 import mnPoolDefault from "/ui/app/components/mn_pool_default.js";
@@ -260,7 +262,7 @@ angular.module('eventing', [
 
             self.openAppLog = function(appName) {
                 ApplicationService.server.getAppLog(appName).then(function(log) {
-                    logScope = $scope.$new(true);
+                    let logScope = $scope.$new(true);
                     logScope.appName = appName;
                     logScope.logMessages = [];
                     if (log && log.length > 0) {
@@ -453,14 +455,14 @@ angular.module('eventing', [
                     })
                     .catch(function(errResponse) {
                         if (errResponse.data && (errResponse.data.name === 'ERR_HANDLER_COMPILATION')) {
-                            var info = errResponse.data.runtime_info.info;
+                            let info = errResponse.data.runtime_info.info;
                             app.compilationInfo = info;
                             ApplicationService.server.showErrorAlert(`${operation} failed: Syntax error (${info.line_number}, ${info.column_number}) - ${info.description}`);
                         } else if (errResponse.data && (errResponse.data.name === 'ERR_CLUSTER_VERSION')) {
                             var data = errResponse.data;
                             ApplicationService.server.showErrorAlert(`${operation} failed: ${data.description} - ${data.runtime_info.info}`);
                         } else {
-                            var info = errResponse.data.runtime_info;
+                            let info = errResponse.data.runtime_info;
                             ApplicationService.server.showErrorAlert(`${operation} failed: ` + JSON.stringify(info));
                         }
 
@@ -738,7 +740,7 @@ angular.module('eventing', [
                     enable_debugger: self.enableDebugger
                 });
                 if ($stateParams.appName) {
-                    app = ApplicationService.local.getAppByName($stateParams.appName);
+                    let app = ApplicationService.local.getAppByName($stateParams.appName);
                     $rootScope.debugDisable = !(app.settings.deployment_status && app.settings.processing_status) || !self.enableDebugger;
                     closeDialog('ok');
                 } else {

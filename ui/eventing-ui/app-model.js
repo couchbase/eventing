@@ -1,4 +1,5 @@
-import _ from "/ui/web_modules/lodash.js"
+import _ from "/ui/web_modules/lodash.js";
+import getVersion from "./gen/version.js";
 export {Application,
         ApplicationManager,
         ApplicationModel,
@@ -76,7 +77,7 @@ function ApplicationManager() {
 
 // Creates a new app in the front-end.
 ApplicationManager.prototype.createApp = function(appModel) {
-    if (!appModel instanceof ApplicationModel) {
+    if (!(appModel instanceof ApplicationModel)) {
         throw 'parameter must be an instance of ApplicationModel';
     }
 
@@ -94,7 +95,7 @@ ApplicationManager.prototype.createApp = function(appModel) {
 };
 
 ApplicationManager.prototype.pushApp = function(app) {
-    if (!app instanceof Application) {
+    if (!(app instanceof Application)) {
         throw 'Parameter must be an instance of Application';
     }
 
