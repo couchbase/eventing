@@ -50,6 +50,7 @@ std::atomic<int64_t> filtered_dcp_delete_counter = {0};
 std::atomic<int64_t> filtered_dcp_mutation_counter = {0};
 std::atomic<int64_t> timer_msg_counter = {0};
 std::atomic<int64_t> timer_create_counter = {0};
+std::atomic<int64_t> timer_cancel_counter = {0};
 
 std::atomic<int64_t> enqueued_dcp_delete_msg_counter = {0};
 std::atomic<int64_t> enqueued_dcp_mutation_msg_counter = {0};
@@ -67,6 +68,8 @@ v8::Local<v8::ObjectTemplate> V8Worker::NewGlobalObj() const {
               v8::FunctionTemplate::New(isolate_, Log));
   global->Set(v8::String::NewFromUtf8(isolate_, "createTimer"),
               v8::FunctionTemplate::New(isolate_, CreateTimer));
+  global->Set(v8::String::NewFromUtf8(isolate_, "cancelTimer"),
+              v8::FunctionTemplate::New(isolate_, CancelTimer));
   global->Set(v8::String::NewFromUtf8(isolate_, "crc64"),
               v8::FunctionTemplate::New(isolate_, Crc64Function));
   global->Set(v8::String::NewFromUtf8(isolate_, "N1QL"),
@@ -1127,6 +1130,12 @@ std::unordered_set<int64_t> V8Worker::GetPartitions() const {
 lcb_error_t V8Worker::SetTimer(timer::TimerInfo &tinfo) {
   if (timer_store_)
     return timer_store_->SetTimer(tinfo, data_.lcb_retry_count);
+  return LCB_SUCCESS;
+}
+
+lcb_error_t V8Worker::DelTimer(timer::TimerInfo &tinfo) {
+  if (timer_store_)
+    return timer_store_->DelTimer(tinfo, data_.lcb_retry_count);
   return LCB_SUCCESS;
 }
 

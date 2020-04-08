@@ -1681,3 +1681,74 @@ func TestOnDeleteExpiryBucketOp(t *testing.T) {
 	dumpStats()
 	flushFunctionAndBucket(functionName)
 }
+func TestTimerOverWriteSameReference(t *testing.T) {
+	functionName := t.Name()
+	addedItems := 1000
+	expectedItems := 1
+
+	jsFileName := "bucket_op_timer_ow_same_ref"
+	flushFunctionAndBucket(functionName)
+	createAndDeployFunction(functionName, jsFileName, &commonSettings{})
+	waitForDeployToFinish(functionName)
+
+	itemCountB, err := getBucketItemCount(metaBucket)
+	if err != nil {
+		log.Printf("Encountered err: %v while fetching item count from meta bucket: %s\n", err, metaBucket)
+		return
+	}
+
+	pumpBucketOps(opsType{count: addedItems}, &rateLimit{})
+
+	time.Sleep(60 * time.Second)
+
+	eventCount := verifyBucketOps(expectedItems, statsLookupRetryCounter)
+
+	if expectedItems != eventCount {
+		t.Error("For", "TestTimerOverWriteSameReference",
+			"expected", expectedItems,
+			"got", eventCount,
+		)
+	}
+
+	itemCountA, err := getBucketItemCount(metaBucket)
+	if err != nil {
+		log.Printf("Encountered err: %v while fetching item count from meta bucket: %s\n", err, metaBucket)
+		return
+	}
+
+	if itemCountB != itemCountA {
+		t.Error("Expected", itemCountB, "got", itemCountA)
+	}
+
+	dumpStats()
+	flushFunctionAndBucket(functionName)
+}
+func TestCancelTimerBucketop(t *testing.T) {
+	functionName := t.Name()
+	addedItems := 2000
+	deletedItems := 1000
+
+	jsFileName := "bucket_op_cancel_timer"
+	flushFunctionAndBucket(functionName)
+	createAndDeployFunction(functionName, jsFileName, &commonSettings{})
+	waitForDeployToFinish(functionName)
+
+	pumpBucketOps(opsType{count: addedItems}, &rateLimit{})
+	time.Sleep(5 * time.Second)
+
+	pumpBucketOps(opsType{delete: true, count: deletedItems}, &rateLimit{})
+	time.Sleep(60 * time.Second)
+
+	expectedItems := addedItems - deletedItems
+	eventCount := verifyBucketOps(expectedItems, statsLookupRetryCounter)
+
+	if expectedItems != eventCount {
+		t.Error("For", "TestCancelTimerBucketop",
+			"expected", expectedItems,
+			"got", eventCount,
+		)
+	}
+
+	dumpStats()
+	flushFunctionAndBucket(functionName)
+}

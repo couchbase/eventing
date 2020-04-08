@@ -203,6 +203,7 @@ extern std::atomic<int64_t> dcp_delete_msg_counter;
 extern std::atomic<int64_t> dcp_mutation_msg_counter;
 extern std::atomic<int64_t> timer_msg_counter;
 extern std::atomic<int64_t> timer_create_counter;
+extern std::atomic<int64_t> timer_cancel_counter;
 
 extern std::atomic<int64_t> enqueued_dcp_delete_msg_counter;
 extern std::atomic<int64_t> enqueued_dcp_mutation_msg_counter;
@@ -278,6 +279,7 @@ public:
   std::unordered_set<int64_t> GetPartitions() const;
 
   lcb_error_t SetTimer(timer::TimerInfo &tinfo);
+  lcb_error_t DelTimer(timer::TimerInfo &tinfo);
 
   lcb_t GetTimerLcbHandle() const;
   void AddTimerPartition(int vb_no);

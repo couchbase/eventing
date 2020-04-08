@@ -71,6 +71,7 @@ std::string GetExecutionStats(const std::map<int16_t, V8Worker *> &workers) {
   estats["dcp_mutation_msg_counter"] = dcp_mutation_msg_counter.load();
   estats["timer_msg_counter"] = timer_msg_counter.load();
   estats["timer_create_counter"] = timer_create_counter.load();
+  estats["timer_cancel_counter"] = timer_cancel_counter.load();
   estats["enqueued_dcp_delete_msg_counter"] =
       enqueued_dcp_delete_msg_counter.load();
   estats["enqueued_dcp_mutation_msg_counter"] =
