@@ -33,6 +33,7 @@ public:
   ~TimerStore();
 
   lcb_error_t SetTimer(TimerInfo &timer, int max_retry_count);
+  lcb_error_t DelTimer(TimerInfo &timer, int max_retry_count);
 
   void DeleteTimer(TimerEvent &event);
 
