@@ -328,6 +328,7 @@ type Consumer struct {
 	aggMessagesSentCounter       uint64
 	dcpDeletionCounter           uint64
 	dcpMutationCounter           uint64
+	dcpExpiryCounter             uint64
 	dcpXattrParseError           uint64
 	errorParsingTimerResponses   uint64
 	timerMessagesProcessedPSec   int
