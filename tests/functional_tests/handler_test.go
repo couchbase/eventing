@@ -800,7 +800,6 @@ func TestCommentUnCommentOnDelete(t *testing.T) {
 
 	time.Sleep(5 * time.Second)
 	handler := "on_delete_bucket_op_comment"
-	appName := "comment_uncomment_test"
 	flushFunctionAndBucket(functionName)
 
 	createAndDeployFunction(functionName, handler, &commonSettings{})
@@ -816,7 +815,7 @@ func TestCommentUnCommentOnDelete(t *testing.T) {
 	}
 
 	dumpStats()
-	log.Println("Undeploying app:", appName)
+	log.Println("Undeploying app:", functionName)
 	setSettings(functionName, false, false, &commonSettings{})
 
 	time.Sleep(30 * time.Second)
@@ -835,11 +834,11 @@ func TestCommentUnCommentOnDelete(t *testing.T) {
 	}
 
 	dumpStats()
-	log.Println("Undeploying app:", appName)
+	log.Println("Undeploying app:", functionName)
 	setSettings(functionName, false, false, &commonSettings{})
 
 	time.Sleep(5 * time.Second)
-	flushFunctionAndBucket(appName)
+	flushFunctionAndBucket(functionName)
 }
 
 func TestCPPWorkerCleanup(t *testing.T) {
@@ -1617,6 +1616,20 @@ func TestBucketDeleteWithRebOut(t *testing.T) {
 
 	createBucket(srcBucket, bucketmemQuota)
 	flushFunctionAndBucket(functionName)
+
+	_, err := addNodeFromRest("http://127.0.0.1:9001", "kv,index,n1ql")
+	rebalanceFromRest([]string{""})
+	waitForRebalanceFinish()
+
+	_, err = fireQuery("CREATE PRIMARY INDEX on default;")
+	if err != nil {
+		log.Printf("Error in creating index on default : %v\n", err)
+	}
+
+	_, err = fireQuery("CREATE PRIMARY INDEX on `hello-world`;")
+	if err != nil {
+		log.Printf("Error in creating index on hello-world : %v\n", err)
+	}
 }
 
 func TestOnDeleteExpiryBucketOp(t *testing.T) {

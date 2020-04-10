@@ -90,7 +90,7 @@ const (
 )
 
 const (
-	indexMemQuota   = 300
+	indexMemQuota   = 500
 	bucketmemQuota  = 500
 	bucketType      = "ephemeral"
 	replicas        = 0
