@@ -188,6 +188,9 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
   function_instance_id_.assign(oss.str());
   thread_exit_cond_.store(false);
   stop_timer_scan_.store(false);
+  scan_timer_.store(false);
+  update_v8_heap_.store(false);
+  run_gc_.store(false);
   for (int i = 0; i < NUM_VBUCKETS; i++) {
     vb_seq_[i] = atomic_ptr_t(new std::atomic<uint64_t>(0));
   }
@@ -469,14 +472,17 @@ void V8Worker::RouteMessage() {
         if (stop_timer_scan_.load()) {
           timer_store_->SyncSpan();
         }
+        scan_timer_.store(false);
         break;
       }
       case oUpdateV8HeapSize: {
         UpdateV8HeapSize();
+        update_v8_heap_.store(false);
         break;
       }
       case oRunGc: {
         ForceRunGarbageCollector();
+        run_gc_.store(false);
         break;
       }
       default:
