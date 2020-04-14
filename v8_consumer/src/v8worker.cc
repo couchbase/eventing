@@ -175,6 +175,9 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
   for (int i = 0; i < num_vbuckets_; i++) {
     vb_seq_[i] = atomic_ptr_t(new std::atomic<uint64_t>(0));
   }
+  scan_timer_.store(false);
+  update_v8_heap_.store(false);
+  run_gc_.store(false);
   vbfilter_map_.resize(num_vbuckets_);
   processed_bucketops_.resize(num_vbuckets_, 0);
 
@@ -474,14 +477,17 @@ void V8Worker::RouteMessage() {
         if (stop_timer_scan_.load()) {
           timer_store_->SyncSpan();
         }
+        scan_timer_.store(false);
         break;
       }
       case oUpdateV8HeapSize: {
         UpdateV8HeapSize();
+        update_v8_heap_.store(false);
         break;
       }
       case oRunGc: {
         ForceRunGarbageCollector();
+        run_gc_.store(false);
         break;
       }
       default:
