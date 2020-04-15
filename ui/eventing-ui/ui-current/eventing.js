@@ -1772,9 +1772,8 @@ angular.module('eventing', [
         }
     ])
     // Routes for the application.
-    .config(['$stateProvider', '$urlRouterProvider',
-        function($stateProvider, $urlRouterProvider) {
-            $urlRouterProvider.otherwise('/eventing');
+    .config(['$stateProvider',
+        function($stateProvider) {
             $stateProvider
                 .state('app.admin.eventing', {
                     url: '/eventing',
