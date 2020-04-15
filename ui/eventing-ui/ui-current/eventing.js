@@ -5,7 +5,6 @@ import ace from '/ui/libs/ace/ace-wrapper.js';
 
 import uiRouter from "/ui/web_modules/@uirouter/angularjs.js";
 import mnPoolDefault from "/ui/app/components/mn_pool_default.js";
-import mnPluggableUiRegistry from "/ui/app/components/mn_pluggable_ui_registry.js";
 import mnJquery from "/ui/app/components/mn_jquery.js";
 import mnPermissions from "/ui/app/components/mn_permissions.js";
 
@@ -24,7 +23,6 @@ import {ErrorMessage, ErrorHandler} from "../err-model.js";
 export default 'eventing';
 
 angular.module('eventing', [
-  mnPluggableUiRegistry,
   uiRouter,
   mnPoolDefault,
   mnJquery,
@@ -1774,8 +1772,8 @@ angular.module('eventing', [
         }
     ])
     // Routes for the application.
-    .config(['$stateProvider', '$urlRouterProvider', 'mnPluggableUiRegistryProvider', 'mnPermissionsProvider',
-        function($stateProvider, $urlRouterProvider, mnPluggableUiRegistryProvider, mnPermissionsProvider) {
+    .config(['$stateProvider', '$urlRouterProvider',
+        function($stateProvider, $urlRouterProvider) {
             $urlRouterProvider.otherwise('/eventing');
             $stateProvider
                 .state('app.admin.eventing', {
@@ -1826,15 +1824,5 @@ angular.module('eventing', [
                         child: 'app.admin.eventing.summary'
                     }
                 });
-
-            mnPermissionsProvider.set('cluster.eventing.functions!manage');
-            mnPluggableUiRegistryProvider.registerConfig({
-                name: 'Eventing',
-                state: 'app.admin.eventing.summary',
-                plugIn: 'workbenchTab',
-                ngShow: "rbac.cluster.eventing.functions.manage",
-                index: 4,
-                responsiveHide: true
-            });
         }
     ]);
