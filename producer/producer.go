@@ -120,7 +120,7 @@ func (p *Producer) Serve() {
 
 	go p.pollForDeletedVbs()
 
-	p.appLogWriter, err = openAppLog(p.appLogPath, 0600, p.appLogMaxSize, p.appLogMaxFiles)
+	p.appLogWriter, err = openAppLog(p.appLogPath, 0640, p.appLogMaxSize, p.appLogMaxFiles)
 	if err != nil {
 		logging.Fatalf("%s [%s:%d] Failure to open application log writer handle, err: %v",
 			logPrefix, p.appName, p.LenRunningConsumers(), err)
