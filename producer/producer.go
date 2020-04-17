@@ -134,7 +134,7 @@ func (p *Producer) Serve() {
 	p.isPlannerRunning = true
 	logging.Infof("%s [%s:%d] Planner status: %t, before vbucket to node assignment", logPrefix, p.appName, p.LenRunningConsumers(), p.isPlannerRunning)
 
-	err = p.vbEventingNodeAssign()
+	err = p.vbEventingNodeAssign(p.handlerConfig.SourceBucket)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
 		p.isPlannerRunning = false
@@ -210,7 +210,7 @@ func (p *Producer) Serve() {
 				logging.Infof("%s [%s:%d] Planner status: %t, before vbucket to node assignment as part of rebalance",
 					logPrefix, p.appName, p.LenRunningConsumers(), p.isPlannerRunning)
 
-				err = p.vbEventingNodeAssign()
+				err = p.vbEventingNodeAssign(p.handlerConfig.SourceBucket)
 				if err == common.ErrRetryTimeout {
 					logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
 					p.isPlannerRunning = false

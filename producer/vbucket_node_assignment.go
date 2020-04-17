@@ -14,13 +14,13 @@ import (
 
 // Generates the vbucket to eventing node assignment, ideally generated map should
 // be consistent across all nodes
-func (p *Producer) vbEventingNodeAssign() error {
+func (p *Producer) vbEventingNodeAssign(bucketName string) error {
 	logPrefix := "Producer::vbEventingNodeAssign"
 
 	// Adding a sleep to mitigate stale values from metakv
 	time.Sleep(5 * time.Second)
 
-	err := util.Retry(util.NewFixedBackoff(time.Second), &p.retryCount, getKVNodesAddressesOpCallback, p, p.handlerConfig.SourceBucket)
+	err := util.Retry(util.NewFixedBackoff(time.Second), &p.retryCount, getKVNodesAddressesOpCallback, p, bucketName)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
 		return err
