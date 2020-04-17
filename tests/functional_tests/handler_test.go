@@ -800,7 +800,6 @@ func TestCommentUnCommentOnDelete(t *testing.T) {
 
 	time.Sleep(5 * time.Second)
 	handler := "on_delete_bucket_op_comment"
-	appName := "comment_uncomment_test"
 	flushFunctionAndBucket(functionName)
 
 	createAndDeployFunction(functionName, handler, &commonSettings{})
@@ -816,7 +815,7 @@ func TestCommentUnCommentOnDelete(t *testing.T) {
 	}
 
 	dumpStats()
-	log.Println("Undeploying app:", appName)
+	log.Println("Undeploying app:", functionName)
 	setSettings(functionName, false, false, &commonSettings{})
 
 	time.Sleep(30 * time.Second)
@@ -835,11 +834,11 @@ func TestCommentUnCommentOnDelete(t *testing.T) {
 	}
 
 	dumpStats()
-	log.Println("Undeploying app:", appName)
+	log.Println("Undeploying app:", functionName)
 	setSettings(functionName, false, false, &commonSettings{})
 
 	time.Sleep(5 * time.Second)
-	flushFunctionAndBucket(appName)
+	flushFunctionAndBucket(functionName)
 }
 
 func TestCPPWorkerCleanup(t *testing.T) {
@@ -1617,6 +1616,20 @@ func TestBucketDeleteWithRebOut(t *testing.T) {
 
 	createBucket(srcBucket, bucketmemQuota)
 	flushFunctionAndBucket(functionName)
+
+	_, err := addNodeFromRest("http://127.0.0.1:9001", "kv,index,n1ql")
+	rebalanceFromRest([]string{""})
+	waitForRebalanceFinish()
+
+	_, err = fireQuery("CREATE PRIMARY INDEX on default;")
+	if err != nil {
+		log.Printf("Error in creating index on default : %v\n", err)
+	}
+
+	_, err = fireQuery("CREATE PRIMARY INDEX on `hello-world`;")
+	if err != nil {
+		log.Printf("Error in creating index on hello-world : %v\n", err)
+	}
 }
 
 func TestN1QLRecursion(t *testing.T) {
@@ -1808,4 +1821,54 @@ func TestN1QLAllowRecursion(t *testing.T) {
 	}
 
 	log.Printf("Success: %s is deployed after allow_interbucket_recursion", functionName2)
+}
+
+func TestOnDeleteExpiryBucketOp(t *testing.T) {
+	functionName := t.Name()
+	extraExpired := 2000
+	deletedItems := 1000
+
+	log.Printf("Sleeping for some time")
+	time.Sleep(5 * time.Second)
+	handler := "bucket_op_on_delete_expiry"
+	flushFunctionAndBucket(functionName)
+	createAndDeployFunction(functionName, handler, &commonSettings{})
+
+	// verify for expiry events only
+	pumpBucketOps(opsType{expiry: 30}, &rateLimit{})
+	time.Sleep(40 * time.Second)
+	fireQuery("SELECT * FROM default")
+
+	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
+
+	if itemCount != eventCount {
+		t.Error("For", "OnDeleteExpiryBucketOp",
+			"expected", itemCount,
+			"got", eventCount,
+		)
+	}
+
+	rl := &rateLimit{
+		limit:   true,
+		opsPSec: 100,
+		count:   extraExpired,
+	}
+
+	pumpBucketOps(opsType{delete: true, count: deletedItems, startIndex: itemCount + 1}, &rateLimit{})
+	pumpBucketOps(opsType{expiry: 30, count: extraExpired, startIndex: 3 * itemCount}, rl)
+	time.Sleep(40 * time.Second)
+
+	fireQuery("SELECT * FROM default")
+	totalItems := extraExpired + itemCount
+	eventCount = verifyBucketOps(totalItems, statsLookupRetryCounter)
+
+	if totalItems != eventCount {
+		t.Error("For", "OnDeleteExpiryBucketOp",
+			"expected", itemCount,
+			"got", eventCount,
+		)
+	}
+
+	dumpStats()
+	flushFunctionAndBucket(functionName)
 }

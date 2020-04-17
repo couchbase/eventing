@@ -230,7 +230,7 @@ public:
   void TaskDurationWatcher();
 
   int SendUpdate(const std::string &value, const std::string &meta);
-  int SendDelete(const std::string &meta);
+  int SendDelete(const std::string &value, const std::string &meta);
   void SendTimer(std::string callback, std::string timer_ctx);
   std::string CompileHandler(std::string handler);
   CodeVersion IdentifyVersion(std::string handler);
@@ -316,6 +316,9 @@ public:
 
   size_t v8_heap_size_;
   std::mutex lcb_exception_mtx_;
+  std::atomic<bool> scan_timer_;
+  std::atomic<bool> update_v8_heap_;
+  std::atomic<bool> run_gc_;
   std::map<int, int64_t> lcb_exceptions_;
   IsolateData data_;
 

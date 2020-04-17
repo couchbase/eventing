@@ -1011,19 +1011,25 @@ void AppWorker::EventGenLoop() {
           // Scan for timers
           if (worker->using_timer_) {
             for (auto &v8_worker : worker->workers_) {
-              std::unique_ptr<WorkerMessage> msg(new WorkerMessage);
-              msg->header.event = eInternal + 1;
-              msg->header.opcode = oScanTimer;
-              v8_worker.second->PushFront(std::move(msg));
+              if (!v8_worker.second->scan_timer_.load()) {
+                v8_worker.second->scan_timer_.store(true);
+                std::unique_ptr<WorkerMessage> msg(new WorkerMessage);
+                msg->header.event = eInternal + 1;
+                msg->header.opcode = oScanTimer;
+                v8_worker.second->PushFront(std::move(msg));
+              }
             }
           }
 
           // Update the v8 heap size
           for (auto &v8_worker : worker->workers_) {
-            std::unique_ptr<WorkerMessage> msg(new WorkerMessage);
-            msg->header.event = eInternal + 1;
-            msg->header.opcode = oUpdateV8HeapSize;
-            v8_worker.second->PushFront(std::move(msg));
+            if (!v8_worker.second->update_v8_heap_.load()) {
+              v8_worker.second->update_v8_heap_.store(true);
+              std::unique_ptr<WorkerMessage> msg(new WorkerMessage);
+              msg->header.event = eInternal + 1;
+              msg->header.opcode = oUpdateV8HeapSize;
+              v8_worker.second->PushFront(std::move(msg));
+            }
           }
 
           // Check for memory growth
@@ -1034,8 +1040,10 @@ void AppWorker::EventGenLoop() {
           }
 
           for (auto &v8_worker : worker->workers_) {
-            if (v8_worker.second->v8_heap_size_ > MAX_V8_HEAP_SIZE ||
-                approx_memory > worker->memory_quota_ * 0.8) {
+            if (!v8_worker.second->run_gc_.load() &&
+                      (v8_worker.second->v8_heap_size_ > MAX_V8_HEAP_SIZE ||
+                       approx_memory > worker->memory_quota_ * 0.8)) {
+              v8_worker.second->run_gc_.store(true);
               std::unique_ptr<WorkerMessage> msg(new WorkerMessage);
               msg->header.event = eInternal + 1;
               msg->header.opcode = oRunGc;

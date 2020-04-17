@@ -188,6 +188,9 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
   function_instance_id_.assign(oss.str());
   thread_exit_cond_.store(false);
   stop_timer_scan_.store(false);
+  scan_timer_.store(false);
+  update_v8_heap_.store(false);
+  run_gc_.store(false);
   for (int i = 0; i < NUM_VBUCKETS; i++) {
     vb_seq_[i] = atomic_ptr_t(new std::atomic<uint64_t>(0));
   }
@@ -469,14 +472,17 @@ void V8Worker::RouteMessage() {
         if (stop_timer_scan_.load()) {
           timer_store_->SyncSpan();
         }
+        scan_timer_.store(false);
         break;
       }
       case oUpdateV8HeapSize: {
         UpdateV8HeapSize();
+        update_v8_heap_.store(false);
         break;
       }
       case oRunGc: {
         ForceRunGarbageCollector();
+        run_gc_.store(false);
         break;
       }
       default:
@@ -532,7 +538,9 @@ void V8Worker::HandleDeleteEvent(const std::unique_ptr<WorkerMessage> &msg) {
     UpdateSeqNumLocked(vb, seq_num);
   }
 
-  SendDelete(msg->header.metadata);
+  const auto options = flatbuf::payload::GetPayload(
+      static_cast<const void *>(msg->payload.payload.c_str()));
+  SendDelete(options->value()->str(), msg->header.metadata);
 }
 
 void V8Worker::HandleMutationEvent(const std::unique_ptr<WorkerMessage> &msg) {
@@ -701,7 +709,7 @@ int V8Worker::SendUpdate(const std::string &value, const std::string &meta) {
   return kSuccess;
 }
 
-int V8Worker::SendDelete(const std::string &meta) {
+int V8Worker::SendDelete(const std::string &options, const std::string &meta) {
   const auto start_time = Time::now();
 
   v8::Locker locker(isolate_);
@@ -714,8 +722,12 @@ int V8Worker::SendDelete(const std::string &meta) {
   LOG(logTrace) << " meta: " << RU(meta) << std::endl;
   v8::TryCatch try_catch(isolate_);
 
-  v8::Local<v8::Value> args[1];
+  v8::Local<v8::Value> args[2];
   if (!TO_LOCAL(v8::JSON::Parse(context, v8Str(isolate_, meta)), &args[0])) {
+    return kToLocalFailed;
+  }
+
+  if (!TO_LOCAL(v8::JSON::Parse(context, v8Str(isolate_, options)), &args[1])) {
     return kToLocalFailed;
   }
 
@@ -732,7 +744,7 @@ int V8Worker::SendDelete(const std::string &meta) {
     }
 
     agent_->PauseOnNextJavascriptStatement("Break on start");
-    return DebugExecute("OnDelete", args, 1) ? kSuccess : kOnDeleteCallFail;
+    return DebugExecute("OnDelete", args, 2) ? kSuccess : kOnDeleteCallFail;
   }
 
   RetryWithFixedBackoff(std::numeric_limits<int>::max(), 10,
@@ -742,7 +754,7 @@ int V8Worker::SendDelete(const std::string &meta) {
   auto on_doc_delete = on_delete_.Get(isolate_);
   execute_start_time_ = Time::now();
   UnwrapData(isolate_)->is_executing_ = true;
-  on_doc_delete->Call(context->Global(), 1, args);
+  on_doc_delete->Call(context->Global(), 2, args);
   UnwrapData(isolate_)->is_executing_ = false;
   auto query_mgr = UnwrapData(isolate_)->query_mgr;
   query_mgr->ClearQueries();

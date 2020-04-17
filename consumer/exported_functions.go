@@ -79,6 +79,10 @@ func (c *Consumer) GetEventProcessingStats() map[string]uint64 {
 		stats["dcp_mutation_sent_to_worker"] = c.dcpMutationCounter
 	}
 
+	if c.dcpExpiryCounter > 0 {
+		stats["dcp_expiry_sent_to_worker"] = c.dcpExpiryCounter
+	}
+
 	if c.dcpXattrParseError > 0 {
 		stats["dcp_xattr_parse_error_counter"] = c.dcpXattrParseError
 	}

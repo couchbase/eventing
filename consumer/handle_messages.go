@@ -429,6 +429,7 @@ func (c *Consumer) sendDcpEvent(e *memcached.DcpEvent, sendToDebugger bool) {
 	}
 
 	metadata, err := json.Marshal(&m)
+
 	if err != nil {
 		logging.Errorf("CRHM[%s:%s:%s:%d] key: %ru failed to marshal metadata",
 			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), string(e.Key))
@@ -437,22 +438,30 @@ func (c *Consumer) sendDcpEvent(e *memcached.DcpEvent, sendToDebugger bool) {
 
 	partition := int16(util.VbucketByKey(e.Key, cppWorkerPartitionCount))
 
-	var dcpHeader []byte
-	var hBuilder *flatbuffers.Builder
+	var dcpHeader, payload []byte
+	var hBuilder, pBuilder *flatbuffers.Builder
 	if e.Opcode == mcd.DCP_MUTATION {
 		dcpHeader, hBuilder = c.makeDcpMutationHeader(partition, string(metadata))
-	}
+		payload, pBuilder = c.makeDcpPayload(e.Key, e.Value)
+	} else if e.Opcode == mcd.DCP_DELETION || e.Opcode == mcd.DCP_EXPIRATION {
+		optionMap := map[string]interface{}{
+			"expired": e.Opcode == mcd.DCP_EXPIRATION,
+		}
+		options, err := json.Marshal(&optionMap)
+		if err != nil {
+			logging.Errorf("CRHM[%s:%s:%s:%d] key: %v failed to marshal options for delete",
+				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), string(options))
+			return
+		}
 
-	if e.Opcode == mcd.DCP_DELETION {
 		dcpHeader, hBuilder = c.makeDcpDeletionHeader(partition, string(metadata))
+		payload, pBuilder = c.makeDcpPayload(e.Key, options)
 	}
-
-	dcpPayload, pBuilder := c.makeDcpPayload(e.Key, e.Value)
 
 	msg := &msgToTransmit{
 		msg: &message{
 			Header:  dcpHeader,
-			Payload: dcpPayload,
+			Payload: payload,
 		},
 		sendToDebugger: sendToDebugger,
 		prioritize:     false,
@@ -462,7 +471,7 @@ func (c *Consumer) sendDcpEvent(e *memcached.DcpEvent, sendToDebugger bool) {
 	if !sendToDebugger {
 		c.vbProcessingStats.updateVbStat(e.VBucket, "last_sent_seq_no", e.Seqno)
 	}
-	c.sentEventsSize += int64(len(dcpHeader) + len(dcpPayload))
+	c.sentEventsSize += int64(len(dcpHeader) + len(payload))
 	c.numSentEvents++
 	c.sendMessage(msg)
 }

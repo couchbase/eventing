@@ -1,10 +1,14 @@
 {
   "service": "eventing",
   "proxy-strategy": "@PROXY_STRATEGY@",
-   "version-dirs": [
-    {"version": [4, 5], "dir": "ui-classic"},
+  "rest-api-prefixes": {
+    "event": {
+      "portName": "eventing_http_port"
+    }
+  },
+  "version-dirs": [
     {"version": [5, 0], "dir": "ui-current"}
   ],
- "rest-api-prefix": "event",
- "doc-root": "@BIN_PREFIX@eventing-ui"
+  "doc-root": "@BIN_PREFIX@eventing-ui",
+  "module": "main.js"
 }
