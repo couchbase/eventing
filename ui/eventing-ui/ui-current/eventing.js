@@ -4,6 +4,7 @@ import saveAs from "/ui/web_modules/file-saver.js"
 import ace from '/ui/libs/ace/ace-wrapper.js';
 
 import uiRouter from "/ui/web_modules/@uirouter/angularjs.js";
+import uiAce from "/ui/libs/ui-ace.js";
 import mnPoolDefault from "/ui/app/components/mn_pool_default.js";
 import mnJquery from "/ui/app/components/mn_jquery.js";
 import mnPermissions from "/ui/app/components/mn_permissions.js";
@@ -23,6 +24,7 @@ import {ErrorMessage, ErrorHandler} from "../err-model.js";
 export default 'eventing';
 
 angular.module('eventing', [
+  uiAce,
   uiRouter,
   mnPoolDefault,
   mnJquery,

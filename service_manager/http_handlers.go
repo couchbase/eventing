@@ -2867,6 +2867,13 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
+			if !m.checkAppExists(appName) {
+				if app.Settings["deployment_status"] != app.Settings["processing_status"] {
+					app.Settings["deployment_status"] = false
+					app.Settings["processing_status"] = false
+				}
+			}
+
 			if _, ok := app.Settings["language_compatibility"]; !ok {
 				app.Settings["language_compatibility"] = common.LanguageCompatibility[len(common.LanguageCompatibility)-1]
 			}
