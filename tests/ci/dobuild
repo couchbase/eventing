@@ -34,7 +34,7 @@ note_version() {
   cd $pos
   current="`git rev-parse HEAD`"
   echo $current > ~/$repo.maybe
-  test -f ~/$repo.good || cp $repo.maybe $repo.good
+  test -f ~/$repo.good || cp ~/$repo.maybe ~/$repo.good
   good="`cat ~/$repo.good`"
   echo -n "$repo is at <a href='https://github.com/couchbase/$repo/commit/$current'>${current:0:7}</a>, changes since last good build: "
   if [ "$current" != "$good" ]; then
