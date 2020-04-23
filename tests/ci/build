@@ -1,6 +1,6 @@
 #!/bin/bash
 
-export PATH=$PATH:~/bin
+export PATH=$HOME/bin:$PATH
 
 rm -rf ~/.ciscripts
 git clone -q ssh://github.com/couchbase/eventing ~/.ciscripts
@@ -11,7 +11,7 @@ while true; do
   git pull -q
   find tests/ci -not -name 'build' -and -not -name '.*' -type f -exec cp -v {} ~/bin/ \;
   domain
-  (source ~/.cienv; test -f $WORKSPACE/.repo/repo/repo && cp -u $WORKSPACE/.repo/repo/repo ~/bin)
+  (source ~/.cienv; test -f $WORKSPACE/.repo/repo/repo && cp -uv $WORKSPACE/.repo/repo/repo ~/bin)
   sleep 600
 done
 

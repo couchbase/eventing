@@ -1,6 +1,7 @@
 package servicemanager
 
 import (
+	"bytes"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -232,6 +233,7 @@ func (m *ServiceMgr) unmarshalApp(r *http.Request) (app application, info *runti
 		return
 	}
 
+	data = bytes.Trim(data, "[]\n ")
 	err = json.Unmarshal(data, &app)
 	if err != nil {
 		info.Code = m.statusCodes.errUnmarshalPld.Code
@@ -258,6 +260,11 @@ func (m *ServiceMgr) unmarshalAppList(w http.ResponseWriter, r *http.Request) (a
 		logging.Errorf("%s %s", logPrefix, info.Info)
 		return
 	}
+
+	// Create array of apps so that passed valid app object not fail during unmarshalling.
+	data = bytes.Trim(data, "[]\n ")
+	data = append([]byte("["), data...)
+	data = append(data, []byte("]")...)
 
 	err = json.Unmarshal(data, &appList)
 	if err != nil {

@@ -34,7 +34,7 @@ note_version() {
   cd $pos
   current="`git rev-parse HEAD`"
   echo $current > ~/$repo.maybe
-  test -f ~/$repo.good || cp $repo.maybe $repo.good
+  test -f ~/$repo.good || cp ~/$repo.maybe ~/$repo.good
   good="`cat ~/$repo.good`"
   echo -n "$repo is at <a href='https://github.com/couchbase/$repo/commit/$current'>${current:0:7}</a>, changes since last good build: "
   if [ "$current" != "$good" ]; then
@@ -124,6 +124,7 @@ note_version kv_engine    $WORKSPACE/kv_engine
 note_version ns_server    $WORKSPACE/ns_server
 note_version couchstore   $WORKSPACE/couchstore
 note_version couchdb      $WORKSPACE/couchdb
+note_version testrunner   $WORKSPACE/testrunner
 
 switch_version eventing    $WORKSPACE/goproj/src/github.com/couchbase/eventing     unstable
 switch_version eventing-ee $WORKSPACE/goproj/src/github.com/couchbase/eventing-ee  unstable
