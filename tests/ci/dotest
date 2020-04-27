@@ -123,7 +123,7 @@ export GOROOT="$HOME/.cbdepscache/exploded/x86_64/go-$gover/go"
 export GOPATH="$WORKSPACE/go:$WORKSPACE/godeps:$WORKSPACE/goproj"
 export PATH="$PATH:$GOROOT/bin"
 export LD_LIBRARY_PATH="$WORKSPACE/install/lib"
-export C_INCLUDE_PATH="$WORKSPACE/install/platform/include:$WORKSPACE/install/include:$WORKSPACE/forestdb/include:$WORKSPACE/install/build/tlm/deps/curl.exploded/include:$WORKSPACE/sigar/include"
+export C_INCLUDE_PATH="$WORKSPACE/build/platform/include:$WORKSPACE/forestdb/include:$WORKSPACE/build/tlm/deps/curl.exploded/include:$WORKSPACE/sigar/include"
 export CGO_LDFLAGS="-L $WORKSPACE/install/lib"
 
 cd $WORKSPACE/goproj/src/github.com/couchbase/eventing/tests/functional_tests

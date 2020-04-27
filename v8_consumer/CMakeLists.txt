@@ -23,7 +23,8 @@ INCLUDE (FindCouchbaseOpenSSL)
 
 SET(FEATURES_HEADERS
         ../features/include
-        ../third_party/crc64)
+        ../third_party/crc64
+        ../third_party/crc32)
 
 SET(FEATURES_SRC
         ../../eventing-ee/features/src/curl.cc
@@ -41,7 +42,8 @@ SET(FEATURES_SRC
         ../features/src/utils.cc
         ../features/src/base64.cc
         ../features/src/insight.cc
-        ../third_party/crc64/crc64.cc)
+        ../third_party/crc64/crc64.cc
+        ../third_party/crc32/crc32.cc)
 
 INCLUDE_DIRECTORIES(BEFORE
                      "${libcouchbase_SOURCE_DIR}/include"

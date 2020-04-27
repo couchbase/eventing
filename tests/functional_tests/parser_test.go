@@ -1,7 +1,10 @@
-package parser
+// +build all handler
+
+package eventing
 
 import (
 	"fmt"
+	"github.com/couchbase/eventing/parser"
 	"testing"
 )
 
@@ -59,6 +62,7 @@ var input = []string{
 		var bar = UPSERT INTO gamesim (KEY, VALUE) VALUES ('reskey', $val);
 		var upsert_query5 = N1QL('UPSERT INTO eventing-bucket-1 (KEY, VALUE) VALUES ($docId5, \'Hello World5\');', {'$docId5':docId5}, {'consistency' : 'request'});
 	`,
+	`var foo = 2 ** (3 + 1);`,
 }
 
 var output = []string{
@@ -115,11 +119,12 @@ var output = []string{
 		var bar = N1QL('UPSERT INTO gamesim (KEY, VALUE) VALUES (\'reskey\', $val);', {'$val':val});
 		var upsert_query5 = N1QL('UPSERT INTO eventing-bucket-1 (KEY, VALUE) VALUES ($docId5, \'Hello World5\');', {'$docId5':docId5}, {'consistency' : 'request'});
 	`,
+	`var foo = 2 ** (3 + 1);`,
 }
 
 func TestTranspile(t *testing.T) {
 	for i := 0; i < len(input); i++ {
-		result, _ := TranspileQueries(input[i], "")
+		result, _ := parser.TranspileQueries(input[i], "")
 		if result != output[i] {
 			t.Errorf("Mismatch: %s\nExpected:\n%s\nGot:\n%s\n", Diff(output[i], result), output[i], result)
 		}
