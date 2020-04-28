@@ -46,7 +46,6 @@
 #include "log.h"
 #include "parse_deployment.h"
 #include "timer_store.h"
-#include "transpiler.h"
 #include "utils.h"
 #include "v8log.h"
 
@@ -232,8 +231,7 @@ public:
   int SendUpdate(const std::string &value, const std::string &meta);
   int SendDelete(const std::string &value, const std::string &meta);
   void SendTimer(std::string callback, std::string timer_ctx);
-  std::string CompileHandler(std::string handler);
-  CodeVersion IdentifyVersion(std::string handler);
+  std::string Compile(std::string handler);
 
   void StartDebugger();
   void StopDebugger();
@@ -323,6 +321,9 @@ public:
   IsolateData data_;
 
 private:
+  CompilationInfo CompileHandler(std::string app_name, std::string handler);
+  std::string AddHeadersAndFooters(std::string code);
+
   void UpdateSeqNumLocked(int vb, uint64_t seq_num);
   void HandleDeleteEvent(const std::unique_ptr<WorkerMessage> &msg);
   void HandleMutationEvent(const std::unique_ptr<WorkerMessage> &msg);
@@ -374,6 +375,8 @@ private:
   std::unordered_set<int64_t> partitions_;
   std::shared_ptr<BucketFactory> bucket_factory_;
   std::vector<BucketBinding> bucket_bindings_;
+  std::vector<std::string> handler_headers_;
+  std::vector<std::string> handler_footers_;
 };
 
 #endif

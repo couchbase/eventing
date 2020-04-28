@@ -340,10 +340,7 @@ type CompileStatus struct {
 	Description    string `json:"description"`
 	Index          int    `json:"index"`
 	Language       string `json:"language"`
-	Level          string `json:"level"`
 	Line           int    `json:"line_number"`
-	UsingTimer     string `json:"using_timer"`
-	Version        string `json:"version"`
 }
 
 // PlannerNodeVbMapping captures the vbucket distribution across all

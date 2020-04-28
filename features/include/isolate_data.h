@@ -19,7 +19,6 @@
 class Curl;
 class V8Worker;
 class JsException;
-class Transpiler;
 class Utils;
 class Timer;
 class CustomError;
@@ -56,7 +55,6 @@ struct IsolateData {
   V8Worker *v8worker{nullptr};
   JsException *js_exception{nullptr};
   Communicator *comm{nullptr};
-  Transpiler *transpiler{nullptr};
   Utils *utils{nullptr};
   Timer *timer{nullptr};
   CustomError *custom_error{nullptr};

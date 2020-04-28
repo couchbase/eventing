@@ -23,7 +23,6 @@
 #include "query-mgr.h"
 #include "retry_util.h"
 #include "timer.h"
-#include "transpiler.h"
 #include "utils.h"
 #include "v8worker.h"
 
@@ -121,9 +120,6 @@ void V8Worker::InitializeIsolateData(const server_settings_t *server_settings,
   data_.comm = new Communicator(server_settings->host_addr,
                                 server_settings->eventing_port, key.first,
                                 key.second, false, app_name_, isolate_);
-  data_.transpiler =
-      new Transpiler(isolate_, GetTranspilerSrc(), h_config->handler_headers,
-                     h_config->handler_footers, source_bucket);
   data_.timer = new Timer(isolate_, context);
   // TODO : Need to make HEAD call to all the bindings to establish TCP
   // Connections
@@ -180,7 +176,9 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
       function_id_(function_id), user_prefix_(user_prefix),
       ns_server_port_(ns_server_port),
       exception_type_names_(
-          {"KVError", "N1QLError", "EventingError", "CurlError"}) {
+          {"KVError", "N1QLError", "EventingError", "CurlError"}),
+      handler_headers_(h_config->handler_headers),
+      handler_footers_(h_config->handler_footers) {
   auto config = ParseDeployment(h_config->dep_cfg.c_str());
   cb_source_bucket_.assign(config->source_bucket);
   std::ostringstream oss;
@@ -269,7 +267,6 @@ V8Worker::~V8Worker() {
   auto data = UnwrapData(isolate_);
   delete data->custom_error;
   delete data->comm;
-  delete data->transpiler;
   delete data->utils;
   delete data->timer;
   delete data->js_exception;
@@ -366,14 +363,13 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
   v8::HandleScope handle_scope(isolate_);
 
   auto context = context_.Get(isolate_);
-  auto transpiler = UnwrapData(isolate_)->transpiler;
   v8::Context::Scope context_scope(context);
 
   for (const auto &type_name : exception_type_names_) {
     DeriveFromError(isolate_, context, type_name);
   }
 
-  auto final_code = transpiler->AddHeadersAndFooters(script_to_execute);
+  auto final_code = AddHeadersAndFooters(script_to_execute);
   script_to_execute = final_code + '\n';
   LOG(logTrace) << "script to execute: " << RM(script_to_execute) << std::endl;
   script_to_execute_ = script_to_execute;
@@ -885,69 +881,80 @@ void V8Worker::PushBack(std::unique_ptr<WorkerMessage> worker_msg) {
   worker_queue_->PushBack(std::move(worker_msg));
 }
 
-std::string V8Worker::CompileHandler(std::string handler) {
+CompilationInfo V8Worker::CompileHandler(std::string area_name, std::string handler) {
   v8::Locker locker(isolate_);
   v8::Isolate::Scope isolate_scope(isolate_);
   v8::HandleScope handle_scope(isolate_);
 
+  v8::TryCatch try_catch(isolate_);
   auto context = context_.Get(isolate_);
+
   v8::Context::Scope context_scope(context);
-  auto info_obj = v8::Object::New(isolate_);
+
+  auto script_name = v8Str(isolate_, area_name);
+  v8::ScriptOrigin origin(script_name);
+
+  v8::Local<v8::Script> compiled_script;
+
+  auto source = v8Str(isolate_, handler);
+  if (!v8::Script::Compile(context, source, &origin)
+           .ToLocal(&compiled_script)) {
+    assert(try_catch.HasCaught());
+
+    LOG(logError) << "Exception logged:"
+                  << ExceptionString(isolate_, context, &try_catch)
+                  << std::endl;
+    return BuildCompileInfo(isolate_, context, &try_catch);
+  }
+
+  v8::Local<v8::Value> result;
+  if (!compiled_script->Run(context).ToLocal(&result)) {
+    assert(try_catch.HasCaught());
+    LOG(logError) << "Exception logged:"
+                  << ExceptionString(isolate_, context, &try_catch)
+                  << std::endl;
+    return BuildCompileInfo(isolate_, context, &try_catch);
+  }
 
   CompilationInfo info;
-
-  try {
-    auto transpiler = UnwrapData(isolate_)->transpiler;
-    info = transpiler->Compile(handler);
-    Transpiler::LogCompilationInfo(info);
-
-    info_obj->Set(v8Str(isolate_, "language"), v8Str(isolate_, info.language));
-    info_obj->Set(v8Str(isolate_, "compile_success"),
-                  v8::Boolean::New(isolate_, info.compile_success));
-    info_obj->Set(v8Str(isolate_, "index"),
-                  v8::Int32::New(isolate_, info.index));
-    info_obj->Set(v8Str(isolate_, "line_number"),
-                  v8::Int32::New(isolate_, info.line_no));
-    info_obj->Set(v8Str(isolate_, "column_number"),
-                  v8::Int32::New(isolate_, info.col_no));
-    info_obj->Set(v8Str(isolate_, "description"),
-                  v8Str(isolate_, info.description));
-    info_obj->Set(v8Str(isolate_, "area"), v8Str(isolate_, info.area));
-  } catch (const char *e) {
-    LOG(logError) << e << std::endl;
-    return "";
-  }
-
-  if (info.compile_success) {
-    try {
-      auto ident = IdentifyVersion(handler);
-      info_obj->Set(v8Str(isolate_, "version"), v8Str(isolate_, ident.version));
-      info_obj->Set(v8Str(isolate_, "level"), v8Str(isolate_, ident.level));
-      info_obj->Set(v8Str(isolate_, "using_timer"),
-                    v8Str(isolate_, ident.using_timer));
-    } catch (const char *e) {
-      LOG(logError) << "Unable to identify version, ignoring:" << e
-                    << std::endl;
-    }
-  }
-
-  return JSONStringify(isolate_, info_obj);
+  info.compile_success = true;
+  info.description = "Compilation success";
+  info.language = "Javascript";
+  return info;
 }
 
-CodeVersion V8Worker::IdentifyVersion(std::string handler) {
-  v8::Locker locker(isolate_);
-  v8::Isolate::Scope isolate_scope(isolate_);
-  v8::HandleScope handle_scope(isolate_);
+std::string V8Worker::Compile(std::string handler) {
+  std::string header_code;
+  int header_index_length = 0;
+  for (const auto &header : handler_headers_) {
+    header_code.append(header.c_str());
+    header_index_length = header.length();
+    header_code.append("\n");
+  }
+  CompilationInfo info = CompileHandler("handlerHeaders", header_code);
 
-  auto context = context_.Get(isolate_);
-  auto transpiler = UnwrapData(isolate_)->transpiler;
-  v8::Context::Scope context_scope(context);
+  if(!info.compile_success) {
+    return CompileInfoToString(info);
+  }
 
-  auto final_code = transpiler->AddHeadersAndFooters(handler);
-  auto script_to_execute = final_code + '\n';
+  std::string footer_code;
+  for (const auto &footer : handler_footers_) {
+    footer_code.append(footer.c_str());
+    footer_code.append("\n");
+  }
+  info = CompileHandler("handlerFooters", footer_code);
 
-  auto ver = transpiler->GetCodeVersion(script_to_execute);
-  return ver;
+  if(!info.compile_success) {
+    return CompileInfoToString(info);
+  }
+  auto appCode = AddHeadersAndFooters(handler);
+  info = CompileHandler("handlerCode", appCode);
+  if(!info.compile_success) {
+    info.index -= header_index_length;
+    info.line_no -= handler_headers_.size();
+  }
+
+  return CompileInfoToString(info);
 }
 
 void V8Worker::GetBucketOpsMessages(std::vector<uv_buf_t> &messages) {
@@ -1183,4 +1190,21 @@ void V8Worker::UpdateV8HeapSize() {
 void V8Worker::ForceRunGarbageCollector() {
   v8::Locker locker(isolate_);
   isolate_->LowMemoryNotification();
+}
+
+std::string V8Worker::AddHeadersAndFooters(std::string code) {
+  std::string final_code;
+  for (const auto &header_code : handler_headers_) {
+    final_code.append(header_code.c_str());
+    final_code.append("\n");
+  }
+  final_code.append(code.c_str());
+  final_code.append("\n");
+
+  for (const auto &footer_code : handler_footers_) {
+    final_code.append(footer_code.c_str());
+    final_code.append("\n");
+  }
+
+  return final_code;
 }

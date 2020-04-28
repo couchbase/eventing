@@ -37,6 +37,18 @@
   (ToLocal((maybe), (local), __FILE__, __FUNCTION__, __LINE__))
 #define IS_EMPTY(v8obj) (IsEmpty((v8obj), __FILE__, __FUNCTION__, __LINE__))
 
+struct CompilationInfo {
+  CompilationInfo() : compile_success(false), index(0), line_no(0), col_no(0) {}
+
+  std::string language;
+  bool compile_success;
+  int32_t index;
+  int32_t line_no;
+  int32_t col_no;
+  std::string description;
+  std::string area;
+};
+
 template <typename T>
 T *UnwrapInternalField(v8::Local<v8::Object> obj, int field_no) {
   auto field = v8::Local<v8::External>::Cast(obj->GetInternalField(field_no));
@@ -184,6 +196,11 @@ std::string GetTranspilerSrc();
 std::string ExceptionString(v8::Isolate *isolate,
                             v8::Local<v8::Context> &context,
                             v8::TryCatch *try_catch);
+
+CompilationInfo BuildCompileInfo(v8::Isolate *isolate,
+                            v8::Local<v8::Context> &context,
+                            v8::TryCatch *try_catch);
+std::string CompileInfoToString(CompilationInfo info);
 
 std::vector<std::string> split(const std::string &s, char delimiter);
 
