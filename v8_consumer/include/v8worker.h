@@ -227,7 +227,7 @@ public:
   void TaskDurationWatcher();
 
   int SendUpdate(const std::string &value, const std::string &meta);
-  int SendDelete(const std::string &meta);
+  int SendDelete(const std::string &value, const std::string &meta);
   void SendTimer(std::string callback, std::string timer_ctx);
   std::string CompileHandler(std::string handler);
   CodeVersion IdentifyVersion(std::string handler);

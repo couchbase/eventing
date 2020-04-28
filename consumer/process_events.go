@@ -111,6 +111,7 @@ func (c *Consumer) processDCPEvents() {
 				}
 
 			case mcd.DCP_DELETION:
+
 				c.filterVbEventsRWMutex.RLock()
 				if _, ok := c.filterVbEvents[e.VBucket]; ok {
 					c.filterVbEventsRWMutex.RUnlock()
@@ -118,31 +119,23 @@ func (c *Consumer) processDCPEvents() {
 				}
 				c.filterVbEventsRWMutex.RUnlock()
 
-				c.vbProcessingStats.updateVbStat(e.VBucket, "last_read_seq_no", e.Seqno)
-				switch e.Datatype {
-				case dcpDatatypeJSONXattr:
-					xattrLen := binary.BigEndian.Uint32(e.Value[0:4])
-					if c.app.SrcMutationEnabled {
-						if isRecursive, err := c.isRecursiveDCPEvent(e, functionInstanceID); err == nil && isRecursive == true {
-							c.suppressedDCPDeletionCounter++
-						} else {
-							c.dcpDeletionCounter++
-							e.Value = e.Value[xattrLen+4:]
-							logging.Tracef("%s [%s:%s:%d] No IntraHandlerRecursion, sending key: %ru to be processed by JS handlers",
-								logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key))
-							c.sendEvent(e)
-						}
-					} else {
-						c.dcpDeletionCounter++
-						e.Value = e.Value[xattrLen+4:]
-						logging.Tracef("%s [%s:%s:%d] Sending key: %ru to be processed by JS handlers",
-							logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key))
-						c.sendEvent(e)
-					}
-				default:
+				if c.processAndSendDcpDelOrExpMessage(e, functionInstanceID, true) {
 					c.dcpDeletionCounter++
-					c.sendEvent(e)
+				} else {
+					c.suppressedDCPDeletionCounter++
 				}
+
+			case mcd.DCP_EXPIRATION:
+
+				c.filterVbEventsRWMutex.RLock()
+				if _, ok := c.filterVbEvents[e.VBucket]; ok {
+					c.filterVbEventsRWMutex.RUnlock()
+					continue
+				}
+				c.filterVbEventsRWMutex.RUnlock()
+
+				c.processAndSendDcpDelOrExpMessage(e, functionInstanceID, false)
+				c.dcpExpiryCounter++
 
 			case mcd.DCP_STREAMREQ:
 
@@ -1352,4 +1345,26 @@ func (c *Consumer) handleStreamEnd(vBucket uint16, last_processed_seqno uint64) 
 		c.vbsRemainingToRestream = append(c.vbsRemainingToRestream, vBucket)
 		c.Unlock()
 	}
+}
+
+// return false if message is supressed else true
+func (c *Consumer) processAndSendDcpDelOrExpMessage(e *cb.DcpEvent, functionInstanceID string, checkRecursiveEvent bool) bool {
+	logPrefix := "Consumer::processAndSendDcpMessage"
+	c.vbProcessingStats.updateVbStat(e.VBucket, "last_read_seq_no", e.Seqno)
+	switch e.Datatype {
+	case dcpDatatypeJSONXattr:
+		xattrLen := binary.BigEndian.Uint32(e.Value[0:4])
+		if c.app.SrcMutationEnabled && checkRecursiveEvent {
+			if isRecursive, err := c.isRecursiveDCPEvent(e, functionInstanceID); err == nil && isRecursive == true {
+				return false
+			}
+		}
+		e.Value = e.Value[xattrLen+4:]
+		logging.Tracef("%s [%s:%s:%d] Sending key: %ru to be processed by JS handlers",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key))
+		c.sendEvent(e)
+	default:
+		c.sendEvent(e)
+	}
+	return true
 }
