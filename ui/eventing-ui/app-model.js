@@ -3,7 +3,6 @@ import getVersion from "./gen/version.js";
 export {Application,
         ApplicationManager,
         ApplicationModel,
-        formatCode,
         determineUIStatus,
         getWarnings};
 
@@ -133,10 +132,18 @@ function ApplicationModel(app) {
 }
 
 ApplicationModel.prototype.getDefaultModel = function() {
-    var code = 'function OnUpdate(doc, meta){log(\'docId\', meta.id);} function OnDelete(meta, options){}';
+    var code = [
+        'function OnUpdate(doc, meta) {',
+        '    log("Doc created/updated", meta.id);',
+        '}',
+        '',
+        'function OnUpdate(doc, meta, options) {',
+        '    log("Doc deleted/expired", meta.id);',
+        '}'
+    ].join('\n');
     return {
         appname: 'Application name',
-        appcode: formatCode(code),
+        appcode: code,
         depcfg: {
             buckets: [],
             metadata_bucket: 'eventing',
@@ -189,15 +196,6 @@ ApplicationModel.prototype.initializeDefaults = function() {
     this.settings.n1ql_consistency = 'none';
     this.version = getVersion();
 };
-
-// Prettifies the JavaScript code.
-function formatCode(code) {
-    var ast = esprima.parse(code, {
-        sourceType: 'script'
-    });
-    var formattedCode = escodegen.generate(ast);
-    return formattedCode;
-}
 
 function determineUIStatus(status) {
     switch (status) {

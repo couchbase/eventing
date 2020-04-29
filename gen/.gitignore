@@ -1,13 +1,6 @@
 #
 # Please list generated files without using wildcards
 #
-
-js/builtin.h
-js/escodegen.h
-js/esprima.h
-js/estraverse.h
-js/source-map.h
-js/transpiler.h
 inspector/v8_inspector_protocol_json.h
 flatbuf/cfg_schema_generated.h
 flatbuf/header_generated.h
@@ -21,7 +14,6 @@ flatbuf/header/Header.go
 flatbuf/payload/Payload.go
 flatbuf/payload/VbsThreadMap.go
 flatbuf/response/Response.go
-parser/jsify.cc
 auditevent/events.go
 version/version.go
 version/version.cc
