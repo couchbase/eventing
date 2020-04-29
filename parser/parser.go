@@ -4,6 +4,7 @@ package parser
 // line numbers and whitespace as far as possible
 
 import (
+	"errors"
 	"fmt"
 	"html/template"
 	"regexp"
@@ -30,7 +31,13 @@ var esc_lt = regexp.MustCompile(
 var esc_gt = regexp.MustCompile(
 	`([^\\])\\x3E`)
 
-func whitewash(str string) string {
+var timer_use = regexp.MustCompile(
+	`createTimer([[:space:]]*)\(`)
+
+var printable_stmt = regexp.MustCompile(
+	`^[[:print:]]*$`)
+
+func cleanse(str string) string {
 	washed := []byte(str)
 	for esc, sub, pos := "", "", 0; pos < len(str); pos++ {
 		switch {
@@ -116,7 +123,7 @@ func WrapQuery(query string, params string, n1ql_params string) string {
 			if n1ql_params == "" {
 				result += ", " + params + ");"
 			} else {
-				result += ", " + params + ", " + n1ql_params +");"
+				result += ", " + params + ", " + n1ql_params + ");"
 			}
 		}
 		if i < len(js_lines)-1 {
@@ -128,7 +135,7 @@ func WrapQuery(query string, params string, n1ql_params string) string {
 
 func FindQueries(input string) []Match {
 	matches := []Match{}
-	bare := whitewash(input)
+	bare := cleanse(input)
 	posns := maybe_n1ql.FindAllStringSubmatchIndex(bare, -1)
 	for _, pos := range posns {
 		query := input[pos[2]:pos[3]]
@@ -173,4 +180,54 @@ func TranspileQueries(input string, n1ql_params string) (result string, info []N
 	}
 	result += input[pos:]
 	return
+}
+
+func getStatements(input string) []string {
+	js := cleanse(input)
+	stmts := []string{}
+	start := 0
+	for pos := 0; pos < len(js); pos++ {
+		if js[pos] == '{' || js[pos] == '}' || js[pos] == ';' {
+			part := strings.TrimSpace(js[start:pos])
+			if len(part) > 0 {
+				stmts = append(stmts, part)
+			}
+			stmts = append(stmts, string(js[pos]))
+			start = pos + 1
+		}
+	}
+	if start < len(input) {
+		part := strings.TrimSpace(js[start:])
+		if len(part) > 0 {
+			stmts = append(stmts, part)
+		}
+	}
+	return stmts
+}
+
+func ValidateGlobals(input string) (bool, error) {
+	stmts := getStatements(input)
+	depth := 0
+	for _, stmt := range stmts {
+		switch stmt {
+		case "{":
+			depth++
+		case "}":
+			depth--
+		default:
+			if depth <= 0 && !strings.HasPrefix(stmt, "function") {
+				msg := fmt.Sprintf("Only functions allowed in global space, but found: %s", stmt)
+				if !printable_stmt.MatchString(stmt) {
+					msg += fmt.Sprintf(" bytes: %v", []byte(stmt))
+				}
+				return false, errors.New(msg)
+			}
+		}
+	}
+	return true, nil
+}
+
+func UsingTimer(input string) bool {
+	bare := cleanse(input)
+	return timer_use.MatchString(bare)
 }

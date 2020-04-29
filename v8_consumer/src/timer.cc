@@ -86,10 +86,7 @@ bool Timer::CreateTimerImpl(const v8::FunctionCallbackInfo<v8::Value> &args) {
         std::to_string(rng()) + std::to_string(timer_info.seq_num);
   }
 
-  auto ref = timer_info.callback + ":" + timer_info.reference;
-  uint32_t hash = crc32_8(ref.c_str(), ref.size(), 0 /*crc_in*/);
-  timer_info.vb = hash % NUM_VBUCKETS;
-  LOG(logTrace) << "ref: " << ref << "hash: " << hash  << "Timer Partition is: " << timer_info.vb << " " << std::endl;
+  FillTimerPartition(timer_info);
 
   if (timer_info.context.size() > static_cast<unsigned>(timer_context_size)) {
     js_exception->ThrowEventingError(
@@ -107,11 +104,62 @@ bool Timer::CreateTimerImpl(const v8::FunctionCallbackInfo<v8::Value> &args) {
   return true;
 }
 
+bool Timer::CancelTimerImpl(const v8::FunctionCallbackInfo<v8::Value> &args) {
+  if (!ValidateCancelTimerArgs(args)) {
+    return false;
+  }
+
+  v8::HandleScope handle_scope(isolate_);
+  auto js_exception = UnwrapData(isolate_)->js_exception;
+
+  auto utils = UnwrapData(isolate_)->utils;
+  auto v8worker = UnwrapData(isolate_)->v8worker;
+  timer::TimerInfo timer_info;
+  timer_info.callback = utils->GetFunctionName(args[0]);
+  timer_info.reference = utils->ToCPPString(args[1]);
+
+  FillTimerPartition(timer_info);
+
+  auto err = v8worker->DelTimer(timer_info);
+  if (err != LCB_SUCCESS) {
+    js_exception->ThrowKVError(v8worker->GetTimerLcbHandle(), err);
+    return false;
+  }
+  args.GetReturnValue().Set(v8Str(isolate_, timer_info.reference));
+  return true;
+}
+
+bool Timer::ValidateCancelTimerArgs(const v8::FunctionCallbackInfo<v8::Value> &args) {
+  auto js_exception = UnwrapData(isolate_)->js_exception;
+
+  if (args.Length() < 2) {
+    js_exception->ThrowEventingError(
+        "cancelTimer needs 2 arguments - callback function, reference");
+    return false;
+  }
+
+  auto utils = UnwrapData(isolate_)->utils;
+  if (!utils->IsFuncGlobal(args[0])) {
+    js_exception->ThrowEventingError(
+        "First argument to cancelTimer must be a valid global function");
+    return false;
+  }
+
+  if (!args[1]->IsString()) {
+    js_exception->ThrowEventingError(
+        "Second argument to cancelTimer must be a string");
+    return false;
+  }
+
+  return true;
+}
+
 bool Timer::ValidateArgs(const v8::FunctionCallbackInfo<v8::Value> &args) {
   auto js_exception = UnwrapData(isolate_)->js_exception;
-  if (args.kArgsLength < 3) {
+
+  if (args.Length() < 3) {
     js_exception->ThrowEventingError(
-        "Need 3 arguments - callback function, time, reference");
+        "createTimer needs atleast 3 arguments - callback function, time, reference");
     return false;
   }
 
@@ -137,6 +185,13 @@ bool Timer::ValidateArgs(const v8::FunctionCallbackInfo<v8::Value> &args) {
   return true;
 }
 
+void Timer::FillTimerPartition(timer::TimerInfo& timer_info) {
+  auto ref = timer_info.callback + ":" + timer_info.reference;
+  uint32_t hash = crc32_8(ref.c_str(), ref.size(), 0 /*crc_in*/);
+  timer_info.vb = hash % NUM_VBUCKETS;
+  LOG(logTrace) << "ref: " << ref << "hash: " << hash  << "Timer Partition is: " << timer_info.vb << " " << std::endl;
+}
+
 void CreateTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
   auto isolate = args.GetIsolate();
   std::lock_guard<std::mutex> guard(UnwrapData(isolate)->termination_lock_);
@@ -147,4 +202,16 @@ void CreateTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
   auto timer = UnwrapData(isolate)->timer;
   ++timer_create_counter;
   timer->CreateTimerImpl(args);
+}
+
+void CancelTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
+  auto isolate = args.GetIsolate();
+  std::lock_guard<std::mutex> guard(UnwrapData(isolate)->termination_lock_);
+  if (!UnwrapData(isolate)->is_executing_) {
+    return;
+  }
+
+  auto timer = UnwrapData(isolate)->timer;
+  ++timer_cancel_counter;
+  timer->CancelTimerImpl(args);
 }

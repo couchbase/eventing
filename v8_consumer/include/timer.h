@@ -26,15 +26,19 @@ public:
   virtual ~Timer();
 
   bool CreateTimerImpl(const v8::FunctionCallbackInfo<v8::Value> &args);
+  bool CancelTimerImpl(const v8::FunctionCallbackInfo<v8::Value> &args);
 
 private:
   timer::EpochInfo Epoch(const v8::Local<v8::Value> &date_val);
   bool ValidateArgs(const v8::FunctionCallbackInfo<v8::Value> &args);
+  bool ValidateCancelTimerArgs(const v8::FunctionCallbackInfo<v8::Value> &args);
+  void FillTimerPartition(timer::TimerInfo& tinfo);
 
   v8::Isolate *isolate_;
   v8::Persistent<v8::Context> context_;
 };
 
 void CreateTimer(const v8::FunctionCallbackInfo<v8::Value> &args);
+void CancelTimer(const v8::FunctionCallbackInfo<v8::Value> &args);
 
 #endif

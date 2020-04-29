@@ -17,12 +17,12 @@
 #include "isolate_data.h"
 #include "js_exception.h"
 #include "utils.h"
+#include <nlohmann/json.hpp>
 
 #include "../../gen/js/escodegen.h"
 #include "../../gen/js/esprima.h"
 #include "../../gen/js/estraverse.h"
 #include "../../gen/js/source-map.h"
-#include "../../gen/js/transpiler.h"
 
 static bool ipv6 = false;
 std::mutex time_now_mutex;
@@ -263,16 +263,6 @@ std::vector<std::string> split(const std::string &s, char delim) {
   std::vector<std::string> elems;
   split(s, delim, elems);
   return elems;
-}
-
-std::string GetTranspilerSrc() {
-  std::string transpiler_js_src =
-      std::string((const char *)js_esprima) + '\n' +
-      std::string((const char *)js_escodegen) + '\n' +
-      std::string((const char *)js_estraverse) + '\n' +
-      std::string((const char *)js_transpiler) + '\n' +
-      std::string((const char *)js_source_map);
-  return transpiler_js_src;
 }
 
 void SetIPv6(bool is6) { ipv6 = is6; }
@@ -717,3 +707,81 @@ std::string BuildUrl(const std::string &host, const std::string &path) {
   return host + path;
 }
 
+CompilationInfo BuildCompileInfo(v8::Isolate *isolate,
+                            v8::Local<v8::Context> &context,
+                            v8::TryCatch *try_catch) {
+
+  v8::HandleScope handle_scope(isolate);
+  CompilationInfo info;
+
+  const char *exception_string =
+      JSONStringify(isolate, try_catch->Exception()).c_str();
+  v8::Handle<v8::Message> message = try_catch->Message();
+
+  info.compile_success = false;
+  info.language = "JavaScript";
+
+  if (message.IsEmpty()) {
+    info.description = exception_string;
+  } else {
+    v8::String::Utf8Value filename(isolate, message->GetScriptResourceName());
+    const char *filename_string = ToCString(filename);
+
+    info.area = filename_string;
+    info.line_no = message->GetLineNumber(context).FromMaybe(0);
+
+    std::string out;
+    const char *sourceline_string = "(unknown)";
+    int start = message->GetStartColumn();
+    int end = message->GetEndColumn();
+    auto maybe_srcline = message->GetSourceLine(context);
+    v8::Local<v8::String> local_srcline;
+
+    if (TO_LOCAL(maybe_srcline, &local_srcline)) {
+      v8::String::Utf8Value sourceline_utf8(isolate, local_srcline);
+      sourceline_string = ToCString(sourceline_utf8);
+      out.append(sourceline_string);
+      out.append("\n");
+
+      for (int i = 0; i < start; i++) {
+        out.append(" ");
+      }
+      for (int i = start; i < end; i++) {
+        out.append("^");
+      }
+      out.append("\n");
+    }
+
+    auto maybe_stack = try_catch->StackTrace(context);
+    v8::Local<v8::Value> local_stack;
+    if (!maybe_stack.IsEmpty()) {
+      TO_LOCAL(maybe_stack, &local_stack);
+      v8::String::Utf8Value stack_utf8(isolate, local_stack);
+      auto stack_string = ToCString(stack_utf8);
+      out.append(stack_string);
+      out.append("\n");
+    } else {
+      out.append(exception_string);
+      out.append("\n");
+    }
+
+    info.description = out;
+    info.index = message->GetEndPosition();
+    info.col_no = end;
+  }
+  return info;
+}
+
+std::string CompileInfoToString(CompilationInfo info) {
+  nlohmann::json compileInfo;
+
+  compileInfo["compile_success"] = info.compile_success;
+  compileInfo["language"] = info.language;
+  compileInfo["index"] = info.index;
+  compileInfo["description"] = info.description;
+  compileInfo["line_number"] = info.line_no;
+  compileInfo["column_number"] = info.col_no;
+  compileInfo["area"] = info.area;
+
+  return compileInfo.dump();
+}
