@@ -36,7 +36,6 @@ SET(FEATURES_SRC
         ../features/src/bucket.cc
         ../features/src/comm.cc
         ../features/src/log.cc
-        ../features/src/transpiler.cc
         ../features/src/js_exception.cc
         ../features/src/v8log.cc
         ../features/src/utils.cc

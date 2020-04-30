@@ -7,8 +7,6 @@
 #include <string>
 #include <v8.h>
 
-#include "transpiler.h"
-
 class RateLimiter {
 public:
   RateLimiter();

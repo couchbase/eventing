@@ -615,7 +615,7 @@ void AppWorker::RouteMessageWithResponse(
     case oGetCompileInfo:
       LOG(logDebug) << "Compiling app code:" << RM(worker_msg->header.metadata)
                     << std::endl;
-      compile_resp = workers_[0]->CompileHandler(worker_msg->header.metadata);
+      compile_resp = workers_[0]->Compile(worker_msg->header.metadata);
 
       resp_msg_->msg.assign(compile_resp);
       resp_msg_->msg_type = mV8_Worker_Config;

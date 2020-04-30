@@ -1982,23 +1982,13 @@ func (m *ServiceMgr) savePrimaryStore(app *application) (info *runtimeInfo) {
 		return
 	}
 
-	logging.Infof("%s Function: %s using_timer: %s", logPrefix, app.Name, compilationInfo.UsingTimer)
+	usingTimer := parser.UsingTimer(parsedCode)
+	app.Settings["using_timer"] = usingTimer
+	app.UsingTimer = usingTimer
 
-	switch compilationInfo.UsingTimer {
-	case "true":
-		app.Settings["using_timer"] = true
-		app.UsingTimer = true
-	case "false":
-		app.Settings["using_timer"] = false
-		app.UsingTimer = false
-	}
+	logging.Infof("%s Function: %s using_timer: %s", logPrefix, app.Name, usingTimer)
+
 	appContent = m.encodeAppPayload(app)
-
-	m.checkVersionCompat(compilationInfo.Version, info)
-	if info.Code != m.statusCodes.ok.Code {
-		return
-	}
-
 	settingsPath := metakvAppSettingsPath + app.Name
 	settings := app.Settings
 
@@ -2050,8 +2040,6 @@ func (m *ServiceMgr) determineWarnings(app *application, compilationInfo *common
 	wInfo := &warningsInfo{}
 	wInfo.Status = fmt.Sprintf("Stored function: '%s' in metakv", app.Name)
 
-	wInfo.Warnings = append(wInfo.Warnings, m.determineFeatureWarnings(app, compilationInfo)...)
-
 	curlWarning, err := m.determineCurlWarning(app)
 	if err != nil {
 		logging.Errorf("Function: %s unable to determine curl warnings, err : %v", app.Name, err)
@@ -2100,20 +2088,6 @@ func (m *ServiceMgr) determineCurlWarning(app *application) (string, error) {
 		}
 	}
 	return "", nil
-}
-
-func (m *ServiceMgr) determineFeatureWarnings(app *application, compilationInfo *common.CompileStatus) []string {
-	var warnings []string
-	switch strings.ToLower(compilationInfo.Level) {
-	case "dp":
-		msg := fmt.Sprintf(" Function '%s' uses Developer Preview features.", app.Name)
-		warnings = append(warnings, msg)
-
-	case "beta":
-		msg := fmt.Sprintf(" Function '%s' uses Beta features.", app.Name)
-		warnings = append(warnings, msg)
-	}
-	return warnings
 }
 
 func (m *ServiceMgr) getErrCodes(w http.ResponseWriter, r *http.Request) {
