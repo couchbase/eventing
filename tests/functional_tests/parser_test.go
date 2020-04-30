@@ -1,11 +1,14 @@
-package parser
+// +build all handler
+
+package eventing
 
 import (
 	"fmt"
+	"github.com/couchbase/eventing/parser"
 	"testing"
 )
 
-var input = []string{
+var snippet_inputs = []string{
 	"select * from `beer-samples`;",
 	"select 23 from beer; update a set a=5 where 2=3;",
 	`var anr = select * from hello;`,
@@ -61,7 +64,7 @@ var input = []string{
 	`,
 }
 
-var output = []string{
+var snippet_outputs = []string{
 	"N1QL('select * from `beer-samples`;', {});",
 	`N1QL('select 23 from beer;', {}); N1QL('update a set a=5 where 2=3;', {});`,
 	`var anr = N1QL('select * from hello;', {});`,
@@ -117,12 +120,65 @@ var output = []string{
 	`,
 }
 
-func TestTranspile(t *testing.T) {
-	for i := 0; i < len(input); i++ {
-		result, _ := TranspileQueries(input[i], "")
-		if result != output[i] {
-			t.Errorf("Mismatch: %s\nExpected:\n%s\nGot:\n%s\n", Diff(output[i], result), output[i], result)
+var script_inputs = []string{
+	`var goo = 23`,
+	`// var foo = 23`,
+	`function hello() {
+		var a = 23;
+	}`,
+	`function there() { var baz }`,
+	``,
+	`{var foo=createTimer\n();'}`,
+	`{createTimer();`,
+	`var foo = 23
+	function foo() {}`,
+	"\xbd\xb2\x3d\xbc",
+}
+
+var script_allowed = []bool{
+	false,
+	true,
+	true,
+	true,
+	true,
+	true,
+	true,
+	false,
+	false,
+}
+
+var script_timers = []bool{
+	false,
+	false,
+	false,
+	false,
+	false,
+	true,
+	true,
+	false,
+	false,
+}
+
+func TestParserTransform(t *testing.T) {
+	for i := 0; i < len(snippet_inputs); i++ {
+		result, _ := parser.TranspileQueries(snippet_inputs[i], "")
+		if result != snippet_outputs[i] {
+			t.Errorf("Mismatch: %s\nExpected:\n%s\nGot:\n%s\n", Diff(snippet_outputs[i], result), snippet_outputs[i], result)
 		}
+	}
+}
+
+func TestParserDetect(t *testing.T) {
+	for i := 0; i < len(script_inputs); i++ {
+		globals, err := parser.ValidateGlobals(script_inputs[i])
+		if globals != script_allowed[i] {
+			t.Errorf("Mismatch global check:%s\nExpected:%v\nGot:%v\nError:%v\n", script_inputs[i], script_allowed[i], globals, err)
+		}
+		timers := parser.UsingTimer(script_inputs[i])
+		if timers != script_timers[i] {
+			t.Errorf("Mismatch timer check:%s\nExpected:%v\nGot:%v\n", script_inputs[i], script_timers[i], timers)
+		}
+
 	}
 }
 
