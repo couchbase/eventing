@@ -3,11 +3,9 @@
 if [ ! -f ~/.cienv ]; then
 cat > ~/.cienv <<EOF
     export CINAME=ci-eventing
-    export CIBOT=true
     export WORKSPACE=/opt/build
     export RELEASE=6.5.0
     export MANIFEST="couchbase-server/mad-hatter/6.5.0.xml"
-    export BRANCH="unstable"
     export MODE="rebalance,functional,integration,n1ql"
     export WATCHERS="siri@couchbase.com"
     export PEGGED=0
@@ -55,4 +53,4 @@ cp  /var/www/eventing-current.html /var/www/eventing-$TS.$status.html
 mv ${WORKSPACE}/make.log /var/www/make-$TS.log
 mv ${WORKSPACE}/logs.tar.gz /var/www/logs-$TS.tar.gz
 mv ${WORKSPACE}/versions.cfg /var/www/versions-$TS.cfg
-dowatch
+

@@ -28,13 +28,13 @@ error_exit() {
   exit 2
 }
 
-> ~/repos.list
+rm -f ~/*.maybe
 note_version() {
   repo=$1; pos=$2
-  echo "$repo $pos" >> ~/repos.list
   cd $pos
   current="`git rev-parse HEAD`"
-  test -f ~/$repo.good || (echo $current > ~/$repo.good)
+  echo $current > ~/$repo.maybe
+  test -f ~/$repo.good || cp ~/$repo.maybe ~/$repo.good
   good="`cat ~/$repo.good`"
   echo -n "$repo is at <a href='https://github.com/couchbase/$repo/commit/$current'>${current:0:7}</a>, changes since last good build: "
   if [ "$current" != "$good" ]; then
@@ -44,6 +44,23 @@ note_version() {
   else
     echo "none"
   fi
+}
+
+> ~/gerrit.list
+gerrit_votelist() {
+  repo=$1; pos=$2
+  cd $pos
+  sha="`git rev-parse HEAD`"
+  current="`git name-rev $sha | awk '{print $NF}' | awk -F/ '{print $NF}'`"
+  autolist="`ssh review.couchbase.org gerrit query \"project:$repo status:open branch:$current reviewer:self\" | grep number: | awk '{print $2}' | sort -n`"
+  for patch_id in $GERRIT $autolist
+  do
+    revspec=`git ls-remote -q ssh://review.couchbase.org/$repo refs/changes/*/$patch_id/* | awk '{print $2}' | sort -n -t/ -k5 | tail -1`
+    if [ "$revspec" = "" ]; then continue; fi
+    echo "Pulling in <a href='http://review.couchbase.org/#/c/$patch_id'>uncommitted change $patch_id</a> at $revspec"
+    git fetch -q ssh://review.couchbase.org/$repo $revspec && git cherry-pick FETCH_HEAD
+    test $? -eq 0 && echo "$revspec" | awk -F/ '{print $4 "," $5}' >> ~/gerrit.list
+  done
 }
 
 switch_version() {
@@ -62,7 +79,7 @@ echo "</pre><h3>Building</h3><pre>"
 if [ ! -d ~/.reference ]; then
   mkdir ~/.reference
   cd ~/.reference
-  repo init -u ssh://github.com/couchbase/build-manifests -b master -m $MANIFEST -g all --mirror 1>>$WORKSPACE/make.log 2>&1
+  repo init -u ssh://github.com/couchbase/build-manifests -b master -m $MANIFEST -g all --mirror 2>&1 | grep -v "Python 2" >>$WORKSPACE/make.log
   test $? -eq 0 || error_exit "Repo Init"
 fi
 
@@ -86,12 +103,12 @@ echo "Basing run on $RELEASE-$BLD_NUM <a href=https://github.com/couchbase/build
 find $WORKSPACE -mindepth 1 -not -name '*.log' -exec rm -rf {} + 1>>$WORKSPACE/make.log 2>&1
 mkdir -p $WORKSPACE 1>>$WORKSPACE/make.log 2>&1
 cd $WORKSPACE
-repo init -u ~/.manifests -b thisrun -m $MANIFEST -g all --reference=~/.reference 1>>$WORKSPACE/make.log 2>&1
+repo init -u ~/.manifests -b thisrun -m $MANIFEST -g all --reference=~/.reference 2>&1 | grep -v "Python 2" >>$WORKSPACE/make.log
 test $? -eq 0 || error_exit "Repo Init at $SHA"
 
 echo "Updating tree for run $TS"
 cd $WORKSPACE
-repo sync --jobs=32 1>>$WORKSPACE/make.log 2>&1
+repo sync --jobs=32 2>&1 | grep -v "Python 2" >>$WORKSPACE/make.log
 test $? -eq 0 || error_exit "Updating tree"
 test $WORKSPACE/cbbuild && test $WORKSPACE/voltron || error_exit "Unable to find voltron"
 
@@ -108,35 +125,13 @@ note_version ns_server    $WORKSPACE/ns_server
 note_version couchstore   $WORKSPACE/couchstore
 note_version couchdb      $WORKSPACE/couchdb
 
-#switch_version eventing    $WORKSPACE/goproj/src/github.com/couchbase/eventing     mad-hatter
-#switch_version eventing-ee $WORKSPACE/goproj/src/github.com/couchbase/eventing-ee  mad-hatter
-#switch_version query       $WORKSPACE/goproj/src/github.com/couchbase/query        mad-hatter
-#switch_version testrunner  $WORKSPACE/testrunner                                   mad-hatter
+switch_version eventing    $WORKSPACE/goproj/src/github.com/couchbase/eventing     mad-hatter
+switch_version eventing-ee $WORKSPACE/goproj/src/github.com/couchbase/eventing-ee  mad-hatter
+switch_version testrunner  $WORKSPACE/goproj/src/github.com/couchbase/testrunner   mad-hatter
 
-> ~/gerrit.list
-if [ "$CIBOT" = "true" ]; then
-  autolist="`ssh review.couchbase.org gerrit query \"project:eventing status:open branch:$BRANCH reviewer:self\" | grep number: | awk '{print $2}' | sort -n`"
-  for patch_id in $GERRIT $autolist
-  do
-    cd $WORKSPACE/goproj/src/github.com/couchbase/eventing
-    revspec=`git ls-remote -q ssh://review.couchbase.org/eventing refs/changes/*/$patch_id/* | awk '{print $2}' | sort -n -t/ -k5 | tail -1`
-    if [ "$revspec" = "" ]; then continue; fi
-    echo "Pulling in <a href='http://review.couchbase.org/#/c/$patch_id'>uncommitted change $patch_id</a> at $revspec"
-    git fetch -q ssh://review.couchbase.org/eventing $revspec && git cherry-pick FETCH_HEAD
-    test $? -eq 0 && echo "$revspec" | awk -F/ '{print $4 "," $5}' >> ~/gerrit.list
-  done
-  autolist="`ssh review.couchbase.org gerrit query \"project:eventing-ee status:open branch:$BRANCH reviewer:self\" | grep number: | awk '{print $2}' | sort -n`"
-  for patch_id in $GERRIT $autolist
-  do
-    cd $WORKSPACE/goproj/src/github.com/couchbase/eventing-ee
-    revspec=`git ls-remote -q ssh://review.couchbase.org/eventing-ee refs/changes/*/$patch_id/* | awk '{print $2}' | sort -n -t/ -k5 | tail -1`
-    if [ "$revspec" = "" ]; then continue; fi
-    echo "Pulling in <a href='http://review.couchbase.org/#/c/$patch_id'>uncommitted change $patch_id</a> at $revspec"
-    git fetch -q ssh://review.couchbase.org/eventing-ee $revspec && git cherry-pick FETCH_HEAD
-    test $? -eq 0 && echo "$revspec" | awk -F/ '{print $4 "," $5}' >> ~/gerrit.list
-  done
-fi
-
+gerrit_votelist eventing     $WORKSPACE/goproj/src/github.com/couchbase/eventing
+gerrit_votelist eventing-ee  $WORKSPACE/goproj/src/github.com/couchbase/eventing-ee
+gerrit_votelist libcouchbase $WORKSPACE/libcouchbase
 
 cd $WORKSPACE
 PRODUCT_VERSION=${RELEASE}-${BLD_NUM}-rel
@@ -160,12 +155,6 @@ cmake -D CMAKE_INSTALL_PREFIX=$WORKSPACE/install \
       -D SNAPPY_OPTION=Disable \
       .. 1>>$WORKSPACE/make.log 2>&1
 test $? -eq 0 || error_exit "CMake build"
-
-cd $WORKSPACE/build/tlm/deps/breakpad.exploded
-if grep -qsvF "0.1.0" VERSION.txt; then
-  echo "Patching breakpad"
-  for pf in ~/bin/breakpad.debian9.*.patch; do patch -p1 < $pf; done
-fi
 
 echo "Building main product"
 cd $WORKSPACE/build
