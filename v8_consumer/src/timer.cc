@@ -121,11 +121,16 @@ bool Timer::CancelTimerImpl(const v8::FunctionCallbackInfo<v8::Value> &args) {
   FillTimerPartition(timer_info);
 
   auto err = v8worker->DelTimer(timer_info);
-  if (err != LCB_SUCCESS) {
+
+  if (err == LCB_SUCCESS) {
+    args.GetReturnValue().Set(true);
+  } else if (err == LCB_KEY_ENOENT) {
+    args.GetReturnValue().Set(false);
+  } else {
     js_exception->ThrowKVError(v8worker->GetTimerLcbHandle(), err);
     return false;
   }
-  args.GetReturnValue().Set(v8Str(isolate_, timer_info.reference));
+
   return true;
 }
 
