@@ -29,8 +29,8 @@ func usage(fset *flag.FlagSet) {
 
 Examples:
 - Metadata
-    cbevent -list -user Administrator -pass password -host localhost:8091
-    cbevent -flush -user Administrator -pass password -host localhost:8091
+    cbevent -list -user Administrator -password password -host localhost:8091
+    cbevent -flush -user Administrator -password password -host localhost:8091
 
 - Pack/Unpack
     cbevent -unpack -handler handler.json -codeout code.js
