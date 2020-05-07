@@ -29,7 +29,6 @@
 #include "log.h"
 
 #define EXCEPTION_STR_SIZE 20
-#define NUM_VBUCKETS 1024
 
 #define TO(maybe, local)                                                       \
   (To((maybe), (local), __FILE__, __FUNCTION__, __LINE__))

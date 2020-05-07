@@ -32,7 +32,7 @@ private:
   timer::EpochInfo Epoch(const v8::Local<v8::Value> &date_val);
   bool ValidateArgs(const v8::FunctionCallbackInfo<v8::Value> &args);
   bool ValidateCancelTimerArgs(const v8::FunctionCallbackInfo<v8::Value> &args);
-  void FillTimerPartition(timer::TimerInfo& tinfo);
+  void FillTimerPartition(timer::TimerInfo& tinfo, const int32_t& num_vbuckets);
 
   v8::Isolate *isolate_;
   v8::Persistent<v8::Context> context_;

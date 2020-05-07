@@ -222,7 +222,7 @@ public:
            const std::string &function_id,
            const std::string &function_instance_id,
            const std::string &user_prefix, Histogram *latency_stats,
-           Histogram *curl_latency_stats, const std::string &ns_server_port);
+           Histogram *curl_latency_stats, const std::string &ns_server_port, const int32_t& num_vbuckets);
   ~V8Worker();
 
   int V8WorkerLoad(std::string source_s);
@@ -321,6 +321,7 @@ public:
   std::atomic<bool> run_gc_;
   std::map<int, int64_t> lcb_exceptions_;
   IsolateData data_;
+  int32_t num_vbuckets_{1024};
 
 private:
   CompilationInfo CompileHandler(std::string app_name, std::string handler);

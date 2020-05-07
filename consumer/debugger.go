@@ -54,6 +54,7 @@ func (c *debugClient) Spawn(debuggerSpawned chan struct{}) {
 		strconv.Itoa(int(c.consumerHandle.app.FunctionID)),
 		c.consumerHandle.app.UserPrefix,
 		c.consumerHandle.nsServerPort,
+		strconv.Itoa(c.consumerHandle.numVbuckets),
 		c.eventingPort, // not read, for tagging
 		"debug")        // not read, for tagging
 

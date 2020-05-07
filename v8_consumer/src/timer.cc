@@ -86,7 +86,7 @@ bool Timer::CreateTimerImpl(const v8::FunctionCallbackInfo<v8::Value> &args) {
         std::to_string(rng()) + std::to_string(timer_info.seq_num);
   }
 
-  FillTimerPartition(timer_info);
+  FillTimerPartition(timer_info, v8worker->num_vbuckets_);
 
   if (timer_info.context.size() > static_cast<unsigned>(timer_context_size)) {
     js_exception->ThrowEventingError(
@@ -118,7 +118,7 @@ bool Timer::CancelTimerImpl(const v8::FunctionCallbackInfo<v8::Value> &args) {
   timer_info.callback = utils->GetFunctionName(args[0]);
   timer_info.reference = utils->ToCPPString(args[1]);
 
-  FillTimerPartition(timer_info);
+  FillTimerPartition(timer_info, v8worker->num_vbuckets_);
 
   auto err = v8worker->DelTimer(timer_info);
 
@@ -190,11 +190,11 @@ bool Timer::ValidateArgs(const v8::FunctionCallbackInfo<v8::Value> &args) {
   return true;
 }
 
-void Timer::FillTimerPartition(timer::TimerInfo& timer_info) {
+void Timer::FillTimerPartition(timer::TimerInfo& timer_info, const int32_t& num_vbuckets) {
   auto ref = timer_info.callback + ":" + timer_info.reference;
   uint32_t hash = crc32_8(ref.c_str(), ref.size(), 0 /*crc_in*/);
-  timer_info.vb = hash % NUM_VBUCKETS;
-  LOG(logTrace) << "ref: " << ref << "hash: " << hash  << "Timer Partition is: " << timer_info.vb << " " << std::endl;
+  timer_info.vb = hash % num_vbuckets;
+  LOG(logTrace) << "ref: " << ref << "hash: " << hash << "num_vbuckets: " << num_vbuckets << "Timer Partition is: " << timer_info.vb << " " << std::endl;
 }
 
 void CreateTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
