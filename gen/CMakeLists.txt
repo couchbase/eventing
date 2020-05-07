@@ -72,39 +72,6 @@ ADD_CUSTOM_COMMAND(
         COMMENT "Coverting ../audit/audit_descriptor.json to auditevent/events.go"
 )
 ADD_CUSTOM_COMMAND(
-        OUTPUT js/esprima.h
-        COMMAND ${PROJECT_SOURCE_DIR}/../../../../bin/convertjs
-        ARGS ../third_party/estools/esprima.js js_esprima js/esprima.h
-        DEPENDS ../third_party/estools/esprima.js
-        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-        COMMENT "Converting ../third_party/estools/esprima.js to js/esprima.h with variable js_esprima"
-)
-ADD_CUSTOM_COMMAND(
-        OUTPUT js/escodegen.h
-        COMMAND ${PROJECT_SOURCE_DIR}/../../../../bin/convertjs
-        ARGS ../third_party/estools/escodegen.js js_escodegen js/escodegen.h
-        DEPENDS ../third_party/estools/escodegen.js
-        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-        COMMENT "Converting ../third_party/estools/escodegen.js to js/escodegen.h with variable js_escodegen"
-)
-ADD_CUSTOM_COMMAND(
-        OUTPUT js/estraverse.h
-        COMMAND ${PROJECT_SOURCE_DIR}/../../../../bin/convertjs
-        ARGS ../third_party/estools/estraverse.js js_estraverse js/estraverse.h
-        DEPENDS ../third_party/estools/estraverse.js
-        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-        COMMENT "Converting ../third_party/estools/estraverse.js to js/estraverse.h with variable js_estraverse"
-)
-ADD_CUSTOM_COMMAND(
-        OUTPUT js/source-map.h
-        COMMAND ${PROJECT_SOURCE_DIR}/../../../../bin/convertjs
-        ARGS ../third_party/source-map/source-map.js js_source_map js/source-map.h
-        DEPENDS ../third_party/source-map/source-map.js
-        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-        COMMENT "Converting ../third_party/source-map/source-map.js to js/source-map.h with variable js_source_map"
-)
-
-ADD_CUSTOM_COMMAND(
         OUTPUT inspector/v8_inspector_protocol_json.h
         COMMAND python
         ARGS
@@ -117,7 +84,6 @@ ADD_CUSTOM_COMMAND(
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         COMMENT "Converting ../third_party/inspector/js_protocol.json to inspector/v8_inspector_protocol_json.h"
 )
-
 ADD_CUSTOM_COMMAND(
         OUTPUT flatbuf/header_generated.h flatbuf/header/Header.go
         COMMAND ${FLATC} -c ARGS -o ../gen/flatbuf header.fbs
@@ -152,7 +118,6 @@ ADD_CUSTOM_COMMAND(
 )
 
 ADD_CUSTOM_TARGET(generated DEPENDS
-        js/esprima.h js/escodegen.h js/estraverse.h js/source-map.h
         inspector/v8_inspector_protocol_json.h
         flatbuf/header_generated.h flatbuf/header/Header.go
         flatbuf/payload_generated.h flatbuf/payload/Payload.go

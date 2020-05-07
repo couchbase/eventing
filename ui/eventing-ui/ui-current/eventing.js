@@ -15,7 +15,6 @@ import {
   Application,
   ApplicationManager,
   ApplicationModel,
-  formatCode,
   determineUIStatus,
   getWarnings} from "../app-model.js";
 

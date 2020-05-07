@@ -19,11 +19,6 @@
 #include "utils.h"
 #include <nlohmann/json.hpp>
 
-#include "../../gen/js/escodegen.h"
-#include "../../gen/js/esprima.h"
-#include "../../gen/js/estraverse.h"
-#include "../../gen/js/source-map.h"
-
 static bool ipv6 = false;
 std::mutex time_now_mutex;
 std::mutex convert_to_iso8601_mutex;
