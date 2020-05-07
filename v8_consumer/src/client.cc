@@ -545,7 +545,7 @@ void AppWorker::RouteMessageWithResponse(
           V8Worker *w = new V8Worker(
               platform, handler_config, server_settings, function_name_,
               function_id_, handler_instance_id, user_prefix_, &latency_stats_,
-              &curl_latency_stats_, ns_server_port_);
+              &curl_latency_stats_, ns_server_port_, num_vbuckets_);
 
           LOG(logInfo) << "Init index: " << i << " V8Worker: " << w
                        << std::endl;
@@ -1061,12 +1061,12 @@ void AppWorker::SendPauseAck(
 }
 
 int main(int argc, char **argv) {
-  if (argc < 14) {
+  if (argc < 16) {
     std::cerr
         << "Need at least 13 arguments: appname, ipc_type, port, "
            "feedback_port"
            "worker_id, batch_size, feedback_batch_size, diag_dir, ipv4/6, "
-           "breakpad_on, handler_uuid, user_prefix, ns_server_port"
+           "breakpad_on, handler_uuid, user_prefix, ns_server_port, num_vbuckets, eventing_port"
         << std::endl;
     return 2;
   }
@@ -1085,6 +1085,7 @@ int main(int argc, char **argv) {
   std::string function_id(argv[11]);
   std::string user_prefix(argv[12]);
   std::string ns_server_port(argv[13]);
+  auto num_vbuckets = atoi(argv[14]);
 
   srand(static_cast<unsigned>(time(nullptr)));
   curl_global_init(CURL_GLOBAL_ALL);
@@ -1097,6 +1098,7 @@ int main(int argc, char **argv) {
 
   AppWorker *worker = AppWorker::GetAppWorker();
   worker->SetNsServerPort(ns_server_port);
+  worker->SetNumVbuckets(num_vbuckets);
   if (std::strcmp(ipc_type.c_str(), "af_unix") == 0) {
     worker->InitUDS(appname, function_id, user_prefix, appname,
                     Localhost(false), worker_id, batch_size,

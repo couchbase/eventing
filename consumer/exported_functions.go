@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -439,6 +440,7 @@ func (c *Consumer) SpawnCompilationWorker(appCode, appContent, appName, eventing
 			"function_id",
 			"user_prefix",
 			c.nsServerPort,
+			strconv.Itoa(c.numVbuckets),
 			"validate") // this parameter is not read, for tagging
 
 		cmd.Env = append(os.Environ(),

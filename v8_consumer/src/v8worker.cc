@@ -158,12 +158,14 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
                    const std::string &function_instance_id,
                    const std::string &user_prefix, Histogram *latency_stats,
                    Histogram *curl_latency_stats,
-                   const std::string &ns_server_port)
+                   const std::string &ns_server_port,
+                   const int32_t &num_vbuckets)
     : app_name_(h_config->app_name), settings_(server_settings),
       latency_stats_(latency_stats), curl_latency_stats_(curl_latency_stats),
       platform_(platform), function_name_(function_name),
       function_id_(function_id), user_prefix_(user_prefix),
       ns_server_port_(ns_server_port),
+      num_vbuckets_(num_vbuckets),
       exception_type_names_(
           {"KVError", "N1QLError", "EventingError", "CurlError"}) {
   auto config = ParseDeployment(h_config->dep_cfg.c_str());
@@ -173,11 +175,11 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
   function_instance_id_.assign(oss.str());
   thread_exit_cond_.store(false);
   stop_timer_scan_.store(false);
-  for (int i = 0; i < NUM_VBUCKETS; i++) {
+  for (int i = 0; i < num_vbuckets_; i++) {
     vb_seq_[i] = atomic_ptr_t(new std::atomic<uint64_t>(0));
   }
-  vbfilter_map_.resize(NUM_VBUCKETS);
-  processed_bucketops_.resize(NUM_VBUCKETS, 0);
+  vbfilter_map_.resize(num_vbuckets_);
+  processed_bucketops_.resize(num_vbuckets_, 0);
 
   v8::Isolate::CreateParams create_params;
   create_params.array_buffer_allocator =
@@ -241,6 +243,7 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
                << " language compatibility: " << h_config->lang_compat
                << " version: " << EventingVer()
                << " n1ql_prepare_all: " << h_config->n1ql_prepare_all
+               << " num_vbuckets: " << num_vbuckets_
                << std::endl;
 
   src_path_ = settings_->eventing_dir + "/" + app_name_ + ".t.js";
@@ -249,7 +252,7 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
     std::vector<int64_t> partitions;
     auto prefix = user_prefix + "::" + function_id;
     timer_store_ = new timer::TimerStore(isolate_, prefix, partitions,
-                                         config->metadata_bucket);
+                                         config->metadata_bucket, num_vbuckets_);
   }
   delete config;
   this->worker_queue_ = new BlockingDeque<std::unique_ptr<WorkerMessage>>();
@@ -944,7 +947,7 @@ CodeVersion V8Worker::IdentifyVersion(std::string handler) {
 }
 
 void V8Worker::GetBucketOpsMessages(std::vector<uv_buf_t> &messages) {
-  for (int vb = 0; vb < NUM_VBUCKETS; ++vb) {
+  for (int vb = 0; vb < num_vbuckets_; ++vb) {
     auto seq = vb_seq_[vb].get()->load(std::memory_order_seq_cst);
     if (seq > 0) {
       std::string seq_no = std::to_string(vb) + "::" + std::to_string(seq);

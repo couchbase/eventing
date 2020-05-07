@@ -29,7 +29,7 @@ class TimerStore {
 public:
   explicit TimerStore(v8::Isolate *isolate, const std::string &prefix,
                       const std::vector<int64_t> &partitions,
-                      const std::string &metadata_bucket);
+                      const std::string &metadata_bucket, int32_t num_vbuckets);
   ~TimerStore();
 
   lcb_error_t SetTimer(TimerInfo &timer, int max_retry_count);
@@ -86,6 +86,7 @@ private:
   std::string metadata_bucket_;
   lcb_t crud_handle_{nullptr};
   std::mutex store_lock_;
+  int32_t num_vbuckets_{1024};
   friend class Iterator;
 };
 } // namespace timer
