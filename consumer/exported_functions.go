@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -392,9 +393,9 @@ func (c *Consumer) SpawnCompilationWorker(appCode, appContent, appName, eventing
 
 	if validated, err := parser.ValidateGlobals(appCode); !validated {
 		logging.Errorf("%s [%s:%s:%d] Compilation worker: Only function definition is allowed in global scope %v",
-                        logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
 		return &common.CompileStatus{CompileSuccess: false,
-			Description: fmt.Sprintf("%v",err)}, nil
+			Description: fmt.Sprintf("%v", err)}, nil
 	}
 
 	listener, err := net.Listen("tcp", net.JoinHostPort(util.Localhost(), "0"))
@@ -447,6 +448,7 @@ func (c *Consumer) SpawnCompilationWorker(appCode, appContent, appName, eventing
 			"function_id",
 			"user_prefix",
 			c.nsServerPort,
+			strconv.Itoa(c.numVbuckets),
 			"validate") // this parameter is not read, for tagging
 
 		cmd.Env = append(os.Environ(),
