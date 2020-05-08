@@ -4,7 +4,7 @@ of the more recent and useful ones are listed below:
 
 ### Specification:
 The eventing programming language specification document outlines the basic contract of the product
-from a developer's perspective: [Language Specification](specification.html)
+from a developer's perspective: [Language Specification](https://eventing-spec.s3.amazonaws.com/specification.html)
 
 ### Management API:
 The eventing REST API that implements the management interface seen from the UI but can also be used
