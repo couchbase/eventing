@@ -137,7 +137,7 @@ ApplicationModel.prototype.getDefaultModel = function() {
         '    log("Doc created/updated", meta.id);',
         '}',
         '',
-        'function OnUpdate(doc, meta, options) {',
+        'function OnDelete(meta, options) {',
         '    log("Doc deleted/expired", meta.id);',
         '}'
     ].join('\n');
