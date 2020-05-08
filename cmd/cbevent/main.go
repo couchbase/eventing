@@ -29,8 +29,8 @@ func usage(fset *flag.FlagSet) {
 
 Examples:
 - Metadata
-    cbevent -list -user Administrator -password password -host localhost:8091
-    cbevent -flush -user Administrator -password password -host localhost:8091
+    cbevent -list -user Administrator -password password -host [host]:8091
+    cbevent -flush -user Administrator -password password -host [host]:8091
 
 - Pack/Unpack
     cbevent -unpack -handler handler.json -codeout code.js
@@ -122,7 +122,7 @@ func main() {
 	fset.BoolVar(&cmd.Flush, "flush", false, "deletes all metadata that can be deleted")
 	fset.StringVar(&cmd.User, "user", "", "cluster admin username")
 	fset.StringVar(&cmd.Password, "password", "", "cluster admin password")
-	fset.StringVar(&cmd.Host, "host", "", "hostname:port of couchbase console, ex: localhost:8091")
+	fset.StringVar(&cmd.Host, "host", "", "hostname:port of couchbase console, ex: 127.0.0.1:8091")
 
 	fset.BoolVar(&cmd.Pack, "pack", false, "pack edited code back into specified handler")
 	fset.BoolVar(&cmd.Unpack, "unpack", false, "extracts code from a handler to specified file")
