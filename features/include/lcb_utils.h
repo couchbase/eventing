@@ -70,7 +70,7 @@ std::pair<lcb_error_t, Result> RetryLcbCommand(lcb_t instance, CmdType &cmd,
   while (true) {
     result = callable(instance, cmd);
     if (result.first == LCB_SUCCESS || !IsRetriable(result.first) ||
-        (!max_retry_count && retry_count >= max_retry_count))
+        (max_retry_count && retry_count >= max_retry_count))
       break;
     ++retry_count;
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
