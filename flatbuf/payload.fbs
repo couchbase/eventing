@@ -45,8 +45,8 @@ table Payload {
   vb_map:[short];
   n1ql_consistency:string; // N1QL consistency
   language_compatibility:string;
-  lcb_retry_count:int;
   n1ql_prepare_all:bool; // Prepares all N1QL queries if set to true.
+  lcb_retry_count:int;
 }
 
 root_type Payload;
