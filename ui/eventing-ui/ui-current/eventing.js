@@ -16,6 +16,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
             self.disableEditButton = false;
             self.appListStaleCount = 0;
             self.statusPollMillis = 2000;
+            self.deployedStats = null;
 
             // Broadcast on channel 'isEventingRunning'
             $rootScope.$broadcast('isEventingRunning', self.isEventingRunning);
@@ -41,6 +42,11 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         var updAppList = new Set(); // appname not in UI
                         var rspAppStat = new Map(); // composite_status by appname (in UI and not in UI)
                         var uiIsStale = false; // if we need to reload somehting new App or state change
+                        var statsConfig = {
+                            haveDeployedOrDeploying: false,
+                            metaDataBucket: "",
+                            lastSampleTime: new Date().valueOf()
+                        };
 
                         for (var rspApp of response.apps ? response.apps : []) {
 
@@ -67,6 +73,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                                 }
                             }
                         }
+                        statsConfig.reqstats = "";
                         for (var app of Object.keys(self.appList)) {
                             if (!rspAppList.has(app)) {
                                 // An App from the UI's current list doesn't exisit in the recurring status
@@ -74,6 +81,36 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                             } else {
                                 self.appList[app].uiState = determineUIStatus(self.appList[app].status);
                                 self.appList[app].warnings = getWarnings(self.appList[app]);
+                                if (!self.appList[app].cluster_stats) {
+                                    self.appList[app].cluster_stats = {};
+                                }
+
+                                if (self.appList[app].status === 'deployed' || self.appList[app].status === 'deploying') {
+                                    statsConfig.haveDeployedOrDeploying = true;
+                                    statsConfig.metaDataBucket = self.appList[app].depcfg.metadata_bucket;
+
+                                    if (statsConfig.reqstats !== "") {
+                                        statsConfig.reqstats = statsConfig.reqstats + ',';
+                                    }
+
+                                    statsConfig.reqstats = statsConfig.reqstats +
+                                        '"eventing/' + app + '/processed_count",' +
+                                        '"eventing/' + app + '/failed_count",' +
+                                        '"eventing/' + app + '/dcp_backlog",' +
+                                        '"eventing/' + app + '/timeout_count"';
+
+                                    // make sure we loaded the needed stats
+                                    if (self.deployedStats && self.deployedStats !== null) {
+                                        // attach statistics to our UI information for the deployed hander else just '-'
+                                        self.appList[app].cluster_stats.show = 1;
+                                        formatDeployedStats(app, 'success', 'processed_count');
+                                        formatDeployedStats(app, 'failure', 'failed_count');
+                                        formatDeployedStats(app, 'backlog', 'dcp_backlog');
+                                        formatDeployedStats(app, 'timeout', 'timeout_count');
+                                    }
+                                } else {
+                                    self.appList[app].cluster_stats = {};
+                                }
                             }
                         }
                         if (!uiIsStale) {
@@ -110,6 +147,9 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                             fetchCpuCount();
                         }
 
+                        // Only does the fetch if we have one or more items deploying or deployed in the UI
+                        fetchDeployedStats(statsConfig);
+
                     }).catch(function(errResponse) {
                         self.errorCode = errResponse && errResponse.status || 500;
                         // Do not log the occasional HTTP abort when we leave the Eventing view
@@ -118,6 +158,54 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         }
                     });
             }
+
+            function formatDeployedStats(app, tag, a) {
+                var ret = '-';
+                var ary_a = self.deployedStats.stats['eventing/' + app + '/' + a];
+                if (ary_a && ary_a.aggregate && ary_a.aggregate.length > 0) {
+                    var val_a = ary_a.aggregate[ary_a.aggregate.length - 1];
+                    if (!isNaN(val_a)) {
+                        ret = val_a;
+                        if (ret > 9999999) {
+                            ret = d3.format(".4s")(val_a);
+                        }
+                    }
+                }
+                if (typeof ret === 'undefined') {
+                    ret = '-';
+                }
+                self.appList[app].cluster_stats[tag] = ret;
+                self.appList[app].cluster_stats[tag + '_gt_zero'] = false;
+                if (!isNaN(ret) && ret > 0) {
+                    self.appList[app].cluster_stats[tag + '_gt_zero'] = true;
+                }
+                return ret;
+            }
+
+            function fetchDeployedStats(statsConfig) {
+
+                if (self.deployedStats && self.deployedStats['timestamps']) {
+                    var tstamps = self.deployedStats['timestamps'];
+                    statsConfig.lastSampleTime = tstamps[tstamps.length - 1];
+                }
+
+                self.deployedStats = null;
+                if (statsConfig.haveDeployedOrDeploying == false || statsConfig.metaDataBucket === "") {
+                    return;
+                }
+                ApplicationService.server.getDeployedStats(statsConfig)
+                    .then(function(response) {
+                        if (response && response.data && response.data[0]) {
+                            self.deployedStats = response.data[0];
+                            return;
+                        }
+                    })
+                    .catch(function(errResponse) {
+                        console.error('Unable to get deployed stats count', errResponse);
+                        return;
+                    });
+            }
+
 
             function fetchWorkerCount() {
                 ApplicationService.server.getWorkerCount()
@@ -404,6 +492,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         app.settings.cleanup_timers = appClone.settings.cleanup_timers;
                         app.settings.deployment_status = appClone.settings.deployment_status;
                         app.settings.processing_status = appClone.settings.processing_status;
+                        app.settings.cluster_stats = appClone.settings.cluster_stats;
 
                         self.disableEditButton = false;
 
@@ -463,9 +552,9 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                             return $q.reject(ApplicationService.status.getErrorMsg(responseCode, response.data));
                         }
 
-                        console.log(response.data);
                         app.settings.deployment_status = false;
                         app.settings.processing_status = false;
+                        app.settings.cluster_stats = null;
                         ApplicationService.server.showSuccessAlert(`${app.appname} will be undeployed`);
 
                         // since the UI is changing state via undeploy update the count
@@ -581,10 +670,11 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         Object.assign(creationScope.appModel.depcfg, ApplicationService.convertBindingToConfig(creationScope.bindings));
                         creationScope.appModel.fillWithMissingDefaults();
 
-                        // When we import the application, we want it to be in
-                        // disabled and undeployed state.
+                        // When we import the application, we want it to be in disabled and
+                        // undeployed state with feed bondary "everything" ("from_prior" is not legal)
                         creationScope.appModel.settings.processing_status = false;
                         creationScope.appModel.settings.deployment_status = false;
+                        creationScope.appModel.settings.dcp_stream_boundary = "everything";
 
                         // Deadline timeout must be greater and execution timeout.
                         if (creationScope.appModel.settings.hasOwnProperty('execution_timeout')) {
@@ -1471,6 +1561,13 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                                 console.error('Unable to get logFileLocation', errResponse.data);
                             });
                     },
+                    getDeployedStats: function(statsConfig) {
+                        // just one sample sometimes gets nothing, so grab the last five seconds
+                        return $http.post('/_uistats',
+                            '[{"bucket":"' + statsConfig.metaDataBucket + '","step":1,"stats":[' + statsConfig.reqstats + '],"startTS":-5000,"aggregate":true}]'
+                        );
+
+                    },
                     getWorkerCount: function() {
                         return $http.get('/_p/event/getWorkerCount');
                     },
@@ -1689,9 +1786,9 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         bindingError,
                         hostnameValid,
                         hostnameError,
-                        bindingsValidList = []
-                    hostnameValidList = []
-                    form = formCtrl.createAppForm;
+                        bindingsValidList = [],
+                        hostnameValidList = [],
+                        form = formCtrl.createAppForm;
 
                     for (var binding of bindings) {
                         if (binding.value.length) {
