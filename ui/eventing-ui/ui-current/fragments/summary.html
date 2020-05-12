@@ -61,37 +61,90 @@
         <div class="cbui-tablerow-expanded"
              ng-if="app.actionsVisible">
           <p class="width-6">{{app.settings.description}}</p>
-          <div class="width-12 text-right">
-            <button
-              class="outline"
-              ng-click="$event.stopPropagation();summaryCtrl.deleteApp(app.appname)"
-              ng-disabled="app.settings.processing_status || app.settings.deployment_status || app.uiState === 'healthy'">
-              Delete
-            </button>
-            <button
-              class="outline"
-              ng-click="$event.stopPropagation();summaryCtrl.exportApp(app.appname)">
-              Export
-            </button>
-            <button
-              class="outline"
-              ng-disabled="app.status === 'deploying' || app.status === 'undeploying' || app.status === 'pausing'"
-              ng-click="$event.stopPropagation();summaryCtrl.toggleDeployment(app)">
-              {{app.getDeploymentStatus(true)}}
-            </button>
-            <button
-              class="outline"
-              ng-disabled="app.status === 'deploying' || app.status === 'undeploying' || app.status === 'undeployed' || app.status === 'pausing'"
-              ng-click="$event.stopPropagation();summaryCtrl.toggleProcessing(app)">
-                {{app.getProcessingStatus(true)}}
-            </button>
-            <button
-              ng-click="$event.stopPropagation();"
-              ui-sref="app.admin.eventing.handler({appName:app.appname})"
-              ng-disabled="summaryCtrl.disableEditButton">
-              Edit JavaScript
-            </button>
-          </div>
+          <div class="width-12">
+	    <table style="border-collapse:collapse;padding:0px;margin:0px"  border="0" cellpadding="0" cellspacing="0">
+	      <tr>
+		<td class="text-smaller" align="left" style="padding:0px;color:#555;">
+		  <div ng-show="app.status !== 'undeployed'" ng-if="app.cluster_stats.show">
+                    <table style="border-collapse:collapse;padding:0px;margin:0px;width:260px"  border="0" cellpadding="0" cellspacing="0">
+                      <tr>
+                        <td colspan="5" style="border-collapse:collapse;padding:0px;margin:0px;width:260px;text-decoration: underline">
+                          Deployment Statistics
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style="border-collapse:collapse;padding:0px;margin:0px;width:60px">
+                          success:
+                        </td>
+                        <td style="border-collapse:collapse;padding:0px;margin:0px;width:60px" align="right">
+                          {{app.cluster_stats.success}}
+                        </td>
+                        <td style="border-collapse:collapse;padding:0px;margin:0px;width:20px" align="right">
+                          &nbsp; &nbsp;
+                        </td>
+                        <td style="border-collapse:collapse;padding:0px;margin:0px;width:60px">
+                          backlog:
+                        </td>
+                        <td style="border-collapse:collapse;padding:0px;margin:0px;width:60px" align="right">
+                          {{app.cluster_stats.backlog}}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style="border-collapse:collapse;padding:0px;margin:0px">
+                          timeout:
+                        </td>
+                        <td style="border-collapse:collapse;padding:0px;margin:0px" align="right">
+                          <div style="                display: inline-block;" ng-if="app.cluster_stats.timeout_gt_zero == false"> {{app.cluster_stats.timeout}} </div>
+                          <div style="color: #CC0000; display: inline-block;" ng-if="app.cluster_stats.timeout_gt_zero == true "> {{app.cluster_stats.timeout}} </div>
+                        </td>
+                        <td style="border-collapse:collapse;padding:0px;margin:0px" align="right">
+                          &nbsp; &nbsp;
+                        </td>
+                        <td style="border-collapse:collapse;padding:0px;margin:0px">
+                          failure:
+                        </td>
+                        <td style="border-collapse:collapse;padding:0px;margin:0px" align="right">
+                          <div style="                display: inline-block;" ng-if="app.cluster_stats.failure_gt_zero == false"> {{app.cluster_stats.failure}} </div>
+                          <div style="color: #CC0000; display: inline-block;" ng-if="app.cluster_stats.failure_gt_zero == true "> {{app.cluster_stats.failure}} </div>
+                        </td>
+                      </tr>
+                    </table>
+		  </div>
+		</td>
+		<td align="right" style="padding:0px;">
+	          <button
+	            class="outline"
+	            ng-click="$event.stopPropagation();summaryCtrl.deleteApp(app.appname)"
+	            ng-disabled="app.settings.processing_status || app.settings.deployment_status || app.uiState === 'healthy'">
+	            Delete
+	          </button>
+	          <button
+	            class="outline"
+	            ng-click="$event.stopPropagation();summaryCtrl.exportApp(app.appname)">
+	            Export
+	          </button>
+	          <button
+	            class="outline"
+	            ng-disabled="app.status === 'deploying' || app.status === 'undeploying' || app.status === 'pausing'"
+	            ng-click="$event.stopPropagation();summaryCtrl.toggleDeployment(app)">
+	            {{app.getDeploymentStatus(true)}}
+	          </button>
+	          <button
+	            class="outline"
+	            ng-disabled="app.status === 'deploying' || app.status === 'undeploying' || app.status === 'undeployed' || app.status === 'pausing'"
+	            ng-click="$event.stopPropagation();summaryCtrl.toggleProcessing(app)">
+		      {{app.getProcessingStatus(true)}}
+	          </button>
+                 <button
+                    ui-sref="app.admin.eventing.handler({appName:app.appname})"
+                    ng-disabled="summaryCtrl.disableEditButton"
+                    ng-click="$event.stopPropagation();">
+                      {{app.status === 'deployed' || app.status === 'deploying' ? 'View JavaScript' : 'Edit JavaScript'}}
+                  </button>
+		</td>
+	      </tr>
+	    </table>
+	  </div>
         </div>
       </section>
     </div>
