@@ -106,12 +106,13 @@ ADD_CUSTOM_COMMAND(
 
 ADD_CUSTOM_COMMAND(
         OUTPUT inspector/v8_inspector_protocol_json.h
-        COMMAND python
+        COMMAND ${PYTHON_EXE}
         ARGS
           ../third_party/inspector/compress_json.py
           ../third_party/inspector/js_protocol.json
           inspector/v8_inspector_protocol_json.h
         DEPENDS
+          local-cbpy
           ../third_party/inspector/compress_json.py
           ../third_party/inspector/js_protocol.json
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
@@ -151,7 +152,7 @@ ADD_CUSTOM_COMMAND(
         COMMENT "Converting ../flatbuf/response.fbs to flatbuf/response_generated.h and flatbuf/response/Response.go"
 )
 
-ADD_CUSTOM_TARGET(generated DEPENDS
+ADD_CUSTOM_TARGET(eventing-generated DEPENDS
         js/esprima.h js/escodegen.h js/estraverse.h js/source-map.h
         inspector/v8_inspector_protocol_json.h
         flatbuf/header_generated.h flatbuf/header/Header.go
@@ -163,4 +164,4 @@ ADD_CUSTOM_TARGET(generated DEPENDS
         version/version.cc
 )
 
-ADD_DEPENDENCIES(generated convertjs convertaudit)
+ADD_DEPENDENCIES(eventing-generated convertjs convertaudit)
