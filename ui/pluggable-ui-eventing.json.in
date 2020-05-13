@@ -7,7 +7,8 @@
     }
   },
   "version-dirs": [
-    {"version": [5, 0], "dir": "ui-current"}
+    {"version": [5, 0], "dir": "ui-current"},
+    {"version": [7, 0], "dir": "ui-current"}
   ],
   "doc-root": "@BIN_PREFIX@eventing-ui",
   "module": "main.js"
