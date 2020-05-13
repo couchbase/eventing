@@ -108,7 +108,7 @@ IF(BREAKPAD_FOUND)
 ENDIF()
 
 ADD_EXECUTABLE(eventing-consumer ${EVENTING_SOURCES})
-ADD_DEPENDENCIES(eventing-consumer generated  couchbase)
+ADD_DEPENDENCIES(eventing-consumer eventing-generated couchbase)
 
 TARGET_LINK_LIBRARIES(eventing-consumer ${EVENTING_LIBRARIES} couchbase)
 INSTALL(TARGETS eventing-consumer RUNTIME DESTINATION bin)
