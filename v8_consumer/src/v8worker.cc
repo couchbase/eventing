@@ -156,12 +156,11 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
                    Histogram *curl_latency_stats,
                    const std::string &ns_server_port,
                    const int32_t &num_vbuckets)
-    : app_name_(h_config->app_name), settings_(server_settings),
+    : app_name_(h_config->app_name), settings_(server_settings), num_vbuckets_(num_vbuckets),
       latency_stats_(latency_stats), curl_latency_stats_(curl_latency_stats),
       platform_(platform), function_name_(function_name),
       function_id_(function_id), user_prefix_(user_prefix),
       ns_server_port_(ns_server_port),
-      num_vbuckets_(num_vbuckets),
       exception_type_names_(
           {"KVError", "N1QLError", "EventingError", "CurlError"}),
       handler_headers_(h_config->handler_headers),
