@@ -33,15 +33,15 @@ func (c *Consumer) processDCPEvents() {
 				logging.Debugf("%s [%s:%s:%d] Throttling, cpp queue sizes: %+v, num sent event: %d, events size: %d",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), c.cppQueueSizes, c.numSentEvents, c.sentEventsSize)
 
-				// avoid throttling when consumer is pausing
-				if !c.isPausing {
+				// avoid throttling when consumer is pausing or terminating
+				if !(c.isPausing || atomic.LoadUint32(&c.isTerminateRunning) == 1) {
 					time.Sleep(10 * time.Millisecond)
 				}
 
 				// If rebalance in ongoing, it's important to read dcp mutations as STREAMBEGIN/END messages could be behind them.
 				// And it is also important to not queue up mutations in consumer to contain rss growth when cpp queues are full.
-				// So *continue* only when there is no rebalance on going
-				if !(c.isRebalanceOngoing || c.isPausing) {
+				// So *continue* only when there is no rebalance on going, or we are not pausing or we are not undeploying
+				if !(c.isRebalanceOngoing || c.isPausing || atomic.LoadUint32(&c.isTerminateRunning) == 1) {
 					continue
 				}
 
