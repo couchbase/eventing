@@ -126,6 +126,7 @@ bool Timer::CancelTimerImpl(const v8::FunctionCallbackInfo<v8::Value> &args) {
     args.GetReturnValue().Set(true);
   } else if (err == LCB_KEY_ENOENT) {
     args.GetReturnValue().Set(false);
+    return false;
   } else {
     js_exception->ThrowKVError(v8worker->GetTimerLcbHandle(), err);
     return false;
@@ -205,8 +206,9 @@ void CreateTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
   }
 
   auto timer = UnwrapData(isolate)->timer;
-  ++timer_create_counter;
-  timer->CreateTimerImpl(args);
+  if (timer->CreateTimerImpl(args)) {
+    ++timer_create_counter;
+  }
 }
 
 void CancelTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
@@ -217,6 +219,7 @@ void CancelTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
   }
 
   auto timer = UnwrapData(isolate)->timer;
-  ++timer_cancel_counter;
-  timer->CancelTimerImpl(args);
+  if (timer->CancelTimerImpl(args)) {
+    ++timer_cancel_counter;
+  }
 }
