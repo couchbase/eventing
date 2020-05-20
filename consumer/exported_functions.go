@@ -737,8 +737,16 @@ func (c *Consumer) UpdateWorkerQueueMemCap(quota int64) {
 	prevDCPFeedMemCap := c.aggDCPFeedMemCap
 
 	divisor := int64(2)
+	maxCap := int64(61 * 1024 * 1024) // to allow for a max of 3 20MB doc mutations
+
 	c.workerQueueMemCap = (quota / divisor) * 1024 * 1024
 	c.aggDCPFeedMemCap = (quota / divisor) * 1024 * 1024
+
+	if c.workerQueueMemCap >= maxCap {
+		c.workerQueueMemCap = maxCap
+		c.aggDCPFeedMemCap = maxCap
+	}
+
 	c.sendWorkerMemQuota(quota * 1024 * 1024)
 
 	logging.Infof("%s [%s:%s:%d] Updated memory quota: %d MB previous worker quota: %d MB dcp feed quota: %d MB",
