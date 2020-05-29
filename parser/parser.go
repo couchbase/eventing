@@ -12,6 +12,10 @@ import (
 	"strings"
 )
 
+type ParsedStatements struct {
+	stmts []string
+}
+
 var maybe_n1ql = regexp.MustCompile(
 	`(?iU)` +
 		`((?:alter|build|create|` +
@@ -36,6 +40,12 @@ var timer_use = regexp.MustCompile(
 
 var printable_stmt = regexp.MustCompile(
 	`^[[:print:]]*$`)
+
+var function_name = regexp.MustCompile(
+	`^function[[:space:]]+([A-Za-z]+)[[:space:]]*\(`)
+
+var requiredFunctions = map[string]struct{}{"OnUpdate": struct{}{},
+	"OnDelete": struct{}{}}
 
 func cleanse(str string) string {
 	washed := []byte(str)
@@ -182,33 +192,32 @@ func TranspileQueries(input string, n1ql_params string) (result string, info []N
 	return
 }
 
-func getStatements(input string) []string {
+func GetStatements(input string) *ParsedStatements {
 	js := cleanse(input)
-	stmts := []string{}
+	parsed := &ParsedStatements{}
 	start := 0
 	for pos := 0; pos < len(js); pos++ {
 		if js[pos] == '{' || js[pos] == '}' || js[pos] == ';' {
 			part := strings.TrimSpace(js[start:pos])
 			if len(part) > 0 {
-				stmts = append(stmts, part)
+				parsed.stmts = append(parsed.stmts, part)
 			}
-			stmts = append(stmts, string(js[pos]))
+			parsed.stmts = append(parsed.stmts, string(js[pos]))
 			start = pos + 1
 		}
 	}
 	if start < len(input) {
 		part := strings.TrimSpace(js[start:])
 		if len(part) > 0 {
-			stmts = append(stmts, part)
+			parsed.stmts = append(parsed.stmts, part)
 		}
 	}
-	return stmts
+	return parsed
 }
 
-func ValidateGlobals(input string) (bool, error) {
-	stmts := getStatements(input)
+func (parsed *ParsedStatements) ValidateGlobals() (bool, error) {
 	depth := 0
-	for _, stmt := range stmts {
+	for _, stmt := range parsed.stmts {
 		switch stmt {
 		case "{":
 			depth++
@@ -225,6 +234,30 @@ func ValidateGlobals(input string) (bool, error) {
 		}
 	}
 	return true, nil
+}
+
+func (parsed *ParsedStatements) ValidateExports() (bool, error) {
+	depth := 0
+	for _, stmt := range parsed.stmts {
+		switch stmt {
+		case "{":
+			depth++
+		case "}":
+			depth--
+		default:
+			if depth <= 0 {
+				function := function_name.FindStringSubmatch(stmt)
+				if len(function) >= 2 {
+					functionName := strings.TrimSpace(function[1])
+					if _, ok := requiredFunctions[functionName]; ok {
+						return true, nil
+					}
+				}
+			}
+		}
+	}
+	msg := fmt.Sprintf("Handler code is missing OnUpdate() and OnDelete() functions. At least one of them is needed to deploy the handler")
+	return false, errors.New(msg)
 }
 
 func UsingTimer(input string) bool {
