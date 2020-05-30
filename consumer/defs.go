@@ -91,7 +91,7 @@ type vbFlogEntry struct {
 }
 
 type dcpMetadata struct {
-	Cas     uint64 `json:"cas"`
+	Cas     string `json:"cas"`
 	DocID   string `json:"id"`
 	Expiry  uint32 `json:"expiration"`
 	Flag    uint32 `json:"flags"`

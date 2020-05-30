@@ -420,7 +420,7 @@ func (c *Consumer) sendGetLcbExceptionStats(sendToDebugger bool) {
 
 func (c *Consumer) sendDcpEvent(e *memcached.DcpEvent, sendToDebugger bool) {
 	m := dcpMetadata{
-		Cas:     e.Cas,
+		Cas:     strconv.FormatUint(e.Cas, 10),
 		DocID:   string(e.Key),
 		Expiry:  e.Expiry,
 		Flag:    e.Flags,
