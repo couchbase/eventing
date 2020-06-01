@@ -52,7 +52,7 @@ func TestRecursiveMutationN1QL(t *testing.T) {
 		return
 	}
 
-	if response["name"].(string) != "ERR_HANDLER_COMPILATION" {
+	if response["name"].(string) != "ERR_INTER_BUCKET_RECURSION" {
 		t.Error("Compilation must fail")
 		return
 	}
