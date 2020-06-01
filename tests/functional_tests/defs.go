@@ -44,6 +44,7 @@ const (
 	indexerURL          = "http://127.0.0.1:9000/settings/indexes"
 	queryURL            = "http://127.0.0.1:9001/_p/query/query/service"
 	configURL           = "http://127.0.0.1:9000/_p/event/api/v1/config"
+	indexStateURL       = "http://127.0.0.1:9108/getIndexStatus"
 )
 
 const (

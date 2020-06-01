@@ -133,6 +133,11 @@ var script_inputs = []string{
 	`var foo = 23
 	function foo() {}`,
 	"\xbd\xb2\x3d\xbc",
+	`function OnUpdate() { createTimer()}`,
+	`function\nOnDelete() {}`,
+	`function OnUpdate           (){}`,
+	`// function OnDelete(`,
+	`function test() {} function OnUpdate() {}`,
 }
 
 var script_allowed = []bool{
@@ -145,6 +150,28 @@ var script_allowed = []bool{
 	true,
 	false,
 	false,
+	true,
+	true,
+	true,
+	true,
+	true,
+}
+
+var script_required = []bool{
+	false,
+	false,
+	false,
+	false,
+	false,
+	false,
+	false,
+	false,
+	false,
+	true,
+	true,
+	true,
+	false,
+	true,
 }
 
 var script_timers = []bool{
@@ -155,6 +182,11 @@ var script_timers = []bool{
 	false,
 	true,
 	true,
+	false,
+	false,
+	true,
+	false,
+	false,
 	false,
 	false,
 }
@@ -170,10 +202,16 @@ func TestParserTransform(t *testing.T) {
 
 func TestParserDetect(t *testing.T) {
 	for i := 0; i < len(script_inputs); i++ {
-		globals, err := parser.ValidateGlobals(script_inputs[i])
+		parsed := parser.GetStatements(script_inputs[i])
+		globals, err := parsed.ValidateGlobals()
 		if globals != script_allowed[i] {
 			t.Errorf("Mismatch global check:%s\nExpected:%v\nGot:%v\nError:%v\n", script_inputs[i], script_allowed[i], globals, err)
 		}
+
+		if exports, err := parsed.ValidateExports(); exports != script_required[i] {
+			t.Errorf("Mismatch exports check:%s\nExpected:%v\nGot:%v\nError:%v\n", script_inputs[i], script_allowed[i], exports, err)
+		}
+
 		timers := parser.UsingTimer(script_inputs[i])
 		if timers != script_timers[i] {
 			t.Errorf("Mismatch timer check:%s\nExpected:%v\nGot:%v\n", script_inputs[i], script_timers[i], timers)

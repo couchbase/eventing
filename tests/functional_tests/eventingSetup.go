@@ -102,6 +102,8 @@ func createPadding(paddingCount int) string {
 }
 
 func createAndDeployLargeFunction(appName, hFileName string, settings *commonSettings, paddingCount int) (storeResponse *restResponse) {
+	waitForIndexes()
+
 	sCount, _ := getBucketItemCount(srcBucket)
 	dCount, _ := getBucketItemCount(dstBucket)
 
@@ -531,6 +533,8 @@ func getBucketItemCount(bucketName string) (int, error) {
 func bucketFlush(bucketName string) {
 	flushEndpoint := fmt.Sprintf("http://127.0.0.1:9000/pools/default/buckets/%s/controller/doFlush", bucketName)
 	postToEventingEndpoint("Bucket flush", flushEndpoint, nil)
+	time.Sleep(5 * time.Second)
+	waitForIndexes()
 }
 
 func flushFunction(handler string) {

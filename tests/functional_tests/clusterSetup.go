@@ -63,6 +63,7 @@ func setIndexStorageMode() ([]byte, error) {
 }
 
 func fireQuery(query string) ([]byte, error) {
+	waitForIndexes()
 	payload := strings.NewReader(fmt.Sprintf("statement=%s", query))
 	return makeRequest("POST", payload, queryURL)
 }
@@ -70,6 +71,41 @@ func fireQuery(query string) ([]byte, error) {
 func configChange(configuration string) ([]byte, error) {
 	payload := strings.NewReader(configuration)
 	return makeRequest("POST", payload, configURL)
+}
+
+func waitForIndexes() {
+	timeout := 600 * time.Second
+	for start := time.Now(); time.Now().Sub(start) < timeout; time.Sleep(time.Second * 15) {
+		response, err := makeRequest("GET", strings.NewReader(""), indexStateURL)
+		if err != nil {
+			log.Printf("waitForIndexes giving up: err %v response %s\n", err, response)
+			return
+		}
+		var result struct {
+			Status  string `json:"code"`
+			Results []struct {
+				Name       string `json:"name"`
+				Bucket     string `json:"bucket"`
+				Completion int    `json:"completion"`
+			} `json:"status"`
+		}
+		err = json.Unmarshal(response, &result)
+		if err != nil || result.Status != "success" {
+			log.Printf("waitForIndexes giving up: err %v response %s\n", err, response)
+			return
+		}
+		ready := true
+		for _, index := range result.Results {
+			if index.Completion < 100 {
+				ready = false
+			}
+		}
+		if ready {
+			return
+		}
+		log.Printf("waitForIndexes waiting for indexes: %+v\n", result.Results)
+	}
+	panic(fmt.Sprintf("waitForIndexes failing even after %v", timeout))
 }
 
 func addNode(hostname, role string) {
@@ -416,7 +452,6 @@ func getRunningApps() (map[string]string, error) {
 }
 
 func metaStateDump() {
-
 	fireQuery("CREATE PRIMARY INDEX on eventing;")
 
 	fmt.Println()
