@@ -2815,6 +2815,13 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
+			if !m.checkAppExists(appName) {
+				if app.Settings["deployment_status"] != app.Settings["processing_status"] {
+					app.Settings["deployment_status"] = false
+					app.Settings["processing_status"] = false
+				}
+			}
+
 			if info = m.validateApplication(&app); info.Code != m.statusCodes.ok.Code {
 				m.sendErrorInfo(w, info)
 				return
@@ -3326,17 +3333,17 @@ func (m *ServiceMgr) createApplications(r *http.Request, appList *[]application,
 	for _, app := range *appList {
 		audit.Log(auditevent.CreateFunction, r, app.Name)
 
-		if infoVal := m.validateApplication(&app); infoVal.Code != m.statusCodes.ok.Code {
-			logging.Warnf("%s Validating %ru failed: %v", logPrefix, app, infoVal)
-			infoList = append(infoList, infoVal)
-			continue
-		}
-
 		if isImport {
 			app.Settings["deployment_status"] = false
 			app.Settings["processing_status"] = false
 		} else {
 			m.addDefaultVersionIfMissing(&app)
+		}
+
+		if infoVal := m.validateApplication(&app); infoVal.Code != m.statusCodes.ok.Code {
+			logging.Warnf("%s Validating %ru failed: %v", logPrefix, app, infoVal)
+			infoList = append(infoList, infoVal)
+			continue
 		}
 
 		info := &runtimeInfo{}

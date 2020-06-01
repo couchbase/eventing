@@ -19,8 +19,8 @@ import (
 	"github.com/couchbase/cbauth/service"
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/logging"
-	"github.com/couchbase/eventing/util"
 	"github.com/couchbase/eventing/parser"
+	"github.com/couchbase/eventing/util"
 )
 
 //NewServiceMgr creates handle for ServiceMgr, which implements cbauth service.Manager
@@ -294,20 +294,21 @@ func (m *ServiceMgr) primaryStoreChangeCallback(path string, value []byte, rev i
 		app := m.parseFunctionPayload(data, fnName)
 		m.fnsInPrimaryStore[fnName] = app.DeploymentConfig
 		logging.Infof("%s Added function: %s to fnsInPrimaryStore", logPrefix, fnName)
-		source, destinations := m.getSourceAndDestinationsFromDepCfg(&app.DeploymentConfig)
-		if len(destinations) != 0 {
-			m.graph.insertEdges(fnName, source, destinations)
-		}
 
-		//Find keyspace names from N1QL statements in handler code and add edges
-		_, pinfos := parser.TranspileQueries(app.AppHandlers, "")
-		dstBuckets := make(map[string]struct{})
-		for _, pinfo := range pinfos {
-			logging.Infof("%s Adding allowed edge label %s, source %s to destination %s",
-				logPrefix, fnName, source, pinfo.PInfo.KeyspaceName)
-			dstBuckets[pinfo.PInfo.KeyspaceName] = struct{}{}
+		if val, ok := app.Settings["processing_status"].(bool); ok && val {
+			source, destinations := m.getSourceAndDestinationsFromDepCfg(&app.DeploymentConfig)
+
+			//Find keyspace names from N1QL statements in handler code and add edges
+			_, pinfos := parser.TranspileQueries(app.AppHandlers, "")
+			for _, pinfo := range pinfos {
+				logging.Infof("%s Adding allowed edge label %s, source %s to destination %s",
+					logPrefix, fnName, source, pinfo.PInfo.KeyspaceName)
+				destinations[pinfo.PInfo.KeyspaceName] = struct{}{}
+			}
+			if len(destinations) > 0 {
+				m.graph.insertEdges(fnName, source, destinations)
+			}
 		}
-		m.graph.insertEdges(fnName, source, dstBuckets)
 
 		//Update BucketFunctionMap
 		functions, ok := m.bucketFunctionMap[app.DeploymentConfig.SourceBucket]
@@ -324,6 +325,7 @@ func (m *ServiceMgr) primaryStoreChangeCallback(path string, value []byte, rev i
 		functions[app.Name] = functionInfo{fnName: app.Name, fnType: funtionType, fnDeployed: deployed}
 	} else {
 		cfg := m.fnsInPrimaryStore[fnName]
+		m.graph.removeEdges(fnName)
 		delete(m.fnsInPrimaryStore, fnName)
 		delete(m.bucketFunctionMap[cfg.SourceBucket], fnName)
 		if len(m.bucketFunctionMap[cfg.SourceBucket]) == 0 {
@@ -404,23 +406,9 @@ func (m *ServiceMgr) settingChangeCallback(path string, value []byte, rev interf
 
 	cfg := m.fnsInPrimaryStore[functionName]
 
-	source, destinations := m.getSourceAndDestinationsFromDepCfg(&cfg)
+	source, _ := m.getSourceAndDestinationsFromDepCfg(&cfg)
 	if processingStatus == false {
-		if len(destinations) != 0 {
-			m.graph.removeEdges(functionName, source, destinations)
-		}
-		data, err := util.ReadAppContent(metakvAppsPath, metakvChecksumPath, functionName)
-		if err == nil && data != nil {
-			app := m.parseFunctionPayload(data, functionName)
-			_, pinfos := parser.TranspileQueries(app.AppHandlers, "")
-			dstBuckets := make(map[string]struct{})
-			for _, pinfo := range pinfos {
-				logging.Infof("%s Removing N1QL edge label %s, source %s to destination %s",
-					logPrefix, functionName, source, pinfo.PInfo.KeyspaceName)
-				dstBuckets[pinfo.PInfo.KeyspaceName] = struct{}{}
-			}
-			m.graph.removeEdges(functionName, source, dstBuckets)
-		}
+		m.graph.removeEdges(functionName)
 	}
 
 	//Update BucketFunctionMap

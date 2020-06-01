@@ -12,12 +12,18 @@ type bucketEdge struct {
 	destination string
 }
 
+type dependency struct {
+	source      string
+	destination map[string]struct{}
+}
+
 // Structure to store directed multigraph.
 type bucketMultiDiGraph struct {
 	adjacenyList    map[string]map[string]int          //map[source]map[destination]multi-indegree
 	inDegreeLabels  map[string]map[string]struct{}     //map[destination]map[edge_label]
 	outDegreeLabels map[string]map[string]struct{}     //map[source]map[edge_label]
 	edgeList        map[bucketEdge]map[string]struct{} //map[bucketEdge]map[label]
+	labelState      map[string]dependency
 	lock            sync.RWMutex
 }
 
@@ -27,6 +33,7 @@ func newBucketMultiDiGraph() *bucketMultiDiGraph {
 		inDegreeLabels:  make(map[string]map[string]struct{}),
 		outDegreeLabels: make(map[string]map[string]struct{}),
 		edgeList:        make(map[bucketEdge]map[string]struct{}),
+		labelState:      make(map[string]dependency),
 	}
 }
 
@@ -218,23 +225,34 @@ func (bg *bucketMultiDiGraph) hasPath(source, destination string) (reachable boo
 
 func (bg *bucketMultiDiGraph) insertEdges(label, source string, destinations map[string]struct{}) {
 	logPrefix := "insertEdges"
+	// remove the previous label if present
+	bg.removeEdges(label)
+
 	bg.lock.Lock()
 	defer bg.lock.Unlock()
 
 	for dest := range destinations {
 		bg.insertEdge(label, source, dest)
 	}
+	bg.labelState[label] = dependency{source: source, destination: destinations}
 	logging.Debugf("%s adjacencyList: %v, indegreeMap: %v, outDegreeMap: %v",
 		logPrefix, bg.adjacenyList, bg.inDegreeLabels, bg.outDegreeLabels)
 }
 
-func (bg *bucketMultiDiGraph) removeEdges(label, source string, destinations map[string]struct{}) {
+func (bg *bucketMultiDiGraph) removeEdges(label string) {
 	logPrefix := "removeEdges"
 	bg.lock.Lock()
 	defer bg.lock.Unlock()
-	for dest := range destinations {
-		bg.removeEdge(label, source, dest)
+
+	dependency, ok := bg.labelState[label]
+	if !ok {
+		return
 	}
+	for dest := range dependency.destination {
+		bg.removeEdge(label, dependency.source, dest)
+	}
+
+	delete(bg.labelState, label)
 	logging.Debugf("%s adjacencyList: %v, indegreeMap: %v, outDegreeMap: %v",
 		logPrefix, bg.adjacenyList, bg.inDegreeLabels, bg.outDegreeLabels)
 }
