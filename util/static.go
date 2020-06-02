@@ -49,6 +49,14 @@ func GetIPMode() string {
 	}
 }
 
+func GetNetworkProtocol() string {
+	if ipv4 {
+		return "tcp4"
+	} else {
+		return "tcp6"
+	}
+}
+
 func IsIPv6() bool {
 	return !ipv4
 }
