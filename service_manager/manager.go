@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	_ "net/http/pprof" // For debugging
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -176,14 +177,23 @@ func (m *ServiceMgr) initService() {
 
 	go func() {
 		addr := net.JoinHostPort("", m.adminHTTPPort)
-		logging.Infof("%s Admin HTTP server started: %s", logPrefix, addr)
+
 		srv := &http.Server{
 			Addr:         addr,
 			ReadTimeout:  httpReadTimeOut,
 			WriteTimeout: httpWriteTimeOut,
 			Handler:      mux,
 		}
-		err := srv.ListenAndServe()
+		proto := util.GetNetworkProtocol()
+		listner, err := net.Listen(proto, addr)
+		if err != nil {
+			logging.Errorf("Failed to start http service ip family: %v address: %v error: %v", proto, addr, err)
+			time.Sleep(1 * time.Second)
+			os.Exit(1)
+		}
+
+		logging.Infof("%s Admin HTTP server started: %s", logPrefix, addr)
+		srv.Serve(listner)
 		logging.Fatalf("%s Error in Admin HTTP Server: %v", logPrefix, err)
 	}()
 
@@ -223,15 +233,18 @@ func (m *ServiceMgr) initService() {
 					TLSConfig:    tlscfg,
 					Handler:      mux,
 				}
-				logging.Infof("%s SSL server started: %v", logPrefix, sslsrv)
-				reload = false
-				err = sslsrv.ListenAndServeTLS(m.certFile, m.keyFile)
-				if reload {
-					logging.Warnf("%s SSL certificate change: %v", logPrefix, err)
-				} else {
-					logging.Errorf("%s Error in SSL Server: %v", logPrefix, err)
-					return
+
+				proto := util.GetNetworkProtocol()
+				ln, err := net.Listen(proto, sslAddr)
+				if err != nil {
+					logging.Errorf("Failed to start ssl service ip family: %v address: %v error: %v", proto, sslAddr, err)
+					time.Sleep(1 * time.Second)
+					os.Exit(1)
 				}
+
+				logging.Infof("%s SSL server started: %v", logPrefix, sslsrv)
+				tls_ln := tls.NewListener(ln, tlscfg)
+				sslsrv.Serve(tls_ln)
 			}
 		}()
 	}
