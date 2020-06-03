@@ -58,7 +58,7 @@ func (m *ServiceMgr) validateAppRecursion(app *application) (info *runtimeInfo) 
 	// Prevent deployment of handler with N1QL writing to source bucket
 	for _, pinfo := range pinfos {
 		if pinfo.PInfo.KeyspaceName == app.DeploymentConfig.SourceBucket {
-			info.Code = m.statusCodes.errHandlerCompile.Code
+			info.Code = m.statusCodes.errInterBucketRecursion.Code
 			info.Info = fmt.Sprintf("Function: %s N1QL dml to source bucket %s", app.Name, pinfo.PInfo.KeyspaceName)
 			logging.Errorf("%s %s", logPrefix, info.Info)
 			return
@@ -82,6 +82,7 @@ func (m *ServiceMgr) validateAppRecursion(app *application) (info *runtimeInfo) 
 			info.Info = wInfo
 		}
 	}
+
 	info.Code = m.statusCodes.ok.Code
 	return
 }
@@ -111,9 +112,11 @@ func (m *ServiceMgr) validateApplication(app *application) (info *runtimeInfo) {
 		return
 	}
 
-	if info = m.validateAppRecursion(app); info.Code != m.statusCodes.ok.Code {
-		logging.Errorf("%s Function: %s recursion error %d: %s", logPrefix, app.Name, info.Code, info.Info)
-		return
+	if val, ok := app.Settings["processing_status"].(bool); ok && val {
+		if info = m.validateAppRecursion(app); info.Code != m.statusCodes.ok.Code {
+			logging.Errorf("%s Function: %s recursion error %d: %s", logPrefix, app.Name, info.Code, info.Info)
+			return
+		}
 	}
 
 	info.Code = m.statusCodes.ok.Code
