@@ -151,6 +151,8 @@ Error Bucket::Connect() {
   lcb_install_callback3(connection_, LCB_CALLBACK_SDMUTATE,
                         SubDocumentCallback);
   lcb_install_callback3(connection_, LCB_CALLBACK_REMOVE, DeleteCallback);
+  lcb_install_callback3(connection_, LCB_CALLBACK_SDLOOKUP,
+                        SubDocumentLookupCallback);
 
   // TODO : Need to make timeout configurable
   lcb_U32 lcb_timeout = 2500000; // 2.5s
@@ -206,7 +208,145 @@ Bucket::Get(const std::string &key) {
 }
 
 std::tuple<Error, std::unique_ptr<lcb_error_t>, std::unique_ptr<Result>>
-Bucket::SetWithXattr(const std::string &key, const std::string &value) {
+Bucket::GetWithMeta(const std::string &key) {
+  if (!is_connected_) {
+  return {std::make_unique<std::string>("Connection is not initialized"),
+            nullptr, nullptr};
+  }
+
+  lcb_SDSPEC specs[3] = {};
+
+  specs[0].sdcmd = LCB_SDCMD_GET;
+  specs[0].options = LCB_SDSPEC_F_XATTRPATH;
+  char const *path = "$document.exptime";
+  LCB_SDSPEC_SET_PATH(&specs[0], path, strlen(path));
+
+  specs[1].sdcmd = LCB_SDCMD_GET;
+  specs[1].options = LCB_SDSPEC_F_XATTRPATH;
+  char const *path2 = "$document.datatype";
+  LCB_SDSPEC_SET_PATH(&specs[1], path2, strlen(path2));
+
+  specs[2].sdcmd = LCB_SDCMD_GET_FULLDOC;
+  LCB_SDSPEC_SET_PATH(&specs[2], "", 0);
+
+  lcb_CMDSUBDOC cmd = {0};
+  cmd.specs = specs;
+  cmd.nspecs = 3;
+  LCB_CMD_SET_KEY(&cmd, key.c_str(), key.length());
+  cmd.multimode = LCB_SDMULTI_MODE_LOOKUP;
+
+  const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
+  auto [err_code, result] =
+      RetryLcbCommand(connection_, cmd, max_retry, LcbSubdocSet);
+  if (err_code != LCB_SUCCESS) {
+    ++lcb_retry_failure;
+    return {nullptr, std::make_unique<lcb_error_t>(err_code), nullptr};
+  }
+  return {nullptr, std::make_unique<lcb_error_t>(err_code),
+          std::make_unique<Result>(std::move(result))};
+}
+
+std::tuple<Error, std::unique_ptr<lcb_error_t>, std::unique_ptr<Result>>
+Bucket::CounterWithoutXattr(const std::string &key, lcb_CAS cas, lcb_U32 expiry, std::string delta) {
+  if (!is_connected_) {
+  return {std::make_unique<std::string>("Connection is not initialized"),
+            nullptr, nullptr};
+  }
+
+  lcb_SDSPEC specs[1] = {};
+  specs[0].sdcmd = LCB_SDCMD_COUNTER;
+  LCB_SDSPEC_SET_PATH(&specs[0], "count", strlen("count"));
+  LCB_SDSPEC_SET_VALUE(&specs[0], delta.c_str(), delta.length());
+
+  lcb_CMDSUBDOC cmd = {0};
+  cmd.specs = specs;
+  cmd.nspecs = 1;
+  LCB_CMD_SET_KEY(&cmd, key.c_str(), key.length());
+  cmd.cmdflags = LCB_CMDSUBDOC_F_UPSERT_DOC;
+  cmd.exptime = expiry;
+  cmd.cas = cas;
+
+  const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
+  auto [err_code, result] =
+      RetryLcbCommand(connection_, cmd, max_retry, LcbSubdocSet);
+  if (err_code != LCB_SUCCESS) {
+    ++lcb_retry_failure;
+    return {nullptr, std::make_unique<lcb_error_t>(err_code), nullptr};
+  }
+  return {nullptr, std::make_unique<lcb_error_t>(err_code),
+          std::make_unique<Result>(std::move(result))};
+}
+
+std::tuple<Error, std::unique_ptr<lcb_error_t>, std::unique_ptr<Result>>
+Bucket::CounterWithXattr(const std::string &key, lcb_CAS cas, lcb_U32 expiry, std::string delta) {
+  if (!is_connected_) {
+  return {std::make_unique<std::string>("Connection is not initialized"),
+            nullptr, nullptr};
+  }
+
+  lcb_SDSPEC function_id_spec = {0};
+  auto function_instance_id = GetFunctionInstanceID(isolate_);
+  std::string function_instance_id_path("_eventing.fiid");
+  function_id_spec.sdcmd = LCB_SDCMD_DICT_UPSERT;
+  function_id_spec.options =
+      LCB_SDSPEC_F_MKINTERMEDIATES | LCB_SDSPEC_F_XATTRPATH;
+  LCB_SDSPEC_SET_PATH(&function_id_spec, function_instance_id_path.c_str(),
+                      function_instance_id_path.size());
+  LCB_SDSPEC_SET_VALUE(&function_id_spec, function_instance_id.c_str(),
+                       function_instance_id.size());
+
+  lcb_SDSPEC dcp_seqno_spec = {0};
+  std::string dcp_seqno_path("_eventing.seqno");
+  std::string dcp_seqno_macro(R"("${Mutation.seqno}")");
+  dcp_seqno_spec.sdcmd = LCB_SDCMD_DICT_UPSERT;
+  dcp_seqno_spec.options =
+      LCB_SDSPEC_F_MKINTERMEDIATES | LCB_SDSPEC_F_XATTR_MACROVALUES;
+  LCB_SDSPEC_SET_PATH(&dcp_seqno_spec, dcp_seqno_path.c_str(),
+                      dcp_seqno_path.size());
+  LCB_SDSPEC_SET_VALUE(&dcp_seqno_spec, dcp_seqno_macro.c_str(),
+                       dcp_seqno_macro.size());
+
+  lcb_SDSPEC value_crc32_spec = {0};
+  std::string value_crc32_path("_eventing.crc");
+  std::string value_crc32_macro(R"("${Mutation.value_crc32c}")");
+  value_crc32_spec.sdcmd = LCB_SDCMD_DICT_UPSERT;
+  value_crc32_spec.options =
+      LCB_SDSPEC_F_MKINTERMEDIATES | LCB_SDSPEC_F_XATTR_MACROVALUES;
+  LCB_SDSPEC_SET_PATH(&value_crc32_spec, value_crc32_path.c_str(),
+                      value_crc32_path.size());
+  LCB_SDSPEC_SET_VALUE(&value_crc32_spec, value_crc32_macro.c_str(),
+                       value_crc32_macro.size());
+
+  lcb_SDSPEC counter_spec = {0};
+  counter_spec.sdcmd = LCB_SDCMD_COUNTER;
+  LCB_SDSPEC_SET_PATH(&counter_spec, "count", strlen("count"));
+  LCB_SDSPEC_SET_VALUE(&counter_spec, delta.c_str(), delta.length());
+
+  std::vector<lcb_SDSPEC> specs = {function_id_spec, dcp_seqno_spec,
+                                   value_crc32_spec, counter_spec};
+
+  lcb_CMDSUBDOC cmd = {0};
+  cmd.specs = specs.data();
+  cmd.nspecs = specs.size();
+  LCB_CMD_SET_KEY(&cmd, key.c_str(), key.length());
+  cmd.cmdflags = LCB_CMDSUBDOC_F_UPSERT_DOC;
+  cmd.exptime = expiry;
+  cmd.cas = cas;
+
+  const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
+  auto [err_code, result] =
+      RetryLcbCommand(connection_, cmd, max_retry, LcbSubdocSet);
+  if (err_code != LCB_SUCCESS) {
+    ++lcb_retry_failure;
+    return {nullptr, std::make_unique<lcb_error_t>(err_code), nullptr};
+  }
+  return {nullptr, std::make_unique<lcb_error_t>(err_code),
+          std::make_unique<Result>(std::move(result))};
+}
+
+std::tuple<Error, std::unique_ptr<lcb_error_t>, std::unique_ptr<Result>>
+Bucket::SetWithXattr(const std::string &key, const void* value, int value_length,
+                     lcb_U32 op_type, lcb_U32 expiry, lcb_CAS cas) {
   if (!is_connected_) {
     return {std::make_unique<std::string>("Connection is not initialized"),
             nullptr, nullptr};
@@ -248,7 +388,7 @@ Bucket::SetWithXattr(const std::string &key, const std::string &value) {
   lcb_SDSPEC doc_spec = {0};
   doc_spec.sdcmd = LCB_SDCMD_SET_FULLDOC;
   LCB_SDSPEC_SET_PATH(&doc_spec, "", 0);
-  LCB_SDSPEC_SET_VALUE(&doc_spec, value.c_str(), value.length());
+  LCB_SDSPEC_SET_VALUE(&doc_spec, value, value_length);
 
   std::vector<lcb_SDSPEC> specs = {function_id_spec, dcp_seqno_spec,
                                    value_crc32_spec, doc_spec};
@@ -256,7 +396,9 @@ Bucket::SetWithXattr(const std::string &key, const std::string &value) {
   LCB_CMD_SET_KEY(&cmd, key.c_str(), key.length());
   cmd.specs = specs.data();
   cmd.nspecs = specs.size();
-  cmd.cmdflags = LCB_CMDSUBDOC_F_UPSERT_DOC;
+  cmd.cmdflags = op_type;
+  cmd.exptime = expiry;
+  cmd.cas = cas;
 
   const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
   auto [err_code, result] =
@@ -270,7 +412,8 @@ Bucket::SetWithXattr(const std::string &key, const std::string &value) {
 }
 
 std::tuple<Error, std::unique_ptr<lcb_error_t>, std::unique_ptr<Result>>
-Bucket::SetWithoutXattr(const std::string &key, const std::string &value) {
+Bucket::SetWithoutXattr(const std::string &key, const void* value, int value_length,
+                        lcb_storage_t op_type, lcb_U32 expiry, lcb_CAS cas, lcb_U32 doc_type) {
   if (!is_connected_) {
     return {std::make_unique<std::string>("Connection is not initialized"),
             nullptr, nullptr};
@@ -278,9 +421,11 @@ Bucket::SetWithoutXattr(const std::string &key, const std::string &value) {
 
   lcb_CMDSTORE cmd = {0};
   LCB_CMD_SET_KEY(&cmd, key.c_str(), key.length());
-  LCB_CMD_SET_VALUE(&cmd, value.c_str(), value.length());
-  cmd.operation = LCB_SET;
-  cmd.flags = 0x2000000;
+  LCB_CMD_SET_VALUE(&cmd, value, value_length);
+  cmd.operation = op_type;
+  cmd.exptime = expiry;
+  cmd.cas = cas;
+  cmd.flags = doc_type;
 
   const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
   auto [err_code, result] =
@@ -294,7 +439,7 @@ Bucket::SetWithoutXattr(const std::string &key, const std::string &value) {
 }
 
 std::tuple<Error, std::unique_ptr<lcb_error_t>, std::unique_ptr<Result>>
-Bucket::DeleteWithXattr(const std::string &key) {
+Bucket::DeleteWithXattr(const std::string &key, lcb_CAS cas) {
   if (!is_connected_) {
     return {std::make_unique<std::string>("Connection is not initialized"),
             nullptr, nullptr};
@@ -344,6 +489,7 @@ Bucket::DeleteWithXattr(const std::string &key) {
   LCB_CMD_SET_KEY(&cmd, key.c_str(), key.length());
   cmd.specs = specs.data();
   cmd.nspecs = specs.size();
+  cmd.cas = cas;
 
   const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
   auto [err_code, result] =
@@ -357,7 +503,7 @@ Bucket::DeleteWithXattr(const std::string &key) {
 }
 
 std::tuple<Error, std::unique_ptr<lcb_error_t>, std::unique_ptr<Result>>
-Bucket::DeleteWithoutXattr(const std::string &key) {
+Bucket::DeleteWithoutXattr(const std::string &key, lcb_CAS cas) {
   if (!is_connected_) {
     return {std::make_unique<std::string>("Connection is not initialized"),
             nullptr, nullptr};
@@ -365,6 +511,7 @@ Bucket::DeleteWithoutXattr(const std::string &key) {
 
   lcb_CMDREMOVE cmd = {0};
   LCB_CMD_SET_KEY(&cmd, key.c_str(), key.length());
+  cmd.cas = cas;
 
   const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
   auto [err_code, result] =
@@ -557,6 +704,8 @@ Error BucketBinding::InstallBinding(v8::Isolate *isolate,
                            v8::External::New(isolate, &bucket_));
   (*obj)->SetInternalField(InternalFields::kIsSourceBucket,
                            v8::External::New(isolate, &is_source_bucket_));
+  (*obj)->SetInternalField(InternalFields::kBucketBindingId,
+                           v8Str(isolate, "Bucket-Binding"));
 
   auto global = context->Global();
   auto result = false;
@@ -623,10 +772,11 @@ void BucketBinding::BucketDelete<uint32_t>(
 std::tuple<Error, std::unique_ptr<lcb_error_t>, std::unique_ptr<Result>>
 BucketBinding::BucketSet(const std::string &key, const std::string &value,
                          bool is_source_bucket, Bucket *bucket) {
+  const char* data = value.c_str();
   if (is_source_bucket) {
-    return bucket->SetWithXattr(key, value);
+    return bucket->SetWithXattr(key, data, strlen(data));
   }
-  return bucket->SetWithoutXattr(key, value);
+  return bucket->SetWithoutXattr(key, data, strlen(data));
 }
 
 std::tuple<Error, std::unique_ptr<lcb_error_t>, std::unique_ptr<Result>>
@@ -683,4 +833,49 @@ Info BucketBinding::ValidateKeyValue(const v8::Local<v8::Name> &key,
     return info;
   }
   return {false};
+}
+
+bool BucketBinding::IsBucketObject(v8::Isolate *isolate,
+               const v8::Local<v8::Object> obj) {
+  if (obj->InternalFieldCount() != BucketBinding::kInternalFieldsCount) {
+    return false;
+  }
+
+  v8::HandleScope handle_scope(isolate);
+
+  auto binding_id = obj->GetInternalField(InternalFields::kBucketBindingId);
+  if (binding_id.IsEmpty() || binding_id->IsNullOrUndefined() ||
+      !binding_id->IsString()) {
+    return false;
+  }
+
+  v8::String::Utf8Value binding_id_utf8(isolate, binding_id);
+  return !strcmp(*binding_id_utf8, "Bucket-Binding");
+}
+
+Bucket* BucketBinding::GetBucket(v8::Isolate *isolate,
+                                 const v8::Local<v8::Value> obj) {
+  v8::HandleScope handle_scope(isolate);
+  auto context = isolate->GetCurrentContext();
+  v8::Local<v8::Object> local_obj;
+  TO_LOCAL(obj->ToObject(context), &local_obj);
+  return UnwrapInternalField<Bucket>(local_obj, InternalFields::kBucketInstance);
+}
+
+bool BucketBinding::GetBlockMutation(v8::Isolate *isolate,
+                                  const v8::Local<v8::Value> obj) {
+  v8::HandleScope handle_scope(isolate);
+  auto context = isolate->GetCurrentContext();
+  v8::Local<v8::Object> local_obj;
+  TO_LOCAL(obj->ToObject(context), &local_obj);
+  return *UnwrapInternalField<bool>(local_obj, InternalFields::kBlockMutation);
+}
+
+bool BucketBinding::IsSourceBucket(v8::Isolate *isolate,
+                                   const v8::Local<v8::Value> obj) {
+  v8::HandleScope handle_scope(isolate);
+  auto context = isolate->GetCurrentContext();
+  v8::Local<v8::Object> local_obj;
+  TO_LOCAL(obj->ToObject(context), &local_obj);
+  return *UnwrapInternalField<bool>(local_obj, InternalFields::kIsSourceBucket);
 }
