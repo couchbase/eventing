@@ -48,6 +48,7 @@ note_version() {
 
 > ~/gerrit.list
 gerrit_votelist() {
+  if [ "$CIBOT" = "no" ]; then return; fi
   repo=$1; pos=$2
   cd $pos
   sha="`git rev-parse HEAD`"
