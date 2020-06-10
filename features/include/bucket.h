@@ -59,16 +59,29 @@ public:
   Get(const std::string &key);
 
   std::tuple<Error, std::unique_ptr<lcb_error_t>, std::unique_ptr<Result>>
-  SetWithXattr(const std::string &key, const std::string &value);
+  SetWithXattr(const std::string &key, const void* value, int value_length,
+               lcb_U32 op_type = LCB_CMDSUBDOC_F_UPSERT_DOC, lcb_U32 expiry = 0,
+               lcb_CAS cas = 0);
 
   std::tuple<Error, std::unique_ptr<lcb_error_t>, std::unique_ptr<Result>>
-  SetWithoutXattr(const std::string &key, const std::string &value);
+  SetWithoutXattr(const std::string &key, const void* value, int value_length,
+                  lcb_storage_t op_type = LCB_SET, lcb_U32 expiry = 0, lcb_CAS cas = 0,
+                  lcb_U32 doc_type = 0x2000000);
 
   std::tuple<Error, std::unique_ptr<lcb_error_t>, std::unique_ptr<Result>>
-  DeleteWithXattr(const std::string &key);
+  DeleteWithXattr(const std::string &key, lcb_CAS cas = 0);
 
   std::tuple<Error, std::unique_ptr<lcb_error_t>, std::unique_ptr<Result>>
-  DeleteWithoutXattr(const std::string &key);
+  DeleteWithoutXattr(const std::string &key, lcb_CAS cas = 0);
+
+  std::tuple<Error, std::unique_ptr<lcb_error_t>, std::unique_ptr<Result>>
+  GetWithMeta(const std::string &key);
+
+  std::tuple<Error, std::unique_ptr<lcb_error_t>, std::unique_ptr<Result>>
+  CounterWithXattr(const std::string &key, lcb_CAS cas, lcb_U32 expiry, std::string delta);
+
+  std::tuple<Error, std::unique_ptr<lcb_error_t>, std::unique_ptr<Result>>
+  CounterWithoutXattr(const std::string &key, lcb_CAS cas, lcb_U32 expiry, std::string delta);
 
   lcb_t GetConnection() const { return connection_; }
 
@@ -84,6 +97,7 @@ private:
 
 class BucketBinding {
   friend BucketFactory;
+  friend BucketOps;
 
 public:
   BucketBinding(v8::Isolate *isolate, std::shared_ptr<BucketFactory> factory,
@@ -95,6 +109,11 @@ public:
 
   Error InstallBinding(v8::Isolate *isolate,
                        const v8::Local<v8::Context> &context);
+
+  static bool IsBucketObject(v8::Isolate *isolate, const v8::Local<v8::Object> obj);
+  static Bucket* GetBucket(v8::Isolate *isolate, const v8::Local<v8::Value> obj);
+  static bool GetBlockMutation(v8::Isolate *isolate, const v8::Local<v8::Value> obj);
+  static bool IsSourceBucket(v8::Isolate *isolate, const v8::Local<v8::Value> obj);
 
 private:
   static void HandleBucketOpFailure(v8::Isolate *isolate, lcb_t connection,
@@ -179,6 +198,7 @@ private:
     kBucketInstance,
     kBlockMutation,
     kIsSourceBucket,
+    kBucketBindingId,
     kInternalFieldsCount
   };
 };

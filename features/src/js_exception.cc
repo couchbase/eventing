@@ -147,9 +147,25 @@ void JsException::ThrowCurlError(const std::string &err_msg) {
   isolate_->ThrowException(error_obj);
 }
 
+void JsException::ThrowTypeError(const std::string &err_msg) {
+  v8::HandleScope handle_scope(isolate_);
+  auto custom_error = UnwrapData(isolate_)->custom_error;
+
+  v8::Local<v8::Object> error_obj;
+  auto info = custom_error->NewTypeError(v8Str(isolate_, err_msg), error_obj);
+  if (info.is_fatal) {
+    LOG(logError) << "Unable to construct TypeError : " << info.msg
+                  << std::endl;
+    isolate_->ThrowException(v8Str(isolate_, err_msg));
+    return;
+  }
+  isolate_->ThrowException(error_obj);
+}
+
 JsException::~JsException() {
   code_.Reset();
   desc_.Reset();
+  name_.Reset();
 }
 
 CustomError::CustomError(v8::Isolate *isolate,

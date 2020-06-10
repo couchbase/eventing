@@ -10,7 +10,10 @@
 // permissions and limitations under the License.
 
 #include "isolate_data.h"
+#include "log.h"
 #include "query-builder.h"
+#include <algorithm>
+#include <sstream>
 
 ::Info Query::Builder::Build(void (*row_callback)(lcb_t, int,
                                                   const lcb_RESPN1QL *),
@@ -41,9 +44,37 @@
     return ErrorFormat("Unable to set consistency", connection_, result);
   }
 
+  if (query_info_.options.client_context_id == nullptr) {
+    auto stack = v8::StackTrace::CurrentStackTrace(isolate_, 1,
+                                                   v8::StackTrace::kLineNumber);
+    if (stack->GetFrameCount() > 0) {
+      auto frame = stack->GetFrame(isolate_, 0);
+      std::string file = "?";
+      if (!frame->GetScriptName().IsEmpty()) {
+        file = *v8::String::Utf8Value(isolate_, frame->GetScriptName());
+      }
+      std::string func = "?";
+      if (!frame->GetFunctionName().IsEmpty()) {
+        func = *v8::String::Utf8Value(isolate_, frame->GetFunctionName());
+      }
+      int line = frame->GetLineNumber();
+      std::ostringstream id;
+      id << '"' << line << "@" << file << "(" << func << ')' << '"';
+      query_info_.options.client_context_id =
+          std::make_unique<std::string>(id.str());
+    }
+  }
+
   if (query_info_.options.client_context_id != nullptr) {
-    result = lcb_n1p_setoptz(params_, "client_context_id",
-                             query_info_.options.client_context_id->c_str());
+    // n1ql limits to 64 chars, and no \ or " chars
+    std::string id = query_info_.options.client_context_id->c_str();
+    id.erase(std::remove(id.begin(), id.end(), '\\'), id.end());
+    id.erase(std::remove(id.begin(), id.end(), '\"'), id.end());
+    if (id.length() > 62) {
+      id.erase(62);
+    }
+    id = "\"" + id + "\"";
+    result = lcb_n1p_setoptz(params_, "client_context_id", id.c_str());
     if (result != LCB_SUCCESS) {
       return ErrorFormat("Unable to set clientContextId", connection_, result);
     }

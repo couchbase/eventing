@@ -10,6 +10,7 @@
 // permissions and limitations under the License.
 
 #include <thread>
+#include <nlohmann/json.hpp>
 
 #include "isolate_data.h"
 #include "lcb_utils.h"
@@ -58,7 +59,9 @@ const char *GetPassword(void *cookie, const char *host, const char *port,
 // lcb related callbacks
 void GetCallback(lcb_t instance, int, const lcb_RESPBASE *rb) {
   auto resp = reinterpret_cast<const lcb_RESPGET *>(rb);
+
   auto result = reinterpret_cast<Result *>(rb->cookie);
+  result->rc = resp->rc;
 
   LOG(logTrace) << "Bucket: LCB_GET callback, res: "
                 << lcb_strerror(nullptr, rb->rc) << rb->rc << " cas " << rb->cas
@@ -68,8 +71,6 @@ void GetCallback(lcb_t instance, int, const lcb_RESPBASE *rb) {
     LOG(logError) << "Bucket: LCB_GET breaking out" << std::endl;
     lcb_breakout(instance);
   }
-
-  result->rc = resp->rc;
   result->cas = resp->cas;
 
   if (resp->rc == LCB_SUCCESS) {
@@ -83,13 +84,13 @@ void GetCallback(lcb_t instance, int, const lcb_RESPBASE *rb) {
 void SetCallback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
   auto resp = reinterpret_cast<const lcb_RESPSTORE *>(rb);
   auto result = reinterpret_cast<Result *>(rb->cookie);
+  result->rc = resp->rc;
 
   if (rb->rc == LCB_PROTOCOL_ERROR) {
     LOG(logError) << "Bucket: LCB_STORE breaking out" << std::endl;
     lcb_breakout(instance);
   }
 
-  result->rc = resp->rc;
   result->cas = resp->cas;
 
   LOG(logTrace) << "Bucket: LCB_STORE callback "
@@ -98,15 +99,86 @@ void SetCallback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
 }
 
 void SubDocumentCallback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
+  const lcb_RESPSUBDOC *resp = (const lcb_RESPSUBDOC*)rb;
   auto result = reinterpret_cast<Result *>(rb->cookie);
-  result->rc = rb->rc;
+  result->rc = resp->rc;
 
   if (rb->rc == LCB_PROTOCOL_ERROR) {
     LOG(logError) << "Bucket: LCB_SDMUTATE breaking out" << std::endl;
     lcb_breakout(instance);
   }
 
+  if (rb->rc == LCB_SUCCESS) {
+    lcb_SDENTRY respitem;
+    size_t iter = 0;
+    while (lcb_sdresult_next(resp, &respitem, &iter)) {
+      if (respitem.status != LCB_SUCCESS) {
+        result->rc = respitem.status;
+        return;
+      }
+      std::string temp;
+      temp.assign(reinterpret_cast<const char *>(respitem.value), static_cast<int>(respitem.nvalue));
+      result->counter = std::stoll(temp, nullptr, 10);
+    }
+  }
+  result->cas = rb->cas;
+
   LOG(logTrace) << "Bucket: LCB_SDMUTATE callback "
+                << lcb_strerror(nullptr, result->rc) << std::endl;
+}
+
+void SubDocumentLookupCallback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
+  const lcb_RESPSUBDOC *resp = (const lcb_RESPSUBDOC*)rb;
+  auto result = reinterpret_cast<Result *>(rb->cookie);
+
+  result->rc = rb->rc;
+
+  if (rb->rc == LCB_PROTOCOL_ERROR) {
+    LOG(logError) << "Bucket: LCB_SDLOOKUP breaking out" << std::endl;
+    lcb_breakout(instance);
+  }
+
+  if (rb->rc == LCB_SUCCESS) {
+    lcb_SDENTRY resp_item;
+    size_t iter = 0;
+    size_t index = 0;
+    while (lcb_sdresult_next(resp, &resp_item, &iter)) {
+      if (resp_item.status != LCB_SUCCESS) {
+        result->rc = resp_item.status;
+        return;
+      }
+      if (index == 0) {
+        std::string value;
+        value.assign(reinterpret_cast<const char *>(resp_item.value),
+                         static_cast<int>(resp_item.nvalue));
+        result->exptime = std::stoul(value, nullptr, 10);
+      } else if(index == 1) {
+        // 0x00: raw, 0x01 json, 0x05: jsonXattr, 0x04: rawXattr
+        auto json = nlohmann::json::parse(reinterpret_cast<const char *>(resp_item.value));
+        auto values = json.get<std::vector<std::string>>();
+        for (const auto &type : values) {
+          if(type == "json"){
+            result->datatype = result->datatype | 1;
+          }
+          if(type == "xattr") {
+            result->datatype = result->datatype | 4;
+          }
+        }
+      } else {
+        if(result->datatype & 1) {
+          result->value.assign(reinterpret_cast<const char *>(resp_item.value),
+                           static_cast<int>(resp_item.nvalue));
+        } else {
+          result->binary = resp_item.value;
+          result->byteLength = static_cast<size_t>(resp_item.nvalue);
+        }
+      }
+      index++;
+    }
+  }
+
+  result->cas = rb->cas;
+  LOG(logTrace) << "Bucket: LCB_SDLOOKUP callback "
                 << lcb_strerror(nullptr, result->rc) << std::endl;
 }
 
@@ -118,6 +190,7 @@ void DeleteCallback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
     LOG(logError) << "Bucket: LCB_DEL breaking out" << std::endl;
     lcb_breakout(instance);
   }
+  result->cas = rb->cas;
 
   LOG(logTrace) << "Bucket: LCB_DEL callback "
                 << lcb_strerror(nullptr, result->rc) << std::endl;
@@ -126,11 +199,12 @@ void DeleteCallback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
 void counter_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
   auto result = reinterpret_cast<Result *>(rb->cookie);
   const lcb_RESPCOUNTER *resp = reinterpret_cast<const lcb_RESPCOUNTER *>(rb);
+  result->rc = resp->rc;
+
   if (rb->rc == LCB_PROTOCOL_ERROR) {
     LOG(logError) << "Bucket: LCB_COUNTER breaking out" << std::endl;
     lcb_breakout(instance);
   }
-  result->rc = resp->rc;
   result->counter = resp->value;
   LOG(logTrace) << "Bucket: LCB_COUNTER callback "
                 << lcb_strerror(nullptr, result->rc) << std::endl;
@@ -195,7 +269,6 @@ std::pair<lcb_error_t, Result> LcbSubdocSet(lcb_t instance,
                   << lcb_strerror(instance, err) << std::endl;
     return {err, result};
   }
-
   err = lcb_wait(instance);
   if (err != LCB_SUCCESS) {
     LOG(logTrace) << "Bucket: Unable to schedule LCB_SUBDOC_SET: "

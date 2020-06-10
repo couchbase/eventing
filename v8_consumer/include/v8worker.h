@@ -333,6 +333,7 @@ private:
   bool IsFilteredEventLocked(int vb, uint64_t seq_num);
   std::tuple<int, uint64_t, bool>
   GetVbAndSeqNum(const std::unique_ptr<WorkerMessage> &msg) const;
+  v8::Local<v8::Object> NewCouchbaseNameSpace();
   v8::Local<v8::ObjectTemplate> NewGlobalObj() const;
   void InstallCurlBindings(const std::vector<CurlBinding> &curl_bindings) const;
   void InstallBucketBindings(

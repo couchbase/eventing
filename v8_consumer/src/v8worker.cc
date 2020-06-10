@@ -25,6 +25,7 @@
 #include "timer.h"
 #include "utils.h"
 #include "v8worker.h"
+#include "bucket_ops.h"
 
 bool V8Worker::debugger_started_ = false;
 
@@ -58,10 +59,41 @@ std::atomic<int64_t> enqueued_timer_msg_counter = {0};
 
 std::atomic<int64_t> timer_callback_missing_counter = {0};
 
+v8::Local<v8::Object> V8Worker::NewCouchbaseNameSpace() {
+  v8::EscapableHandleScope handle_scope(isolate_);
+
+  v8::Local<v8::FunctionTemplate> function_template = v8::FunctionTemplate::New(isolate_);
+  function_template->SetClassName(v8::String::NewFromUtf8(isolate_, "couchbase"));
+
+  v8::Local<v8::ObjectTemplate> proto_t = function_template->PrototypeTemplate();
+
+  proto_t->Set(v8::String::NewFromUtf8(isolate_, "get"),
+               v8::FunctionTemplate::New(isolate_, BucketOps::GetOp));
+  proto_t->Set(v8::String::NewFromUtf8(isolate_, "insert"),
+               v8::FunctionTemplate::New(isolate_, BucketOps::InsertOp));
+  proto_t->Set(v8::String::NewFromUtf8(isolate_, "upsert"),
+               v8::FunctionTemplate::New(isolate_, BucketOps::UpsertOp));
+  proto_t->Set(v8::String::NewFromUtf8(isolate_, "delete"),
+               v8::FunctionTemplate::New(isolate_, BucketOps::DeleteOp));
+  proto_t->Set(v8::String::NewFromUtf8(isolate_, "increment"),
+               v8::FunctionTemplate::New(isolate_, BucketOps::IncrementOp));
+  proto_t->Set(v8::String::NewFromUtf8(isolate_, "decrement"),
+               v8::FunctionTemplate::New(isolate_, BucketOps::DecrementOp));
+
+  auto context = context_.Get(isolate_);
+  v8::Local<v8::Object> cb_obj;
+  if (!TO_LOCAL(proto_t->NewInstance(context), &cb_obj)) {
+    return v8::Local<v8::Object>();
+  }
+
+  return handle_scope.Escape(cb_obj);
+}
+
 v8::Local<v8::ObjectTemplate> V8Worker::NewGlobalObj() const {
   v8::EscapableHandleScope handle_scope(isolate_);
 
   auto global = v8::ObjectTemplate::New(isolate_);
+
   global->Set(v8::String::NewFromUtf8(isolate_, "curl"),
               v8::FunctionTemplate::New(isolate_, CurlFunction));
   global->Set(v8::String::NewFromUtf8(isolate_, "log"),
@@ -156,6 +188,8 @@ void V8Worker::InitializeIsolateData(const server_settings_t *server_settings,
   data_.n1ql_prepare_all = h_config->n1ql_prepare_all;
   data_.lang_compat = new LanguageCompatibility(h_config->lang_compat);
   data_.lcb_retry_count = h_config->lcb_retry_count;
+
+  data_.bucket_ops = new BucketOps(isolate_, context);
 }
 
 void V8Worker::InitializeCurlBindingValues(
@@ -180,7 +214,7 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
       function_id_(function_id), user_prefix_(user_prefix),
       ns_server_port_(ns_server_port),
       exception_type_names_(
-          {"KVError", "N1QLError", "EventingError", "CurlError"}),
+          {"KVError", "N1QLError", "EventingError", "CurlError", "TypeError"}),
       handler_headers_(h_config->handler_headers),
       handler_footers_(h_config->handler_footers) {
   auto config = ParseDeployment(h_config->dep_cfg.c_str());
@@ -216,6 +250,11 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
   context_.Reset(isolate_, context);
 
   v8::Context::Scope context_scope(context);
+
+  auto global_object = context->Global();
+  auto function_template = NewCouchbaseNameSpace();
+  global_object->Set(context, v8Str(isolate_, "couchbase"), function_template);
+
   InitializeIsolateData(server_settings, h_config, config->source_bucket);
   InstallCurlBindings(config->curl_bindings);
   InitializeCurlBindingValues(config->curl_bindings);
