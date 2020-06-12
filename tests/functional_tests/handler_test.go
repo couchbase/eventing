@@ -1070,23 +1070,20 @@ func TestDeleteBeforeUndeploy(t *testing.T) {
 
 	time.Sleep(5 * time.Second)
 	handler := "bucket_op_with_timer"
-	flushFunctionAndBucket(functionName)
 	createAndDeployFunction(functionName, handler, &commonSettings{})
 	waitForDeployToFinish(functionName)
 
-	pumpBucketOps(opsType{}, &rateLimit{})
-
-	setSettings(functionName, false, false, &commonSettings{})
 	resp, _ := deleteFunction(functionName)
 	if resp.httpResponseCode == 200 {
-		t.Error("Expected non 200 response code")
+		t.Error("Expected ERR_APP_NOT_UNDEPLOYED got", resp.Name)
 	}
 
-	if resp.httpResponseCode != 200 && resp.Name != "ERR_APP_DELETE_NOT_ALLOWED" {
-		t.Error("Expected ERR_APP_DELETE_NOT_ALLOWED got", resp.Name)
+	setSettings(functionName, false, false, &commonSettings{})
+	resp, _ = deleteFunction(functionName)
+	if resp.httpResponseCode != 200 {
+		t.Error("Expected Delete successful ", resp.httpResponseCode, resp.Name)
 	}
 
-	waitForUndeployToFinish(functionName)
 	flushFunctionAndBucket(functionName)
 }
 

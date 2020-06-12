@@ -140,14 +140,6 @@ func (m *ServiceMgr) deletePrimaryStore(appName string) (info *runtimeInfo) {
 		return
 	}
 
-	deployedApps := m.superSup.GetDeployedApps()
-	if _, ok := deployedApps[appName]; ok {
-		info.Code = m.statusCodes.errAppDelete.Code
-		info.Info = fmt.Sprintf("Function: %s is currently undergoing undeploy. Only undeployed function can be deleted", appName)
-		logging.Errorf("%s %s", logPrefix, info.Info)
-		return
-	}
-
 	err = util.DeleteAppContent(metakvAppsPath, metakvChecksumPath, appName)
 	if err != nil {
 		info.Code = m.statusCodes.errDelAppPs.Code
