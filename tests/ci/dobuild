@@ -48,12 +48,13 @@ note_version() {
 
 > ~/gerrit.list
 gerrit_votelist() {
-  if [ "$CIBOT" = "no" ]; then return; fi
   repo=$1; pos=$2
   cd $pos
   sha="`git rev-parse HEAD`"
   current="`git name-rev $sha | awk '{print $NF}' | awk -F/ '{print $NF}'`"
-  autolist="`ssh review.couchbase.org gerrit query \"project:$repo status:open branch:$current reviewer:self\" | grep number: | awk '{print $2}' | sort -n`"
+  if [ "$CIBOT" != "no" ]; then
+    autolist="`ssh review.couchbase.org gerrit query \"project:$repo status:open branch:$current reviewer:self\" | grep number: | awk '{print $2}' | sort -n`"
+  fi
   for patch_id in $GERRIT $autolist
   do
     revspec=`git ls-remote -q ssh://review.couchbase.org/$repo refs/changes/*/$patch_id/* | awk '{print $2}' | sort -n -t/ -k5 | tail -1`
