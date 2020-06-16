@@ -3,6 +3,7 @@ package consumer
 import (
 	"errors"
 	"math/rand"
+	"sync/atomic"
 
 	cm "github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/logging"
@@ -110,6 +111,16 @@ func (c *Consumer) EventsProcessedPSec() *cm.EventProcessingStats {
 
 func (c *Consumer) dcpEventsRemainingToProcess() error {
 	logPrefix := "Consumer::dcpEventsRemainingToProcess"
+
+	defer func() {
+		// enable the next fetch of dcpEventsRemaining
+		atomic.StoreUint32(&c.fetchingdcpEventsRemaining, 0)
+	}()
+
+	// return if one go routine to fetch dcpEventsRemaining is already in-progress
+	if !atomic.CompareAndSwapUint32(&c.fetchingdcpEventsRemaining, 0, 1) {
+		return nil
+	}
 
 	vbsTohandle := c.vbsToHandle()
 	if len(vbsTohandle) <= 0 {
