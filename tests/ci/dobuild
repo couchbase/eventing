@@ -85,38 +85,28 @@ if [ ! -d ~/.reference ]; then
 fi
 
 echo "Started building at `date +'%Y/%m/%d %H:%M:%S'`"
-
-echo "Updating mirror"
-cd ~/.reference
-repo sync --jobs=32 1>>$WORKSPACE/make.log 2>&1
-
+test "$BLD_NUM" = "0" || echo "Using pegged server, $BLD_NUM build"
 echo "Calculating base"
-rm -rf ~/.build-manifests
-git clone ssh://github.com/couchbase/build-manifests ~/.build-manifests 1>>$WORKSPACE/make.log 2>&1
-rm -rf ~/.manifest
-git clone ssh://github.com/couchbase/manifest ~/.manifest 1>>$WORKSPACE/make.log 2>&1
-cd ~/.manifest
-> gerrit.list
-gerrit_votelist manifest ~/.manifest ~/gerrit.list
+rm -rf ~/.manifests
+git clone ssh://github.com/couchbase/build-manifests ~/.manifests 1>>$WORKSPACE/make.log 2>&1
 
-cd ~/.build-manifests
+cd ~/.manifests
+> gerrit.list
+gerrit_votelist manifest ~/.manifests ~/gerrit.list
 codename="`echo $MANIFEST | awk -F/ '{print $2}'`"
 test "$BLD_NUM" = "0" && BLD_NUM="`git log --oneline | grep "couchbase-server $codename" | grep -F "$RELEASE-" | head -1 | sed "s/^.*$RELEASE-\([0-9]*\).*$/\1/g"`"
 SHA=`git log --oneline | grep "couchbase-server $codename" | grep "$RELEASE-$BLD_NUM" | head -1 | awk '{print $1}'`
 git branch thisrun $SHA 1>>$WORKSPACE/make.log 2>&1
 
+echo "Updating mirror"
+cd ~/.reference
+repo sync --jobs=32 1>>$WORKSPACE/make.log 2>&1
+
 echo "Basing run on $RELEASE-$BLD_NUM <a href=https://github.com/couchbase/build-manifests/blob/$SHA/$MANIFEST>$SHA</a>"
 find $WORKSPACE -mindepth 1 -not -name '*.log' -exec rm -rf {} + 1>>$WORKSPACE/make.log 2>&1
 mkdir -p $WORKSPACE 1>>$WORKSPACE/make.log 2>&1
 cd $WORKSPACE
-
-if [ "`cat ~/gerrit.list`" == "" ]; then
-  test "$BLD_NUM" = "0" || echo "Using pegged server, $BLD_NUM build"
-  repo init -u ~/.build-manifests -b thisrun -m $MANIFEST -g all --reference=~/.reference 2>&1 | grep -v "Python 2" >>$WORKSPACE/make.log
-else
-  test "$BLD_NUM" = "0" || echo "WARNING: Ignoring pegged server request, as a change in manifest needs to be picked up"
-  repo init -u ~/.manifest -b master -m $MANIFEST -g all --reference=~/.reference 2>&1 | grep -v "Python 2" >>$WORKSPACE/make.log
-fi
+repo init -u ~/.manifests -b thisrun -m $MANIFEST -g all --reference=~/.reference 2>&1 | grep -v "Python 2" >>$WORKSPACE/make.log
 test $? -eq 0 || error_exit "Repo Init at $SHA"
 
 echo "Updating tree for run $TS"
