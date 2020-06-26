@@ -47,7 +47,7 @@ note_version() {
 }
 
 gerrit_votelist() {
-  repo=$1; pos=$2
+  repo=$1; pos=$2; resfile=$3
   cd $pos
   sha="`git rev-parse HEAD`"
   current="`git name-rev $sha | awk '{print $NF}' | awk -F/ '{print $NF}'`"
@@ -60,7 +60,7 @@ gerrit_votelist() {
     if [ "$revspec" = "" ]; then continue; fi
     echo "Pulling in <a href='http://review.couchbase.org/#/c/$patch_id'>uncommitted change $patch_id</a> at $revspec"
     git fetch -q ssh://review.couchbase.org/$repo $revspec && git cherry-pick FETCH_HEAD
-    test $? -eq 0 && echo "$revspec" | awk -F/ '{print $4 "," $5}' >> ~/gerrit.list
+    test $? -eq 0 && echo "$revspec" | awk -F/ '{print $4 "," $5}' >> $resfile
   done
 }
 
@@ -89,8 +89,10 @@ test "$BLD_NUM" = "0" || echo "Using pegged server, $BLD_NUM build"
 echo "Calculating base"
 rm -rf ~/.manifests
 git clone ssh://github.com/couchbase/build-manifests ~/.manifests 1>>$WORKSPACE/make.log 2>&1
-cd ~/.manifests
 
+cd ~/.manifests
+> gerrit.list
+gerrit_votelist manifest ~/.manifests ~/gerrit.list
 codename="`echo $MANIFEST | awk -F/ '{print $2}'`"
 test "$BLD_NUM" = "0" && BLD_NUM="`git log --oneline | grep "couchbase-server $codename" | grep -F "$RELEASE-" | head -1 | sed "s/^.*$RELEASE-\([0-9]*\).*$/\1/g"`"
 SHA=`git log --oneline | grep "couchbase-server $codename" | grep "$RELEASE-$BLD_NUM" | head -1 | awk '{print $1}'`
@@ -113,16 +115,6 @@ repo sync --jobs=32 2>&1 | grep -v "Python 2" >>$WORKSPACE/make.log
 test $? -eq 0 || error_exit "Updating tree"
 test $WORKSPACE/cbbuild && test $WORKSPACE/voltron || error_exit "Unable to find voltron"
 
-> ~/gerrit.list
-gerrit_votelist manifest $WORKSPACE/manifest
-if [ "`cat ~/gerrit.list`" != "" ]; then
-  echo "Detected manifest change, syncing again"
-  cd $WORKSPACE
-  repo sync --jobs=32 2>&1 | grep -v "Python 2" >>$WORKSPACE/make.log
-  test $? -eq 0 || error_exit "Updating tree for manifest changes"
-  test $WORKSPACE/cbbuild && test $WORKSPACE/voltron || error_exit "Unable to find voltron after manifest change"
-fi
-
 cd $WORKSPACE
 chmod a+w CMakeLists.txt
 perl -pi -e 's/ADD_SUBDIRECTORY \(analytics\)/# No analytics/' CMakeLists.txt
@@ -140,9 +132,10 @@ note_version testrunner   $WORKSPACE/testrunner
 switch_version eventing    $WORKSPACE/goproj/src/github.com/couchbase/eventing     unstable
 switch_version eventing-ee $WORKSPACE/goproj/src/github.com/couchbase/eventing-ee  unstable
 
-gerrit_votelist eventing     $WORKSPACE/goproj/src/github.com/couchbase/eventing
-gerrit_votelist eventing-ee  $WORKSPACE/goproj/src/github.com/couchbase/eventing-ee
-gerrit_votelist libcouchbase $WORKSPACE/libcouchbase
+> ~/gerrit.list
+gerrit_votelist eventing     $WORKSPACE/goproj/src/github.com/couchbase/eventing      ~/gerrit.list
+gerrit_votelist eventing-ee  $WORKSPACE/goproj/src/github.com/couchbase/eventing-ee   ~/gerrit.list
+gerrit_votelist libcouchbase $WORKSPACE/libcouchbase                                  ~/gerrit.list
 
 cd $WORKSPACE
 PRODUCT_VERSION=${RELEASE}-${BLD_NUM}-rel
