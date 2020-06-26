@@ -29,6 +29,9 @@ var maybe_n1ql = regexp.MustCompile(
 var spaced_line = regexp.MustCompile(
 	`^([[:space:]]*)((?U).*)([[:space:]]*)$`)
 
+var commented_line = regexp.MustCompile(
+	`//(.*)(\n|$)`)
+
 var esc_lt = regexp.MustCompile(
 	`([^\\])\\x3C`)
 
@@ -116,10 +119,11 @@ func WrapQuery(query string, params string, n1ql_params string) string {
 		if i < len(lines)-1 {
 			nl = `\n`
 		}
+		body := commented_line.ReplaceAllString(split[2], " -- $1$2")
 		js_lines = append(js_lines,
 			fmt.Sprintf(`%s'%s%s'%s`,
 				split[1],
-				JSEscapeString(split[2]),
+				JSEscapeString(body),
 				nl,
 				split[3]))
 	}
@@ -137,7 +141,7 @@ func WrapQuery(query string, params string, n1ql_params string) string {
 			}
 		}
 		if i < len(js_lines)-1 {
-			result += "+\n"
+			result += " +\n"
 		}
 	}
 	return result
@@ -149,6 +153,7 @@ func FindQueries(input string) []Match {
 	posns := maybe_n1ql.FindAllStringSubmatchIndex(bare, -1)
 	for _, pos := range posns {
 		query := input[pos[2]:pos[3]]
+		query = commented_line.ReplaceAllString(query, " -- $1$2")
 		info := GetNamedParams(query)
 		if !info.PInfo.IsValid {
 			continue
