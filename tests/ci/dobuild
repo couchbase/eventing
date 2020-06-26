@@ -46,7 +46,6 @@ note_version() {
   fi
 }
 
-> ~/gerrit.list
 gerrit_votelist() {
   repo=$1; pos=$2
   cd $pos
@@ -113,6 +112,16 @@ cd $WORKSPACE
 repo sync --jobs=32 2>&1 | grep -v "Python 2" >>$WORKSPACE/make.log
 test $? -eq 0 || error_exit "Updating tree"
 test $WORKSPACE/cbbuild && test $WORKSPACE/voltron || error_exit "Unable to find voltron"
+
+> ~/gerrit.list
+gerrit_votelist manifest $WORKSPACE/manifest
+if [ "`cat ~/gerrit.list`" != "" ]; then
+  echo "Detected manifest change, syncing again"
+  cd $WORKSPACE
+  repo sync --jobs=32 2>&1 | grep -v "Python 2" >>$WORKSPACE/make.log
+  test $? -eq 0 || error_exit "Updating tree for manifest changes"
+  test $WORKSPACE/cbbuild && test $WORKSPACE/voltron || error_exit "Unable to find voltron after manifest change"
+fi
 
 cd $WORKSPACE
 chmod a+w CMakeLists.txt
