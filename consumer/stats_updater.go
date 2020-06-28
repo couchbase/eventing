@@ -146,7 +146,7 @@ func (c *Consumer) updateWorkerStats() {
 				continue
 			}
 
-			c.dcpEventsRemainingToProcess()
+			go c.dcpEventsRemainingToProcess()
 			c.sendGetExecutionStats(false)
 			c.sendGetFailureStats(false)
 			c.sendGetLatencyStats()

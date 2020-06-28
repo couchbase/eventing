@@ -251,10 +251,6 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
 
   v8::Context::Scope context_scope(context);
 
-  auto global_object = context->Global();
-  auto function_template = NewCouchbaseNameSpace();
-  global_object->Set(context, v8Str(isolate_, "couchbase"), function_template);
-
   InitializeIsolateData(server_settings, h_config, config->source_bucket);
   InstallCurlBindings(config->curl_bindings);
   InitializeCurlBindingValues(config->curl_bindings);
@@ -408,6 +404,15 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
 
   auto context = context_.Get(isolate_);
   v8::Context::Scope context_scope(context);
+
+  auto global_object = context->Global();
+  auto function_template = NewCouchbaseNameSpace();
+  auto result = global_object->Set(context, v8Str(isolate_, "couchbase"), function_template);
+
+  if(!result.FromJust()) {
+    LOG(logInfo) << "Failed to set the global namespace couchbase" << std::endl;
+    return kToLocalFailed;
+  }
 
   for (const auto &type_name : exception_type_names_) {
     DeriveFromError(isolate_, context, type_name);

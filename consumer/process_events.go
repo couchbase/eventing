@@ -445,7 +445,6 @@ func (c *Consumer) startDcp(flogs couchbase.FailoverLog) error {
 
 		vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppName, vb)
 		var vbBlob vbucketKVBlob
-		var start uint64
 		var cas gocb.Cas
 		var isNoEnt bool
 
@@ -482,6 +481,10 @@ func (c *Consumer) startDcp(flogs couchbase.FailoverLog) error {
 			}
 			vbBlob.OwnershipHistory = append(vbBlob.OwnershipHistory, entry)
 
+			if (c.dcpStreamBoundary == common.DcpFromNow) {
+				vbBlob.LastSeqNoProcessed = vbSeqnos[int(vb)]
+			}
+
 			vbBlob.CurrentProcessedDocIDTimer = time.Now().UTC().Format(time.RFC3339)
 			vbBlob.LastProcessedDocIDTimerEvent = time.Now().UTC().Format(time.RFC3339)
 			vbBlob.NextDocIDTimerToProcess = time.Now().UTC().Add(time.Second).Format(time.RFC3339)
@@ -516,7 +519,7 @@ func (c *Consumer) startDcp(flogs couchbase.FailoverLog) error {
 					vbBlob:     &vbBlob,
 					startSeqNo: uint64(0),
 				}
-				c.vbProcessingStats.updateVbStat(vb, "start_seq_no", start)
+				c.vbProcessingStats.updateVbStat(vb, "start_seq_no", uint64(0))
 				c.vbProcessingStats.updateVbStat(vb, "timestamp", time.Now().Format(time.RFC3339))
 
 			case common.DcpFromNow:
@@ -528,7 +531,7 @@ func (c *Consumer) startDcp(flogs couchbase.FailoverLog) error {
 					vbBlob:     &vbBlob,
 					startSeqNo: vbSeqnos[int(vb)],
 				}
-				c.vbProcessingStats.updateVbStat(vb, "start_seq_no", start)
+				c.vbProcessingStats.updateVbStat(vb, "start_seq_no", vbSeqnos[int(vb)])
 				c.vbProcessingStats.updateVbStat(vb, "timestamp", time.Now().Format(time.RFC3339))
 			}
 		} else {

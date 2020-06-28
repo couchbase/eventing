@@ -149,6 +149,7 @@ type Consumer struct {
 	compileInfo                   *common.CompileStatus
 	controlRoutineWg              *sync.WaitGroup
 	dcpEventsRemaining            uint64
+	fetchingdcpEventsRemaining    uint32
 	dcpFeedsClosed                bool
 	dcpFeedVbMap                  map[*couchbase.DcpFeed][]uint16 // Access controlled by default lock
 	debuggerPort                  string
