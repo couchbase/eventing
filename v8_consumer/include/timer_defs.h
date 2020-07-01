@@ -73,8 +73,6 @@ struct TimerSpan {
   uint64_t cas{0};
 };
 
-int64_t GetUnixTime();
-
 int64_t RoundUp(int64_t val);
 
 int64_t RoundDown(int64_t val);

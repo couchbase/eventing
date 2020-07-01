@@ -16,6 +16,7 @@
 #include "utils.h"
 #include <libcouchbase/couchbase.h>
 #include <thread>
+#include "utils.h"
 
 struct Result {
   lcb_CAS cas;
@@ -26,7 +27,8 @@ struct Result {
   Result() : cas(0), rc(LCB_SUCCESS) {}
 };
 
-constexpr int max_lcb_retry_count = 5;
+constexpr int def_lcb_retry_count = 6;
+constexpr int def_lcb_retry_timeout = 0;
 
 const char *GetUsername(void *cookie, const char *host, const char *port,
                         const char *bucket);
@@ -63,15 +65,24 @@ bool IsRetriable(lcb_error_t error);
 
 template <typename CmdType, typename Callable>
 std::pair<lcb_error_t, Result> RetryLcbCommand(lcb_t instance, CmdType &cmd,
-                                               int max_retry_count,
+                                               int max_retry_count, uint32_t max_retry_secs,
                                                Callable &&callable) {
-  int retry_count = 0;
+  int retry_count = 1;
   std::pair<lcb_error_t, Result> result;
+  auto start = GetUnixTime();
+
   while (true) {
     result = callable(instance, cmd);
     if (result.first == LCB_SUCCESS || !IsRetriable(result.first) ||
         (max_retry_count && retry_count >= max_retry_count))
       break;
+
+    if (max_retry_secs > 0) {
+      auto now = GetUnixTime();
+      if (now - start >= max_retry_secs)
+        break;
+    }
+
     ++retry_count;
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
   }

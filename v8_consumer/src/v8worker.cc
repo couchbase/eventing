@@ -130,7 +130,7 @@ void V8Worker::InitializeIsolateData(const server_settings_t *server_settings,
       static_cast<lcb_U32>(h_config->execution_timeout < 3
                                ? 500000
                                : (h_config->execution_timeout - 2) * 1000000);
-  data_.curl_timeout = h_config->execution_timeout < 5
+  data_.op_timeout = h_config->execution_timeout < 5
                            ? h_config->execution_timeout
                            : h_config->execution_timeout - 2;
   data_.n1ql_consistency =
@@ -1152,13 +1152,13 @@ std::unordered_set<int64_t> V8Worker::GetPartitions() const {
 
 lcb_error_t V8Worker::SetTimer(timer::TimerInfo &tinfo) {
   if (timer_store_)
-    return timer_store_->SetTimer(tinfo, data_.lcb_retry_count);
+    return timer_store_->SetTimer(tinfo, data_.lcb_retry_count, data_.op_timeout);
   return LCB_SUCCESS;
 }
 
 lcb_error_t V8Worker::DelTimer(timer::TimerInfo &tinfo) {
   if (timer_store_)
-    return timer_store_->DelTimer(tinfo, data_.lcb_retry_count);
+    return timer_store_->DelTimer(tinfo, data_.lcb_retry_count, data_.op_timeout);
   return LCB_SUCCESS;
 }
 

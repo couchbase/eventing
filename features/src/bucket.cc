@@ -219,8 +219,9 @@ void Bucket::BucketGet<v8::Local<v8::Name>>(
   LCB_CMD_SET_KEY(&gcmd, key.c_str(), key.length());
 
   auto max_retry_count = isolate_data->lcb_retry_count;
+  const auto max_timeout = isolate_data->op_timeout;
   auto result =
-      RetryLcbCommand(*bucket_lcb_obj_ptr, gcmd, max_retry_count, LcbGet);
+      RetryLcbCommand(*bucket_lcb_obj_ptr, gcmd, max_retry_count, max_timeout, LcbGet);
   if (result.first != LCB_SUCCESS) {
     HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, result.first);
     return;
@@ -447,8 +448,9 @@ void Bucket::BucketSetWithXattr(
   mcmd.cmdflags = LCB_CMDSUBDOC_F_UPSERT_DOC;
 
   auto max_retry_count = isolate_data->lcb_retry_count;
+  const auto max_timeout = isolate_data->op_timeout;
   auto result =
-      RetryLcbCommand(*bucket_lcb_obj_ptr, mcmd, max_retry_count, LcbSubdocSet);
+      RetryLcbCommand(*bucket_lcb_obj_ptr, mcmd, max_retry_count, max_timeout, LcbSubdocSet);
   if (result.first != LCB_SUCCESS) {
     LOG(logTrace) << "Bucket: LCB_SUBDOC_STORE call failed: " << result.first
                   << std::endl;
@@ -490,9 +492,10 @@ void Bucket::BucketSetWithoutXattr(
   scmd.flags = 0x2000000;
 
   auto max_retry_count = isolate_data->lcb_retry_count;
+  const auto max_timeout = isolate_data->op_timeout;
 
   auto result =
-      RetryLcbCommand(*bucket_lcb_obj_ptr, scmd, max_retry_count, LcbSet);
+      RetryLcbCommand(*bucket_lcb_obj_ptr, scmd, max_retry_count, max_timeout, LcbSet);
 
   if (result.first != LCB_SUCCESS) {
     LOG(logTrace) << "Bucket: LCB_STORE call failed: "
@@ -572,7 +575,8 @@ void Bucket::BucketDeleteWithXattr(
   mcmd.nspecs = specs.size();
 
   auto max_retry_count = isolate_data->lcb_retry_count;
-  auto result = RetryLcbCommand(*bucket_lcb_obj_ptr, mcmd, max_retry_count,
+  const auto max_timeout = isolate_data->op_timeout;
+  auto result = RetryLcbCommand(*bucket_lcb_obj_ptr, mcmd, max_retry_count, max_timeout,
                                 LcbSubdocDelete);
 
   if (result.first != LCB_SUCCESS) {
@@ -616,8 +620,9 @@ void Bucket::BucketDeleteWithoutXattr(
   LCB_CMD_SET_KEY(&rcmd, key.c_str(), key.length());
 
   auto max_retry_count = isolate_data->lcb_retry_count;
+  const auto max_timeout = isolate_data->op_timeout;
   auto result =
-      RetryLcbCommand(*bucket_lcb_obj_ptr, rcmd, max_retry_count, LcbDelete);
+      RetryLcbCommand(*bucket_lcb_obj_ptr, rcmd, max_retry_count, max_timeout, LcbDelete);
 
   if (result.first != LCB_SUCCESS) {
     LOG(logTrace) << "Bucket: LCB_REMOVE call failed: "
