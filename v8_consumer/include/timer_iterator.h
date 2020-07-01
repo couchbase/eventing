@@ -37,6 +37,8 @@ private:
   int64_t curr_seq_{std::numeric_limits<int64_t>::max()};
   int64_t end_seq_{0};
   int32_t num_vbuckets_{1024};
+  int64_t fired_timer_{0};
+  int64_t num_timer_{0};
 };
 } // namespace timer
 #endif // COUCHBASE_TIMER_ITERATOR_H
