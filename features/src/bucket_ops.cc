@@ -356,10 +356,13 @@ std::tuple<Error, std::unique_ptr<lcb_error_t>, std::unique_ptr<Result>>
 BucketOps::Set(const std::string &key, const void* value, int value_length, lcb_storage_t op_type,
                lcb_U32 expiry, lcb_CAS cas, lcb_U32 doc_type, bool is_source_bucket, Bucket *bucket) {
   if (is_source_bucket) {
-    lcb_U32 cmd_flag = LCB_CMDSUBDOC_F_INSERT_DOC;
+    lcb_U32 cmd_flag = 0;
     if(op_type == LCB_SET) {
       cmd_flag = LCB_CMDSUBDOC_F_UPSERT_DOC;
+    } else if(op_type == LCB_ADD) {
+      cmd_flag = LCB_CMDSUBDOC_F_INSERT_DOC;
     }
+
     return bucket->SetWithXattr(key, value, value_length, cmd_flag, expiry, cas);
   }
   return bucket->SetWithoutXattr(key, value, value_length, op_type, expiry, cas, doc_type);
@@ -648,7 +651,7 @@ void BucketOps::InsertOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
   args.GetReturnValue().Set(response_obj);
 }
 
-void BucketOps::UpsertOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
+void BucketOps::ReplaceOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
   auto isolate = args.GetIsolate();
   auto isolate_data = UnwrapData(isolate);
   v8::HandleScope handle_scope(isolate);
@@ -692,6 +695,112 @@ void BucketOps::UpsertOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
   auto is_source_bucket = BucketBinding::IsSourceBucket(isolate, args[0]);
   auto bucket = BucketBinding::GetBucket(isolate, args[0]);
 
+  auto [error, err_code, result] = bucket_ops->BucketSet(meta.key, args[2], LCB_REPLACE, meta.expiry,
+                                                     meta.cas, is_source_bucket, bucket);
+
+  if (error != nullptr) {
+    ++bucket_op_exception_count;
+    js_exception->ThrowEventingError(*error);
+    return;
+  }
+
+  if (*err_code != LCB_SUCCESS) {
+    bucket_ops->HandleBucketOpFailure(bucket->GetConnection(), *err_code);
+    return;
+  }
+
+  v8::Local<v8::Object> response_obj = v8::Object::New(isolate);
+
+  if (result->rc == LCB_KEY_EEXISTS) {
+    info = bucket_ops->SetErrorObject(response_obj, "LCB_KEY_EEXISTS",
+                                       "The document key exists with a CAS value different than specified",
+                                       result->rc, bucket_ops->cas_mismatch_str_, true);
+
+    if(info.is_fatal) {
+      ++bucket_op_exception_count;
+      js_exception->ThrowEventingError(info.msg);
+      return;
+    }
+    args.GetReturnValue().Set(response_obj);
+    return;
+  }
+
+  if (result->rc == LCB_KEY_ENOENT) {
+    info = bucket_ops->SetErrorObject(response_obj, "LCB_KEY_ENOENT",
+                                       "The document key does not exist on the server",
+                                       result->rc, bucket_ops->key_not_found_str_, true);
+
+    if(info.is_fatal) {
+      ++bucket_op_exception_count;
+      js_exception->ThrowEventingError(info.msg);
+      return;
+    }
+    args.GetReturnValue().Set(response_obj);
+    return;
+  }
+
+  if (result->rc != LCB_SUCCESS) {
+    bucket_ops->HandleBucketOpFailure(bucket->GetConnection(), result->rc);
+    return;
+  }
+
+  result->key = meta.key;
+  result->exptime = meta.expiry;
+
+  info = bucket_ops->ResponseSuccessObject(std::move(result), response_obj);
+  if(info.is_fatal) {
+    ++bucket_op_exception_count;
+    js_exception->ThrowEventingError(info.msg);
+    return;
+  }
+
+  args.GetReturnValue().Set(response_obj);
+}
+
+void BucketOps::UpsertOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
+  auto isolate = args.GetIsolate();
+  auto isolate_data = UnwrapData(isolate);
+  v8::HandleScope handle_scope(isolate);
+
+  std::lock_guard<std::mutex> guard(isolate_data->termination_lock_);
+  if (!isolate_data->is_executing_) {
+    return;
+  }
+
+  auto js_exception = isolate_data->js_exception;
+  auto bucket_ops = isolate_data->bucket_ops;
+
+  if (args.Length() < 3) {
+    ++bucket_op_exception_count;
+    js_exception->ThrowTypeError("couchbase.upsert requires at least 3 arguments");
+    return;
+  }
+
+  auto info = bucket_ops->VerifyBucketObject(args[0]);
+  if(info.is_fatal) {
+    ++bucket_op_exception_count;
+    js_exception->ThrowTypeError(info.msg);
+    return;
+  }
+
+  auto block_mutation = BucketBinding::GetBlockMutation(isolate, args[0]);
+  if(block_mutation) {
+    ++bucket_op_exception_count;
+    js_exception->ThrowEventingError("Writing to source bucket is forbidden");
+    return;
+  }
+
+  auto meta_info = bucket_ops->ExtractMetaInfo(args[1], false, true);
+  if(!meta_info.is_valid) {
+    ++bucket_op_exception_count;
+    js_exception->ThrowTypeError(meta_info.msg);
+    return;
+  }
+  auto meta = meta_info.meta;
+
+  auto is_source_bucket = BucketBinding::IsSourceBucket(isolate, args[0]);
+  auto bucket = BucketBinding::GetBucket(isolate, args[0]);
+
   auto [error, err_code, result] = bucket_ops->BucketSet(meta.key, args[2], LCB_SET, meta.expiry,
                                                      meta.cas, is_source_bucket, bucket);
 
@@ -707,20 +816,6 @@ void BucketOps::UpsertOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
   }
 
   v8::Local<v8::Object> response_obj = v8::Object::New(isolate);
-  if (result->rc == LCB_KEY_EEXISTS) {
-    info = bucket_ops->SetErrorObject(response_obj, "LCB_KEY_EEXISTS",
-                                       "The document key exists with a CAS value different than specified",
-                                       result->rc, bucket_ops->cas_mismatch_str_, true);
-
-    if(info.is_fatal) {
-      ++bucket_op_exception_count;
-      js_exception->ThrowEventingError(info.msg);
-      return;
-    }
-    args.GetReturnValue().Set(response_obj);
-    return;
-  }
-
   if (result->rc != LCB_SUCCESS) {
     bucket_ops->HandleBucketOpFailure(bucket->GetConnection(), result->rc);
     return;
