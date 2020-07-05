@@ -780,3 +780,9 @@ std::string CompileInfoToString(CompilationInfo info) {
 
   return compileInfo.dump();
 }
+
+int64_t GetUnixTime() {
+  auto t = std::time(nullptr);
+  auto secs = static_cast<std::chrono::seconds>(t).count();
+  return static_cast<int64_t>(secs);
+}

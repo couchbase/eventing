@@ -43,7 +43,7 @@ class Helper;
 struct IsolateData {
   static const uint32_t index{0};
   lcb_U32 n1ql_timeout{0};
-  long curl_timeout{0};
+  long op_timeout{0};
   int n1ql_consistency{0};
   int lcb_retry_count{0};
   bool n1ql_prepare_all{false};

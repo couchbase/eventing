@@ -197,8 +197,9 @@ Bucket::Get(const std::string &key) {
   lcb_CMDGET cmd = {0};
   LCB_CMD_SET_KEY(&cmd, key.c_str(), key.length());
   const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
+  const auto max_timeout = UnwrapData(isolate_)->op_timeout;
   auto [err_code, result] =
-      RetryLcbCommand(connection_, cmd, max_retry, LcbGet);
+      RetryLcbCommand(connection_, cmd, max_retry, max_timeout, LcbGet);
   if (err_code != LCB_SUCCESS) {
     ++lcb_retry_failure;
     return {nullptr, std::make_unique<lcb_error_t>(err_code), nullptr};
@@ -236,8 +237,9 @@ Bucket::GetWithMeta(const std::string &key) {
   cmd.multimode = LCB_SDMULTI_MODE_LOOKUP;
 
   const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
+  const auto max_timeout = UnwrapData(isolate_)->op_timeout;
   auto [err_code, result] =
-      RetryLcbCommand(connection_, cmd, max_retry, LcbSubdocSet);
+      RetryLcbCommand(connection_, cmd, max_retry, max_timeout, LcbSubdocSet);
   if (err_code != LCB_SUCCESS) {
     ++lcb_retry_failure;
     return {nullptr, std::make_unique<lcb_error_t>(err_code), nullptr};
@@ -267,8 +269,9 @@ Bucket::CounterWithoutXattr(const std::string &key, lcb_CAS cas, lcb_U32 expiry,
   cmd.cas = cas;
 
   const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
+  const auto max_timeout = UnwrapData(isolate_)->op_timeout;
   auto [err_code, result] =
-      RetryLcbCommand(connection_, cmd, max_retry, LcbSubdocSet);
+      RetryLcbCommand(connection_, cmd, max_retry, max_timeout, LcbSubdocSet);
   if (err_code != LCB_SUCCESS) {
     ++lcb_retry_failure;
     return {nullptr, std::make_unique<lcb_error_t>(err_code), nullptr};
@@ -334,8 +337,9 @@ Bucket::CounterWithXattr(const std::string &key, lcb_CAS cas, lcb_U32 expiry, st
   cmd.cas = cas;
 
   const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
+  const auto max_timeout = UnwrapData(isolate_)->op_timeout;
   auto [err_code, result] =
-      RetryLcbCommand(connection_, cmd, max_retry, LcbSubdocSet);
+      RetryLcbCommand(connection_, cmd, max_retry, max_timeout, LcbSubdocSet);
   if (err_code != LCB_SUCCESS) {
     ++lcb_retry_failure;
     return {nullptr, std::make_unique<lcb_error_t>(err_code), nullptr};
@@ -401,8 +405,9 @@ Bucket::SetWithXattr(const std::string &key, const void* value, int value_length
   cmd.cas = cas;
 
   const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
+  const auto max_timeout = UnwrapData(isolate_)->op_timeout;
   auto [err_code, result] =
-      RetryLcbCommand(connection_, cmd, max_retry, LcbSubdocSet);
+      RetryLcbCommand(connection_, cmd, max_retry, max_timeout, LcbSubdocSet);
   if (err_code != LCB_SUCCESS) {
     ++lcb_retry_failure;
     return {nullptr, std::make_unique<lcb_error_t>(err_code), nullptr};
@@ -428,8 +433,9 @@ Bucket::SetWithoutXattr(const std::string &key, const void* value, int value_len
   cmd.flags = doc_type;
 
   const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
+  const auto max_timeout = UnwrapData(isolate_)->op_timeout;
   auto [err_code, result] =
-      RetryLcbCommand(connection_, cmd, max_retry, LcbSet);
+      RetryLcbCommand(connection_, cmd, max_retry, max_timeout, LcbSet);
   if (err_code != LCB_SUCCESS) {
     ++lcb_retry_failure;
     return {nullptr, std::make_unique<lcb_error_t>(err_code), nullptr};
@@ -492,8 +498,9 @@ Bucket::DeleteWithXattr(const std::string &key, lcb_CAS cas) {
   cmd.cas = cas;
 
   const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
+  const auto max_timeout = UnwrapData(isolate_)->op_timeout;
   auto [err_code, result] =
-      RetryLcbCommand(connection_, cmd, max_retry, LcbSubdocDelete);
+      RetryLcbCommand(connection_, cmd, max_retry, max_timeout, LcbSubdocDelete);
   if (err_code != LCB_SUCCESS) {
     ++lcb_retry_failure;
     return {nullptr, std::make_unique<lcb_error_t>(err_code), nullptr};
@@ -514,8 +521,9 @@ Bucket::DeleteWithoutXattr(const std::string &key, lcb_CAS cas) {
   cmd.cas = cas;
 
   const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
+  const auto max_timeout = UnwrapData(isolate_)->op_timeout;
   auto [err_code, result] =
-      RetryLcbCommand(connection_, cmd, max_retry, LcbDelete);
+      RetryLcbCommand(connection_, cmd, max_retry, max_timeout, LcbDelete);
   if (err_code != LCB_SUCCESS) {
     ++lcb_retry_failure;
     return {nullptr, std::make_unique<lcb_error_t>(err_code), nullptr};

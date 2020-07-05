@@ -62,6 +62,11 @@ var snippet_inputs = []string{
 		var bar = UPSERT INTO gamesim (KEY, VALUE) VALUES ('reskey', $val);
 		var upsert_query5 = N1QL('UPSERT INTO eventing-bucket-1 (KEY, VALUE) VALUES ($docId5, \'Hello World5\');', {'$docId5':docId5}, {'consistency' : 'request'});
 	`,
+	`var bar = select * from beerbkt where//opening comment
+		//another comment
+		/* yet another comment */
+		something=nothing and // or // exists // any
+		nosuchthing = /* annoying comment */ "nosuchvalue"; // ending comment`,
 }
 
 var snippet_outputs = []string{
@@ -89,8 +94,8 @@ var snippet_outputs = []string{
 		var hello = 2 + 3;
 		if (a > 5) b++;
 		N1QL('select * from beers where foo = bar;', {});
-		N1QL('select *\n'+
-		  'from helloworld\n'+
+		N1QL('select *\n' +
+		  'from helloworld\n' +
 		    'where a=\"23\" and b=26;', {});
 		var f = "hello\"world";
 		var x = select(23);
@@ -106,7 +111,7 @@ var snippet_outputs = []string{
 		var bar = N1QL('select * from beerbkt where arg = $foo and bar = $bar and xx = 23;', {'$bar':bar, '$foo':foo});
 	`,
 	"var bar = N1QL('select * from beerbkt where arg = $foo and bar = `$bar`;', {'$foo':foo});",
-	"var bar = N1QL('select * from beerbkt where\\n'+\n'arg = $foo and bar = `$bar`;', {'$foo':foo});",
+	"var bar = N1QL('select * from beerbkt where\\n' +\n'arg = $foo and bar = `$bar`;', {'$foo':foo});",
 	`var bar = select /* hello *`,
 	`var bar = N1QL('select * /**/ from foo;', {});`,
 	`	var foo = 23;
@@ -118,6 +123,11 @@ var snippet_outputs = []string{
 		var bar = N1QL('UPSERT INTO gamesim (KEY, VALUE) VALUES (\'reskey\', $val);', {'$val':val});
 		var upsert_query5 = N1QL('UPSERT INTO eventing-bucket-1 (KEY, VALUE) VALUES ($docId5, \'Hello World5\');', {'$docId5':docId5}, {'consistency' : 'request'});
 	`,
+	`var bar = N1QL('select * from beerbkt where -- opening comment\n' +
+		' -- another comment\n' +
+		'/* yet another comment */\n' +
+		'something=nothing and  --  or // exists // any\n' +
+		'nosuchthing = /* annoying comment */ \"nosuchvalue\";', {}); // ending comment`,
 }
 
 var script_inputs = []string{
@@ -234,9 +244,9 @@ func Diff(e, a string) string {
 	case l_a != l_e && diff == -1:
 		return fmt.Sprintf("actual len %d expected %d, shorter is a prefix of longer", l_a, l_e)
 	case l_a != l_e && diff != -1:
-		return fmt.Sprintf("actual len %d expected %d, first diff at idx %d actual char '%v' vs expected char '%v'", l_a, l_e, diff, a[diff], e[diff])
+		return fmt.Sprintf("actual len %d expected %d, first diff at idx %d actual char '%c'(%d) vs expected char '%c'(%d)", l_a, l_e, diff, a[diff], a[diff], e[diff], e[diff])
 	case l_a == l_e && diff != -1:
-		return fmt.Sprintf("lengths are same, first diff at idx %d actual char '%v' vs expected char '%v'", diff, a[diff], e[diff])
+		return fmt.Sprintf("lengths are same, first diff at idx %d actual char '%c'(%d) vs expected char '%c'(%d)", diff, a[diff], a[diff], e[diff], e[diff])
 	}
 	return ""
 }

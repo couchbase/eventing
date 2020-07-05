@@ -32,8 +32,8 @@ public:
                       const std::string &metadata_bucket, int32_t num_vbuckets);
   ~TimerStore();
 
-  lcb_error_t SetTimer(TimerInfo &timer, int max_retry_count);
-  lcb_error_t DelTimer(TimerInfo &timer, int max_retry_count);
+  lcb_error_t SetTimer(TimerInfo &timer, int max_retry_count, uint32_t max_retry_secs);
+  lcb_error_t DelTimer(TimerInfo &timer, int max_retry_count, uint32_t max_retry_secs);
 
   void DeleteTimer(TimerEvent &event);
 
@@ -54,30 +54,31 @@ private:
 
   std::pair<bool, lcb_error_t> SyncSpan(int partition);
   std::pair<bool, lcb_error_t> SyncSpanLocked(int partition);
+  lcb_error_t MayBeMoveSpanBack(int partition, int64_t due, int max_retry_count, uint32_t max_retry_secs);
 
   bool ExpandSpan(int64_t partition, int64_t point);
 
   void ShrinkSpan(int64_t partition, int64_t start);
 
   std::pair<lcb_error_t, Result> GetCounter(const std::string &key,
-                                            int max_retry_count);
+                                            int max_retry_count, uint32_t max_retry_secs);
 
   std::pair<lcb_error_t, Result> Insert(const std::string &key,
                                         const nlohmann::json &value,
-                                        int max_retry_count);
+                                        int max_retry_count, uint32_t max_retry_secs);
 
   std::pair<lcb_error_t, Result> Upsert(const std::string &key,
                                         const nlohmann::json &value,
-                                        int max_retry_count);
+                                        int max_retry_count, uint32_t max_retry_secs);
 
   std::pair<lcb_error_t, Result> Replace(const std::string &key,
                                          const nlohmann::json &value,
-                                         lcb_CAS cas, int max_retry_count);
+                                         lcb_CAS cas, int max_retry_count, uint32_t max_retry_secs);
 
-  lcb_error_t Delete(const std::string &key, uint64_t cas, int max_retry_count);
+  lcb_error_t Delete(const std::string &key, uint64_t cas, int max_retry_count, uint32_t max_retry_secs);
 
   std::pair<lcb_error_t, Result> Get(const std::string &key,
-                                     int max_retry_count);
+                                     int max_retry_count, uint32_t max_retry_secs);
 
   v8::Isolate *isolate_;
   std::vector<bool> partitons_;
