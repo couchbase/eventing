@@ -47,6 +47,8 @@ void del_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb);
 
 void counter_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb);
 
+void unlock_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb);
+
 std::pair<lcb_error_t, Result> LcbGet(lcb_t instance, lcb_CMDGET &cmd);
 
 std::pair<lcb_error_t, Result> LcbSet(lcb_t instance, lcb_CMDSTORE &cmd);
@@ -60,6 +62,9 @@ std::pair<lcb_error_t, Result> LcbSubdocDelete(lcb_t instance,
 
 std::pair<lcb_error_t, Result> LcbGetCounter(lcb_t instance,
                                              lcb_CMDCOUNTER &cmd);
+
+std::pair<lcb_error_t, Result> LcbUnlock(lcb_t instance,
+                                         lcb_CMDUNLOCK &cmd);
 
 bool IsRetriable(lcb_error_t error);
 

@@ -135,6 +135,16 @@ void counter_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
                 << lcb_strerror(nullptr, result->rc) << std::endl;
 }
 
+void unlock_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
+  auto result = reinterpret_cast<Result *>(rb->cookie);
+  result->rc = rb->rc;
+
+  if (rb->rc == LCB_PROTOCOL_ERROR) {
+    LOG(logError) << "Bucket: LCB_UNLOCK breaking out" << std::endl;
+    lcb_breakout(instance);
+  }
+}
+
 std::pair<lcb_error_t, Result> LcbGet(lcb_t instance, lcb_CMDGET &cmd) {
   Result result;
   auto err = lcb_get3(instance, &result, &cmd);
@@ -234,6 +244,24 @@ std::pair<lcb_error_t, Result> LcbGetCounter(lcb_t instance,
   err = lcb_wait(instance);
   if (err != LCB_SUCCESS) {
     LOG(logTrace) << "Bucket: Unable to schedule LCB_COUNTER: "
+                  << lcb_strerror(instance, err) << std::endl;
+  }
+  return {err, result};
+}
+
+std::pair<lcb_error_t, Result> LcbUnlock(lcb_t instance,
+                                         lcb_CMDUNLOCK &cmd) {
+  Result result;
+  auto err = lcb_unlock3(instance, &result, &cmd);
+  if (err != LCB_SUCCESS) {
+    LOG(logTrace) << "Bucket: Unable to set params for LCB_UNLOCK: "
+                  << lcb_strerror(instance, err) << std::endl;
+    return {err, result};
+  }
+
+  err = lcb_wait(instance);
+  if (err != LCB_SUCCESS) {
+    LOG(logTrace) << "Bucket: Unable to schedule LCB_UNLOCK: "
                   << lcb_strerror(instance, err) << std::endl;
   }
   return {err, result};
