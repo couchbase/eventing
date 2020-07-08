@@ -3,9 +3,16 @@ package main
 import (
 	"flag"
 	"fmt"
+	"log"
+	"net"
+	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
+	"sort"
+	"strings"
 	"syscall"
+	"time"
 )
 
 type Command struct {
@@ -14,12 +21,13 @@ type Command struct {
 	Flush    bool
 	User     string
 	Password string
-	Host     string
+	MgmtURL  string
 	Pack     bool
 	Unpack   bool
 	Handler  string
 	CodeIn   string
 	CodeOut  string
+	Insecure bool
 }
 
 func usage(fset *flag.FlagSet) {
@@ -29,8 +37,8 @@ func usage(fset *flag.FlagSet) {
 
 Examples:
 - Metadata
-    cbevent -list -user Administrator -password password -host [host]:8091
-    cbevent -flush -user Administrator -password password -host [host]:8091
+    cbevent -list -user Administrator -password password -host http://{host}:8091
+    cbevent -flush -user Administrator -password password -host http://{host}:8091
 
 - Pack/Unpack
     cbevent -unpack -handler handler.json -codeout code.js
@@ -43,23 +51,21 @@ func validate(fset *flag.FlagSet, cmd *Command) error {
 	var dont []string
 
 	switch {
-	// dont = []string{"user", "password", "host", "list", "flush", "unpack", "pack", "codein", "codeout", "handler"}
-
 	case cmd.List, cmd.Dump:
-		have = []string{"list", "user", "password", "host"}
+		have = []string{"list", "user", "password", "host", "insecure"}
 		dont = []string{"flush", "unpack", "pack", "codein", "codeout", "handler"}
 
 	case cmd.Flush:
-		have = []string{"flush", "user", "password", "host"}
+		have = []string{"flush", "user", "password", "host", "insecure"}
 		dont = []string{"list", "unpack", "pack", "codein", "codeout", "handler"}
 
 	case cmd.Unpack:
 		have = []string{"unpack", "codeout", "handler"}
-		dont = []string{"user", "password", "host", "list", "flush", "pack", "codein"}
+		dont = []string{"user", "password", "host", "list", "flush", "pack", "codein", "insecure"}
 
 	case cmd.Pack:
 		have = []string{"pack", "codein", "handler"}
-		dont = []string{"user", "password", "host", "list", "flush", "unpack", "codeout"}
+		dont = []string{"user", "password", "host", "list", "flush", "unpack", "codeout", "insecure"}
 
 	default:
 		return fmt.Errorf("No operation specified")
@@ -122,7 +128,8 @@ func main() {
 	fset.BoolVar(&cmd.Flush, "flush", false, "deletes all metadata that can be deleted")
 	fset.StringVar(&cmd.User, "user", "", "cluster admin username")
 	fset.StringVar(&cmd.Password, "password", "", "cluster admin password")
-	fset.StringVar(&cmd.Host, "host", "", "hostname:port of couchbase console, ex: 127.0.0.1:8091")
+	fset.StringVar(&cmd.MgmtURL, "host", "", "Couchbase console URL, ex: http://{host}:18091")
+	fset.BoolVar(&cmd.Insecure, "insecure", false, "Force accessing remote hosts over unencrypted http")
 
 	fset.BoolVar(&cmd.Pack, "pack", false, "pack edited code back into specified handler")
 	fset.BoolVar(&cmd.Unpack, "unpack", false, "extracts code from a handler to specified file")
@@ -148,7 +155,13 @@ func main() {
 	}
 
 	if cmd.User != "" && os.Getenv("CBAUTH_REVRPC_URL") == "" {
-		revrpc := fmt.Sprintf("http://%s:%s@%s/_cbauth", cmd.User, cmd.Password, cmd.Host)
+		nsurl, err := resolve(cmd.MgmtURL, cmd.User, cmd.Password, cmd.Insecure)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "%v\n", err)
+			os.Exit(1)
+		}
+
+		revrpc := nsurl.String() + "/_cbauth"
 		os.Setenv("CBAUTH_REVRPC_URL", revrpc)
 		cmd := exec.Command(os.Args[0], os.Args[1:]...)
 		cmd.Stdin = os.Stdin
@@ -169,10 +182,65 @@ func main() {
 	case cmd.Dump:
 		list(true)
 	case cmd.Flush:
-		flush(cmd.Host, cmd.User, cmd.Password)
+		flush(cmd.MgmtURL, cmd.User, cmd.Password)
 	case cmd.Pack:
 		pack(cmd.Handler, cmd.CodeIn)
 	case cmd.Unpack:
 		unpack(cmd.Handler, cmd.CodeOut)
 	}
+}
+
+func resolve(nsaddr, user, pass string, insecure bool) (*url.URL, error) {
+	if !strings.HasPrefix(nsaddr, "http") {
+		nsaddr = "http://" + nsaddr
+	}
+	parsed, err := url.Parse(nsaddr)
+	if err != nil || parsed.Hostname() == "" {
+		return nil, fmt.Errorf("Unable to parse URL '%s': %v'", nsaddr, err)
+	}
+
+	host := parsed.Hostname()
+	port := parsed.Port()
+	if port == "" {
+		port = "8091"
+	}
+
+	creds := url.UserPassword(user, pass)
+	client := &http.Client{Timeout: 5 * time.Second}
+
+	ips, err := net.LookupIP(host)
+	if err != nil {
+		return nil, fmt.Errorf("Cannot resolve hostname '%s' specified in Console URL '%s': %v", host, nsaddr, err)
+	}
+
+	sort.Slice(ips, func(i, j int) bool { return ips[i].To4() != nil && ips[j].To4() == nil }) // prefer v4
+
+	for _, ip := range ips {
+		if !ip.IsLoopback() && !insecure {
+			msg := fmt.Errorf("Host specified is not localhost, refusing to send creds over plain http. Use -insecure to override")
+			return nil, msg
+		}
+		var addr string
+		switch ip.To4() {
+		case nil:
+			addr = fmt.Sprintf("http://[%s]:%s", ip.String(), port)
+		default:
+			addr = fmt.Sprintf("http://%s:%s", ip.String(), port)
+		}
+		server, err := url.Parse(addr)
+		if err != nil {
+			panic(err)
+		}
+		server.User = creds
+		request, err := http.NewRequest("GET", server.String()+"/pools/default/nodeServices", nil)
+		response, err := client.Do(request)
+		if err != nil || response.StatusCode != http.StatusOK {
+			log.Printf("Warning, could not access at resolved location '%s'", addr)
+			continue
+		}
+		log.Printf("Resolved. Will access at location: %v", addr)
+		return server, nil
+
+	}
+	return nil, fmt.Errorf("Cannot access specified Console URL")
 }
