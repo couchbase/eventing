@@ -1623,7 +1623,7 @@ func (m *ServiceMgr) saveTempStoreHandler(w http.ResponseWriter, r *http.Request
 	}
 
 	info := m.saveTempStore(app)
-	m.sendErrorInfo(w, info)
+	m.sendRuntimeInfo(w, info)
 }
 
 // Saves application to temp store
@@ -2629,6 +2629,7 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 			info.Code = m.statusCodes.errInvalidConfig.Code
 			info.Info = fmt.Sprintf("Only POST call allowed to this endpoint")
 			m.sendErrorInfo(w, info)
+			return
 		}
 		appName := match[1]
 
@@ -2659,6 +2660,7 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 			info.Code = m.statusCodes.errInvalidConfig.Code
 			info.Info = fmt.Sprintf("Only POST call allowed to this endpoint")
 			m.sendErrorInfo(w, info)
+			return
 		}
 		appName := match[1]
 
@@ -2689,6 +2691,7 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 			info.Code = m.statusCodes.errInvalidConfig.Code
 			info.Info = fmt.Sprintf("Only POST call allowed to this endpoint")
 			m.sendErrorInfo(w, info)
+			return
 		}
 		appName := match[1]
 		appState := m.superSup.GetAppState(appName)
@@ -2754,6 +2757,7 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 			info.Code = m.statusCodes.errInvalidConfig.Code
 			info.Info = fmt.Sprintf("Only POST call allowed to this endpoint")
 			m.sendErrorInfo(w, info)
+			return
 		}
 		appName := match[1]
 
@@ -2870,27 +2874,19 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 					m.sendErrorInfo(w, tempInfo)
 					return
 				}
-				m.sendRuntimeInfo(w, runtimeInfo)
-			} else {
-				m.sendErrorInfo(w, runtimeInfo)
 			}
+			m.sendRuntimeInfo(w, runtimeInfo)
 
 		case "DELETE":
 			audit.Log(auditevent.DeleteFunction, r, appName)
-
 			info := m.deletePrimaryStore(appName)
 			// Delete the application from temp store only if app does not exist in primary store
 			// or if the deletion succeeds on primary store
 			if info.Code == m.statusCodes.errAppNotDeployed.Code || info.Code == m.statusCodes.ok.Code {
 				audit.Log(auditevent.DeleteDrafts, r, appName)
-
-				if runtimeInfo := m.deleteTempStore(appName); runtimeInfo.Code != m.statusCodes.ok.Code {
-					m.sendErrorInfo(w, runtimeInfo)
-					return
-				}
-			} else {
-				m.sendErrorInfo(w, info)
+				info = m.deleteTempStore(appName)
 			}
+			m.sendRuntimeInfo(w, info)
 
 		default:
 			w.WriteHeader(http.StatusMethodNotAllowed)
@@ -2936,7 +2932,6 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 				}
 				infoList = append(infoList, info)
 			}
-
 			m.sendRuntimeInfoList(w, infoList)
 
 		default:
