@@ -80,6 +80,10 @@ private:
   std::pair<lcb_error_t, Result> Get(const std::string &key,
                                      int max_retry_count, uint32_t max_retry_secs);
 
+  std::pair<lcb_error_t, Result> Lock(const std::string &key, int max_retry_count,
+                                                uint32_t max_retry_secs, uint32_t max_lock_time);
+  std::pair<lcb_error_t, Result> Unlock(const std::string &key, int max_retry_count,
+                                                uint32_t max_retry_secs, lcb_CAS cas);
   v8::Isolate *isolate_;
   std::vector<bool> partitons_;
   std::unordered_map<int64_t, TimerSpan> span_map_;
