@@ -100,7 +100,7 @@ void PrintDebuggerReadyMessage(const std::string &host, int port,
   }
   for (const std::string &id : ids) {
     std::string frontend_url;
-    frontend_url = "chrome-devtools://devtools/bundled";
+    frontend_url = "devtools://devtools/bundled";
     frontend_url += "/js_app.html?experiments=true&v8only=true&ws=";
     frontend_url += FormatWsAddress(host, port, id, false);
     fprintf(out, "%s\n", frontend_url.c_str());
@@ -377,7 +377,7 @@ void InspectorSocketServer::SendListResponse(InspectorSocket *socket) {
       int port = SocketSession::ServerPortForClient(socket);
       GetSocketHost(&socket->tcp, &host);
       std::ostringstream frontend_url;
-      frontend_url << "chrome-devtools://devtools/bundled";
+      frontend_url << "devtools://devtools/bundled";
       frontend_url << "/js_app.html?experiments=true&v8only=true&ws=";
       frontend_url << FormatWsAddress(host, port, id, false);
       target_map["devtoolsFrontendUrl"] += frontend_url.str();
