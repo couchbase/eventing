@@ -331,9 +331,9 @@ func (c *Consumer) SignalFeedbackConnected() {
 	c.signalFeedbackConnectedCh <- struct{}{}
 }
 
-// UpdateEventingNodesUUIDs is called by producer instance to notify about
+// NotifyPrepareTopologyChange is called by producer instance to notify about
 // updated list of node uuids
-func (c *Consumer) UpdateEventingNodesUUIDs(keepNodes, ejectNodes []string) {
+func (c *Consumer) NotifyPrepareTopologyChange(keepNodes, ejectNodes []string) {
 	c.ejectNodesUUIDs = ejectNodes
 	c.eventingNodeUUIDs = keepNodes
 }

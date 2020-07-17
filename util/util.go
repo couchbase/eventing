@@ -843,6 +843,29 @@ func CompareSlices(s1, s2 []uint16) bool {
 	return true
 }
 
+func CompareStringSlices(s1, s2 []string) bool {
+
+        if s1 == nil && s2 == nil {
+                return true
+        }
+
+        if s1 == nil || s2 == nil {
+                return false
+        }
+
+        if len(s1) != len(s2) {
+                return false
+        }
+
+        for i := range s1 {
+                if s1[i] != s2[i] {
+                        return false
+                }
+        }
+
+        return true
+}
+
 func VbsSliceDiff(X, Y []uint16) []uint16 {
 	var diff []uint16
 

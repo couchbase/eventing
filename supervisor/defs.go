@@ -28,6 +28,7 @@ const (
 	// MetakvRebalanceTokenPath refers to path under metakv where rebalance tokens are stored
 	MetakvRebalanceTokenPath = metakvEventingPath + "rebalanceToken/"
 	stopRebalance            = "stopRebalance"
+	startFailover            = "startFailover"
 
 	// Store list of eventing keepNodes
 	metakvConfigKeepNodes = metakvEventingPath + "config/keepNodes"

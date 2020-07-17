@@ -23,6 +23,8 @@ const (
 	metakvChecksumPath       = metakvEventingPath + "checksum/"
 	metakvTempChecksumPath   = metakvEventingPath + "tempchecksum/"
 	stopRebalance            = "stopRebalance"
+	startRebalance           = "startRebalance"
+	startFailover            = "startFailover"
 )
 
 const (
@@ -71,7 +73,9 @@ type ServiceMgr struct {
 	config            util.ConfigHolder
 	ejectNodeUUIDs    []string
 	eventingNodeAddrs []string
-	failoverNotif     bool
+	failoverNotifTs     int64
+	failoverChangeId  string
+	finch             chan bool
 	fnsInPrimaryStore map[string]depCfg                  // Access controlled by fnMu
 	fnsInTempStore    map[string]struct{}                // Access controlled by fnMu
 	bucketFunctionMap map[string]map[string]functionInfo // Access controlled by fnMu
