@@ -1355,7 +1355,7 @@ func (c *Consumer) processAndSendDcpDelOrExpMessage(e *cb.DcpEvent, functionInst
 	logPrefix := "Consumer::processAndSendDcpMessage"
 	c.vbProcessingStats.updateVbStat(e.VBucket, "last_read_seq_no", e.Seqno)
 	switch e.Datatype {
-	case dcpDatatypeJSONXattr:
+	case uint8(includeXATTRs):
 		xattrLen := binary.BigEndian.Uint32(e.Value[0:4])
 		if c.app.SrcMutationEnabled && checkRecursiveEvent {
 			if isRecursive, err := c.isRecursiveDCPEvent(e, functionInstanceID); err == nil && isRecursive == true {
