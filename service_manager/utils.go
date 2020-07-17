@@ -627,3 +627,111 @@ func (m *ServiceMgr) getStatuses(appName string) (dStatus bool, pStatus bool, er
 
 	return dStatus, pStatus, nil
 }
+
+func (m *ServiceMgr) ResetFailoverStatus() {
+	m.failoverNotifTs = 0
+	m.failoverChangeId = ""
+	return
+}
+
+func (m *ServiceMgr) GetFailoverStatus() (failoverNotifTs int64, changeId string) {
+	return m.failoverNotifTs, m.failoverChangeId
+}
+
+func (m *ServiceMgr) watchFailoverEvents() {
+	logPrefix := "ServiceMgr::watchFailoverEvents"
+
+	ticker := time.NewTicker(time.Duration(5) * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			if m.failoverNotifTs != 0 {
+				now := time.Now().Unix()
+				if now-m.failoverNotifTs > 5 {
+					info := &runtimeInfo{}
+					info.Code = m.statusCodes.errInvalidConfig.Code
+					var config common.Config
+
+					if config, info = m.getConfig(); info.Code != m.statusCodes.ok.Code {
+						logging.Errorf("%s getConfig failed: %v", logPrefix, info)
+						continue
+					}
+
+					autoRedistributeVbsOnFailover := true
+					var ok bool
+					var flag interface{}
+					if flag, ok = config["auto_redistribute_vbs_on_failover"]; ok {
+						autoRedistributeVbsOnFailover = flag.(bool)
+					}
+
+					if autoRedistributeVbsOnFailover {
+						err := m.checkTopologyChangeReadiness(service.TopologyChangeTypeFailover)
+						if err == nil {
+							path := metakvRebalanceTokenPath + m.failoverChangeId
+							value := []byte(startFailover)
+							logging.Errorf("%s triggering failover processing path: %v, value:%v", logPrefix, path, value)
+							m.superSup.TopologyChangeNotifCallback(path, value, m.state.rev)
+						}
+					}
+				}
+			}
+
+		case <-m.finch:
+			return
+		}
+	}
+}
+
+func (m *ServiceMgr) checkTopologyChangeReadiness(changeType service.TopologyChangeType) error {
+	logPrefix := "ServiceMgr::checkTopologyChangeReadiness"
+
+	nodeAddrs, err := m.getActiveNodeAddrs()
+	logging.Infof("%s Active Eventing nodes in the cluster: %rs", logPrefix, nodeAddrs)
+
+	if len(nodeAddrs) > 0 && err == nil {
+
+		logging.Infof("%s Querying nodes: %rs for bootstrap status", logPrefix, nodeAddrs)
+
+		// Fail rebalance if some apps are undergoing bootstrap
+		mhVersion := eventingVerMap["mad-hatter"]
+		if !m.compareEventingVersion(mhVersion) {
+			appsBootstrapping, err := util.GetAggBootstrappingApps("/getBootstrappingApps", nodeAddrs)
+			logging.Infof("%s Status of app bootstrap across all Eventing nodes: %v", logPrefix, appsBootstrapping)
+			if err != nil {
+				logging.Warnf("%s Some apps are deploying or resuming on some or all Eventing nodes, err: %v", logPrefix, err)
+				return err
+			}
+		} else {
+			appsBootstrapStatus, err := util.CheckIfBootstrapOngoing("/getBootstrapStatus", nodeAddrs)
+			logging.Infof("%s Bootstrap status across all Eventing nodes: %v", logPrefix, appsBootstrapStatus)
+			if err != nil {
+				return err
+			}
+			if appsBootstrapStatus {
+				logging.Warnf("%s Some apps are undergoing bootstrap", logPrefix)
+				return fmt.Errorf("Some apps are deploying or resuming on some or all Eventing nodes")
+			}
+
+			appsPausing, err := util.GetAggPausingApps("/getPausingApps", nodeAddrs)
+			logging.Infof("%s Status of pausing apps across all Eventing nodes: %v %v", logPrefix, appsPausing, err)
+			if err != nil {
+				logging.Warnf("%s Some apps are being paused on some or all Eventing nodes, err: %v", logPrefix, err)
+				return err
+			}
+		}
+		if changeType == service.TopologyChangeTypeRebalance { // For failover we do not want to wait
+			if rebStatus := m.checkRebalanceStatus(); rebStatus.Code != m.statusCodes.ok.Code {
+				return fmt.Errorf(rebStatus.Info.(string))
+			}
+		}
+	}
+
+	if err != nil {
+		logging.Warnf("%s Error encountered while fetching active Eventing nodes, err: %v", logPrefix, err)
+		return fmt.Errorf("failed to get active eventing nodes in the cluster")
+	}
+
+	return nil
+}

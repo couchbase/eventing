@@ -5,6 +5,7 @@ import (
 	"net"
 
 	"github.com/couchbase/eventing/dcp"
+        "github.com/couchbase/cbauth/service"
 )
 
 type DcpStreamBoundary string
@@ -39,10 +40,12 @@ type Insights map[string]*Insight
 const (
 	StartRebalanceCType = ChangeType("start-rebalance")
 	StopRebalanceCType  = ChangeType("stop-rebalance")
+	StartFailoverCType  = ChangeType("start-failover")
 )
 
 type TopologyChangeMsg struct {
 	CType ChangeType
+	MsgSource string
 }
 
 const (
@@ -157,7 +160,7 @@ type EventingProducer interface {
 	LenRunningConsumers() int
 	MetadataBucket() string
 	NotifyInit()
-	NotifyPrepareTopologyChange(ejectNodes, keepNodes []string)
+	NotifyPrepareTopologyChange(ejectNodes, keepNodes []string, changeType service.TopologyChangeType)
 	NotifySettingsChange()
 	NotifySupervisor()
 	NotifyTopologyChange(msg *TopologyChangeMsg)
@@ -234,7 +237,7 @@ type EventingConsumer interface {
 	Stop(context string)
 	String() string
 	TimerDebugStats() map[int]map[string]interface{}
-	UpdateEventingNodesUUIDs(keepNodes, ejectNodes []string)
+	NotifyPrepareTopologyChange(keepNodes, ejectNodes []string)
 	UpdateWorkerQueueMemCap(quota int64)
 	VbDcpEventsRemainingToProcess() map[int]int64
 	VbEventingNodeAssignMapUpdate(map[uint16]string)
@@ -278,7 +281,8 @@ type EventingSuperSup interface {
 	GetSeqsProcessed(appName string) map[int]int64
 	InternalVbDistributionStats(appName string) map[string]string
 	KillAllConsumers()
-	NotifyPrepareTopologyChange(ejectNodes, keepNodes []string)
+	NotifyPrepareTopologyChange(ejectNodes, keepNodes []string, changeType service.TopologyChangeType)
+	TopologyChangeNotifCallback(path string, value []byte, rev interface{}) error
 	PlannerStats(appName string) []*PlannerNodeVbMapping
 	RebalanceStatus() bool
 	RebalanceTaskProgress(appName string) (*RebalanceProgress, error)
@@ -298,7 +302,10 @@ type EventingSuperSup interface {
 
 type EventingServiceMgr interface {
 	UpdateBucketGraphFromMetakv(functionName string) error
+	ResetFailoverStatus()
+	GetFailoverStatus() (failoverNotifTs int64, changeId string)
 }
+
 type Config map[string]interface{}
 
 // AppConfig Application/Event handler configuration

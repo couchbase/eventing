@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
+        "github.com/couchbase/cbauth/service"
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/dcp"
 	"github.com/couchbase/eventing/logging"
@@ -397,18 +398,33 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(path string, value []byte,
 	defer atomic.StoreInt32(&s.isRebalanceOngoing, 0)
 
 	topologyChangeMsg := &common.TopologyChangeMsg{}
+	topologyChangeMsg.MsgSource = path
 
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if value != nil {
 		if string(value) == stopRebalance {
 			topologyChangeMsg.CType = common.StopRebalanceCType
+		} else if string(value) == startFailover {
+			failoverNotifTs, _ := s.serviceMgr.GetFailoverStatus()
+			if failoverNotifTs == 0 {
+				logging.Infof("%s failover processing is already taken care of. Exiting callback", logPrefix)
+				return nil
+			}
+			topologyChangeMsg.CType = common.StartFailoverCType
 		} else {
 			topologyChangeMsg.CType = common.StartRebalanceCType
 		}
 
 		for _, eventingProducer := range s.runningFns() {
 			eventingProducer.NotifyTopologyChange(topologyChangeMsg)
+		}
+
+		// Reset the failoverNotifTs, which got set to signify failover action on the cluster
+		s.serviceMgr.ResetFailoverStatus()
+		if string(value) == startFailover {
+			logging.Infof("%s failover processing completed", logPrefix)
+			return nil
 		}
 
 		// On topology change notification, lookup up in metakv if there are any any apps
@@ -638,7 +654,7 @@ func (s *SuperSupervisor) spawnApp(appName string, cleanupTimers bool) {
 
 	logging.Infof("%s [%d] Function: %s spawned up", logPrefix, s.runningFnsCount(), appName)
 
-	p.NotifyPrepareTopologyChange(s.ejectNodes, s.keepNodes)
+	p.NotifyPrepareTopologyChange(s.ejectNodes, s.keepNodes, service.TopologyChangeTypeRebalance)
 
 	s.updateQuotaForRunningFns()
 }
@@ -697,7 +713,7 @@ func (s *SuperSupervisor) HandleSupCmdMsg() {
 
 // NotifyPrepareTopologyChange notifies each producer instance running on current eventing nodes
 // about keepNodes supplied by ns_server
-func (s *SuperSupervisor) NotifyPrepareTopologyChange(ejectNodes, keepNodes []string) {
+func (s *SuperSupervisor) NotifyPrepareTopologyChange(ejectNodes, keepNodes []string, changeType service.TopologyChangeType) {
 	logPrefix := "SuperSupervisor::NotifyPrepareTopologyChange"
 
 	s.ejectNodes = ejectNodes
@@ -711,7 +727,7 @@ func (s *SuperSupervisor) NotifyPrepareTopologyChange(ejectNodes, keepNodes []st
 
 	for _, eventingProducer := range s.runningFns() {
 		logging.Infof("%s [%d] Updating producer %p, keepNodes => %v", logPrefix, s.runningFnsCount(), eventingProducer, keepNodes)
-		eventingProducer.NotifyPrepareTopologyChange(s.ejectNodes, s.keepNodes)
+		eventingProducer.NotifyPrepareTopologyChange(s.ejectNodes, s.keepNodes, changeType)
 	}
 }
 
