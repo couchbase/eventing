@@ -73,6 +73,8 @@ v8::Local<v8::Object> V8Worker::NewCouchbaseNameSpace() {
                v8::FunctionTemplate::New(isolate_, BucketOps::InsertOp));
   proto_t->Set(v8::String::NewFromUtf8(isolate_, "upsert"),
                v8::FunctionTemplate::New(isolate_, BucketOps::UpsertOp));
+  proto_t->Set(v8::String::NewFromUtf8(isolate_, "replace"),
+               v8::FunctionTemplate::New(isolate_, BucketOps::ReplaceOp));
   proto_t->Set(v8::String::NewFromUtf8(isolate_, "delete"),
                v8::FunctionTemplate::New(isolate_, BucketOps::DeleteOp));
   proto_t->Set(v8::String::NewFromUtf8(isolate_, "increment"),
