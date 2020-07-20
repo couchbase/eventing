@@ -216,7 +216,7 @@ func resolve(nsaddr, user, pass string, insecure bool) (*url.URL, error) {
 	sort.Slice(ips, func(i, j int) bool { return ips[i].To4() != nil && ips[j].To4() == nil }) // prefer v4
 
 	for _, ip := range ips {
-		if !ip.IsLoopback() && !insecure {
+		if !IsLocal(&ip) && !insecure {
 			msg := fmt.Errorf("Host specified is not localhost, refusing to send creds over plain http. Use -insecure to override")
 			return nil, msg
 		}
@@ -243,4 +243,34 @@ func resolve(nsaddr, user, pass string, insecure bool) (*url.URL, error) {
 
 	}
 	return nil, fmt.Errorf("Cannot access specified Console URL")
+}
+
+func IsLocal(ip *net.IP) bool {
+	if ip.IsLoopback() {
+		return true
+	}
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return false
+	}
+	for _, iface := range ifaces {
+		addrs, err := iface.Addrs()
+		if err != nil {
+			return false
+		}
+		for _, addr := range addrs {
+			switch ifip := addr.(type) {
+			case *net.IPAddr:
+				if ip.Equal(ifip.IP) {
+					return true
+				}
+			case *net.IPNet:
+				if ip.Equal(ifip.IP) {
+					return true
+				}
+			}
+		}
+	}
+
+	return false
 }
