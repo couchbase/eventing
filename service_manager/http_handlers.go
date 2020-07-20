@@ -2525,6 +2525,7 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	logging.Tracef("%s Function handler invoked.", logPrefix)
 	functions := regexp.MustCompile("^/api/v1/functions/?$")
 	functionsName := regexp.MustCompile("^/api/v1/functions/(.*[^/])/?$") // Match is agnostic of trailing '/'
 	functionsNameSettings := regexp.MustCompile("^/api/v1/functions/(.*[^/])/settings/?$")
@@ -2690,8 +2691,17 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 			m.sendErrorInfo(w, info)
 		}
 		appName := match[1]
+		appState := m.superSup.GetAppState(appName)
 
 		audit.Log(auditevent.SetSettings, r, appName)
+
+		if appState == common.AppStatePaused {
+			info.Code = m.statusCodes.errAppNotUndeployed.Code
+			info.Info = fmt.Sprintf("Function: %v is in paused state, Please use /resume API to deploy the function.", appName)
+			logging.Errorf("%s %s", logPrefix, info.Info)
+			m.sendErrorInfo(w, info)
+			return
+		}
 
 		data, err := ioutil.ReadAll(r.Body)
 		if err != nil {
