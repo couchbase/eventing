@@ -2630,6 +2630,15 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		appName := match[1]
+		appState := m.superSup.GetAppState(appName)
+
+		if appState == common.AppStatePaused {
+			info.Code = m.statusCodes.errAppNotDeployed.Code
+			info.Info = fmt.Sprintf("Invalid operation. Function: %v already in paused state.", appName)
+			logging.Errorf("%s %s", logPrefix, info.Info)
+			m.sendErrorInfo(w, info)
+			return
+		}
 
 		audit.Log(auditevent.SetSettings, r, appName)
 
@@ -2661,6 +2670,23 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		appName := match[1]
+		appState := m.superSup.GetAppState(appName)
+
+		if appState == common.AppStateEnabled {
+			info.Code = m.statusCodes.errAppDeployed.Code
+			info.Info = fmt.Sprintf("Invalid operation. Function: %v already in deployed state. Please try to undeploy the function instead.", appName)
+			logging.Errorf("%s %s", logPrefix, info.Info)
+			m.sendErrorInfo(w, info)
+			return
+		}
+
+		if appState == common.AppStateUndeployed {
+			info.Code = m.statusCodes.errAppNotDeployed.Code
+			info.Info = fmt.Sprintf("Invalid operation. Function: %v is in undeployed state. Please try to deploy the function instead.", appName)
+			logging.Errorf("%s %s", logPrefix, info.Info)
+			m.sendErrorInfo(w, info)
+			return
+		}
 
 		audit.Log(auditevent.SetSettings, r, appName)
 
@@ -2692,6 +2718,14 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		appName := match[1]
+
+		if appState == common.AppStateEnabled {
+			info.Code = m.statusCodes.errAppDeployed.Code
+			info.Info = fmt.Sprintf("Invalid operation. Function: %v already in deployed state.", appName)
+			logging.Errorf("%s %s", logPrefix, info.Info)
+			m.sendErrorInfo(w, info)
+			return
+		}
 
 		audit.Log(auditevent.SetSettings, r, appName)
 
@@ -2749,6 +2783,15 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		appName := match[1]
+		appState := m.superSup.GetAppState(appName)
+
+		if appState == common.AppStateUndeployed {
+			info.Code = m.statusCodes.errAppNotDeployed.Code
+			info.Info = fmt.Sprintf("Invalid operation. Function: %v already in undeployed state.", appName)
+			logging.Errorf("%s %s", logPrefix, info.Info)
+			m.sendErrorInfo(w, info)
+			return
+		}
 
 		audit.Log(auditevent.SetSettings, r, appName)
 
