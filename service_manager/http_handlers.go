@@ -2712,6 +2712,13 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 				m.sendErrorInfo(w, info)
 				return
 			}
+			if settings == nil {
+				info.Code = m.statusCodes.errMarshalResp.Code
+				info.Info = fmt.Sprintf("%v failed to unmarshal setting supplied, data sent in the request body is invalid.", len(data))
+				logging.Errorf("%s %s", logPrefix, info.Info)
+				m.sendErrorInfo(w, info)
+				return
+			}
 		}
 
 		settings["deployment_status"] = true
