@@ -2676,7 +2676,7 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 
 		if appState == common.AppStateEnabled {
 			info.Code = m.statusCodes.errAppDeployed.Code
-			info.Info = fmt.Sprintf("Invalid operation. Function: %v already in deployed state. Please try to undeploy the function instead.", appName)
+			info.Info = fmt.Sprintf("Invalid operation. Function: %v already in deployed state.", appName)
 			logging.Errorf("%s %s", logPrefix, info.Info)
 			m.sendErrorInfo(w, info)
 			return
@@ -2684,7 +2684,7 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 
 		if appState == common.AppStateUndeployed {
 			info.Code = m.statusCodes.errAppNotDeployed.Code
-			info.Info = fmt.Sprintf("Invalid operation. Function: %v is in undeployed state. Please try to deploy the function instead.", appName)
+			info.Info = fmt.Sprintf("Invalid operation. Function: %v already in undeployed state.", appName)
 			logging.Errorf("%s %s", logPrefix, info.Info)
 			m.sendErrorInfo(w, info)
 			return
