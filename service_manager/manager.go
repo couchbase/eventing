@@ -38,6 +38,7 @@ func NewServiceMgr(config util.Config, rebalanceRunning bool, superSup common.Ev
 		fnsInTempStore:    make(map[string]struct{}),
 		bucketFunctionMap: make(map[string]map[string]functionInfo),
 		fnMu:              &sync.RWMutex{},
+		failoverMu:        &sync.RWMutex{},
 		mu:                mu,
 		servers:           make([]service.NodeID, 0),
 		state: state{
