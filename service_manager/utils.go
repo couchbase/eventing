@@ -628,9 +628,29 @@ func (m *ServiceMgr) getStatuses(appName string) (dStatus bool, pStatus bool, er
 	return dStatus, pStatus, nil
 }
 
+func (m *ServiceMgr) SetFailoverStatus(changeId string) {
+        m.failoverMu.Lock()
+        defer m.failoverMu.Unlock()
+
+        m.failoverCounter++
+        m.failoverNotifTs = time.Now().Unix()
+        m.failoverChangeId = changeId
+
+        return
+}
+
 func (m *ServiceMgr) ResetFailoverStatus() {
-	m.failoverNotifTs = 0
-	m.failoverChangeId = ""
+	m.failoverMu.Lock()
+	defer m.failoverMu.Unlock()
+
+	if m.failoverCounter > 0 {
+		m.failoverCounter--
+	}
+
+	if 0 == m.failoverCounter {
+		m.failoverNotifTs = 0
+		m.failoverChangeId = ""
+	}
 	return
 }
 
@@ -671,7 +691,7 @@ func (m *ServiceMgr) watchFailoverEvents() {
 						if err == nil {
 							path := metakvRebalanceTokenPath + m.failoverChangeId
 							value := []byte(startFailover)
-							logging.Errorf("%s triggering failover processing path: %v, value:%v", logPrefix, path, value)
+							logging.Infof("%s triggering failover processing path: %v, value:%v", logPrefix, path, value)
 							m.superSup.TopologyChangeNotifCallback(path, value, m.state.rev)
 						}
 					}

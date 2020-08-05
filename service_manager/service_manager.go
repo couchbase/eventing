@@ -157,8 +157,7 @@ func (m *ServiceMgr) PrepareTopologyChange(change service.TopologyChange) error 
 	m.superSup.NotifyPrepareTopologyChange(m.ejectNodeUUIDs, m.keepNodeUUIDs, change.Type)
 
 	if change.Type == service.TopologyChangeTypeFailover {
-		m.failoverNotifTs = time.Now().Unix()
-		m.failoverChangeId = change.ID
+		m.SetFailoverStatus(change.ID)
 	}
 
 	logging.Infof("%s completed: %v", logPrefix, err)
@@ -199,8 +198,6 @@ func (m *ServiceMgr) StartTopologyChange(change service.TopologyChange) error {
 	switch change.Type {
 	case service.TopologyChangeTypeFailover:
 		util.Retry(util.NewFixedBackoff(time.Second), nil, storeKeepNodesCallback, m.keepNodeUUIDs)
-		m.failoverNotifTs = time.Now().Unix()
-		m.failoverChangeId = change.ID
 		logging.Infof("%s failover completed", logPrefix)
 
 	case service.TopologyChangeTypeRebalance:

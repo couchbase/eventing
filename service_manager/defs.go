@@ -73,7 +73,9 @@ type ServiceMgr struct {
 	config            util.ConfigHolder
 	ejectNodeUUIDs    []string
 	eventingNodeAddrs []string
-	failoverNotifTs     int64
+	failoverMu        *sync.RWMutex
+	failoverCounter   uint32
+	failoverNotifTs   int64
 	failoverChangeId  string
 	finch             chan bool
 	fnsInPrimaryStore map[string]depCfg                  // Access controlled by fnMu
