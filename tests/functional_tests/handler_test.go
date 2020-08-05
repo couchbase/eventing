@@ -1573,6 +1573,104 @@ func TestAllowInterBucketRecursion(t *testing.T) {
 	}
 }
 
+func TestInterBucketRecursion2(t *testing.T) {
+	functionName1 := fmt.Sprintf("%s_function1", t.Name())
+	functionName2 := fmt.Sprintf("%s_function2", t.Name())
+	functionName3 := fmt.Sprintf("%s_function3", t.Name())
+	functionName4 := fmt.Sprintf("%s_function4", t.Name())
+
+	time.Sleep(time.Second * 5)
+
+	jsFileName := "noop"
+	payload := fmt.Sprintf("{\"allow_interbucket_recursion\":%v}", true)
+	_, err := configChange(payload)
+	if err != nil {
+		t.Errorf("Failed to change setting allow_interbucket_recursion, err : %v\n", err)
+		return
+	}
+
+	createBucket("bucket1", bucketmemQuota)
+	bucketFlush("bucket1")
+
+	createBucket("bucket2", bucketmemQuota)
+	bucketFlush("bucket2")
+
+	createBucket("bucket3", bucketmemQuota)
+	bucketFlush("bucket3")
+
+	createBucket("bucket4", bucketmemQuota)
+	bucketFlush("bucket4")
+
+	defer func() {
+		flushFunctionAndBucket(functionName1)
+		flushFunctionAndBucket(functionName2)
+		flushFunctionAndBucket(functionName3)
+		flushFunctionAndBucket(functionName4)
+		deleteBucket("bucket1")
+		deleteBucket("bucket2")
+		deleteBucket("bucket3")
+		deleteBucket("bucket4")
+	}()
+
+	settings := &commonSettings{
+		aliasSources: []string{"bucket2"},
+		aliasHandles: []string{"bucket2"},
+		metaBucket:   metaBucket,
+		sourceBucket: "bucket1",
+	}
+	resp := createAndDeployFunction(functionName1, jsFileName, settings)
+	waitForDeployToFinish(functionName1)
+
+	settings.sourceBucket = "bucket2"
+	settings.aliasSources = []string{"bucket3"}
+	resp = createAndDeployFunction(functionName2, jsFileName, settings)
+	waitForDeployToFinish(functionName2)
+
+	// this deployment will cause the inter bucket recursion between function2 and function3
+	// Since allow_interbucket_recursion is allowed this should go through
+	settings.sourceBucket = "bucket3"
+	settings.aliasSources = []string{"bucket4", "bucket2"}
+	settings.aliasHandles = []string{"bucket4", "bucket2"}
+	resp = createAndDeployFunction(functionName3, jsFileName, settings)
+	if resp.err != nil {
+		t.Errorf("Failed to deploy function3: %v\n", resp.err)
+		payload := fmt.Sprintf("{\"allow_interbucket_recursion\":%v}", false)
+		configChange(payload)
+		return
+	}
+	waitForDeployToFinish(functionName3)
+
+	status := getFnStatus(functionName3)
+	if status != "deployed" {
+		t.Errorf("%s must be deployed", functionName3)
+		return
+	}
+
+	payload = fmt.Sprintf("{\"allow_interbucket_recursion\":%v}", false)
+	_, err = configChange(payload)
+	if err != nil {
+		t.Errorf("Failed to change setting allow_interbucket_recursion, err : %v\n", err)
+		return
+	}
+
+	// This should fail due to inter bucket recursion
+	settings.sourceBucket = "bucket4"
+	settings.aliasSources = []string{"bucket1"}
+	settings.aliasHandles = []string{"bucket1"}
+	resp = createAndDeployFunction(functionName4, jsFileName, settings)
+	var response map[string]interface{}
+	err = json.Unmarshal(resp.body, &response)
+	if err != nil {
+		t.Errorf("Failed to unmarshal response, err : %v\n", err)
+		return
+	}
+
+	if response["name"].(string) != "ERR_INTER_BUCKET_RECURSION" {
+		t.Error("Deployment must fail")
+		return
+	}
+}
+
 func TestBucketDeleteWithRebOut(t *testing.T) {
 	functionName := t.Name()
 	time.Sleep(5 * time.Second)

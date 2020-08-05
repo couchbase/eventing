@@ -201,10 +201,6 @@ func (bg *bucketMultiDiGraph) hasPath(source, destination string) (reachable boo
 	for st.Size() != 0 {
 		vertex := st.Pop().(string)
 
-		if _, ok := visited[vertex]; ok {
-			continue
-		}
-
 		if vertex == destination {
 			reachable = true
 			labels = bg.getPathFromParentMap(source, destination, parents)
@@ -216,8 +212,10 @@ func (bg *bucketMultiDiGraph) hasPath(source, destination string) (reachable boo
 
 		children := bg.adjacenyList[vertex]
 		for child := range children {
-			st.Push(child)
-			parents[child] = vertex
+			if _, ok := visited[child]; !ok {
+				st.Push(child)
+				parents[child] = vertex
+			}
 		}
 	}
 	return
