@@ -143,6 +143,8 @@ func (c *Consumer) controlRoutine() error {
 					if err == nil {
 						metadataCorrectedVbs = append(metadataCorrectedVbs, vb)
 					}
+				} else if c.checkIfVbAlreadyOwnedByCurrConsumer(vb) {
+					metadataCorrectedVbs = append(metadataCorrectedVbs, vb)
 				}
 			}
 

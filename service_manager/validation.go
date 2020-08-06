@@ -65,8 +65,8 @@ func (m *ServiceMgr) validateAppRecursion(app *application) (info *runtimeInfo) 
 		}
 		destinations[pinfo.PInfo.KeyspaceName] = struct{}{}
 	}
-	if len(destinations) != 0 {
-		if possible, path := m.graph.isAcyclicInsertPossible(app.Name, source, destinations); !possible && !allowInterBucketRecursion {
+	if !allowInterBucketRecursion && len(destinations) != 0 {
+		if possible, path := m.graph.isAcyclicInsertPossible(app.Name, source, destinations); !possible {
 			info.Code = m.statusCodes.errInterBucketRecursion.Code
 			info.Info = fmt.Sprintf("Inter bucket recursion error; function: %s causes a cycle "+
 				"involving functions: %v, hence deployment is disallowed", app.Name, path)
@@ -357,6 +357,10 @@ func (m *ServiceMgr) validateConfig(c map[string]interface{}) (info *runtimeInfo
 	}
 
 	if info = m.validatePositiveInteger("service_notifier_timeout", c); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
+	if info = m.validateBoolean("auto_redistribute_vbs_on_failover", true, c); info.Code != m.statusCodes.ok.Code {
 		return
 	}
 

@@ -91,6 +91,7 @@ type statusCodes struct {
 	errSyncGatewayEnabled     statusBase
 	errAppNotFound            statusBase
 	errMetakvWriteFailed      statusBase
+	errRequestedOpFailed      statusBase
 }
 
 func (m *ServiceMgr) getDisposition(code int) int {
@@ -191,6 +192,8 @@ func (m *ServiceMgr) getDisposition(code int) int {
 		return http.StatusNotFound
 	case m.statusCodes.errMetakvWriteFailed.Code:
 		return http.StatusInternalServerError
+	case m.statusCodes.errRequestedOpFailed.Code:
+		return http.StatusNotAcceptable
 	default:
 		logging.Warnf("Unknown status code: %v", code)
 		return http.StatusInternalServerError
@@ -248,6 +251,7 @@ func (m *ServiceMgr) initErrCodes() {
 		errSyncGatewayEnabled:     statusBase{"ERR_SYNC_GATEWAY_ENABLED", 52},
 		errAppNotFound:            statusBase{"ERR_APP_NOT_FOUND", 53},
 		errMetakvWriteFailed:      statusBase{"ERR_METAKV_WRITE_FAILED", 54},
+		errRequestedOpFailed:      statusBase{"ERR_REQUESTED_OP_FAILED", 55},
 	}
 
 	errors := []errorPayload{
@@ -422,7 +426,7 @@ func (m *ServiceMgr) initErrCodes() {
 		{
 			Name:        m.statusCodes.errRebOngoing.Name,
 			Code:        m.statusCodes.errRebOngoing.Code,
-			Description: "Rebalance ongoing on some/all Eventing nodes, creating new functions, deployment or undeployment of existing functions is not allowed",
+			Description: "Rebalance or Failover processing ongoing on some/all Eventing nodes, creating new functions, deployment or undeployment of existing functions is not allowed",
 		},
 		{
 			Name:        m.statusCodes.errActiveEventingNodes.Name,
@@ -513,6 +517,11 @@ func (m *ServiceMgr) initErrCodes() {
 			Name:        m.statusCodes.errMetakvWriteFailed.Name,
 			Code:        m.statusCodes.errMetakvWriteFailed.Code,
 			Description: "Metakv write failed",
+		},
+		{
+			Name:        m.statusCodes.errRequestedOpFailed.Name,
+			Code:        m.statusCodes.errRequestedOpFailed.Code,
+			Description: "Request operation failed",
 		},
 	}
 

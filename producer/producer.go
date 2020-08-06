@@ -14,6 +14,7 @@ import (
 	"unsafe"
 
 	"github.com/couchbase/cbauth"
+	"github.com/couchbase/cbauth/service"
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/consumer"
 	"github.com/couchbase/eventing/logging"
@@ -205,11 +206,15 @@ func (p *Producer) Serve() {
 				logPrefix, p.appName, p.LenRunningConsumers(), msg)
 
 			switch msg.CType {
-			case common.StartRebalanceCType:
+			case common.StartRebalanceCType, common.StartFailoverCType:
 				p.isPlannerRunning = true
 				logging.Infof("%s [%s:%d] Planner status: %t, before vbucket to node assignment as part of rebalance",
 					logPrefix, p.appName, p.LenRunningConsumers(), p.isPlannerRunning)
 
+				// grab list of old kv nodes
+				oldKvNodes := p.getKvNodeAddrs()
+
+				// vbEventingNodeAssign() would update list of KV nodes. We need them soon after this call
 				err = p.vbEventingNodeAssign(p.handlerConfig.SourceBucket)
 				if err == common.ErrRetryTimeout {
 					logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
@@ -218,6 +223,10 @@ func (p *Producer) Serve() {
 						logPrefix, p.appName, p.LenRunningConsumers(), p.isPlannerRunning)
 					return
 				}
+
+				// grab list of old kv nodes
+				newKvNodes := p.getKvNodeAddrs()
+
 				p.vbNodeWorkerMap()
 				oldworkerVbucketMap := p.initWorkerVbMap()
 				p.isPlannerRunning = false
@@ -237,15 +246,17 @@ func (p *Producer) Serve() {
 					// once above). As a result oldVbucketSlice & newVbucketSlice will match and we skip rebalance below.
 					// firstRebalanceDone flag is used to identify this case and force rebalance on all consumers so that VBs can be
 					// properly owned
-					if !util.CompareSlices(oldVbucketSlice, newVbucketSlice) || !p.firstRebalanceDone || c.GetPrevRebalanceInCompleteStatus() {
+					if !util.CompareSlices(oldVbucketSlice, newVbucketSlice) || !p.firstRebalanceDone || c.GetPrevRebalanceInCompleteStatus() || msg.MsgSource == "rebalance_request_from_rest" {
 						logging.Infof("%s [%s:%d] Consumer: %s sent cluster state change message from producer, firstRebalanceDone: %v, GetPrevRebalanceInCompleteStatus: %v", logPrefix, p.appName, p.LenRunningConsumers(), consumerName, p.firstRebalanceDone, c.GetPrevRebalanceInCompleteStatus())
 						c.NotifyClusterChange()
 					} else {
 						// set the rebalance status on the consumer as it uses this flag to control throttling in processDcpEvents()
 						// This helps in accelerating eventing owning VBs faster during KV rebalance. c.RebalanceTaskProgress() will reset this flag
-						c.SetRebalanceStatus(true)
-						logging.Infof("%s [%s:%d] skipped cluster state change message for consumer: %s oldSlice: %v, newSlice: %v, updated isRebalanceOngoing to: %v",
-							logPrefix, p.appName, p.LenRunningConsumers(), consumerName, oldVbucketSlice, newVbucketSlice, c.GetRebalanceStatus())
+						if !util.CompareStringSlices(newKvNodes, oldKvNodes) {
+							c.SetRebalanceStatus(true)
+						}
+
+						logging.Infof("%s [%s:%d] skipped cluster state change message for consumer: %s oldSlice: %v, newSlice: %v, oldKvNodes: %v, newKvNodes: %v, updated isRebalanceOngoing to: %v", logPrefix, p.appName, p.LenRunningConsumers(), consumerName, oldVbucketSlice, newVbucketSlice, oldKvNodes, newKvNodes, c.GetRebalanceStatus())
 					}
 				}
 				if !p.firstRebalanceDone {
@@ -779,14 +790,14 @@ func (p *Producer) NotifyTopologyChange(msg *common.TopologyChangeMsg) {
 }
 
 // NotifyPrepareTopologyChange captures keepNodes supplied as part of topology change message
-func (p *Producer) NotifyPrepareTopologyChange(ejectNodes, keepNodes []string) {
+func (p *Producer) NotifyPrepareTopologyChange(ejectNodes, keepNodes []string, changeType service.TopologyChangeType) {
+	//logPrefix := "Producer::NotifyPrepareTopologyChange"
 	p.ejectNodeUUIDs = ejectNodes
 	p.eventingNodeUUIDs = keepNodes
 
 	for _, eventingConsumer := range p.getConsumers() {
-		eventingConsumer.UpdateEventingNodesUUIDs(keepNodes, ejectNodes)
+		eventingConsumer.NotifyPrepareTopologyChange(keepNodes, ejectNodes)
 	}
-
 }
 
 // SignalStartDebugger sets up necessary flags to signal debugger start

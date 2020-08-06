@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/couchbase/cbauth"
+	"github.com/couchbase/cbauth/service"
 	"github.com/couchbase/eventing/audit"
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/consumer"
@@ -1710,18 +1711,18 @@ func (m *ServiceMgr) checkRebalanceStatus() (info *runtimeInfo) {
 
 	rebStatus, err := util.CheckIfRebalanceOngoing("/getRebalanceStatus", m.eventingNodeAddrs)
 	if err != nil {
-		logging.Errorf("%s Failed to grab correct rebalance status from some/all Eventing nodes, err: %v", logPrefix, err)
+		logging.Errorf("%s Failed to grab correct rebalance or failover status from some/all Eventing nodes, err: %v", logPrefix, err)
 		info.Code = m.statusCodes.errGetRebStatus.Code
-		info.Info = "Failed to get rebalance status from eventing nodes"
+		info.Info = "Failed to get rebalance or failover status from eventing nodes"
 		return
 	}
 
-	logging.Infof("%s Rebalance ongoing across some/all Eventing nodes: %v", logPrefix, rebStatus)
+	logging.Infof("%s Rebalance or Failover ongoing across some/all Eventing nodes: %v", logPrefix, rebStatus)
 
 	if rebStatus {
-		logging.Warnf("%s Rebalance ongoing on some/all Eventing nodes", logPrefix)
+		logging.Warnf("%s Rebalance or Failover ongoing on some/all Eventing nodes", logPrefix)
 		info.Code = m.statusCodes.errRebOngoing.Code
-		info.Info = "Rebalance ongoing on some/all Eventing nodes, creating new functions, deployment or undeployment of existing functions is not allowed"
+		info.Info = "Rebalance or Failover processing ongoing on some/all Eventing nodes, creating new functions, deployment or undeployment of existing functions is not allowed"
 		return
 	}
 
@@ -2524,6 +2525,7 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	logging.Tracef("%s Function handler invoked.", logPrefix)
 	functions := regexp.MustCompile("^/api/v1/functions/?$")
 	functionsName := regexp.MustCompile("^/api/v1/functions/(.*[^/])/?$") // Match is agnostic of trailing '/'
 	functionsNameSettings := regexp.MustCompile("^/api/v1/functions/(.*[^/])/settings/?$")
@@ -2630,6 +2632,15 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		appName := match[1]
+		appState := m.superSup.GetAppState(appName)
+
+		if appState == common.AppStatePaused {
+			info.Code = m.statusCodes.errAppNotDeployed.Code
+			info.Info = fmt.Sprintf("Invalid operation. Function: %v already in paused state.", appName)
+			logging.Errorf("%s %s", logPrefix, info.Info)
+			m.sendErrorInfo(w, info)
+			return
+		}
 
 		audit.Log(auditevent.SetSettings, r, appName)
 
@@ -2661,6 +2672,23 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		appName := match[1]
+		appState := m.superSup.GetAppState(appName)
+
+		if appState == common.AppStateEnabled {
+			info.Code = m.statusCodes.errAppDeployed.Code
+			info.Info = fmt.Sprintf("Invalid operation. Function: %v already in deployed state.", appName)
+			logging.Errorf("%s %s", logPrefix, info.Info)
+			m.sendErrorInfo(w, info)
+			return
+		}
+
+		if appState == common.AppStateUndeployed {
+			info.Code = m.statusCodes.errAppNotDeployed.Code
+			info.Info = fmt.Sprintf("Invalid operation. Function: %v already in undeployed state.", appName)
+			logging.Errorf("%s %s", logPrefix, info.Info)
+			m.sendErrorInfo(w, info)
+			return
+		}
 
 		audit.Log(auditevent.SetSettings, r, appName)
 
@@ -2692,8 +2720,25 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		appName := match[1]
+		appState := m.superSup.GetAppState(appName)
+
+		if appState == common.AppStateEnabled {
+			info.Code = m.statusCodes.errAppDeployed.Code
+			info.Info = fmt.Sprintf("Invalid operation. Function: %v already in deployed state.", appName)
+			logging.Errorf("%s %s", logPrefix, info.Info)
+			m.sendErrorInfo(w, info)
+			return
+		}
 
 		audit.Log(auditevent.SetSettings, r, appName)
+
+		if appState == common.AppStatePaused {
+			info.Code = m.statusCodes.errAppNotUndeployed.Code
+			info.Info = fmt.Sprintf("Function: %v is in paused state, Please use /resume API to deploy the function.", appName)
+			logging.Errorf("%s %s", logPrefix, info.Info)
+			m.sendErrorInfo(w, info)
+			return
+		}
 
 		data, err := ioutil.ReadAll(r.Body)
 		if err != nil {
@@ -2710,6 +2755,13 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				info.Code = m.statusCodes.errMarshalResp.Code
 				info.Info = fmt.Sprintf("%v failed to unmarshal setting supplied, err: %v", len(data), err)
+				logging.Errorf("%s %s", logPrefix, info.Info)
+				m.sendErrorInfo(w, info)
+				return
+			}
+			if settings == nil {
+				info.Code = m.statusCodes.errMarshalResp.Code
+				info.Info = fmt.Sprintf("%v failed to unmarshal setting supplied, data sent in the request body is invalid.", len(data))
 				logging.Errorf("%s %s", logPrefix, info.Info)
 				m.sendErrorInfo(w, info)
 				return
@@ -2742,6 +2794,15 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		appName := match[1]
+		appState := m.superSup.GetAppState(appName)
+
+		if appState == common.AppStateUndeployed {
+			info.Code = m.statusCodes.errAppNotDeployed.Code
+			info.Info = fmt.Sprintf("Invalid operation. Function: %v already in undeployed state.", appName)
+			logging.Errorf("%s %s", logPrefix, info.Info)
+			m.sendErrorInfo(w, info)
+			return
+		}
 
 		audit.Log(auditevent.SetSettings, r, appName)
 
@@ -3622,4 +3683,35 @@ func (m *ServiceMgr) listFunctions(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
 	fmt.Fprintf(w, "%s", string(response))
+}
+
+func (m *ServiceMgr) triggerInternalRebalance(w http.ResponseWriter, r *http.Request) {
+	logPrefix := "ServiceMgr::triggerInternalRebalance"
+
+	w.Header().Set("Content-Type", "application/json")
+	if !m.validateAuth(w, r, EventingPermissionManage) {
+		cbauth.SendForbidden(w, EventingPermissionManage)
+		return
+	}
+
+	if r.Method != "POST" {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	info := &runtimeInfo{}
+	info.Code = m.statusCodes.ok.Code
+
+	err := m.checkTopologyChangeReadiness(service.TopologyChangeTypeRebalance)
+	if err == nil {
+		path := "rebalance_request_from_rest"
+		value := []byte(startRebalance)
+		logging.Errorf("%s triggering rebalance processing from rest path: %v, value:%v", logPrefix, path, value)
+		m.superSup.TopologyChangeNotifCallback(path, value, m.state.rev)
+	} else {
+		info.Code = m.statusCodes.errRequestedOpFailed.Code
+		info.Info = fmt.Sprintf("%v", err)
+		m.sendErrorInfo(w, info)
+		return
+	}
 }

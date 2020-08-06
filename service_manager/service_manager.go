@@ -2,7 +2,7 @@ package servicemanager
 
 import (
 	"bytes"
-	"fmt"
+	"net"
 	"os"
 	"time"
 
@@ -96,7 +96,6 @@ func (m *ServiceMgr) GetCurrentTopology(rev service.Revision, cancel service.Can
 	logging.Debugf("%s topology: %#v", logPrefix, topology)
 
 	return topology, nil
-
 }
 
 // PrepareTopologyChange callback for cbauth service.Manager
@@ -107,6 +106,23 @@ func (m *ServiceMgr) PrepareTopologyChange(change service.TopologyChange) error 
 	defer m.mu.Unlock()
 
 	logging.Infof("%s change: %#v", logPrefix, change)
+
+	// refresh cluster info to ensure we use latest
+	hostaddress := net.JoinHostPort(util.Localhost(), m.restPort)
+	cic, err := util.FetchClusterInfoClient(hostaddress)
+	if err != nil {
+		return err
+	}
+	cinfo := cic.GetClusterInfoCache()
+	cinfo.FetchWithLock()
+
+	if change.Type == service.TopologyChangeTypeRebalance {
+		err = m.checkTopologyChangeReadiness(change.Type)
+		if err != nil {
+			logging.Infof("%s failed: %v", logPrefix, err)
+			return err
+		}
+	}
 
 	m.ejectNodeUUIDs = make([]string, 0)
 
@@ -136,8 +152,15 @@ func (m *ServiceMgr) PrepareTopologyChange(change service.TopologyChange) error 
 		m.servers = nodeList
 	})
 
-	m.superSup.NotifyPrepareTopologyChange(m.ejectNodeUUIDs, m.keepNodeUUIDs)
+	logging.Infof("%s m.rebalanceID: %v m.servers: %v", logPrefix, m.rebalanceID, m.servers)
 
+	m.superSup.NotifyPrepareTopologyChange(m.ejectNodeUUIDs, m.keepNodeUUIDs, change.Type)
+
+	if change.Type == service.TopologyChangeTypeFailover {
+		m.SetFailoverStatus(change.ID)
+	}
+
+	logging.Infof("%s completed: %v", logPrefix, err)
 	return nil
 }
 
@@ -175,50 +198,9 @@ func (m *ServiceMgr) StartTopologyChange(change service.TopologyChange) error {
 	switch change.Type {
 	case service.TopologyChangeTypeFailover:
 		util.Retry(util.NewFixedBackoff(time.Second), nil, storeKeepNodesCallback, m.keepNodeUUIDs)
-		m.failoverNotif = true
+		logging.Infof("%s failover completed", logPrefix)
 
 	case service.TopologyChangeTypeRebalance:
-		nodeAddrs, err := m.getActiveNodeAddrs()
-		logging.Infof("%s Active Eventing nodes in the cluster: %rs", logPrefix, nodeAddrs)
-
-		if len(nodeAddrs) > 0 && err == nil {
-
-			logging.Infof("%s Querying nodes: %rs for bootstrap status", logPrefix, nodeAddrs)
-
-			// Fail rebalance if some apps are undergoing bootstrap
-			mhVersion := eventingVerMap["mad-hatter"]
-			if !m.compareEventingVersion(mhVersion) {
-				appsBootstrapping, err := util.GetAggBootstrappingApps("/getBootstrappingApps", nodeAddrs)
-				logging.Infof("%s Status of app bootstrap across all Eventing nodes: %v", logPrefix, appsBootstrapping)
-				if err != nil {
-					logging.Warnf("%s Some apps are deploying or resuming on some or all Eventing nodes, err: %v", logPrefix, err)
-					return err
-				}
-			} else {
-				appsBootstrapStatus, err := util.CheckIfBootstrapOngoing("/getBootstrapStatus", nodeAddrs)
-				logging.Infof("%s Bootstrap status across all Eventing nodes: %v", logPrefix, appsBootstrapStatus)
-				if err != nil {
-					return err
-				}
-				if appsBootstrapStatus {
-					logging.Warnf("%s Some apps are undergoing bootstrap", logPrefix)
-					return fmt.Errorf("Some apps are deploying or resuming on some or all Eventing nodes")
-				}
-
-				appsPausing, err := util.GetAggPausingApps("/getPausingApps", nodeAddrs)
-				logging.Infof("%s Status of pausing apps across all Eventing nodes: %v %v", logPrefix, appsPausing, err)
-				if err != nil {
-					logging.Warnf("%s Some apps are being paused on some or all Eventing nodes, err: %v", logPrefix, err)
-					return err
-				}
-			}
-		}
-
-		if err != nil {
-			logging.Warnf("%s Error encountered while fetching active Eventing nodes, err: %v", logPrefix, err)
-			return fmt.Errorf("failed to get active eventing nodes in the cluster")
-		}
-
 		util.Retry(util.NewFixedBackoff(time.Second), nil, storeKeepNodesCallback, m.keepNodeUUIDs)
 
 		m.startRebalance(change)
@@ -235,3 +217,4 @@ func (m *ServiceMgr) StartTopologyChange(change service.TopologyChange) error {
 
 	return nil
 }
+

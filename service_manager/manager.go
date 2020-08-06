@@ -38,6 +38,7 @@ func NewServiceMgr(config util.Config, rebalanceRunning bool, superSup common.Ev
 		fnsInTempStore:    make(map[string]struct{}),
 		bucketFunctionMap: make(map[string]map[string]functionInfo),
 		fnMu:              &sync.RWMutex{},
+		failoverMu:        &sync.RWMutex{},
 		mu:                mu,
 		servers:           make([]service.NodeID, 0),
 		state: state{
@@ -49,6 +50,7 @@ func NewServiceMgr(config util.Config, rebalanceRunning bool, superSup common.Ev
 		statsWritten: true,
 		stopTracerCh: make(chan struct{}, 1),
 		superSup:     superSup,
+		finch:      make(chan bool),
 	}
 
 	mgr.config.Store(config)
@@ -159,6 +161,7 @@ func (m *ServiceMgr) initService() {
 	mux.HandleFunc("/version", m.getNodeVersion)
 	mux.HandleFunc("/writeDebuggerURL/", m.writeDebuggerURLHandler)
 	mux.HandleFunc("/getKVNodesAddresses", m.getKVNodesAddresses)
+	mux.HandleFunc("/redistributeworkload", m.triggerInternalRebalance)
 
 	// Public REST APIs
 	mux.HandleFunc("/api/v1/status", m.statusHandler)
@@ -281,6 +284,7 @@ func (m *ServiceMgr) initService() {
 			}
 		}
 	}(m)
+	go m.watchFailoverEvents()
 }
 
 func (m *ServiceMgr) primaryStoreChangeCallback(path string, value []byte, rev interface{}) error {
@@ -489,11 +493,6 @@ func (m *ServiceMgr) prepareRebalance(change service.TopologyChange) error {
 
 func (m *ServiceMgr) startRebalance(change service.TopologyChange) error {
 	logPrefix := "ServiceMgr::startRebalance"
-
-	// Reset the failoverNotif flag, which got set to signify failover action on the cluster
-	if m.failoverNotif {
-		m.failoverNotif = false
-	}
 
 	m.rebalanceCtx = &rebalanceContext{
 		change: change,
