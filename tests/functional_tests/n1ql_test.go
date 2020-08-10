@@ -309,3 +309,27 @@ func TestN1QLGraceSufficientTimeOut(t *testing.T) {
 
 	dumpStats()
 }
+
+func TestN1QLQueryConsistency(t *testing.T) {
+	handler := "n1qlquery_consistency"
+	itemCount := 5000
+	flushFunctionAndBucket(handler)
+
+	pumpBucketOpsSrc(opsType{count: itemCount}, "default", &rateLimit{})
+	createAndDeployFunction(handler, handler, &commonSettings{})
+	waitForDeployToFinish(handler)
+
+	defer func() {
+		flushFunctionAndBucket(handler)
+	}()
+
+	eventCount := verifyBucketCount(itemCount, statsLookupRetryCounter, "hello-world")
+	if itemCount != eventCount {
+		t.Error("For", t.Name(),
+			"expected", itemCount,
+			"got", eventCount,
+		)
+	}
+
+	dumpStats()
+}
