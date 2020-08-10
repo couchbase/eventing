@@ -425,6 +425,42 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
     }
   }
 
+  v8::TryCatch try_catch(isolate_);
+  v8::Local<v8::String> script_name = v8Str(isolate_, "N1qlQuery.js");
+  std::string wrapper_function = R"(function N1qlQuery(stmt, params) {
+      this.statement = stmt;
+      this.named = {};
+      this.options = {'consistency': 'none'};
+      if (params) {
+          Object.assign(this.named, params['namedParams']);
+          if (params.hasOwnProperty('consistency'))
+              this.options['consistency'] = params['consistency'];
+          }
+      this.execQuery = function() {
+          let iter = N1QL(this.statement, this.named, this.options);
+          let result = Array.from(iter);
+          iter.close();
+          return result;
+      };
+  })";
+
+  auto wrapper_source = v8::String::NewFromUtf8(isolate_, wrapper_function.c_str());
+  v8::ScriptOrigin origin(script_name);
+  v8::Local<v8::Script> compiled_script;
+
+  if (!TO_LOCAL(v8::Script::Compile(context, wrapper_source, &origin),
+                  &compiled_script)) {
+    assert(try_catch.HasCaught());
+    LOG(logError) << "Exception logged:"
+                  << ExceptionString(isolate_, context, &try_catch)
+                  << std::endl;
+  }
+
+  v8::Local<v8::Value> result_wrapper;
+  if (!TO_LOCAL(compiled_script->Run(context), &result_wrapper)) {
+    LOG(logError) << "Unable to run the injected N1qlQuery script" << std::endl;
+  }
+
   // Spawning terminator thread to monitor the wall clock time for execution
   // of javascript code isn't going beyond max_task_duration
   terminator_thr_ = new std::thread(&V8Worker::TaskDurationWatcher, this);
