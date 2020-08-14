@@ -1721,7 +1721,7 @@ func (m *ServiceMgr) checkRebalanceStatus() (info *runtimeInfo) {
 
 	if rebStatus {
 		logging.Warnf("%s Rebalance or Failover ongoing on some/all Eventing nodes", logPrefix)
-		info.Code = m.statusCodes.errRebOngoing.Code
+		info.Code = m.statusCodes.errRebOrFailoverOngoing.Code
 		info.Info = "Rebalance or Failover processing ongoing on some/all Eventing nodes, creating new functions, deployment or undeployment of existing functions is not allowed"
 		return
 	}

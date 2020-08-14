@@ -72,7 +72,7 @@ type statusCodes struct {
 	errGetConfig              statusBase
 	errGetCreds               statusBase
 	errGetRebStatus           statusBase
-	errRebOngoing             statusBase
+	errRebOrFailoverOngoing   statusBase
 	errActiveEventingNodes    statusBase
 	errInvalidConfig          statusBase
 	errAppCodeSize            statusBase
@@ -156,7 +156,7 @@ func (m *ServiceMgr) getDisposition(code int) int {
 		return http.StatusInternalServerError
 	case m.statusCodes.errGetRebStatus.Code:
 		return http.StatusInternalServerError
-	case m.statusCodes.errRebOngoing.Code:
+	case m.statusCodes.errRebOrFailoverOngoing.Code:
 		return http.StatusNotAcceptable
 	case m.statusCodes.errInvalidConfig.Code:
 		return http.StatusBadRequest
@@ -232,7 +232,7 @@ func (m *ServiceMgr) initErrCodes() {
 		errSaveConfig:             statusBase{"ERR_SAVE_CONFIG", 33},
 		errGetConfig:              statusBase{"ERR_GET_CONFIG", 34},
 		errGetRebStatus:           statusBase{"ERR_GET_REBALANCE_STATUS", 35},
-		errRebOngoing:             statusBase{"ERR_REBALANCE_ONGOING", 36},
+		errRebOrFailoverOngoing:   statusBase{"ERR_REBALANCE_OR_FAILOVER_ONGOING", 36},
 		errActiveEventingNodes:    statusBase{"ERR_FETCHING_ACTIVE_EVENTING_NODES", 37},
 		errInvalidConfig:          statusBase{"ERR_INVALID_CONFIG", 38},
 		errAppCodeSize:            statusBase{"ERR_APPCODE_SIZE", 39},
@@ -424,8 +424,8 @@ func (m *ServiceMgr) initErrCodes() {
 			Description: "Failed to get rebalance status from eventing nodes",
 		},
 		{
-			Name:        m.statusCodes.errRebOngoing.Name,
-			Code:        m.statusCodes.errRebOngoing.Code,
+			Name:        m.statusCodes.errRebOrFailoverOngoing.Name,
+			Code:        m.statusCodes.errRebOrFailoverOngoing.Code,
 			Description: "Rebalance or Failover processing ongoing on some/all Eventing nodes, creating new functions, deployment or undeployment of existing functions is not allowed",
 		},
 		{
