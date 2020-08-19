@@ -1036,8 +1036,6 @@ angular.module('eventing', [
             $state.current.data.title = app.appname;
 
             $scope.aceLoaded = function(editor) {
-                var markers = [],
-                    Range = ace.require('ace/range').Range;
                 // Current line highlight would overlap on the nav bar in compressed mode.
                 // Hence, we need to disable it.
                 editor.setOption("highlightActiveLine", false);
@@ -1052,8 +1050,6 @@ angular.module('eventing', [
                     if (app.compilationInfo && !app.compilationInfo.compile_success) {
                         var line = app.compilationInfo.line_number - 1,
                             col = app.compilationInfo.column_number - 1;
-                        var markerId = editor.session.addMarker(new Range(line, 0, line, Infinity), "", "text");
-                        markers.push(markerId);
                         editor.getSession().setAnnotations([{
                             row: line,
                             column: 0,
@@ -1076,7 +1072,7 @@ angular.module('eventing', [
                                 if (info.error_count > 0) {
                                     msg = info.error_msg;
                                     msg += "\n(errors: " + info.error_count + ")";
-                                    type = "error";
+                                    type = "warning";
                                 } else if (info.last_log.length > 0) {
                                     msg = info.last_log;
                                     type = "info";
@@ -1084,8 +1080,6 @@ angular.module('eventing', [
                                     return;
                                 }
                                 self.codeInsight[srcline] = info;
-                                var id = editor.session.addMarker(new Range(srcline - 1, 0, srcline - 1, Infinity), "", "text");
-                                markers.push(id);
                                 annotations.push({
                                     row: srcline - 1,
                                     column: 0,
@@ -1119,17 +1113,6 @@ angular.module('eventing', [
 
                 $(window).resize(resizeEditor);
                 resizeEditor();
-
-                self.aceEditor = {
-                    clearMarkersAndAnnotations: function() {
-                        var session = editor.getSession();
-                        for (var m of markers) {
-                            session.removeMarker(m);
-                        }
-
-                        markers = [];
-                    }
-                };
             };
 
             $scope.aceChanged = function(e) {
