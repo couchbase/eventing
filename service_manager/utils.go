@@ -679,7 +679,7 @@ func (m *ServiceMgr) watchFailoverEvents() {
 						continue
 					}
 
-					autoRedistributeVbsOnFailover := false
+					autoRedistributeVbsOnFailover := true
 					var ok bool
 					var flag interface{}
 					if flag, ok = config["auto_redistribute_vbs_on_failover"]; ok {
