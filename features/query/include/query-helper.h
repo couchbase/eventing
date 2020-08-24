@@ -38,6 +38,8 @@ public:
   Query::Info CreateQuery(const v8::FunctionCallbackInfo<v8::Value> &args);
   ::Info AccountLCBError(const std::string &err_str);
   void AccountLCBError(int err_code);
+  bool CheckRetriable(int max_retry_count, uint32_t max_retry_secs,
+                      int retry_count, uint32_t start_time);
   void HandleRowError(const Query::Row &row);
   std::string ErrorFormat(const std::string &message, lcb_t connection,
                           lcb_error_t error);

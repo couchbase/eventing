@@ -40,6 +40,9 @@ public:
   void RestoreConnection(lcb_t connection) {
     conn_pool_.RestoreConnection(connection);
   }
+  void RefreshTopConnection() {
+    conn_pool_.RefreshTopConnection();
+  }
 
 private:
   v8::Isolate *isolate_;
