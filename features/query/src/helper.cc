@@ -285,6 +285,18 @@ int Query::Helper::GetConsistency(const std::string &consistency) {
   return LCB_N1P_CONSISTENCY_NONE;
 }
 
+bool Query::Helper::CheckRetriable(int max_retry_count, uint32_t max_retry_secs,
+                                    int retry_count, uint32_t start_time) {
+  if(max_retry_count && max_retry_count <= retry_count) {
+    return false;
+  }
+  auto now = GetUnixTime();
+  if (now - start_time > max_retry_secs) {
+    return false;
+  }
+  return true;
+}
+
 Query::Options::Extractor::Extractor(v8::Isolate *isolate,
                                      const v8::Local<v8::Context> &context)
     : isolate_(isolate) {

@@ -19,9 +19,17 @@ struct Info {
   Info(bool is_fatal) : is_fatal(is_fatal) {}
   Info(bool is_fatal, std::string msg)
       : is_fatal(is_fatal), msg(std::move(msg)) {}
+  Info(bool is_fatal, std::string msg, bool is_retriable)
+      : is_fatal(is_fatal), msg(std::move(msg)),
+        is_retriable(is_retriable) {}
+  Info(bool is_fatal, std::string msg, bool is_retriable, bool is_lcb_special_error)
+      : is_fatal(is_fatal), msg(std::move(msg)),
+        is_retriable(is_retriable), is_lcb_special_error(is_lcb_special_error) {}
 
   bool is_fatal;
   std::string msg;
+  bool is_retriable{false};
+  bool is_lcb_special_error{false};
 };
 
 #endif

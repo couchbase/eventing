@@ -98,7 +98,7 @@ Connection::Info Connection::Pool::GetConnection() {
       if (auto info = CreateConnection(); info.is_fatal) {
         return info;
       } else {
-        pool_.push(info.connection);
+        pool_.push_front(info.connection);
         ++current_size_;
       }
     } else {
@@ -107,18 +107,41 @@ Connection::Info Connection::Pool::GetConnection() {
   }
 
   auto connection = pool_.front();
-  pool_.pop();
+  pool_.pop_front();
   return {connection};
 }
 
-Connection::Pool::~Pool() {
+void Connection::Pool::DestroyAllConnectionsInPoolLocked() {
   while (!pool_.empty()) {
-    lcb_destroy(pool_.front());
-    pool_.pop();
+    auto handle = pool_.front();
+    pool_.pop_front();
+    lcb_destroy(handle);
+    --current_size_;
   }
+}
+
+Connection::Pool::~Pool() {
+  DestroyAllConnectionsInPoolLocked();
 }
 
 void Connection::Pool::RestoreConnection(lcb_t connection) {
   std::lock_guard<std::mutex> lock(pool_sync_);
-  pool_.push(connection);
+  pool_.push_front(connection);
+}
+
+void Connection::Pool::RefreshTopConnection() {
+  std::lock_guard<std::mutex> lock(pool_sync_);
+  if(!pool_.empty()) {
+    auto handle = pool_.front();
+    pool_.pop_front();
+    lcb_destroy(handle);
+    --current_size_;
+
+    if (auto info = CreateConnection(); info.is_fatal) {
+      DestroyAllConnectionsInPoolLocked();
+    } else {
+      pool_.push_front(info.connection);
+      ++current_size_;
+    }
+  }
 }
