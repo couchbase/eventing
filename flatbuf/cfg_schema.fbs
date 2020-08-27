@@ -17,11 +17,17 @@ table DepCfg {
   buckets:[Bucket];
   metadataBucket:string;
   sourceBucket:string;
+  sourceScope:string;
+  sourceCollection:string;
+  metadataScope:string;
+  metadataCollection:string;
 }
 
 table Bucket {
   bucketName:string;
   alias:string;
+  scopeName:string;
+  collectionName:string;
 }
 
 table Curl {
