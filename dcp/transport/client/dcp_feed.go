@@ -33,6 +33,9 @@ var ErrorConnection = errors.New("dcp.connection")
 // ErrorInvalidFeed
 var ErrorInvalidFeed = errors.New("dcp.invalidFeed")
 
+// ErrorEnableCollections
+var ErrorEnableCollections = errors.New("dcp.EnableCollections")
+
 // DcpFeed represents an DCP feed. A feed contains a connection to a single
 // host and multiple vBuckets
 type DcpFeed struct {
@@ -557,16 +560,6 @@ func (feed *DcpFeed) doDcpOpen(
 	opaque uint16,
 	rcvch chan []interface{}) error {
 
-	rq := &transport.MCRequest{
-		Opcode: transport.DCP_OPEN,
-		Key:    []byte(name),
-		Opaque: opaqueOpen,
-	}
-	rq.Extras = make([]byte, 8)
-	flags = flags | openConnFlag | includeDeleteTime
-	binary.BigEndian.PutUint32(rq.Extras[:4], sequence)
-	binary.BigEndian.PutUint32(rq.Extras[4:], flags) // we are consumer
-
 	prefix := feed.logPrefix
 
 	// Enable read deadline at function exit
@@ -579,6 +572,22 @@ func (feed *DcpFeed) doDcpOpen(
 
 	feed.conn.SetMcdConnectionDeadline()
 	defer feed.conn.ResetMcdConnectionDeadline()
+
+	if true /* if collection aware */ {
+		if err := feed.enableCollections(rcvch); err != nil {
+			return err
+		}
+	}
+
+	rq := &transport.MCRequest{
+		Opcode: transport.DCP_OPEN,
+		Key:    []byte(name),
+		Opaque: opaqueOpen,
+	}
+	rq.Extras = make([]byte, 8)
+	flags = flags | openConnFlag | includeDeleteTime
+	binary.BigEndian.PutUint32(rq.Extras[:4], sequence)
+	binary.BigEndian.PutUint32(rq.Extras[4:], flags) // we are consumer
 
 	if err := feed.conn.Transmit(rq); err != nil {
 		return err
@@ -743,6 +752,43 @@ func (feed *DcpFeed) doDcpCloseStream(vbno, opaqueMSB uint16) error {
 		logging.Errorf(fmsg, prefix, opaqueMSB, stream.AppOpaque, err)
 		return err
 	}
+	return nil
+}
+
+func (feed *DcpFeed) enableCollections(rcvch chan []interface{}) error {
+	prefix := feed.logPrefix
+
+	rq := &transport.MCRequest{
+		Opcode: transport.HELO,
+		Key:    []byte(feed.name),
+		Body:   []byte{0x00, transport.FEATURE_COLLECTIONS},
+	}
+	if err := feed.conn.Transmit(rq); err != nil {
+		fmsg := "%v doDcpOpen.Transmit DCP_HELO (feature_collections): %v"
+		logging.Errorf(fmsg, prefix, err)
+		return err
+	}
+	msg, ok := <-rcvch
+	if !ok {
+		fmsg := "%v doDcpOpen.rcvch (feature_collections) closed"
+		logging.Errorf(fmsg, prefix)
+		return ErrorConnection
+	}
+
+	pkt := msg[0].(*transport.MCRequest)
+	opcode, body := pkt.Opcode, pkt.Body
+	if opcode != transport.HELO {
+		fmsg := "%v DCP_HELO (feature_collections) opcode = %v. Expecting opcode = 0x1f"
+		logging.Errorf(fmsg, prefix, opcode)
+		return ErrorEnableCollections
+	} else if (len(body) != 2) || (body[0] != 0x00 && body[1] != transport.FEATURE_COLLECTIONS) {
+		fmsg := "%v DCP_HELO (feature_collections) body = %v. Expecting body = 0x0012"
+		logging.Errorf(fmsg, prefix, opcode)
+		return ErrorEnableCollections
+	}
+
+	fmsg := "%v received response for DCP_HELO (feature_collections)"
+	logging.Infof(fmsg, prefix)
 	return nil
 }
 
