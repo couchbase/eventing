@@ -15,6 +15,7 @@
 #include <unordered_map>
 
 #include "bucket.h"
+#include "bucket_ops.h"
 #include "curl.h"
 #include "insight.h"
 #include "lang_compat.h"
@@ -25,7 +26,6 @@
 #include "timer.h"
 #include "utils.h"
 #include "v8worker.h"
-#include "bucket_ops.h"
 
 bool V8Worker::debugger_started_ = false;
 
@@ -62,10 +62,13 @@ std::atomic<int64_t> timer_callback_missing_counter = {0};
 v8::Local<v8::Object> V8Worker::NewCouchbaseNameSpace() {
   v8::EscapableHandleScope handle_scope(isolate_);
 
-  v8::Local<v8::FunctionTemplate> function_template = v8::FunctionTemplate::New(isolate_);
-  function_template->SetClassName(v8::String::NewFromUtf8(isolate_, "couchbase"));
+  v8::Local<v8::FunctionTemplate> function_template =
+      v8::FunctionTemplate::New(isolate_);
+  function_template->SetClassName(
+      v8::String::NewFromUtf8(isolate_, "couchbase"));
 
-  v8::Local<v8::ObjectTemplate> proto_t = function_template->PrototypeTemplate();
+  v8::Local<v8::ObjectTemplate> proto_t =
+      function_template->PrototypeTemplate();
 
   proto_t->Set(v8::String::NewFromUtf8(isolate_, "get"),
                v8::FunctionTemplate::New(isolate_, BucketOps::GetOp));
@@ -183,8 +186,8 @@ void V8Worker::InitializeIsolateData(const server_settings_t *server_settings,
                                ? 500000
                                : (h_config->execution_timeout - 2) * 1000000);
   data_.op_timeout = h_config->execution_timeout < 5
-                           ? h_config->execution_timeout
-                           : h_config->execution_timeout - 2;
+                         ? h_config->execution_timeout
+                         : h_config->execution_timeout - 2;
   data_.n1ql_consistency =
       Query::Helper::GetConsistency(h_config->n1ql_consistency);
   data_.n1ql_prepare_all = h_config->n1ql_prepare_all;
@@ -210,11 +213,11 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
                    Histogram *curl_latency_stats,
                    const std::string &ns_server_port,
                    const int32_t &num_vbuckets)
-    : app_name_(h_config->app_name), settings_(server_settings), num_vbuckets_(num_vbuckets),
-      latency_stats_(latency_stats), curl_latency_stats_(curl_latency_stats),
-      platform_(platform), function_name_(function_name),
-      function_id_(function_id), user_prefix_(user_prefix),
-      ns_server_port_(ns_server_port),
+    : app_name_(h_config->app_name), settings_(server_settings),
+      num_vbuckets_(num_vbuckets), latency_stats_(latency_stats),
+      curl_latency_stats_(curl_latency_stats), platform_(platform),
+      function_name_(function_name), function_id_(function_id),
+      user_prefix_(user_prefix), ns_server_port_(ns_server_port),
       exception_type_names_(
           {"KVError", "N1QLError", "EventingError", "CurlError", "TypeError"}),
       handler_headers_(h_config->handler_headers),
@@ -281,16 +284,15 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
                << " language compatibility: " << h_config->lang_compat
                << " version: " << EventingVer()
                << " n1ql_prepare_all: " << h_config->n1ql_prepare_all
-               << " num_vbuckets: " << num_vbuckets_
-               << std::endl;
+               << " num_vbuckets: " << num_vbuckets_ << std::endl;
 
   src_path_ = settings_->eventing_dir + "/" + app_name_ + ".t.js";
 
   if (h_config->using_timer) {
     std::vector<int64_t> partitions;
     auto prefix = user_prefix + "::" + function_id;
-    timer_store_ = new timer::TimerStore(isolate_, prefix, partitions,
-                                         config->metadata_bucket, num_vbuckets_);
+    timer_store_ = new timer::TimerStore(
+        isolate_, prefix, partitions, config->metadata_bucket, num_vbuckets_);
   }
   delete config;
   this->worker_queue_ = new BlockingDeque<std::unique_ptr<WorkerMessage>>();
@@ -409,9 +411,10 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
 
   auto global_object = context->Global();
   auto function_template = NewCouchbaseNameSpace();
-  auto result = global_object->Set(context, v8Str(isolate_, "couchbase"), function_template);
+  auto result = global_object->Set(context, v8Str(isolate_, "couchbase"),
+                                   function_template);
 
-  if(!result.FromJust()) {
+  if (!result.FromJust()) {
     LOG(logInfo) << "Failed to set the global namespace couchbase" << std::endl;
     return kToLocalFailed;
   }
@@ -486,12 +489,13 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
       };
   })";
 
-  auto wrapper_source = v8::String::NewFromUtf8(isolate_, wrapper_function.c_str());
+  auto wrapper_source =
+      v8::String::NewFromUtf8(isolate_, wrapper_function.c_str());
   v8::ScriptOrigin origin(script_name);
   v8::Local<v8::Script> compiled_script;
 
   if (!TO_LOCAL(v8::Script::Compile(context, wrapper_source, &origin),
-                  &compiled_script)) {
+                &compiled_script)) {
     assert(try_catch.HasCaught());
     LOG(logError) << "Exception logged:"
                   << ExceptionString(isolate_, context, &try_catch)
@@ -746,6 +750,20 @@ int V8Worker::SendUpdate(const std::string &value, const std::string &meta) {
     return kToLocalFailed;
   }
 
+  auto js_meta = args[1].As<v8::Object>();
+  auto dcp_expiry =
+      js_meta->Get(v8Str(isolate_, "expiration"))->ToNumber(context);
+  if (!dcp_expiry.IsEmpty()) {
+    auto expiry = dcp_expiry.ToLocalChecked()->Value() * 1000;
+    if (expiry != 0) {
+      auto js_expiry = v8::Date::New(isolate_, expiry);
+      auto r = js_meta->Set(context, v8Str(isolate_, "expiry_date"), js_expiry);
+      if (!r.FromMaybe(true)) {
+        LOG(logWarning) << "Create expiry_date failed in OnUpdate" << std::endl;
+      }
+    }
+  }
+
   if (on_update_.IsEmpty()) {
     UpdateHistogram(start_time);
     return kOnUpdateCallFail;
@@ -812,6 +830,21 @@ int V8Worker::SendDelete(const std::string &options, const std::string &meta) {
 
   if (!TO_LOCAL(v8::JSON::Parse(context, v8Str(isolate_, options)), &args[1])) {
     return kToLocalFailed;
+  }
+
+  // DCP always sends 0 as expiration. Until that changes, below won't run
+  auto js_meta = args[0].As<v8::Object>();
+  auto dcp_expiry =
+      js_meta->Get(v8Str(isolate_, "expiration"))->ToNumber(context);
+  if (!dcp_expiry.IsEmpty()) {
+    auto expiry = dcp_expiry.ToLocalChecked()->Value() * 1000;
+    if (expiry != 0) {
+      auto js_expiry = v8::Date::New(isolate_, expiry);
+      auto r = js_meta->Set(context, v8Str(isolate_, "expiry_date"), js_expiry);
+      if (!r.FromMaybe(true)) {
+        LOG(logWarning) << "Create expiry_date failed in OnDelete" << std::endl;
+      }
+    }
   }
 
   if (on_delete_.IsEmpty()) {
@@ -968,7 +1001,8 @@ void V8Worker::PushBack(std::unique_ptr<WorkerMessage> worker_msg) {
   worker_queue_->PushBack(std::move(worker_msg));
 }
 
-CompilationInfo V8Worker::CompileHandler(std::string area_name, std::string handler) {
+CompilationInfo V8Worker::CompileHandler(std::string area_name,
+                                         std::string handler) {
   v8::Locker locker(isolate_);
   v8::Isolate::Scope isolate_scope(isolate_);
   v8::HandleScope handle_scope(isolate_);
@@ -1020,7 +1054,7 @@ std::string V8Worker::Compile(std::string handler) {
   }
   CompilationInfo info = CompileHandler("handlerHeaders", header_code);
 
-  if(!info.compile_success) {
+  if (!info.compile_success) {
     return CompileInfoToString(info);
   }
 
@@ -1031,12 +1065,12 @@ std::string V8Worker::Compile(std::string handler) {
   }
   info = CompileHandler("handlerFooters", footer_code);
 
-  if(!info.compile_success) {
+  if (!info.compile_success) {
     return CompileInfoToString(info);
   }
   auto appCode = AddHeadersAndFooters(handler);
   info = CompileHandler("handlerCode", appCode);
-  if(!info.compile_success) {
+  if (!info.compile_success) {
     info.index -= header_index_length;
     info.line_no -= handler_headers_.size();
   }
@@ -1230,13 +1264,15 @@ std::unordered_set<int64_t> V8Worker::GetPartitions() const {
 
 lcb_error_t V8Worker::SetTimer(timer::TimerInfo &tinfo) {
   if (timer_store_)
-    return timer_store_->SetTimer(tinfo, data_.lcb_retry_count, data_.op_timeout);
+    return timer_store_->SetTimer(tinfo, data_.lcb_retry_count,
+                                  data_.op_timeout);
   return LCB_SUCCESS;
 }
 
 lcb_error_t V8Worker::DelTimer(timer::TimerInfo &tinfo) {
   if (timer_store_)
-    return timer_store_->DelTimer(tinfo, data_.lcb_retry_count, data_.op_timeout);
+    return timer_store_->DelTimer(tinfo, data_.lcb_retry_count,
+                                  data_.op_timeout);
   return LCB_SUCCESS;
 }
 
