@@ -1727,127 +1727,6 @@ func TestBucketDeleteWithRebOut(t *testing.T) {
 	}
 }
 
-func TestOnDeleteExpiryBucketOp(t *testing.T) {
-	functionName := t.Name()
-	extraExpired := 2000
-	deletedItems := 1000
-
-	log.Printf("Sleeping for some time")
-	time.Sleep(5 * time.Second)
-	handler := "bucket_op_on_delete_expiry"
-	flushFunctionAndBucket(functionName)
-	createAndDeployFunction(functionName, handler, &commonSettings{})
-
-	// verify for expiry events only
-	pumpBucketOps(opsType{expiry: 30}, &rateLimit{})
-	time.Sleep(40 * time.Second)
-	fireQuery("SELECT * FROM default")
-
-	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
-
-	if itemCount != eventCount {
-		t.Error("For", "OnDeleteExpiryBucketOp",
-			"expected", itemCount,
-			"got", eventCount,
-		)
-	}
-
-	rl := &rateLimit{
-		limit:   true,
-		opsPSec: 100,
-		count:   extraExpired,
-	}
-
-	pumpBucketOps(opsType{delete: true, count: deletedItems, startIndex: itemCount + 1}, &rateLimit{})
-	pumpBucketOps(opsType{expiry: 30, count: extraExpired, startIndex: 3 * itemCount}, rl)
-	time.Sleep(40 * time.Second)
-
-	fireQuery("SELECT * FROM default")
-	totalItems := extraExpired + itemCount
-	eventCount = verifyBucketOps(totalItems, statsLookupRetryCounter)
-
-	if totalItems != eventCount {
-		t.Error("For", "OnDeleteExpiryBucketOp",
-			"expected", itemCount,
-			"got", eventCount,
-		)
-	}
-
-	dumpStats()
-	flushFunctionAndBucket(functionName)
-}
-func TestTimerOverWriteSameReference(t *testing.T) {
-	functionName := t.Name()
-	addedItems := 1000
-	expectedItems := 1
-
-	jsFileName := "bucket_op_timer_ow_same_ref"
-	flushFunctionAndBucket(functionName)
-	createAndDeployFunction(functionName, jsFileName, &commonSettings{})
-	waitForDeployToFinish(functionName)
-
-	itemCountB, err := getBucketItemCount(metaBucket)
-	if err != nil {
-		log.Printf("Encountered err: %v while fetching item count from meta bucket: %s\n", err, metaBucket)
-		return
-	}
-
-	pumpBucketOps(opsType{count: addedItems}, &rateLimit{})
-
-	time.Sleep(60 * time.Second)
-
-	eventCount := verifyBucketOps(expectedItems, statsLookupRetryCounter)
-
-	if expectedItems != eventCount {
-		t.Error("For", "TestTimerOverWriteSameReference",
-			"expected", expectedItems,
-			"got", eventCount,
-		)
-	}
-
-	itemCountA, err := getBucketItemCount(metaBucket)
-	if err != nil {
-		log.Printf("Encountered err: %v while fetching item count from meta bucket: %s\n", err, metaBucket)
-		return
-	}
-
-	if itemCountB != itemCountA {
-		t.Error("Expected", itemCountB, "got", itemCountA)
-	}
-
-	dumpStats()
-	flushFunctionAndBucket(functionName)
-}
-func TestCancelTimerBucketop(t *testing.T) {
-	functionName := t.Name()
-	addedItems := 2000
-	deletedItems := 1000
-
-	jsFileName := "bucket_op_cancel_timer"
-	flushFunctionAndBucket(functionName)
-	createAndDeployFunction(functionName, jsFileName, &commonSettings{})
-	waitForDeployToFinish(functionName)
-
-	pumpBucketOps(opsType{count: addedItems}, &rateLimit{})
-	time.Sleep(5 * time.Second)
-
-	pumpBucketOps(opsType{delete: true, count: deletedItems}, &rateLimit{})
-	time.Sleep(60 * time.Second)
-
-	expectedItems := addedItems - deletedItems
-	eventCount := verifyBucketOps(expectedItems, statsLookupRetryCounter)
-
-	if expectedItems != eventCount {
-		t.Error("For", "TestCancelTimerBucketop",
-			"expected", expectedItems,
-			"got", eventCount,
-		)
-	}
-
-	dumpStats()
-	flushFunctionAndBucket(functionName)
-}
-
 func TestN1QLRecursion(t *testing.T) {
 
 	rsp, err := addNodeFromRest("http://127.0.0.1:9003", "eventing")
@@ -2037,4 +1916,157 @@ func TestN1QLAllowRecursion(t *testing.T) {
 	}
 
 	log.Printf("Success: %s is deployed after allow_interbucket_recursion", functionName2)
+}
+
+func TestOnDeleteExpiryBucketOp(t *testing.T) {
+	functionName := t.Name()
+	extraExpired := 2000
+	deletedItems := 1000
+
+	log.Printf("Sleeping for some time")
+	time.Sleep(5 * time.Second)
+	handler := "bucket_op_on_delete_expiry"
+	flushFunctionAndBucket(functionName)
+	createAndDeployFunction(functionName, handler, &commonSettings{})
+
+	// verify for expiry events only
+	pumpBucketOps(opsType{expiry: 30}, &rateLimit{})
+	time.Sleep(40 * time.Second)
+	fireQuery("SELECT * FROM default")
+
+	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
+
+	if itemCount != eventCount {
+		t.Error("For", "OnDeleteExpiryBucketOp",
+			"expected", itemCount,
+			"got", eventCount,
+		)
+	}
+
+	rl := &rateLimit{
+		limit:   true,
+		opsPSec: 100,
+		count:   extraExpired,
+	}
+
+	pumpBucketOps(opsType{delete: true, count: deletedItems, startIndex: itemCount + 1}, &rateLimit{})
+	pumpBucketOps(opsType{expiry: 30, count: extraExpired, startIndex: 3 * itemCount}, rl)
+	time.Sleep(40 * time.Second)
+
+	fireQuery("SELECT * FROM default")
+	totalItems := extraExpired + itemCount
+	eventCount = verifyBucketOps(totalItems, statsLookupRetryCounter)
+
+	if totalItems != eventCount {
+		t.Error("For", "OnDeleteExpiryBucketOp",
+			"expected", itemCount,
+			"got", eventCount,
+		)
+	}
+
+	dumpStats()
+	flushFunctionAndBucket(functionName)
+}
+
+func TestTimerOverWriteSameReference(t *testing.T) {
+	functionName := t.Name()
+	addedItems := 1000
+	expectedItems := 1
+
+	jsFileName := "bucket_op_timer_ow_same_ref"
+	flushFunctionAndBucket(functionName)
+	createAndDeployFunction(functionName, jsFileName, &commonSettings{})
+	waitForDeployToFinish(functionName)
+
+	itemCountB, err := getBucketItemCount(metaBucket)
+	if err != nil {
+		log.Printf("Encountered err: %v while fetching item count from meta bucket: %s\n", err, metaBucket)
+		return
+	}
+
+	pumpBucketOps(opsType{count: addedItems}, &rateLimit{})
+
+	time.Sleep(60 * time.Second)
+
+	eventCount := verifyBucketOps(expectedItems, statsLookupRetryCounter)
+
+	if expectedItems != eventCount {
+		t.Error("For", "TestTimerOverWriteSameReference",
+			"expected", expectedItems,
+			"got", eventCount,
+		)
+	}
+
+	itemCountA, err := getBucketItemCount(metaBucket)
+	if err != nil {
+		log.Printf("Encountered err: %v while fetching item count from meta bucket: %s\n", err, metaBucket)
+		return
+	}
+
+	if itemCountB != itemCountA {
+		t.Error("Expected", itemCountB, "got", itemCountA)
+	}
+
+	dumpStats()
+	flushFunctionAndBucket(functionName)
+}
+
+func TestCancelTimerBucketop(t *testing.T) {
+	functionName := t.Name()
+	addedItems := 2000
+	deletedItems := 1000
+
+	jsFileName := "bucket_op_cancel_timer"
+	flushFunctionAndBucket(functionName)
+	createAndDeployFunction(functionName, jsFileName, &commonSettings{})
+	waitForDeployToFinish(functionName)
+
+	pumpBucketOps(opsType{count: addedItems}, &rateLimit{})
+	time.Sleep(5 * time.Second)
+
+	pumpBucketOps(opsType{delete: true, count: deletedItems}, &rateLimit{})
+	time.Sleep(60 * time.Second)
+
+	expectedItems := addedItems - deletedItems
+	eventCount := verifyBucketOps(expectedItems, statsLookupRetryCounter)
+
+	if expectedItems != eventCount {
+		t.Error("For", "TestCancelTimerBucketop",
+			"expected", expectedItems,
+			"got", eventCount,
+		)
+	}
+
+	dumpStats()
+	flushFunctionAndBucket(functionName)
+}
+
+func TestJSExpiryDate(t *testing.T) {
+	functionName := t.Name()
+	itemCount := 5000
+	time.Sleep(time.Second * 5)
+
+	pumpBucketOps(opsType{count: itemCount, expiry: 2147483640}, &rateLimit{})
+	eventCount := verifySourceBucketOps(itemCount, statsLookupRetryCounter)
+	if eventCount != itemCount {
+		t.Error("For", "TestJSExpiryDate",
+			"pumped", itemCount,
+			"seen", eventCount,
+		)
+	}
+
+	handler := "expiry_jsdate"
+	flushFunctionAndBucket(functionName)
+	createAndDeployFunction(functionName, handler, &commonSettings{srcMutationEnabled: true})
+
+	eventCount = verifySourceBucketOps(0, statsLookupRetryCounter)
+	if eventCount != 0 {
+		t.Error("For", "TestJSExpiryDate",
+			"expected", 0,
+			"got", eventCount,
+		)
+	}
+
+	dumpStats()
+	flushFunctionAndBucket(functionName)
 }

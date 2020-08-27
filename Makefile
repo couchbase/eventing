@@ -51,7 +51,7 @@ libs:=\
 	-lresolv
 
 cflags:=\
-	-DYY_NEVER_INTERACTIVE -DYY_NO_UNPUT -DYY_NO_INPUT -DENTERPRISE \
+	-DENTERPRISE \
 	-Wl,-rpath,'@executable_path/../lib' \
 	-Wl,-rpath,'$(top)/install/lib'
 
