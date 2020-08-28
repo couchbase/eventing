@@ -19,6 +19,7 @@ import (
 	"sync/atomic"
 	"unsafe"
 
+	"github.com/couchbase/eventing/common/collections"
 	"github.com/couchbase/eventing/dcp/transport/client"
 	"github.com/couchbase/eventing/logging"
 )
@@ -81,6 +82,7 @@ type Node struct {
 type Pool struct {
 	BucketMap map[string]Bucket
 	Nodes     []Node
+	Manifest  map[string]*collections.CollectionManifest
 
 	BucketURL       map[string]string `json:"buckets"`
 	ServerGroupsUri string            `json:"serverGroupsUri"`
@@ -557,6 +559,7 @@ func (b *Bucket) init(nb *Bucket) {
 
 func (p *Pool) refresh() (err error) {
 	p.BucketMap = make(map[string]Bucket)
+	p.Manifest = make(map[string]*collections.CollectionManifest)
 
 loop:
 	buckets := []Bucket{}
@@ -579,6 +582,19 @@ loop:
 		b.pool = p
 		b.init(nb)
 		p.BucketMap[b.Name] = b
+		manifest := &collections.CollectionManifest{}
+		err = p.client.parseURLResponse("pools/default/buckets/"+b.Name+"/collections", manifest)
+		if err != nil {
+			// bucket list is out of sync with cluster bucket list
+			// bucket might have got deleted.
+			if strings.Contains(err.Error(), "HTTP error 404") {
+				logging.Warnf("cluster_info: Out of sync for bucket %s. Retrying..", b.Name)
+				goto loop
+			}
+			return err
+		}
+		p.Manifest[b.Name] = manifest
+
 	}
 	return nil
 }
@@ -659,6 +675,13 @@ func (p *Pool) GetBucket(name string) (*Bucket, error) {
 	}
 	runtime.SetFinalizer(&rv, bucketFinalizer)
 	return &rv, nil
+}
+
+func (p *Pool) GetCollectionID(bucket, scope, collection string) (uint32, error) {
+	if manifest, ok := p.Manifest[bucket]; ok {
+		return manifest.GetCollectionID(scope, collection)
+	}
+	return 0, collections.COLLECTION_ID_NIL
 }
 
 // GetPool gets the pool to which this bucket belongs.

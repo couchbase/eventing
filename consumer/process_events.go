@@ -73,6 +73,9 @@ func (c *Consumer) processDCPEvents() {
 
 			switch e.Opcode {
 			case mcd.DCP_MUTATION:
+				if c.collectionID != e.CollectionID {
+					continue
+				}
 
 				c.filterVbEventsRWMutex.RLock()
 				if _, ok := c.filterVbEvents[e.VBucket]; ok {
@@ -111,6 +114,9 @@ func (c *Consumer) processDCPEvents() {
 				}
 
 			case mcd.DCP_DELETION:
+				if c.collectionID != e.CollectionID {
+					continue
+				}
 
 				c.filterVbEventsRWMutex.RLock()
 				if _, ok := c.filterVbEvents[e.VBucket]; ok {
@@ -126,6 +132,9 @@ func (c *Consumer) processDCPEvents() {
 				}
 
 			case mcd.DCP_EXPIRATION:
+				if c.collectionID != e.CollectionID {
+					continue
+				}
 
 				c.filterVbEventsRWMutex.RLock()
 				if _, ok := c.filterVbEvents[e.VBucket]; ok {
