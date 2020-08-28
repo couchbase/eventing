@@ -20,13 +20,13 @@ var commonConnectBucketOpCallback = func(args ...interface{}) error {
 	hostPortAddr := net.JoinHostPort(util.Localhost(), p.GetNsServerPort())
 
 	var err error
-	*b, err = util.ConnectBucket(hostPortAddr, "default", p.metadatabucket)
+	*b, err = util.ConnectBucket(hostPortAddr, "default", p.metadataKeyspace.BucketName)
 	if err != nil {
 		logging.Errorf("%s [%s:%d] Connect to bucket: %s failed, err: %v",
-			logPrefix, p.appName, p.LenRunningConsumers(), p.metadatabucket, err)
+			logPrefix, p.appName, p.LenRunningConsumers(), p.metadataKeyspace.BucketName, err)
 	} else {
 		logging.Infof("%s [%s:%d] Connected to bucket: %s",
-			logPrefix, p.appName, p.LenRunningConsumers(), p.metadatabucket)
+			logPrefix, p.appName, p.LenRunningConsumers(), p.metadataKeyspace.BucketName)
 	}
 
 	return err
@@ -65,14 +65,14 @@ var cleanupMetadataCallback = func(args ...interface{}) error {
 	(*b), err = p.superSup.GetBucket((*b).Name)
 	if err != nil {
 		logging.Errorf("%s [%s:%d] Failed to refresh vb map for bucket: %s, err: %v",
-			logPrefix, p.appName, p.LenRunningConsumers(), p.metadatabucket, err)
+			logPrefix, p.appName, p.LenRunningConsumers(), p.metadataKeyspace.BucketName, err)
 		return err
 	}
 
 	*dcpFeed, err = (*b).StartDcpFeedOver(feedName, uint32(0), 0, kvNodeAddrs, 0xABCD, p.dcpConfig)
 	if err != nil {
 		logging.Errorf("%s [%s:%d] Failed to start dcp feed for bucket: %s, err: %v",
-			logPrefix, p.appName, p.LenRunningConsumers(), p.metadatabucket, err)
+			logPrefix, p.appName, p.LenRunningConsumers(), p.metadataKeyspace.BucketName, err)
 	}
 
 	return err
@@ -89,7 +89,7 @@ var dcpGetSeqNosCallback = func(args ...interface{}) error {
 	*vbSeqNos, err = (*dcpFeed).DcpGetSeqnos()
 	if err != nil {
 		logging.Errorf("%s [%s:%d] Failed to get dcp seqnos for metadata bucket: %s, err: %v",
-			logPrefix, p.appName, p.LenRunningConsumers(), p.metadatabucket, err)
+			logPrefix, p.appName, p.LenRunningConsumers(), p.metadataKeyspace.BucketName, err)
 	}
 
 	return err
@@ -132,15 +132,15 @@ var gocbConnectMetaBucketCallback = func(args ...interface{}) error {
 		return err
 	}
 
-	p.metadataBucketHandle, err = cluster.OpenBucket(p.metadatabucket, "")
+	p.metadataBucketHandle, err = cluster.OpenBucket(p.metadataKeyspace.BucketName, "")
 	if err != nil {
 		logging.Errorf("%s [%s:%d] Failed to connect to bucket %s, err: %v",
-			logPrefix, p.appName, p.LenRunningConsumers(), p.metadatabucket, err)
+			logPrefix, p.appName, p.LenRunningConsumers(), p.metadataKeyspace.BucketName, err)
 		return err
 	}
 
 	logging.Infof("%s [%s:%d] Connected to metadata bucket %s connStr: %s",
-		logPrefix, p.appName, p.LenRunningConsumers(), p.metadatabucket, connStr)
+		logPrefix, p.appName, p.LenRunningConsumers(), p.metadataKeyspace.BucketName, connStr)
 
 	return nil
 }
@@ -282,7 +282,7 @@ var deleteOpCallback = func(args ...interface{}) error {
 		// Hence checking for it during routines called during undeploy
 		hostAddress := net.JoinHostPort(util.Localhost(), p.GetNsServerPort())
 
-		metaBucketNodeCount := util.CountActiveKVNodes(p.metadatabucket, hostAddress)
+		metaBucketNodeCount := util.CountActiveKVNodes(p.metadataKeyspace.BucketName, hostAddress)
 		if metaBucketNodeCount == 0 {
 			logging.Infof("%s [%s:%d] MetaBucketNodeCount: %d returning",
 				logPrefix, p.appName, p.LenRunningConsumers(), metaBucketNodeCount)

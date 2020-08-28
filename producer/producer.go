@@ -67,6 +67,7 @@ func NewProducer(appName, debuggerPort, eventingPort, eventingSSLPort, eventingD
 		workerNameConsumerMap:        make(map[string]common.EventingConsumer),
 		workerNameConsumerMapRWMutex: &sync.RWMutex{},
 		workerVbMapRWMutex:           &sync.RWMutex{},
+		metadataKeyspace:             &common.Keyspace{},
 		handlerConfig:                &common.HandlerConfig{},
 		processConfig:                &common.ProcessConfig{},
 		rebalanceConfig:              &common.RebalanceConfig{},
@@ -920,7 +921,7 @@ func (p *Producer) pollForDeletedVbs() {
 			hostAddress := net.JoinHostPort(util.Localhost(), p.GetNsServerPort())
 
 			srcBucketNodeCount := util.CountActiveKVNodes(p.handlerConfig.SourceBucket, hostAddress)
-			metaBucketNodeCount := util.CountActiveKVNodes(p.metadatabucket, hostAddress)
+			metaBucketNodeCount := util.CountActiveKVNodes(p.metadataKeyspace.BucketName, hostAddress)
 			skipMetaCleanup := (metaBucketNodeCount == 0)
 
 			if srcBucketNodeCount == 0 {

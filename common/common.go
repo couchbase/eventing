@@ -30,6 +30,12 @@ type InsightLine struct {
 	LastLog        string  `json:"last_log"`
 }
 
+type Keyspace struct {
+	BucketName     string
+	ScopeName      string
+	CollectionName string
+}
+
 type Insight struct {
 	Script string              `json:"script"`
 	Lines  map[int]InsightLine `json:"lines"`

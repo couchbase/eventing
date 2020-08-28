@@ -60,7 +60,7 @@ type Producer struct {
 	firstRebalanceDone     bool
 	kvPort                 string
 	kvHostPorts            []string
-	metadatabucket         string
+	metadataKeyspace       *common.Keyspace
 	metadataBucketHandle   *gocb.Bucket
 	metakvAppHostPortsPath string
 	nsServerPort           string

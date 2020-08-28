@@ -68,7 +68,9 @@ func (p *Producer) parseDepcfg() error {
 
 	p.handlerConfig.SourceBucket = string(depcfg.SourceBucket())
 	p.cfgData = string(cfgData)
-	p.metadatabucket = string(depcfg.MetadataBucket())
+	p.metadataKeyspace.BucketName = string(depcfg.MetadataBucket())
+	p.metadataKeyspace.ScopeName = string(depcfg.MetadataScope())
+	p.metadataKeyspace.CollectionName = string(depcfg.MetadataCollection())
 
 	settingsPath := metakvAppSettingsPath + p.appName
 	sData, sErr := util.MetakvGet(settingsPath)
