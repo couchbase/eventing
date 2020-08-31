@@ -172,12 +172,9 @@ type application struct {
 	DeploymentConfig   depCfg                 `json:"depcfg"`
 	EventingVersion    string                 `json:"version"`
 	FunctionID         uint32                 `json:"handleruuid"`
-	ID                 int                    `json:"id"`
 	FunctionInstanceID string                 `json:"function_instance_id"`
 	Name               string                 `json:"appname"`
 	Settings           map[string]interface{} `json:"settings"`
-	UsingTimer         bool                   `json:"using_timer"`
-	SrcMutationEnabled bool                   `json:"src_mutation"`
 }
 
 type depCfg struct {

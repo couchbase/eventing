@@ -5,10 +5,10 @@ table Config {
   appName:string;
   depCfg:DepCfg;
   handlerUUID:uint;
-  id:uint;
-  usingTimer:bool;
+  reserved1:uint; // was id
+  reserved2:bool; // was usingTimer
   functionInstanceID:string;
-  srcMutationEnabled:bool;
+  reserved3:bool; // was srcMutationEnabled
   access:[string];
   curl:[Curl];
 }

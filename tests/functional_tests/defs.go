@@ -73,7 +73,6 @@ const (
 	executeTimerRoutineCount = 3
 	lcbCap                   = 5
 	sockBatchSize            = 1
-	timerStorageRoutineCount = 3
 	workerCount              = 3
 
 	deadlineTimeout  = 6
@@ -102,7 +101,6 @@ type application struct {
 	AppHandlers      string                 `json:"appcode"`
 	DeploymentConfig depCfg                 `json:"depcfg"`
 	Name             string                 `json:"appname"`
-	ID               int                    `json:"id"`
 	Version          string                 `json:"version"`
 	Settings         map[string]interface{} `json:"settings"`
 }
@@ -125,7 +123,6 @@ type commonSettings struct {
 	aliasSources             []string
 	curlBindings             []common.Curl
 	batchSize                int
-	cleanupTimers            bool
 	deadlineTimeout          int
 	executeTimerRoutineCount int
 	executionTimeout         int
@@ -136,7 +133,6 @@ type commonSettings struct {
 	sourceBucket             string
 	streamBoundary           string
 	thrCount                 int
-	timerStorageRoutineCount int
 	undeployedState          bool
 	workerCount              int
 	srcMutationEnabled       bool

@@ -91,7 +91,7 @@ func (c *Consumer) processDCPEvents() {
 					c.sendEvent(e)
 				case dcpDatatypeJSONXattr:
 					xattrLen := binary.BigEndian.Uint32(e.Value[0:4])
-					if c.app.SrcMutationEnabled {
+					if c.producer.SrcMutation() {
 						if isRecursive, err := c.isRecursiveDCPEvent(e, functionInstanceID); err == nil && isRecursive == true {
 							c.suppressedDCPMutationCounter++
 						} else {
@@ -481,7 +481,7 @@ func (c *Consumer) startDcp(flogs couchbase.FailoverLog) error {
 			}
 			vbBlob.OwnershipHistory = append(vbBlob.OwnershipHistory, entry)
 
-			if (c.dcpStreamBoundary == common.DcpFromNow) {
+			if c.dcpStreamBoundary == common.DcpFromNow {
 				vbBlob.LastSeqNoProcessed = vbSeqnos[int(vb)]
 			}
 
@@ -1357,7 +1357,7 @@ func (c *Consumer) processAndSendDcpDelOrExpMessage(e *cb.DcpEvent, functionInst
 	switch e.Datatype {
 	case uint8(includeXATTRs):
 		xattrLen := binary.BigEndian.Uint32(e.Value[0:4])
-		if c.app.SrcMutationEnabled && checkRecursiveEvent {
+		if c.producer.SrcMutation() && checkRecursiveEvent {
 			if isRecursive, err := c.isRecursiveDCPEvent(e, functionInstanceID); err == nil && isRecursive == true {
 				return false
 			}

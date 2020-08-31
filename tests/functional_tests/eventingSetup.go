@@ -168,6 +168,11 @@ func createAndDeployLargeFunction(appName, hFileName string, settings *commonSet
 		return
 	}
 
+	err = ValidateHandlerSchema(data)
+	if err != nil {
+		panic(fmt.Sprintf("handler failed schema: %v, data: %s", err, data))
+	}
+
 	storeResponse = postToEventingEndpoint("Post to main store", functionsURL+"/"+appName, data)
 	return
 }
@@ -197,7 +202,6 @@ func createFunction(deploymentStatus, processingStatus bool, id int, s *commonSe
 	dcfg.SourceBucket = sourceBucket
 
 	var app application
-	app.ID = id
 	app.Name = appName
 	app.Version = "evt-6.5.0-0000-ee"
 	app.AppHandlers = handlerCode
@@ -220,18 +224,6 @@ func createFunction(deploymentStatus, processingStatus bool, id int, s *commonSe
 		settings["sock_batch_size"] = sockBatchSize
 	} else {
 		settings["sock_batch_size"] = s.batchSize
-	}
-
-	if s.executeTimerRoutineCount == 0 {
-		settings["execute_timer_routine_count"] = executeTimerRoutineCount
-	} else {
-		settings["execute_timer_routine_count"] = s.executeTimerRoutineCount
-	}
-
-	if s.timerStorageRoutineCount == 0 {
-		settings["timer_storage_routine_count"] = timerStorageRoutineCount
-	} else {
-		settings["timer_storage_routine_count"] = s.timerStorageRoutineCount
 	}
 
 	if s.workerCount == 0 {
@@ -288,7 +280,6 @@ func createFunction(deploymentStatus, processingStatus bool, id int, s *commonSe
 	settings["deployment_status"] = deploymentStatus
 	settings["description"] = "Sample app"
 	settings["user_prefix"] = "eventing"
-	settings["breakpad_on"] = false
 
 	app.Settings = settings
 
@@ -340,8 +331,6 @@ func setSettings(fnName string, deploymentStatus, processingStatus bool, s *comm
 		settings["lcb_inst_capacity"] = s.lcbInstCap
 	}
 
-	settings["cleanup_timers"] = s.cleanupTimers
-
 	if s.n1qlConsistency == "" {
 		settings["n1ql_consistency"] = n1qlConsistency
 	} else {
@@ -352,6 +341,11 @@ func setSettings(fnName string, deploymentStatus, processingStatus bool, s *comm
 	if err != nil {
 		log.Println("Undeploy json marshal:", err)
 		return res, err
+	}
+
+	err = ValidateSettingsSchema(data)
+	if err != nil {
+		panic(fmt.Sprintf("settings failed schema: %v, data: %s", err, data))
 	}
 
 	req, err := http.NewRequest("POST", functionsURL+"/"+fnName+"/settings", bytes.NewBuffer(data))

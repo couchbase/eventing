@@ -50,7 +50,7 @@ func NewServiceMgr(config util.Config, rebalanceRunning bool, superSup common.Ev
 		statsWritten: true,
 		stopTracerCh: make(chan struct{}, 1),
 		superSup:     superSup,
-		finch:      make(chan bool),
+		finch:        make(chan bool),
 	}
 
 	mgr.config.Store(config)
@@ -334,7 +334,7 @@ func (m *ServiceMgr) primaryStoreChangeCallback(path string, value []byte, rev i
 			m.bucketFunctionMap[app.DeploymentConfig.SourceBucket] = functions
 		}
 		funtionType := "notsbm"
-		if app.SrcMutationEnabled {
+		if m.isSrcMutationEnabled(&app.DeploymentConfig) {
 			funtionType = "sbm"
 		}
 

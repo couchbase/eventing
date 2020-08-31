@@ -158,6 +158,10 @@ func TestImportExport(t *testing.T) {
 		t.Errorf("Unable to export Functions %v, err : %v\n", exportFunctionsURL, err)
 		return
 	}
+	err = ValidateHandlerListSchema(exportResponse)
+	if err != nil {
+		t.Errorf("Unable to validate export: %v, data: %s", err, exportResponse)
+	}
 
 	flushFunction(functionName1)
 	flushFunction(functionName2)
@@ -175,6 +179,11 @@ func TestImportExport(t *testing.T) {
 	if err != nil {
 		t.Errorf("Unable to list Functions err : %v\n", err)
 		return
+	}
+
+	err = ValidateHandlerListSchema(response)
+	if err != nil {
+		t.Errorf("Unable to validate re-export: %v, data: %s", err, exportResponse)
 	}
 
 	var functionsList []map[string]interface{}

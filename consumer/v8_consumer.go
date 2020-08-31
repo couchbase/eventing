@@ -41,7 +41,6 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		cbBucketRWMutex:                 &sync.RWMutex{},
 		checkpointInterval:              time.Duration(hConfig.CheckpointInterval) * time.Millisecond,
 		idleCheckpointInterval:          time.Duration(hConfig.IdleCheckpointInterval) * time.Millisecond,
-		cleanupTimers:                   hConfig.CleanupTimers,
 		clusterStateChangeNotifCh:       make(chan struct{}, ClusterChangeNotifChBufSize),
 		connMutex:                       &sync.RWMutex{},
 		controlRoutineWg:                &sync.WaitGroup{},
@@ -110,7 +109,6 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		timerContextSize:                hConfig.TimerContextSize,
 		updateStatsTicker:               time.NewTicker(updateCPPStatsTickInterval),
 		loadStatsTicker:                 time.NewTicker(updateCPPStatsTickInterval),
-		usingTimer:                      hConfig.UsingTimer,
 		uuid:                            uuid,
 		vbDcpFeedMap:                    make(map[uint16]*couchbase.DcpFeed),
 		vbEnqueuedForStreamReq:          make(map[uint16]struct{}),
@@ -208,7 +206,7 @@ func (c *Consumer) Serve() {
 
 	sort.Sort(util.Uint16Slice(c.vbnos))
 	logging.Infof("%s [%s:%s:%d] using timer: %t vbnos len: %d dump: %s memory quota for worker and dcp queues each: %d MB",
-		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.usingTimer, len(c.vbnos), util.Condense(c.vbnos),
+		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.producer.UsingTimer(), len(c.vbnos), util.Condense(c.vbnos),
 		c.workerQueueMemCap/(1024*1024))
 
 	err = util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), c.retryCount, getEventingNodeAddrOpCallback, c)
@@ -329,7 +327,8 @@ func (c *Consumer) HandleV8Worker() error {
 	payload, pBuilder := c.makeV8InitPayload(c.app.AppName, c.debuggerPort, currHost,
 		c.eventingDir, c.eventingAdminPort, c.eventingSSLPort,
 		c.producer.CfgData(), c.lcbInstCapacity, c.executionTimeout,
-		int(c.checkpointInterval.Nanoseconds()/(1000*1000)), false, c.timerContextSize)
+		int(c.checkpointInterval.Nanoseconds()/(1000*1000)), false, c.timerContextSize,
+		c.producer.UsingTimer(), c.producer.SrcMutation())
 
 	c.sendInitV8Worker(payload, false, pBuilder)
 
@@ -337,7 +336,7 @@ func (c *Consumer) HandleV8Worker() error {
 
 	c.workerExited = false
 
-	if c.usingTimer {
+	if c.producer.UsingTimer() {
 		c.SendAssignedVbs()
 	}
 

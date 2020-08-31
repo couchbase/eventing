@@ -13,7 +13,6 @@
 |app_log_dir|Index directory during Couchbase Setup|Function log directory|
 |app_log_max_files|10|Rotations of function log files to keep(current plus compressed)
 |app_log_max_size|40 MB|Size after which function log files are rotated and compressed|
-|breakpad_on|true|For enabling/disabling breakpad minidump capture|
 |checkpoint_interval|60s|Frequency for updating checkpoint blobs in metadata bucket|
 |cpp_worker_thread_count|2|V8 sandboxes running within an eventing-consumer process|
 |data_chan_size|50|Capacity of queue that buffers dcp events|
@@ -22,7 +21,6 @@
 |dcp_stream_boundary|everything|Feed boundary for Function|
 |deadline_timeout|62s|Socket timeout for communication b/w eventing-producer and eventing-consumer|
 |enable_applog_rotation|true|To enable/disable function log file rotation|
-|execute_timer_routine_count|3|Size of thread pool for executing timers per eventing-consumer|
 |execution_timeout|60s|Timeout for execution of Javascript handler code|
 |feedback_batch_size|100|Batch size for messages being written from eventing-consumer to eventing-producer|
 |feedback_read_buffer_size|65536|Buffer size for reading messages from eventing-consumer|
@@ -31,8 +29,6 @@
 |n1ql_consistency|request|Default consistency level for N1QL statements|
 |sock_batch_size|100|Batch size for messages written from eventing-producer to eventing-consumer|
 |timer_queue_size|10000|Queue item cap for firing timers|
-|timer_storage_routine_count|3|Size of thread pool for storing timers per eventing-consumer|
-|timer_storage_chan_size|10000|Queue item cap for storing timers|
 |undeploy_routine_count|Num of online cpu cores|Size of thread pool to cleanup metadata bucket as par of undeploy|
 |user_prefix|eventing|Prefix for eventing system blobs written to metadata bucket|
 |vb_ownership_giveup_routine_count|3|Size of thread pool to give up vb ownership during rebalance|

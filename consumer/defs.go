@@ -145,7 +145,6 @@ type Consumer struct {
 	cbBucket                      *couchbase.Bucket
 	cbBucketRWMutex               *sync.RWMutex
 	checkpointInterval            time.Duration
-	cleanupTimers                 bool
 	compileInfo                   *common.CompileStatus
 	controlRoutineWg              *sync.WaitGroup
 	dcpEventsRemaining            uint64
@@ -191,7 +190,6 @@ type Consumer struct {
 	isPausing                     bool
 	superSup                      common.EventingSuperSup
 	timerContextSize              int64
-	usingTimer                    bool
 	vbDcpEventsRemaining          map[int]int64 // Access controlled by statsRWMutex
 	vbDcpFeedMap                  map[uint16]*couchbase.DcpFeed
 	vbEventingNodeAssignMap       map[uint16]string // Access controlled by vbEventingNodeAssignMapRWMutex

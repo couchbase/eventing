@@ -50,12 +50,13 @@ type Producer struct {
 	app                    *common.AppConfig
 	auth                   string
 	cfgData                string
-	cleanupTimers          bool
 	handleV8ConsumerMutex  *sync.Mutex // controls access to Producer.handleV8Consumer
 	isBootstrapping        bool
 	isPlannerRunning       bool
 	isTerminateRunning     bool
 	isRebalanceOngoing     int32
+	isSrcMutation          bool
+	isUsingTimer           bool
 	firstRebalanceDone     bool
 	kvPort                 string
 	kvHostPorts            []string

@@ -1,0 +1,122 @@
+{
+  "$schema": "http://json-schema.org/schema#",
+  "type": "object",
+  "description": "deployment configuration",
+  "required": [
+    "buckets",
+    "curl",
+    "metadata_bucket",
+    "source_bucket"
+  ],
+  "properties": {
+    "buckets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "alias",
+          "bucket_name",
+          "access"
+        ],
+        "properties": {
+          "alias": {
+            "type": "string",
+            "description": "symbolic name used in code to refer to this binding",
+            "minLength": 1,
+            "maxLength": 20,
+            "pattern": "^[a-zA-Z_$][a-zA-Z0-9_$]*$"
+          },
+          "bucket_name": {
+            "type": "string",
+            "description": "name of the bucket this binding maps to",
+            "minLength": 1,
+            "maxLength": 100,
+            "pattern": "^[A-Za-z0-9_\\.\\-\\%]$"
+          },
+          "access": {
+            "type": "string",
+            "description": "bucket access level (read or read+write)",
+            "enum": ["r","rw"],
+            "default": "rw"
+          }
+        }
+      }
+    },
+    "curl": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "hostname",
+          "value",
+          "auth_type",
+          "username",
+          "password",
+          "bearer_key",
+          "allow_cookies",
+          "validate_ssl_certificate"
+        ],
+        "properties": {
+          "hostname": {
+            "type": "string",
+            "description": "full URL (including any path) that this binding connects",
+            "minLength": 1,
+            "pattern": "^https?://",
+            "format": "uri"
+          },
+          "value": {
+            "type": "string",
+            "description": "symbolic name used in code to refer to this binding",
+            "minLength": 1,
+            "maxLength": 20,
+            "pattern": "^[a-zA-Z_$][a-zA-Z0-9_$]*$"
+          },
+          "auth_type": {
+            "type": "string",
+            "description": "http authentication method to use with this endpoint",
+            "enum": ["no-auth", "basic", "bearer", "digest"],
+            "default": "no-auth"
+          },
+          "username": {
+            "type": "string",
+            "description": "username for http auth methods that use it",
+            "default": ""
+          },
+          "password": {
+            "type": "string",
+            "description": "password for http auth methods that use it",
+            "default": ""
+          },
+          "bearer_key": {
+            "type": "string",
+            "description": "bearer key for bearer auth",
+            "default": ""
+          },
+          "allow_cookies": {
+            "type": "boolean",
+            "description": "allow cookies on the session",
+            "default": true
+          },
+          "validate_ssl_certificate": {
+            "type": "boolean",
+            "description": "validate remote server certificate using OS mechanisms"
+          }
+        }
+      }
+    },
+    "metadata_bucket": {
+      "type": "string",
+      "description": "bucket to store eventing checkpoints and timers",
+      "minLength": 1,
+      "maxLength": 100,
+      "pattern": "^[A-Za-z0-9_\\.\\-\\%]$"
+    },
+    "source_bucket": {
+      "type": "string",
+      "description": "bucket to listen to for document mutations",
+      "minLength": 1,
+      "maxLength": 100,
+      "pattern": "^[A-Za-z0-9_\\.\\-\\%]$"
+    }
+  }
+}

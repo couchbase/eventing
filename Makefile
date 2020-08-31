@@ -80,6 +80,7 @@ $(workdir)/cc/eventing/%.o: %.cc
 	$(ccache) g++ -std=c++1z -c $(includes) $(cflags) -o $@ $<
 
 gen/version/version.cc: util/version.in
+	make realclean
 	cd $(top) && make -j8
 
 $(workdir): gen/version/version.cc
@@ -105,6 +106,10 @@ $(top)/install/lib/eventing-ui/%: ui/eventing-ui/%
 clean:
 	rm -rf $(workdir)
 
+realclean: clean
+	git clean -dfx gen/
+	rm -rf $(top)/build/goproj/src/github.com/couchbase/eventing $(top)/build/goproj/src/github.com/couchbase/eventing-ee
+
 install: all $(addprefix $(top)/install/bin/,$(binaries)) $(addprefix $(top)/install/lib/,$(ui_src:./ui/%=%))
 
 cluster_stop:
@@ -122,7 +127,7 @@ cluster_start: cluster_stop $(workdir)
 	while ! grep -qs 'Finished compaction for' $(top)/ns_server/logs/n_*/debug.log; do sleep 3; done
 
 test_deps:
-	cd tests/functional_tests && $(goenv) $(goroot)/bin/go get -t ./... 1>/dev/null 2>&1
+	cd tests/functional_tests && $(goenv) $(goroot)/bin/go get -t ./...
 
 Test%: install test_deps
 	make cluster_start

@@ -40,17 +40,8 @@ func (p *Producer) parseDepcfg() error {
 	p.app.AppVersion = util.GetHash(p.app.AppCode)
 	p.app.FunctionID = uint32(config.HandlerUUID())
 	p.app.FunctionInstanceID = string(config.FunctionInstanceID())
-	p.app.ID = int(config.Id())
 	p.app.LastDeploy = time.Now().UTC().Format("2006-01-02T15:04:05.000000000-0700")
 	p.app.Settings = make(map[string]interface{})
-
-	if config.UsingTimer() == 0x1 {
-		p.app.UsingTimer = true
-	}
-
-	if config.SrcMutationEnabled() == 0x1 {
-		p.app.SrcMutationEnabled = true
-	}
 
 	d := new(cfg.DepCfg)
 	depcfg := config.DepCfg(d)
@@ -60,6 +51,17 @@ func (p *Producer) parseDepcfg() error {
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s] Exiting due to timeout", logPrefix, p.appName)
 		return err
+	}
+
+	p.isSrcMutation = false
+	binding := new(cfg.Bucket)
+	for idx := 0; idx < depcfg.BucketsLength(); idx++ {
+		if depcfg.Buckets(binding, idx) {
+			if string(binding.BucketName()) == string(depcfg.SourceBucket()) && string(config.Access(idx)) == "rw" {
+				p.isSrcMutation = true
+				break
+			}
+		}
 	}
 
 	p.auth = fmt.Sprintf("%s:%s", user, password)
@@ -115,12 +117,6 @@ func (p *Producer) parseDepcfg() error {
 		p.handlerConfig.CheckpointInterval = 60000
 	}
 
-	if val, ok := settings["cleanup_timers"]; ok {
-		p.handlerConfig.CleanupTimers = val.(bool)
-	} else {
-		p.handlerConfig.CleanupTimers = false
-	}
-
 	if val, ok := settings["cpp_worker_thread_count"]; ok {
 		p.handlerConfig.CPPWorkerThrCount = int(val.(float64))
 	} else {
@@ -136,7 +132,7 @@ func (p *Producer) parseDepcfg() error {
 	if val, ok := settings["deadline_timeout"]; ok {
 		p.handlerConfig.SocketTimeout = int(val.(float64))
 	} else {
-		p.handlerConfig.SocketTimeout = 62
+		p.handlerConfig.SocketTimeout = p.handlerConfig.ExecutionTimeout + 2
 	}
 
 	if val, ok := settings["execution_timeout"]; ok {
@@ -203,12 +199,6 @@ func (p *Producer) parseDepcfg() error {
 		p.app.UserPrefix = "eventing"
 	}
 
-	if val, ok := settings["using_timer"]; ok {
-		p.handlerConfig.UsingTimer = val.(bool)
-	} else {
-		p.handlerConfig.UsingTimer = p.app.UsingTimer
-	}
-
 	if val, ok := settings["worker_count"]; ok {
 		p.handlerConfig.WorkerCount = int(val.(float64))
 	} else {
@@ -244,30 +234,13 @@ func (p *Producer) parseDepcfg() error {
 	} else {
 		p.handlerConfig.LcbRetryCount = 0
 	}
-	// Metastore related configuration
 
-	if val, ok := settings["execute_timer_routine_count"]; ok {
-		p.handlerConfig.ExecuteTimerRoutineCount = int(val.(float64))
-	} else {
-		p.handlerConfig.ExecuteTimerRoutineCount = 3
-	}
+	// Metastore related configuration
 
 	if val, ok := settings["timer_context_size"]; ok {
 		p.handlerConfig.TimerContextSize = int64(val.(float64))
 	} else {
 		p.handlerConfig.TimerContextSize = 1024
-	}
-
-	if val, ok := settings["timer_storage_routine_count"]; ok {
-		p.handlerConfig.TimerStorageRoutineCount = int(val.(float64))
-	} else {
-		p.handlerConfig.TimerStorageRoutineCount = 3
-	}
-
-	if val, ok := settings["timer_storage_chan_size"]; ok {
-		p.handlerConfig.TimerStorageChanSize = int(val.(float64))
-	} else {
-		p.handlerConfig.TimerStorageChanSize = 10 * 1000
 	}
 
 	if val, ok := settings["timer_queue_mem_cap"]; ok {
@@ -286,14 +259,6 @@ func (p *Producer) parseDepcfg() error {
 		p.handlerConfig.UndeployRoutineCount = int(val.(float64))
 	} else {
 		p.handlerConfig.UndeployRoutineCount = util.CPUCount(true)
-	}
-
-	// Process related configuration
-
-	if val, ok := settings["breakpad_on"]; ok {
-		p.processConfig.BreakpadOn = val.(bool)
-	} else {
-		p.processConfig.BreakpadOn = true
 	}
 
 	// Rebalance related configurations
@@ -408,7 +373,7 @@ func (p *Producer) consumerMemQuota() int64 {
 		// (d) timer store queues for thread pool
 		// (e) fire timer queue
 
-		if p.app.UsingTimer {
+		if p.UsingTimer() {
 			return (p.MemoryQuota / (wc * 5)) * 1024 * 1024
 		}
 		return (p.MemoryQuota / (wc * 2)) * 1024 * 1024

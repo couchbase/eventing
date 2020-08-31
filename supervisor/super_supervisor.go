@@ -11,7 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
-        "github.com/couchbase/cbauth/service"
+	"github.com/couchbase/cbauth/service"
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/dcp"
 	"github.com/couchbase/eventing/logging"
@@ -199,7 +199,7 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 			cmd: cmdSettingsUpdate,
 		}
 
-		processingStatus, deploymentStatus, cTimers, _, err := s.getStatuses(value)
+		processingStatus, deploymentStatus, _, err := s.getStatuses(value)
 		if err != nil {
 			return nil
 		}
@@ -279,7 +279,7 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 						}
 					}
 
-					s.spawnApp(appName, cTimers)
+					s.spawnApp(appName)
 
 					s.appRWMutex.Lock()
 					s.appDeploymentStatus[appName] = deploymentStatus
@@ -443,7 +443,7 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(path string, value []byte,
 			path := MetakvAppSettingsPath + appName
 			util.Retry(util.NewFixedBackoff(time.Second), nil, metakvGetCallback, s, path, &sData)
 
-			processingStatus, deploymentStatus, _, _, err := s.getStatuses(sData)
+			processingStatus, deploymentStatus, _, err := s.getStatuses(sData)
 			if err != nil {
 				logging.Errorf("%s [%d] getStatuses failed for Function: %s  runningProducer: %v",
 					logPrefix, s.runningFnsCount(), appName, s.runningFns()[appName])
@@ -482,7 +482,7 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(path string, value []byte,
 					s.bootstrappingApps[appName] = time.Now().String()
 					s.appListRWMutex.Unlock()
 
-					s.spawnApp(appName, false)
+					s.spawnApp(appName)
 					s.appRWMutex.Lock()
 					s.appDeploymentStatus[appName] = deploymentStatus
 					s.appProcessingStatus[appName] = processingStatus
@@ -585,8 +585,12 @@ func (s *SuperSupervisor) HandleGlobalConfigChange(config common.Config) error {
 				logging.Infof("%s [%d] Updated deadline for http request to: %v",
 					logPrefix, s.runningFnsCount(), util.HTTPRequestTimeout)
 			}
-		}
 
+		case "breakpad_on":
+			if breakpad, ok := value.(bool); ok {
+				util.SetBreakpad(breakpad)
+			}
+		}
 	}
 
 	return nil
@@ -635,13 +639,13 @@ func (s *SuperSupervisor) AppsRetryCallback(path string, value []byte, rev inter
 	return nil
 }
 
-func (s *SuperSupervisor) spawnApp(appName string, cleanupTimers bool) {
+func (s *SuperSupervisor) spawnApp(appName string) {
 	logPrefix := "SuperSupervisor::spawnApp"
 
 	metakvAppHostPortsPath := fmt.Sprintf("%s%s/", metakvProducerHostPortsPath, appName)
 
 	p := producer.NewProducer(appName, s.adminPort.DebuggerPort, s.adminPort.HTTPPort, s.adminPort.SslPort, s.eventingDir,
-		s.kvPort, metakvAppHostPortsPath, s.restPort, s.uuid, s.diagDir, cleanupTimers, s.memoryQuota, s.numVbuckets, s)
+		s.kvPort, metakvAppHostPortsPath, s.restPort, s.uuid, s.diagDir, s.memoryQuota, s.numVbuckets, s)
 
 	logging.Infof("%s [%d] Function: %s spawning up, memory quota: %d", logPrefix, s.runningFnsCount(), appName, s.memoryQuota)
 
@@ -793,7 +797,7 @@ func (s *SuperSupervisor) isFnRunningFromPrimary(appName string) (bool, error) {
 
 	util.Retry(util.NewFixedBackoff(time.Second), nil, metakvGetCallback, s, path, &sData)
 
-	processingStatus, deploymentStatus, _, _, err := s.getStatuses(sData)
+	processingStatus, deploymentStatus, _, err := s.getStatuses(sData)
 	if err != nil {
 		return false, err
 	}
