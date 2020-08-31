@@ -55,16 +55,21 @@ func (m *ServiceMgr) validateAppRecursion(app *application) (info *runtimeInfo) 
 
 	source, destinations := m.getSourceAndDestinationsFromDepCfg(&app.DeploymentConfig)
 	_, pinfos := parser.TranspileQueries(app.AppHandlers, "")
-	// Prevent deployment of handler with N1QL writing to source bucket
+
+	// Prevent deployment of handler with N1QL writing to source
 	for _, pinfo := range pinfos {
-		if pinfo.PInfo.KeyspaceName == app.DeploymentConfig.SourceBucket {
-			info.Code = m.statusCodes.errInterBucketRecursion.Code
-			info.Info = fmt.Sprintf("Function: %s N1QL dml to source bucket %s", app.Name, pinfo.PInfo.KeyspaceName)
-			logging.Errorf("%s %s", logPrefix, info.Info)
-			return
+		if pinfo.PInfo.KeyspaceName != "" {
+			dest := ConstructKeyspace(pinfo.PInfo.KeyspaceName)
+			if dest == source {
+				info.Code = m.statusCodes.errInterBucketRecursion.Code
+				info.Info = fmt.Sprintf("Function: %s N1QL dml to source bucket %s", app.Name, pinfo.PInfo.KeyspaceName)
+				logging.Errorf("%s %s", logPrefix, info.Info)
+				return
+			}
+			destinations[dest] = struct{}{}
 		}
-		destinations[pinfo.PInfo.KeyspaceName] = struct{}{}
 	}
+
 	if !allowInterBucketRecursion && len(destinations) != 0 {
 		if possible, path := m.graph.isAcyclicInsertPossible(app.Name, source, destinations); !possible {
 			info.Code = m.statusCodes.errInterBucketRecursion.Code

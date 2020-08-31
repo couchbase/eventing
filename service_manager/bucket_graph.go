@@ -3,42 +3,43 @@ package servicemanager
 import (
 	"sync"
 
+	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
 )
 
 type bucketEdge struct {
-	source      string
-	destination string
+	source      common.Keyspace
+	destination common.Keyspace
 }
 
 type dependency struct {
-	source      string
-	destination map[string]struct{}
+	source      common.Keyspace
+	destination map[common.Keyspace]struct{}
 }
 
 // Structure to store directed multigraph.
 type bucketMultiDiGraph struct {
-	adjacenyList    map[string]map[string]int          //map[source]map[destination]multi-indegree
-	inDegreeLabels  map[string]map[string]struct{}     //map[destination]map[edge_label]
-	outDegreeLabels map[string]map[string]struct{}     //map[source]map[edge_label]
-	edgeList        map[bucketEdge]map[string]struct{} //map[bucketEdge]map[label]
+	adjacenyList    map[common.Keyspace]map[common.Keyspace]int //map[source]map[destination]multi-indegree
+	inDegreeLabels  map[common.Keyspace]map[string]struct{}     //map[destination]map[edge_label]
+	outDegreeLabels map[common.Keyspace]map[string]struct{}     //map[source]map[edge_label]
+	edgeList        map[bucketEdge]map[string]struct{}          //map[bucketEdge]map[label]
 	labelState      map[string]dependency
 	lock            sync.RWMutex
 }
 
 func newBucketMultiDiGraph() *bucketMultiDiGraph {
 	return &bucketMultiDiGraph{
-		adjacenyList:    make(map[string]map[string]int),
-		inDegreeLabels:  make(map[string]map[string]struct{}),
-		outDegreeLabels: make(map[string]map[string]struct{}),
+		adjacenyList:    make(map[common.Keyspace]map[common.Keyspace]int),
+		inDegreeLabels:  make(map[common.Keyspace]map[string]struct{}),
+		outDegreeLabels: make(map[common.Keyspace]map[string]struct{}),
 		edgeList:        make(map[bucketEdge]map[string]struct{}),
 		labelState:      make(map[string]dependency),
 	}
 }
 
 //Returns indegree for a bucket
-func (bg *bucketMultiDiGraph) getInDegree(vertex string) (int, bool) {
+func (bg *bucketMultiDiGraph) getInDegree(vertex common.Keyspace) (int, bool) {
 	bg.lock.RLock()
 	defer bg.lock.RUnlock()
 
@@ -49,7 +50,7 @@ func (bg *bucketMultiDiGraph) getInDegree(vertex string) (int, bool) {
 }
 
 //Returns outdegree for a bucket
-func (bg *bucketMultiDiGraph) getOutDegree(vertex string) (int, bool) {
+func (bg *bucketMultiDiGraph) getOutDegree(vertex common.Keyspace) (int, bool) {
 	bg.lock.RLock()
 	defer bg.lock.RUnlock()
 
@@ -60,7 +61,7 @@ func (bg *bucketMultiDiGraph) getOutDegree(vertex string) (int, bool) {
 }
 
 //Return indegree edge labels for a bucket
-func (bg *bucketMultiDiGraph) getInDegreeEdgeLabels(vertex string) []string {
+func (bg *bucketMultiDiGraph) getInDegreeEdgeLabels(vertex common.Keyspace) []string {
 	bg.lock.RLock()
 	defer bg.lock.RUnlock()
 
@@ -74,7 +75,7 @@ func (bg *bucketMultiDiGraph) getInDegreeEdgeLabels(vertex string) []string {
 }
 
 //Return outdegree edge labels for a bucket
-func (bg *bucketMultiDiGraph) getOutDegreeEdgeLabels(vertex string) []string {
+func (bg *bucketMultiDiGraph) getOutDegreeEdgeLabels(vertex common.Keyspace) []string {
 	bg.lock.RLock()
 	defer bg.lock.RUnlock()
 
@@ -87,11 +88,11 @@ func (bg *bucketMultiDiGraph) getOutDegreeEdgeLabels(vertex string) []string {
 	return labels
 }
 
-func (bg *bucketMultiDiGraph) insertEdge(label, source, destination string) {
+func (bg *bucketMultiDiGraph) insertEdge(label string, source, destination common.Keyspace) {
 	//Update adjaceny list
 	vertices, ok := bg.adjacenyList[source]
 	if !ok {
-		vertices = make(map[string]int)
+		vertices = make(map[common.Keyspace]int)
 		bg.adjacenyList[source] = vertices
 	}
 	vertices[destination]++
@@ -122,7 +123,7 @@ func (bg *bucketMultiDiGraph) insertEdge(label, source, destination string) {
 	labels[label] = struct{}{}
 }
 
-func (bg *bucketMultiDiGraph) removeEdge(label, source, destination string) {
+func (bg *bucketMultiDiGraph) removeEdge(label string, source, destination common.Keyspace) {
 	vertices, ok := bg.adjacenyList[source]
 	//Check if source is present in adjacency list
 	if ok {
@@ -161,7 +162,7 @@ func (bg *bucketMultiDiGraph) removeEdge(label, source, destination string) {
 }
 
 // Returns list of labels
-func (bg *bucketMultiDiGraph) getPathFromParentMap(source, destination string, parentMap map[string]string) (labels []string) {
+func (bg *bucketMultiDiGraph) getPathFromParentMap(source, destination common.Keyspace, parentMap map[common.Keyspace]common.Keyspace) (labels []string) {
 	st := util.NewStack()
 	currNode := destination
 
@@ -175,7 +176,7 @@ func (bg *bucketMultiDiGraph) getPathFromParentMap(source, destination string, p
 	edge := bucketEdge{}
 	for st.Size() != 0 {
 		edge.source = source
-		edge.destination = st.Pop().(string)
+		edge.destination = st.Pop().(common.Keyspace)
 		labelMap := bg.edgeList[edge]
 		//Add first label from labelMap to labels
 		for label := range labelMap {
@@ -187,19 +188,19 @@ func (bg *bucketMultiDiGraph) getPathFromParentMap(source, destination string, p
 	return
 }
 
-func (bg *bucketMultiDiGraph) hasPath(source, destination string) (reachable bool, labels []string) {
+func (bg *bucketMultiDiGraph) hasPath(source, destination common.Keyspace) (reachable bool, labels []string) {
 	if _, ok := bg.adjacenyList[source]; !ok {
 		return
 	}
 
 	st := util.NewStack()
-	visited := make(map[string]struct{})
-	parents := make(map[string]string)
+	visited := make(map[common.Keyspace]struct{})
+	parents := make(map[common.Keyspace]common.Keyspace)
 
 	st.Push(source)
 
 	for st.Size() != 0 {
-		vertex := st.Pop().(string)
+		vertex := st.Pop().(common.Keyspace)
 
 		if vertex == destination {
 			reachable = true
@@ -221,7 +222,7 @@ func (bg *bucketMultiDiGraph) hasPath(source, destination string) (reachable boo
 	return
 }
 
-func (bg *bucketMultiDiGraph) insertEdges(label, source string, destinations map[string]struct{}) {
+func (bg *bucketMultiDiGraph) insertEdges(label string, source common.Keyspace, destinations map[common.Keyspace]struct{}) {
 	logPrefix := "insertEdges"
 	// remove the previous label if present
 	bg.removeEdges(label)
@@ -255,12 +256,12 @@ func (bg *bucketMultiDiGraph) removeEdges(label string) {
 		logPrefix, bg.adjacenyList, bg.inDegreeLabels, bg.outDegreeLabels)
 }
 
-func (bg *bucketMultiDiGraph) isAcyclicInsertPossible(label, source string, destinations map[string]struct{}) (possible bool, labels []string) {
+func (bg *bucketMultiDiGraph) isAcyclicInsertPossible(label string, source common.Keyspace, destinations map[common.Keyspace]struct{}) (possible bool, labels []string) {
 	logPrefix := "isAcyclicInsertPossible"
 	bg.lock.Lock()
 	defer bg.lock.Unlock()
 
-	inserted := make([]string, 0)
+	inserted := make([]common.Keyspace, 0)
 	possible = true
 
 	defer func() {
@@ -284,16 +285,12 @@ func (bg *bucketMultiDiGraph) isAcyclicInsertPossible(label, source string, dest
 	return
 }
 
-func (bg *bucketMultiDiGraph) getAcyclicInsertSideEffects(destinations map[string]struct{}) (labels []string) {
+func (bg *bucketMultiDiGraph) getAcyclicInsertSideEffects(destinations map[common.Keyspace]struct{}) (labels []string) {
 	bg.lock.RLock()
 	defer bg.lock.RUnlock()
-	visited := make(map[string]struct{})
 	for dest := range destinations {
 		if degree, ok := bg.outDegreeLabels[dest]; ok {
 			for label := range degree {
-				if _, ok := visited[dest]; ok {
-					continue
-				}
 				labels = append(labels, label)
 			}
 		}

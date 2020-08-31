@@ -78,9 +78,9 @@ type ServiceMgr struct {
 	failoverNotifTs   int64
 	failoverChangeId  string
 	finch             chan bool
-	fnsInPrimaryStore map[string]depCfg                  // Access controlled by fnMu
-	fnsInTempStore    map[string]struct{}                // Access controlled by fnMu
-	bucketFunctionMap map[string]map[string]functionInfo // Access controlled by fnMu
+	fnsInPrimaryStore map[string]depCfg                           // Access controlled by fnMu
+	fnsInTempStore    map[string]struct{}                         // Access controlled by fnMu
+	bucketFunctionMap map[common.Keyspace]map[string]functionInfo // Access controlled by fnMu
 	fnMu              *sync.RWMutex
 	keepNodeUUIDs     []string
 	keyFile           string

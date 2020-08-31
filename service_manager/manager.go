@@ -36,7 +36,7 @@ func NewServiceMgr(config util.Config, rebalanceRunning bool, superSup common.Ev
 		graph:             newBucketMultiDiGraph(),
 		fnsInPrimaryStore: make(map[string]depCfg),
 		fnsInTempStore:    make(map[string]struct{}),
-		bucketFunctionMap: make(map[string]map[string]functionInfo),
+		bucketFunctionMap: make(map[common.Keyspace]map[string]functionInfo),
 		fnMu:              &sync.RWMutex{},
 		failoverMu:        &sync.RWMutex{},
 		mu:                mu,
@@ -318,9 +318,12 @@ func (m *ServiceMgr) primaryStoreChangeCallback(path string, value []byte, rev i
 			//Find keyspace names from N1QL statements in handler code and add edges
 			_, pinfos := parser.TranspileQueries(app.AppHandlers, "")
 			for _, pinfo := range pinfos {
-				logging.Infof("%s Adding allowed edge label %s, source %s to destination %s",
-					logPrefix, fnName, source, pinfo.PInfo.KeyspaceName)
-				destinations[pinfo.PInfo.KeyspaceName] = struct{}{}
+				if pinfo.PInfo.KeyspaceName != "" {
+					dest := ConstructKeyspace(pinfo.PInfo.KeyspaceName)
+					logging.Infof("%s Adding allowed edge label %s, source %s to destination %s",
+						logPrefix, fnName, source, pinfo.PInfo.KeyspaceName)
+					destinations[dest] = struct{}{}
+				}
 			}
 			if len(destinations) > 0 {
 				m.graph.insertEdges(fnName, source, destinations)
@@ -328,10 +331,14 @@ func (m *ServiceMgr) primaryStoreChangeCallback(path string, value []byte, rev i
 		}
 
 		//Update BucketFunctionMap
-		functions, ok := m.bucketFunctionMap[app.DeploymentConfig.SourceBucket]
+		source := common.Keyspace{BucketName: app.DeploymentConfig.SourceBucket,
+			ScopeName:      app.DeploymentConfig.SourceScope,
+			CollectionName: app.DeploymentConfig.SourceCollection,
+		}
+		functions, ok := m.bucketFunctionMap[source]
 		if !ok {
 			functions = make(map[string]functionInfo)
-			m.bucketFunctionMap[app.DeploymentConfig.SourceBucket] = functions
+			m.bucketFunctionMap[source] = functions
 		}
 		funtionType := "notsbm"
 		if m.isSrcMutationEnabled(&app.DeploymentConfig) {
@@ -344,9 +351,14 @@ func (m *ServiceMgr) primaryStoreChangeCallback(path string, value []byte, rev i
 		cfg := m.fnsInPrimaryStore[fnName]
 		m.graph.removeEdges(fnName)
 		delete(m.fnsInPrimaryStore, fnName)
-		delete(m.bucketFunctionMap[cfg.SourceBucket], fnName)
-		if len(m.bucketFunctionMap[cfg.SourceBucket]) == 0 {
-			delete(m.bucketFunctionMap, cfg.SourceBucket)
+		source := common.Keyspace{BucketName: cfg.SourceBucket,
+			ScopeName:      cfg.SourceScope,
+			CollectionName: cfg.SourceCollection,
+		}
+
+		delete(m.bucketFunctionMap[source], fnName)
+		if len(m.bucketFunctionMap[source]) == 0 {
+			delete(m.bucketFunctionMap, source)
 		}
 		logging.Infof("%s Deleted function: %s from fnsInPrimaryStore", logPrefix, fnName)
 	}
