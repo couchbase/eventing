@@ -392,6 +392,12 @@ func (feed *DcpFeed) handlePacket(
 		fmsg := "%v ##%x opcode DCP_ADDSTREAM not implemented\n"
 		logging.Fatalf(fmsg, prefix, stream.AppOpaque)
 
+	case transport.DCP_SYSTEM_EVENT:
+		event = newDcpEvent(pkt, stream)
+		feed.handleSystemEvent(pkt, event)
+		stream.Seqno = event.Seqno
+		sendAck = true
+
 	default:
 		fmsg := "%v opcode %v not known for vbucket %d\n"
 		logging.Warnf(fmsg, prefix, pkt.Opcode, vb)
@@ -414,6 +420,11 @@ func (feed *DcpFeed) handlePacket(
 	}
 	feed.sendBufferAck(sendAck, uint32(bytes))
 	return rc
+}
+
+func (feed *DcpFeed) handleSystemEvent(pkt *transport.MCRequest, dcpEvent *DcpEvent) {
+	extras := pkt.Extras
+	dcpEvent.Seqno = binary.BigEndian.Uint64(extras[0:8])
 }
 
 func (feed *DcpFeed) doDcpGetFailoverLog(
