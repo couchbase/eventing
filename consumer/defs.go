@@ -183,6 +183,7 @@ type Consumer struct {
 	kvVbMap                       map[uint16]string // Access controlled by default lock
 	logLevel                      string
 	numVbuckets                   int
+	numTimerPartitions            int
 	nsServerPort                  string
 	reqStreamCh                   chan *streamRequestInfo
 	resetBootstrapDone            bool

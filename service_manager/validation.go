@@ -786,6 +786,20 @@ func (m *ServiceMgr) validatePossibleValues(field string, settings map[string]in
 	return
 }
 
+func (m *ServiceMgr) validateTimerPartitions(field string, settings map[string]interface{}) (info *runtimeInfo) {
+	info = &runtimeInfo{}
+	info.Code = m.statusCodes.errInvalidConfig.Code
+
+	if val, ok := settings[field]; ok {
+		if val.(float64) < 1 || val.(float64) > 1024 {
+			info.Info = fmt.Sprintf("%s field value must be between 1 and 1024.", field)
+			return
+		}
+	}
+	info.Code = m.statusCodes.ok.Code
+	return
+}
+
 func (m *ServiceMgr) validateSettings(appName string, settings map[string]interface{}) (info *runtimeInfo) {
 	info = &runtimeInfo{}
 	info.Code = m.statusCodes.errInvalidConfig.Code
@@ -967,6 +981,11 @@ func (m *ServiceMgr) validateSettings(appName string, settings map[string]interf
 	}
 
 	if info = m.validateNonNegativeInteger("lcb_retry_count", settings); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
+	//  Timer Partitions related configuration
+	if info = m.validateTimerPartitions("num_timer_partitions", settings); info.Code != m.statusCodes.ok.Code {
 		return
 	}
 

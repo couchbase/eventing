@@ -83,6 +83,7 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		msgProcessedRWMutex:             &sync.RWMutex{},
 		nsServerPort:                    nsServerPort,
 		numVbuckets:                     numVbuckets,
+		numTimerPartitions:              hConfig.NumTimerPartitions,
 		opsTimestamp:                    time.Now(),
 		producer:                        p,
 		reqStreamCh:                     make(chan *streamRequestInfo, numVbuckets*10),
@@ -344,9 +345,7 @@ func (c *Consumer) HandleV8Worker() error {
 
 	c.workerExited = false
 
-	if c.producer.UsingTimer() {
-		c.SendAssignedVbs()
-	}
+	c.SendAssignedVbs()
 
 	go c.processDCPEvents()
 	go c.processFilterEvents()

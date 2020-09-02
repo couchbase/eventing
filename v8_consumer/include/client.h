@@ -90,7 +90,9 @@ public:
                      bool skip_ack);
 
   void SetNsServerPort(const std::string &port) { ns_server_port_ = port; }
-  void SetNumVbuckets(const int32_t &num_vbuckets) { num_vbuckets_ = num_vbuckets; }
+  void SetNumVbuckets(const int32_t &num_vbuckets) {
+    num_vbuckets_ = num_vbuckets;
+  }
 
   std::thread main_uv_loop_thr_;
   std::thread feedback_uv_loop_thr_;
