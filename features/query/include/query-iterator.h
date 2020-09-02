@@ -34,6 +34,11 @@ public:
   struct Info : public ::Info {
     Info(bool is_fatal) : ::Info(is_fatal) {}
     Info(bool is_fatal, const std::string &msg) : ::Info(is_fatal, msg) {}
+    Info(bool is_fatal, const std::string &msg, bool is_retriable)
+        : ::Info(is_fatal, msg, is_retriable) {}
+    Info(bool is_fatal, const std::string &msg, bool is_retriable, bool is_lcb_special_error)
+        : ::Info(is_fatal, msg, is_retriable, is_lcb_special_error) {}
+
     Info(Iterator *iterator) : ::Info(false), iterator(iterator) {}
 
     Iterator *iterator{nullptr};

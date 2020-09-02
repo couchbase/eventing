@@ -21,6 +21,7 @@
 
 #include "info.h"
 #include "isolate_data.h"
+#include "lcb_utils.h"
 #include "log.h"
 #include "query-iterator.h"
 #include "query-mgr.h"
@@ -47,13 +48,13 @@ Query::Row Query::Iterator::Next() {
 
 ::Info Query::Iterator::Start() {
   if (state_ != State::kIdle) {
-    return {true, "Unable to start query as it is not in idle state"};
+    return {true, "Unable to start query as it is not in idle state", false};
   }
 
   auto helper = UnwrapData(isolate_)->query_mgr;
   if (auto info = builder_.Build(RowCallback, &cursor_); info.is_fatal) {
     helper->RestoreConnection(connection_);
-    return info;
+    return {true, info.msg, false};
   }
 
   cursor_.YieldTo(Cursor::ExecutionControl::kSDK);
@@ -64,11 +65,15 @@ Query::Row Query::Iterator::Next() {
     if (result == LCB_SUCCESS) {
       result = lcb_wait(connection_);
     }
+
     if (result != LCB_SUCCESS) {
       cursor_.is_last = true;
       auto helper = UnwrapData(isolate_)->query_helper;
       helper->AccountLCBError(static_cast<int>(result));
-      result_info_ = {true, lcb_strerror(connection_, result)};
+      auto is_retriable = IsRetriable(result);
+      auto is_lcb_not_supported = (result == LCB_NOT_SUPPORTED);
+      result_info_ = {true, lcb_strerror(connection_, result), is_retriable,
+                      is_lcb_not_supported};
     }
 
     auto query_mgr = UnwrapData(isolate_)->query_mgr;

@@ -20,6 +20,7 @@
 #include "query-helper.h"
 #include "query-iterable.h"
 #include "query-mgr.h"
+#include "lcb_utils.h"
 #include "utils.h"
 
 extern std::atomic<int64_t> n1ql_op_exception_count;
@@ -59,10 +60,13 @@ void QueryFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
     return;
   }
 
+  auto start_time = GetUnixTime();
   v8::HandleScope handle_scope(isolate);
+  const auto max_timeout = UnwrapData(isolate)->op_timeout;
   auto query_mgr = UnwrapData(isolate)->query_mgr;
   auto helper = UnwrapData(isolate)->query_helper;
   auto js_exception = UnwrapData(isolate)->js_exception;
+  auto max_retry = UnwrapData(isolate)->lcb_retry_count;
 
   auto validation_info = Query::Helper::ValidateQuery(args);
   if (validation_info.is_fatal) {
@@ -71,39 +75,84 @@ void QueryFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
     return;
   }
 
-  auto query_info = helper->CreateQuery(args);
-  if (query_info.is_fatal) {
-    ++n1ql_op_exception_count;
-    js_exception->ThrowN1QLError(query_info.msg);
-    return;
-  }
-
-  auto it_info = query_mgr->NewIterable(std::move(query_info));
-  if (it_info.is_fatal) {
-    ++n1ql_op_exception_count;
-    js_exception->ThrowN1QLError(it_info.msg);
-    return;
-  }
-
-  auto &iterator = it_info.iterator;
-  if (auto start_info = iterator->Start(); start_info.is_fatal) {
-    ++n1ql_op_exception_count;
-    js_exception->ThrowN1QLError(start_info.msg);
-    return;
-  }
-  auto first_row = iterator->Peek();
-  if (first_row.is_done || first_row.is_error) {
-    // Error reported by lcb_wait (coming from LCB client)
-    if (auto it_result = iterator->Wait(); it_result.is_fatal) {
+  auto conn_refreshed = false;
+  auto retry = 0;
+  while(true) {
+    retry++;
+    auto query_info = helper->CreateQuery(args);
+    if (query_info.is_fatal) {
       ++n1ql_op_exception_count;
-      js_exception->ThrowN1QLError(it_result.msg);
+      js_exception->ThrowN1QLError(query_info.msg);
       return;
     }
-  }
 
-  if (first_row.is_error) {
-    helper->HandleRowError(first_row);
-    return;
+    auto it_info = query_mgr->NewIterable(std::move(query_info));
+    if (it_info.is_fatal) {
+      ++n1ql_op_exception_count;
+      js_exception->ThrowN1QLError(it_info.msg);
+      return;
+    }
+
+    auto &iterator = it_info.iterator;
+    if (auto start_info = iterator->Start(); start_info.is_fatal) {
+      if (!conn_refreshed && (start_info.is_retriable ||
+                              start_info.is_lcb_special_error)) {
+        iterator->Wait();
+        query_mgr->RefreshTopConnection();
+        conn_refreshed = true;
+        continue;
+      }
+
+      if (start_info.is_retriable &&
+          helper->CheckRetriable(max_retry, max_timeout, retry, start_time)) {
+        continue;
+      }
+      ++n1ql_op_exception_count;
+      js_exception->ThrowN1QLError(start_info.msg);
+      return;
+    }
+
+    auto first_row = iterator->Peek();
+    if (first_row.is_done || first_row.is_error) {
+      // Error reported by lcb_wait (coming from LCB client)
+      if (auto it_result = iterator->Wait(); it_result.is_fatal) {
+        if (!conn_refreshed && (it_result.is_retriable ||
+                                it_result.is_lcb_special_error)) {
+          query_mgr->RefreshTopConnection();
+          conn_refreshed = true;
+          continue;
+        }
+
+        if (it_result.is_retriable &&
+            helper->CheckRetriable(max_retry, max_timeout, retry, start_time)) {
+          continue;
+        }
+        ++n1ql_op_exception_count;
+        js_exception->ThrowN1QLError(it_result.msg);
+        return;
+      }
+    }
+
+    auto retriable = IsRetriable(first_row.err_code);
+    if (!conn_refreshed && (first_row.is_client_auth_error ||
+                            first_row.err_code == LCB_HTTP_ERROR ||
+                            retriable)) {
+      query_mgr->RefreshTopConnection();
+      conn_refreshed = true;
+      continue;
+    }
+
+    if (retriable &&
+        helper->CheckRetriable(max_retry, max_timeout, retry, start_time)) {
+      continue;
+    }
+
+    if (first_row.is_error) {
+      helper->HandleRowError(first_row);
+      return;
+    }
+
+    args.GetReturnValue().Set(it_info.iterable);
+    break;
   }
-  args.GetReturnValue().Set(it_info.iterable);
 }

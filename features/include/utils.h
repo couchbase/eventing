@@ -28,8 +28,6 @@
 #include "info.h"
 #include "log.h"
 
-#define EXCEPTION_STR_SIZE 20
-
 #define TO(maybe, local)                                                       \
   (To((maybe), (local), __FILE__, __FUNCTION__, __LINE__))
 #define TO_LOCAL(maybe, local)                                                 \
@@ -186,7 +184,8 @@ v8::Local<v8::Array> v8Array(v8::Isolate *isolate,
                              const std::vector<std::string> &from);
 
 std::string JSONStringify(v8::Isolate *isolate,
-                          const v8::Local<v8::Value> &object);
+                          const v8::Local<v8::Value> &object,
+                          bool pretty = false);
 
 const char *ToCString(const v8::String::Utf8Value &value);
 
@@ -197,8 +196,8 @@ std::string ExceptionString(v8::Isolate *isolate,
                             v8::TryCatch *try_catch);
 
 CompilationInfo BuildCompileInfo(v8::Isolate *isolate,
-                            v8::Local<v8::Context> &context,
-                            v8::TryCatch *try_catch);
+                                 v8::Local<v8::Context> &context,
+                                 v8::TryCatch *try_catch);
 std::string CompileInfoToString(CompilationInfo info);
 
 std::vector<std::string> split(const std::string &s, char delimiter);

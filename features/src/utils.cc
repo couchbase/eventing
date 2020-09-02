@@ -107,7 +107,8 @@ v8::Local<v8::Array> v8Array(v8::Isolate *isolate,
 }
 
 std::string JSONStringify(v8::Isolate *isolate,
-                          const v8::Local<v8::Value> &object) {
+                          const v8::Local<v8::Value> &object,
+                          bool pretty /* = false */) {
   if (IS_EMPTY(object)) {
     return "";
   }
@@ -135,10 +136,11 @@ std::string JSONStringify(v8::Isolate *isolate,
   }
 
   auto v8fun_stringify = v8val_stringify.As<v8::Function>();
-  v8::Local<v8::Value> args[1] = {object};
+  v8::Local<v8::Value> args[3] = {object, v8::Null(isolate),
+                                  v8::Integer::New(isolate, 2)};
 
   v8::Local<v8::Value> v8obj_result;
-  if (!TO_LOCAL(v8fun_stringify->Call(context, global, 1, args),
+  if (!TO_LOCAL(v8fun_stringify->Call(context, global, pretty ? 3 : 1, args),
                 &v8obj_result)) {
     return "";
   }
@@ -181,67 +183,59 @@ std::string ConvertToISO8601(std::string timestamp) {
 std::string ExceptionString(v8::Isolate *isolate,
                             v8::Local<v8::Context> &context,
                             v8::TryCatch *try_catch) {
-  std::string out;
-  char scratch[EXCEPTION_STR_SIZE]; // just some scratch space for sprintf
 
+  std::ostringstream os;
   v8::HandleScope handle_scope(isolate);
-  const char *exception_string =
-      JSONStringify(isolate, try_catch->Exception()).c_str();
+
+  // Print exception object
+  auto exception = try_catch->Exception();
+  if (!exception.IsEmpty()) {
+    // If the exception is of Error type, then call toString() on it
+    os << "Exception: ";
+    v8::Local<v8::Object> obj;
+    v8::Local<v8::Value> fn;
+    v8::Local<v8::Value> val;
+    if (exception->IsNativeError() &&
+        TO_LOCAL(exception->ToObject(context), &obj) &&
+        TO_LOCAL(obj->Get(context, v8Str(isolate, "toString")), &fn) &&
+        TO_LOCAL(fn.As<v8::Function>()->Call(context, obj, 0, nullptr), &val)) {
+      os << JSONStringify(isolate, val, true).c_str();
+    } else {
+      os << JSONStringify(isolate, try_catch->Exception(), true).c_str();
+    }
+    os << " " << std::endl;
+  }
+
+  // Print exception location details
   v8::Handle<v8::Message> message = try_catch->Message();
+  if (!message.IsEmpty()) {
+    // Print location
+    v8::String::Utf8Value file(isolate, message->GetScriptResourceName());
+    int line = message->GetLineNumber(context).FromMaybe(0);
+    os << "Location: " << ToCString(file) << ":" << line << " " << std::endl;
 
-  if (message.IsEmpty()) {
-    // V8 didn't provide any extra information about this error;
-    // just print the exception.
-    out.append(exception_string);
-    out.append("\n");
-  } else {
-    // Print (filename):(line number)
-    v8::String::Utf8Value filename(isolate, message->GetScriptResourceName());
-    const char *filename_string = ToCString(filename);
-    int linenum = message->GetLineNumber(context).FromMaybe(0);
-
-    snprintf(scratch, EXCEPTION_STR_SIZE, "%i", linenum);
-    out.append(filename_string);
-    out.append(":");
-    out.append(scratch);
-    out.append("\n");
-
-    // Print line of source code.
-    const char *sourceline_string = "(unknown)";
+    // Print source code
     auto maybe_srcline = message->GetSourceLine(context);
-    v8::Local<v8::String> local_srcline;
-    if (TO_LOCAL(maybe_srcline, &local_srcline)) {
+    if (!maybe_srcline.IsEmpty()) {
+      v8::Local<v8::String> local_srcline;
+      TO_LOCAL(maybe_srcline, &local_srcline);
       v8::String::Utf8Value sourceline_utf8(isolate, local_srcline);
-      sourceline_string = ToCString(sourceline_utf8);
+      std::string srcline = ToCString(sourceline_utf8);
+      srcline = std::regex_replace(srcline, std::regex("^\\s+"), "");
+      srcline = std::regex_replace(srcline, std::regex("\\s+$"), "");
+      os << "Code: " << ToCString(sourceline_utf8) << " " << std::endl;
     }
-    out.append(sourceline_string);
-    out.append("\n");
 
-    // Print wavy underline (GetUnderline is deprecated).
-    int start = message->GetStartColumn();
-    for (int i = 0; i < start; i++) {
-      out.append(" ");
-    }
-    int end = message->GetEndColumn();
-    for (int i = start; i < end; i++) {
-      out.append("^");
-    }
-    out.append("\n");
-
+    // Print stack trace
     auto maybe_stack = try_catch->StackTrace(context);
-    v8::Local<v8::Value> local_stack;
     if (!maybe_stack.IsEmpty()) {
+      v8::Local<v8::Value> local_stack;
       TO_LOCAL(maybe_stack, &local_stack);
       v8::String::Utf8Value stack_utf8(isolate, local_stack);
-      auto stack_string = ToCString(stack_utf8);
-      out.append(stack_string);
-      out.append("\n");
-    } else {
-      out.append(exception_string);
-      out.append("\n");
+      os << "Stack: " << std::endl << ToCString(stack_utf8) << " " << std::endl;
     }
   }
-  return out;
+  return os.str();
 }
 
 std::vector<std::string> &split(const std::string &s, char delim,
@@ -460,8 +454,8 @@ UrlEncode Utils::UrlEncodeAsString(const std::string &data) {
   }
 
   // libcurl uses strlen if last param is 0
-  // It's preferable to use 0 because the return type of strlen is size_t, which
-  // has a bigger range than int
+  // It's preferable to use 0 because the return type of strlen is
+  // size_t, which has a bigger range than int
   auto encoded_ptr = curl_easy_escape(curl_handle_, data.c_str(), 0);
   if (encoded_ptr == nullptr) {
     return {true, "Unable to url encode " + data};
@@ -703,8 +697,8 @@ std::string BuildUrl(const std::string &host, const std::string &path) {
 }
 
 CompilationInfo BuildCompileInfo(v8::Isolate *isolate,
-                            v8::Local<v8::Context> &context,
-                            v8::TryCatch *try_catch) {
+                                 v8::Local<v8::Context> &context,
+                                 v8::TryCatch *try_catch) {
 
   v8::HandleScope handle_scope(isolate);
   CompilationInfo info;

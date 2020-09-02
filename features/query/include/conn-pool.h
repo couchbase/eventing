@@ -45,8 +45,10 @@ public:
   Pool &operator=(Pool &&) = delete;
   Pool &operator=(const Pool &) = delete;
 
+  void DestroyAllConnectionsInPoolLocked();
   Connection::Info GetConnection();
   void RestoreConnection(lcb_t connection);
+  void RefreshTopConnection();
 
 private:
   Connection::Info CreateConnection() const;
@@ -58,7 +60,7 @@ private:
   std::string src_bucket_;
   const std::size_t capacity_;
   std::size_t current_size_{0};
-  std::queue<lcb_t> pool_;
+  std::deque<lcb_t> pool_;
   std::mutex pool_sync_;
 };
 } // namespace Connection

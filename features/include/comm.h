@@ -22,8 +22,8 @@
 struct CredsInfo {
   bool is_valid;
   std::string msg;
-  std::string username;
-  std::string password;
+  std::string username {"EVENTINGINVALID"};
+  std::string password {"EVENTINGINVALID"};
   time_t time_fetched;
 };
 
