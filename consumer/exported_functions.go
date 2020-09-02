@@ -578,6 +578,7 @@ func (c *Consumer) initConsumer(appName string) {
 	c.socketWriteBatchSize = 1
 	c.cppWorkerThrCount = 1
 	c.ipcType = "af_inet"
+	c.numTimerPartitions = 64
 
 	c.connMutex = &sync.RWMutex{}
 	c.msgProcessedRWMutex = &sync.RWMutex{}

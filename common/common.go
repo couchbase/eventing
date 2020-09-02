@@ -393,6 +393,7 @@ type HandlerConfig struct {
 	WorkerQueueMemCap        int64
 	WorkerResponseTimeout    int
 	LcbRetryCount            int
+	NumTimerPartitions       int
 }
 
 type ProcessConfig struct {

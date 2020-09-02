@@ -74,6 +74,7 @@ const (
 	sockBatchSize            = 1
 	timerStorageRoutineCount = 3
 	workerCount              = 3
+	numTimerPartitions       = 128
 
 	deadlineTimeout  = 6
 	executionTimeout = 5
@@ -141,6 +142,7 @@ type commonSettings struct {
 	srcMutationEnabled       bool
 	languageCompatibility    string
 	version                  string
+	numTimerPartitions       int
 }
 
 type rateLimit struct {

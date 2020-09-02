@@ -160,7 +160,7 @@ void V8Worker::InitializeIsolateData(const server_settings_t *server_settings,
   data_.comm = new Communicator(server_settings->host_addr,
                                 server_settings->eventing_port, key.first,
                                 key.second, false, app_name_, isolate_);
-  data_.timer = new Timer(isolate_, context);
+  data_.timer = new Timer(isolate_, context, this->timer_reduction_ratio_);
   // TODO : Need to make HEAD call to all the bindings to establish TCP
   // Connections
   data_.curl_factory = new CurlFactory(isolate_, context);
@@ -214,10 +214,13 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
                    const std::string &ns_server_port,
                    const int32_t &num_vbuckets)
     : app_name_(h_config->app_name), settings_(server_settings),
-      num_vbuckets_(num_vbuckets), latency_stats_(latency_stats),
-      curl_latency_stats_(curl_latency_stats), platform_(platform),
-      function_name_(function_name), function_id_(function_id),
-      user_prefix_(user_prefix), ns_server_port_(ns_server_port),
+      num_vbuckets_(num_vbuckets),
+      timer_reduction_ratio_(
+          int(num_vbuckets / h_config->num_timer_partitions)),
+      latency_stats_(latency_stats), curl_latency_stats_(curl_latency_stats),
+      platform_(platform), function_name_(function_name),
+      function_id_(function_id), user_prefix_(user_prefix),
+      ns_server_port_(ns_server_port),
       exception_type_names_(
           {"KVError", "N1QLError", "EventingError", "CurlError", "TypeError"}),
       handler_headers_(h_config->handler_headers),
@@ -284,15 +287,17 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
                << " language compatibility: " << h_config->lang_compat
                << " version: " << EventingVer()
                << " n1ql_prepare_all: " << h_config->n1ql_prepare_all
-               << " num_vbuckets: " << num_vbuckets_ << std::endl;
+               << " num_vbuckets: " << num_vbuckets_
+               << " num_timer_partitions: " << h_config->num_timer_partitions
+               << std::endl;
 
   src_path_ = settings_->eventing_dir + "/" + app_name_ + ".t.js";
 
   if (h_config->using_timer) {
-    std::vector<int64_t> partitions;
     auto prefix = user_prefix + "::" + function_id;
-    timer_store_ = new timer::TimerStore(
-        isolate_, prefix, partitions, config->metadata_bucket, num_vbuckets_);
+    timer_store_ =
+        new timer::TimerStore(isolate_, prefix, config->metadata_bucket,
+                              num_vbuckets_, timer_reduction_ratio_);
   }
   delete config;
   this->worker_queue_ = new BlockingDeque<std::unique_ptr<WorkerMessage>>();

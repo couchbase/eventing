@@ -282,6 +282,12 @@ func createFunction(deploymentStatus, processingStatus bool, id int, s *commonSe
 		settings["language_compatibility"] = "6.5.0"
 	}
 
+	if s.numTimerPartitions == 0 {
+		settings["num_timer_partitions"] = numTimerPartitions
+	} else {
+		settings["num_timer_partitions"] = s.numTimerPartitions
+	}
+
 	settings["processing_status"] = processingStatus
 	settings["deployment_status"] = deploymentStatus
 	settings["description"] = "Sample app"
@@ -344,6 +350,12 @@ func setSettings(fnName string, deploymentStatus, processingStatus bool, s *comm
 		settings["n1ql_consistency"] = n1qlConsistency
 	} else {
 		settings["n1ql_consistency"] = s.n1qlConsistency
+	}
+
+	if s.numTimerPartitions == 0 {
+		settings["num_timer_partitions"] = numTimerPartitions
+	} else {
+		settings["num_timer_partitions"] = s.numTimerPartitions
 	}
 
 	data, err := json.Marshal(&settings)

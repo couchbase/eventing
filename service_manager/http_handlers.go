@@ -1223,6 +1223,21 @@ func (m *ServiceMgr) setSettings(appName string, data []byte) (info *runtimeInfo
 		return
 	}
 
+	if value, ok := settings["num_timer_partitions"]; ok {
+		switch value.(type) {
+		case string:
+			settings["num_timer_partitions"], err = strconv.ParseFloat(value.(string), 64)
+			if err != nil {
+				logging.Errorf("%s Function: num_timer_partitions is in invalid format.", logPrefix)
+				info.Code = m.statusCodes.errInvalidConfig.Code
+				info.Info = fmt.Sprintf("num_timer_partitions format is invalid.")
+				return
+			}
+		case int:
+			settings["num_timer_partitions"] = float64(value.(int))
+		}
+	}
+
 	if info = m.validateSettings(appName, util.DeepCopy(settings)); info.Code != m.statusCodes.ok.Code {
 		logging.Errorf("%s %s", logPrefix, info.Info)
 		return
@@ -1269,6 +1284,8 @@ func (m *ServiceMgr) setSettings(appName string, data []byte) (info *runtimeInfo
 
 	existingBoundary := app.Settings["dcp_stream_boundary"]
 	newBoundary, dsbOk := settings["dcp_stream_boundary"]
+	newTPValue, timerPartitionsPresent := settings["num_timer_partitions"]
+	oldTPValue, oldTimerPartitionsPresent := app.Settings["num_timer_partitions"]
 
 	for setting := range settings {
 		app.Settings[setting] = settings[setting]
@@ -1316,6 +1333,22 @@ func (m *ServiceMgr) setSettings(appName string, data []byte) (info *runtimeInfo
 				logging.Errorf("%s %s", logPrefix, info.Info)
 				return
 			}
+
+			if oldTimerPartitionsPresent {
+				if timerPartitionsPresent && oldTPValue != newTPValue {
+					info.Code = m.statusCodes.errInvalidConfig.Code
+					info.Info = fmt.Sprintf("Function: %s num_timer_partitions cannot be altered when trying to pause the function.", appName)
+					logging.Errorf("%s %s", logPrefix, info.Info)
+					return
+				}
+			} else {
+				if timerPartitionsPresent {
+					info.Code = m.statusCodes.errInvalidConfig.Code
+					info.Info = fmt.Sprintf("Function: %s num_timer_partitions cannot be set when trying to pause the function.", appName)
+					logging.Errorf("%s %s", logPrefix, info.Info)
+					return
+				}
+			}
 		}
 
 		if filterFeedBoundary(settings) == common.DcpFromPrior && !m.compareEventingVersion(mhVersion) {
@@ -1345,6 +1378,40 @@ func (m *ServiceMgr) setSettings(appName string, data []byte) (info *runtimeInfo
 				case common.DcpStreamBoundary(""):
 					app.Settings["dcp_stream_boundary"] = "from_prior"
 				default:
+				}
+				if oldTimerPartitionsPresent {
+					if timerPartitionsPresent && oldTPValue != newTPValue {
+						info.Code = m.statusCodes.errInvalidConfig.Code
+						info.Info = fmt.Sprintf("Function: %s num_timer_partitions cannot be changed when trying to resume the function.", appName)
+						logging.Errorf("%s %s", logPrefix, info.Info)
+						return
+					}
+				} else {
+					if timerPartitionsPresent {
+						info.Code = m.statusCodes.errInvalidConfig.Code
+						info.Info = fmt.Sprintf("Function: %s num_timer_partitions cannot be set when trying to resume the function.", appName)
+						logging.Errorf("%s %s", logPrefix, info.Info)
+						return
+					}
+				}
+			}
+
+			if oldTimerPartitionsPresent {
+				if timerPartitionsPresent && m.checkIfDeployed(appName) && oldTPValue != newTPValue {
+					info.Code = m.statusCodes.errInvalidConfig.Code
+					info.Info = fmt.Sprintf("Function: %s num_timer_partitions cannot be changed when the function is in deployed state.", appName)
+					logging.Errorf("%s %s", logPrefix, info.Info)
+					return
+				}
+			} else {
+				if timerPartitionsPresent && m.checkIfDeployed(appName) {
+					info.Code = m.statusCodes.errInvalidConfig.Code
+					info.Info = fmt.Sprintf("Function: %s num_timer_partitions cannot be changed when the function is in deployed state.", appName)
+					logging.Errorf("%s %s", logPrefix, info.Info)
+					return
+				}
+				if !m.checkIfDeployed(appName) {
+					m.addDefaultTimerPartitionsIfMissing(&app)
 				}
 			}
 
@@ -1506,6 +1573,13 @@ func (m *ServiceMgr) getTempStoreHandler(w http.ResponseWriter, r *http.Request)
 	audit.Log(auditevent.FetchDrafts, r, nil)
 	applications := m.getTempStoreAll()
 
+	// Remove the "num_timer_partitions" and don't send it to the UI
+	for _, app := range applications {
+		if _, ok := app.Settings["num_timer_partitions"]; ok {
+			delete(app.Settings, "num_timer_partitions")
+		}
+	}
+
 	data, err := json.MarshalIndent(applications, "", " ")
 	if err != nil {
 		logging.Errorf("%s failed to marshal response, err: %v", logPrefix, err)
@@ -1616,6 +1690,7 @@ func (m *ServiceMgr) saveTempStoreHandler(w http.ResponseWriter, r *http.Request
 		fmt.Fprintf(w, "%s\n", errString)
 		return
 	}
+	m.addDefaultTimerPartitionsIfMissing(&app)
 
 	if info := m.validateApplication(&app); info.Code != m.statusCodes.ok.Code {
 		m.sendErrorInfo(w, info)
@@ -1693,6 +1768,8 @@ func (m *ServiceMgr) savePrimaryStoreHandler(w http.ResponseWriter, r *http.Requ
 		fmt.Fprintf(w, "%s\n", errString)
 		return
 	}
+
+	m.addDefaultTimerPartitionsIfMissing(&app)
 
 	if info := m.validateApplication(&app); info.Code != m.statusCodes.ok.Code {
 		m.sendErrorInfo(w, info)
@@ -2815,6 +2892,7 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 			}
 
 			m.addDefaultVersionIfMissing(&app)
+			m.addDefaultTimerPartitionsIfMissing(&app)
 
 			var isMixedMode bool
 			if isMixedMode, info = m.isMixedModeCluster(); info.Code != m.statusCodes.ok.Code {
@@ -2944,6 +3022,12 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 func (m *ServiceMgr) addDefaultVersionIfMissing(app *application) {
 	if app.EventingVersion == "" {
 		app.EventingVersion = util.EventingVer()
+	}
+}
+
+func (m *ServiceMgr) addDefaultTimerPartitionsIfMissing(app *application) {
+	if _, ok := app.Settings["num_timer_partitions"]; !ok {
+		app.Settings["num_timer_partitions"] = float64(defaultNumTimerPartitions)
 	}
 }
 
@@ -3344,6 +3428,7 @@ func (m *ServiceMgr) createApplications(r *http.Request, appList *[]application,
 		} else {
 			m.addDefaultVersionIfMissing(&app)
 		}
+		m.addDefaultTimerPartitionsIfMissing(&app)
 
 		if infoVal := m.validateApplication(&app); infoVal.Code != m.statusCodes.ok.Code {
 			logging.Warnf("%s Validating %ru failed: %v", logPrefix, app, infoVal)

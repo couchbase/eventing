@@ -22,17 +22,20 @@ extern thread_local std::mt19937_64 rng;
 
 class Timer {
 public:
-  Timer(v8::Isolate *isolate, const v8::Local<v8::Context> &context);
+  Timer(v8::Isolate *isolate, const v8::Local<v8::Context> &context,
+        int32_t timer_reduction_ratio);
   virtual ~Timer();
 
   bool CreateTimerImpl(const v8::FunctionCallbackInfo<v8::Value> &args);
   bool CancelTimerImpl(const v8::FunctionCallbackInfo<v8::Value> &args);
 
+  uint16_t timer_mask_bits_{0};
+
 private:
   timer::EpochInfo Epoch(const v8::Local<v8::Value> &date_val);
   bool ValidateArgs(const v8::FunctionCallbackInfo<v8::Value> &args);
   bool ValidateCancelTimerArgs(const v8::FunctionCallbackInfo<v8::Value> &args);
-  void FillTimerPartition(timer::TimerInfo& tinfo, const int32_t& num_vbuckets);
+  void FillTimerPartition(timer::TimerInfo &tinfo, const int32_t &num_vbuckets);
 
   v8::Isolate *isolate_;
   v8::Persistent<v8::Context> context_;

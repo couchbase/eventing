@@ -3,6 +3,7 @@ package producer
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"net"
 	"os"
 	"time"
@@ -177,6 +178,12 @@ func (p *Producer) parseDepcfg() error {
 		p.handlerConfig.LogLevel = val.(string)
 	} else {
 		p.handlerConfig.LogLevel = "INFO"
+	}
+
+	if val, ok := settings["num_timer_partitions"]; ok {
+		p.handlerConfig.NumTimerPartitions = int(math.Min(float64(util.RoundUpToNearestPowerOf2(val.(float64))), float64(p.numVbuckets)))
+	} else {
+		p.handlerConfig.NumTimerPartitions = p.numVbuckets
 	}
 
 	if val, ok := settings["poll_bucket_interval"]; ok {

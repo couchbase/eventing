@@ -2,6 +2,8 @@ package servicemanager
 
 import (
 	"errors"
+	"math"
+	"runtime"
 	"sync"
 	"time"
 
@@ -61,6 +63,8 @@ var (
 		"function_type": struct{}{},
 		"deployed":      struct{}{},
 	}
+
+	defaultNumTimerPartitions = int(math.Min(math.Max(float64(runtime.NumCPU()*10), 128), 1024))
 )
 
 // ServiceMgr implements cbauth_service interface

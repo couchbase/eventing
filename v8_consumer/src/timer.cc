@@ -9,22 +9,25 @@
 // or implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
+#include <cmath>
 #include <mutex>
 
+#include "crc32.h"
 #include "isolate_data.h"
 #include "js_exception.h"
 #include "timer.h"
 #include "utils.h"
 #include "v8worker.h"
-#include "crc32.h"
 
 std::atomic<int64_t> timer_context_size_exceeded_counter = {0};
 thread_local std::mt19937_64
     rng(std::random_device{}() +
         std::hash<std::thread::id>()(std::this_thread::get_id()));
 
-Timer::Timer(v8::Isolate *isolate, const v8::Local<v8::Context> &context)
-    : isolate_(isolate) {
+Timer::Timer(v8::Isolate *isolate, const v8::Local<v8::Context> &context,
+             int32_t timer_reduction_ratio)
+    : timer_mask_bits_(uint16_t(log2(timer_reduction_ratio))),
+      isolate_(isolate) {
   context_.Reset(isolate_, context);
 }
 
@@ -135,7 +138,8 @@ bool Timer::CancelTimerImpl(const v8::FunctionCallbackInfo<v8::Value> &args) {
   return true;
 }
 
-bool Timer::ValidateCancelTimerArgs(const v8::FunctionCallbackInfo<v8::Value> &args) {
+bool Timer::ValidateCancelTimerArgs(
+    const v8::FunctionCallbackInfo<v8::Value> &args) {
   auto js_exception = UnwrapData(isolate_)->js_exception;
 
   if (args.Length() < 2) {
@@ -164,8 +168,8 @@ bool Timer::ValidateArgs(const v8::FunctionCallbackInfo<v8::Value> &args) {
   auto js_exception = UnwrapData(isolate_)->js_exception;
 
   if (args.Length() < 3) {
-    js_exception->ThrowEventingError(
-        "createTimer needs atleast 3 arguments - callback function, time, reference");
+    js_exception->ThrowEventingError("createTimer needs atleast 3 arguments - "
+                                     "callback function, time, reference");
     return false;
   }
 
@@ -191,11 +195,19 @@ bool Timer::ValidateArgs(const v8::FunctionCallbackInfo<v8::Value> &args) {
   return true;
 }
 
-void Timer::FillTimerPartition(timer::TimerInfo& timer_info, const int32_t& num_vbuckets) {
+void Timer::FillTimerPartition(timer::TimerInfo &timer_info,
+                               const int32_t &num_vbuckets) {
   auto ref = timer_info.callback + ":" + timer_info.reference;
   uint32_t hash = crc32_8(ref.c_str(), ref.size(), 0 /*crc_in*/);
-  timer_info.vb = hash % num_vbuckets;
-  LOG(logTrace) << "ref: " << ref << "hash: " << hash << "num_vbuckets: " << num_vbuckets << "Timer Partition is: " << timer_info.vb << " " << std::endl;
+  if (timer_mask_bits_ > 0)
+    timer_info.vb = ((hash % num_vbuckets) >> timer_mask_bits_)
+                    << timer_mask_bits_;
+  else
+    timer_info.vb = hash % num_vbuckets;
+  LOG(logTrace) << "ref: " << ref << "hash: " << hash
+                << "num_vbuckets: " << num_vbuckets
+                << "timer_mask_bits: " << timer_mask_bits_
+                << "Timer Partition is: " << timer_info.vb << " " << std::endl;
 }
 
 void CreateTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {

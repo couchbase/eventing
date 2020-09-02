@@ -47,6 +47,8 @@ table Payload {
   language_compatibility:string;
   n1ql_prepare_all:bool; // Prepares all N1QL queries if set to true.
   lcb_retry_count:int;
+
+  num_timer_partitions:int; // Timer partitions are configurable using this.
 }
 
 root_type Payload;

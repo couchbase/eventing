@@ -1943,3 +1943,7 @@ func AppendLangCompat(path, appName string, payload []byte) ([]byte, error) {
 
 	return payload, nil
 }
+
+func RoundUpToNearestPowerOf2(number float64) int {
+	return 1 << uint16(math.Ceil(math.Log2(number)))
+}

@@ -521,6 +521,7 @@ void AppWorker::RouteMessageWithResponse(
           ToStringArray(payload->handler_headers());
       handler_config->handler_footers =
           ToStringArray(payload->handler_footers());
+      handler_config->num_timer_partitions = payload->num_timer_partitions();
 
       server_settings->checkpoint_interval = payload->checkpoint_interval();
       checkpoint_interval_ =
@@ -766,6 +767,8 @@ void AppWorker::RouteMessageWithResponse(
       msg_priority_ = true;
       break;
     case oWorkerThreadMap:
+      // TODO: Depricate oWorkerThreadMap because the new thread_map is being
+      // computed in the Appworker
       payload = flatbuf::payload::GetPayload(
           (const void *)worker_msg->payload.payload.c_str());
       thr_map = payload->thr_map();
@@ -798,6 +801,27 @@ void AppWorker::RouteMessageWithResponse(
       std::vector<int64_t> vbuckets;
       for (size_t idx = 0; idx < vb_map->size(); ++idx) {
         vbuckets.push_back(vb_map->Get(idx));
+      }
+
+      // Alter the thread to workerVbs mapping every time we get a new workerVB
+      // map
+      std::sort(vbuckets.begin(), vbuckets.end());
+      int32_t numVbs = vbuckets.size();
+      int32_t chuncks = numVbs % thr_count_;
+      int32_t vbsPerThread = numVbs / thr_count_;
+      int32_t threadId = 0;
+      for (int vbIdx = 0; vbIdx < numVbs;) {
+        auto idx = vbIdx;
+        for (; idx < vbIdx + vbsPerThread; idx++) {
+          partition_thr_map_[vbuckets[idx]] = threadId;
+        }
+        if (chuncks > 0) {
+          partition_thr_map_[vbuckets[idx]] = threadId;
+          chuncks--;
+          idx++;
+        }
+        threadId++;
+        vbIdx = idx;
       }
 
       auto partitions = PartitionVbuckets(vbuckets);
