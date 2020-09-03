@@ -19,6 +19,7 @@
 #include "curl.h"
 #include "insight.h"
 #include "lang_compat.h"
+#include "lcb_utils.h"
 #include "query-helper.h"
 #include "query-iterable.h"
 #include "query-mgr.h"
@@ -263,6 +264,9 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
   context_.Reset(isolate_, context);
 
   v8::Context::Scope context_scope(context);
+
+  lcb_logger_create(&evt_logger.base, &evt_logger);
+  lcb_logger_callback(evt_logger.base, evt_log_handler);
 
   InitializeIsolateData(server_settings, h_config);
   InstallCurlBindings(config->curl_bindings);

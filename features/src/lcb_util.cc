@@ -434,10 +434,8 @@ bool evt_should_log(int severity, const char *subsys) {
   return false;
 }
 
-// TODO: Logger for lcb
-/*
-void evt_log_handler(struct lcb_logprocs_st *procs, unsigned int iid,
-                     const char *subsys, int severity, const char *srcfile,
+void evt_log_handler(const lcb_LOGGER *procs, uint64_t iid, const char *subsys,
+                     lcb_LOG_SEVERITY severity, const char *srcfile,
                      int srcline, const char *fmt, va_list ap) {
   if (evt_should_log(severity, subsys)) {
     char buf[EVT_LOG_MSG_SIZE] = {};
@@ -446,10 +444,4 @@ void evt_log_handler(struct lcb_logprocs_st *procs, unsigned int iid,
   }
 }
 
-struct lcb_logprocs_st evt_logger = {
-    0,
-    {
-        {evt_log_handler}
-    }
-};
-*/
+struct Logger evt_logger;

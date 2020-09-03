@@ -109,6 +109,15 @@ RetryLcbCommand(lcb_INSTANCE *instance, CmdType &cmd, int max_retry_count,
   return result;
 }
 
-extern lcb_LOGGER *evt_logger;
+struct Logger {
+  Logger() : base(NULL) {}
+  lcb_LOGGER *base;
+};
+
+void evt_log_handler(const lcb_LOGGER *procs, uint64_t iid, const char *subsys,
+                     lcb_LOG_SEVERITY severity, const char *srcfile,
+                     int srcline, const char *fmt, va_list ap);
+
+extern Logger evt_logger;
 
 #endif // COUCHBASE_LCB_UTILS_H

@@ -107,6 +107,7 @@ Error Bucket::Connect() {
   lcb_createopts_create(&options, LCB_TYPE_BUCKET);
   lcb_createopts_connstr(options, conn_str_info.conn_str.c_str(),
                          strlen(conn_str_info.conn_str.c_str()));
+  lcb_createopts_logger(options, evt_logger.base);
 
   auto result = lcb_create(&connection_, options);
   if (result != LCB_SUCCESS) {
@@ -114,14 +115,6 @@ Error Bucket::Connect() {
                                      result);
   }
   lcb_createopts_destroy(options);
-  // TODO: Add lcb logger
-  /*
-    result = RetryWithFixedBackoff(5, 200, IsRetriable, lcb_cntl, connection_,
-                                   LCB_CNTL_SET, LCB_CNTL_LOGGER, &evt_logger);
-    if (result != LCB_SUCCESS) {
-      return FormatErrorAndDestroyConn("Unable to set logger hooks", result);
-    }
-  */
 
   auto auth = lcbauth_new();
   result = RetryWithFixedBackoff(5, 200, IsRetriable, lcbauth_set_callbacks,

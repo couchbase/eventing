@@ -32,6 +32,7 @@ Connection::Info Connection::Pool::CreateConnection() const {
   lcb_createopts_create(&options, LCB_TYPE_BUCKET);
   lcb_createopts_connstr(options, conn_str_info.conn_str.c_str(),
                          strlen(conn_str_info.conn_str.c_str()));
+  lcb_createopts_logger(options, evt_logger.base);
 
   lcb_INSTANCE *connection;
   auto result = lcb_create(&connection, options);
@@ -41,14 +42,6 @@ Connection::Info Connection::Pool::CreateConnection() const {
   }
 
   lcb_createopts_destroy(options);
-  // TODO: loging for lcb
-  /*
-    result = lcb_cntl(connection, LCB_CNTL_SET, LCB_CNTL_LOGGER, &evt_logger);
-    if (result != LCB_SUCCESS) {
-      return FormatErrorAndDestroyConn("Unable to set libcouchbase logger
-    hooks", connection, result);
-    }
-  */
 
   auto auth = lcbauth_new();
   result = lcbauth_set_callbacks(auth, isolate_, GetUsername, GetPassword);
