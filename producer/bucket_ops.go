@@ -8,6 +8,7 @@ import (
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
 	"github.com/couchbase/gocb/v2"
+	"github.com/couchbase/gocbcore/v9"
 	"net"
 	"time"
 )
@@ -158,7 +159,7 @@ var clearDebuggerInstanceCallback = func(args ...interface{}) error {
 	key := p.AddMetadataPrefix(p.app.AppName).Raw() + "::" + common.DebuggerTokenKey
 	var instance common.DebuggerInstance
 	result, err := p.metadataHandle.Get(key, nil)
-	if errors.Is(err, gocb.ErrDocumentNotFound) {
+	if errors.Is(err, gocb.ErrDocumentNotFound) || errors.Is(err, gocbcore.ErrShutdown) || errors.Is(err, gocbcore.ErrCollectionsUnsupported) {
 		logging.Errorf("%s [%s:%d] Abnormal case - debugger instance blob is absent or bucket is closed",
 			logPrefix, p.appName, p.LenRunningConsumers())
 		return nil
@@ -198,7 +199,7 @@ var writeDebuggerURLCallback = func(args ...interface{}) error {
 	key := p.AddMetadataPrefix(p.app.AppName).Raw() + "::" + common.DebuggerTokenKey
 	var instance common.DebuggerInstance
 	result, err := p.metadataHandle.Get(key, nil)
-	if errors.Is(err, gocb.ErrDocumentNotFound) {
+	if errors.Is(err, gocb.ErrDocumentNotFound) || errors.Is(err, gocbcore.ErrShutdown) || errors.Is(err, gocbcore.ErrCollectionsUnsupported) {
 		logging.Errorf("%s [%s:%d] Abnormal case - debugger instance blob is absent or bucket is closed",
 			logPrefix, p.appName, p.LenRunningConsumers())
 		return nil
@@ -239,6 +240,10 @@ var setOpCallback = func(args ...interface{}) error {
 	}
 
 	_, err := p.metadataHandle.Upsert(key.Raw(), blob, nil)
+	if errors.Is(err, gocbcore.ErrShutdown) || errors.Is(err, gocbcore.ErrCollectionsUnsupported) {
+		return nil
+	}
+
 	if err != nil {
 		logging.Errorf("%s [%s:%d] Bucket set failed for key: %ru , err: %v",
 			logPrefix, p.appName, p.LenRunningConsumers(), key.Raw(), err)
@@ -254,11 +259,13 @@ var getOpCallback = func(args ...interface{}) error {
 	blob := args[2]
 
 	result, err := p.metadataHandle.Get(key.Raw(), nil)
-	if errors.Is(err, gocb.ErrDocumentNotFound) {
+	if errors.Is(err, gocb.ErrDocumentNotFound) || errors.Is(err, gocbcore.ErrShutdown) || errors.Is(err, gocbcore.ErrCollectionsUnsupported) {
 		return nil
-	} else if err != nil {
+	}
+	if err != nil {
 		logging.Errorf("%s [%s:%d] Bucket get failed for key: %ru , err: %v",
 			logPrefix, p.appName, p.LenRunningConsumers(), key.Raw(), err)
+		return err
 	}
 
 	err = result.Content(&blob)
@@ -267,14 +274,15 @@ var getOpCallback = func(args ...interface{}) error {
 
 var deleteOpCallback = func(args ...interface{}) error {
 	logPrefix := "Producer::deleteOpCallback"
-
 	p := args[0].(*Producer)
 	key := args[1].(string)
 
 	_, err := p.metadataHandle.Remove(key, nil)
-	if errors.Is(err, gocb.ErrDocumentNotFound) {
+	if errors.Is(err, gocb.ErrDocumentNotFound) || errors.Is(err, gocbcore.ErrShutdown) || errors.Is(err, gocbcore.ErrCollectionsUnsupported) {
 		return nil
-	} else if err != nil {
+	}
+
+	if err != nil {
 		logging.Errorf("%s [%s:%d] Bucket delete failed for key: %ru, err: %v",
 			logPrefix, p.appName, p.LenRunningConsumers(), key, err)
 

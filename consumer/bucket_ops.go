@@ -15,6 +15,7 @@ import (
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
 	"github.com/couchbase/gocb/v2"
+	"github.com/couchbase/gocbcore/v9"
 )
 
 var vbTakeoverCallback = func(args ...interface{}) error {
@@ -140,6 +141,10 @@ var setOpCallback = func(args ...interface{}) error {
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbKey.Raw(), err)
 	}
 
+	if errors.Is(err, gocbcore.ErrShutdown) || errors.Is(err, gocbcore.ErrCollectionsUnsupported) {
+		return nil
+	}
+
 	return err
 }
 
@@ -183,7 +188,10 @@ var getOpCallback = func(args ...interface{}) error {
 			logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 			return err
 		}
+		return nil
+	}
 
+	if errors.Is(err, gocbcore.ErrShutdown) || errors.Is(err, gocbcore.ErrCollectionsUnsupported) {
 		return nil
 	}
 
@@ -380,8 +388,7 @@ var periodicCheckpointCallback = func(args ...interface{}) error {
 		_, err = c.gocbMetaHandle.MutateIn(vbKey.Raw(), rebalance, nil)
 
 	}
-
-	if errors.Is(err, gocb.ErrDocumentNotFound) {
+	if errors.Is(err, gocbcore.ErrShutdown) || errors.Is(err, gocb.ErrDocumentNotFound) || errors.Is(err, gocbcore.ErrCollectionsUnsupported) {
 		return nil
 	}
 
@@ -433,6 +440,10 @@ retryUpdateCheckpoint:
 		goto retryUpdateCheckpoint
 	}
 
+	if errors.Is(err, gocbcore.ErrShutdown) || errors.Is(err, gocbcore.ErrCollectionsUnsupported) {
+		return nil
+	}
+
 	if err != nil {
 		logging.Errorf("%s [%s:%s:%d] Key: %rm, subdoc operation failed while performing checkpoint update post dcp stop stream, err: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbKey.Raw(), err)
@@ -460,6 +471,10 @@ retryMetadataCorrection:
 	mutateIn = append(mutateIn, gocb.UpsertSpec("last_checkpoint_time", time.Now().String(), upsertOptions))
 	mutateIn = append(mutateIn, gocb.UpsertSpec("node_uuid", c.NodeUUID(), upsertOptions))
 	_, err := c.gocbMetaHandle.MutateIn(vbKey.Raw(), mutateIn, nil)
+
+	if errors.Is(err, gocbcore.ErrShutdown) || errors.Is(err, gocbcore.ErrCollectionsUnsupported) {
+		return nil
+	}
 
 	if errors.Is(err, gocb.ErrDocumentNotFound) {
 		var vbBlob vbucketKVBlob
@@ -500,6 +515,10 @@ retryUndoMetadataCorrection:
 	mutateIn = append(mutateIn, gocb.UpsertSpec("last_checkpoint_time", time.Now().String(), upsertOptions))
 	mutateIn = append(mutateIn, gocb.UpsertSpec("node_uuid", "", upsertOptions))
 	_, err := c.gocbMetaHandle.MutateIn(vbKey.Raw(), mutateIn, nil)
+
+	if errors.Is(err, gocbcore.ErrShutdown) || errors.Is(err, gocbcore.ErrCollectionsUnsupported) {
+		return nil
+	}
 
 	if errors.Is(err, gocb.ErrDocumentNotFound) {
 		var vbBlob vbucketKVBlob
@@ -545,6 +564,10 @@ retrySRRUpdate:
 	mutateIn = append(mutateIn, gocb.UpsertSpec("worker_requested_vb_stream", c.ConsumerName(), upsertOptions))
 	_, err := c.gocbMetaHandle.MutateIn(vbKey.Raw(), mutateIn, nil)
 
+	if errors.Is(err, gocbcore.ErrShutdown) || errors.Is(err, gocbcore.ErrCollectionsUnsupported) {
+		return nil
+	}
+
 	if errors.Is(err, gocb.ErrDocumentNotFound) {
 		var vbBlob vbucketKVBlob
 
@@ -587,6 +610,10 @@ retrySRFUpdate:
 	mutateIn = append(mutateIn, gocb.UpsertSpec("node_uuid_requested_vb_stream", "", upsertOptions))
 	mutateIn = append(mutateIn, gocb.UpsertSpec("worker_requested_vb_stream", "", upsertOptions))
 	_, err := c.gocbMetaHandle.MutateIn(vbKey.Raw(), mutateIn, nil)
+
+	if errors.Is(err, gocbcore.ErrShutdown) || errors.Is(err, gocbcore.ErrCollectionsUnsupported) {
+		return nil
+	}
 
 	if errors.Is(err, gocb.ErrDocumentNotFound) {
 		var vbBlob vbucketKVBlob
@@ -636,6 +663,10 @@ retrySRSUpdate:
 	mutateIn = append(mutateIn, gocb.UpsertSpec("worker_requested_vb_stream", "", upsertOptions))
 	_, err := c.gocbMetaHandle.MutateIn(vbKey.Raw(), mutateIn, nil)
 
+	if errors.Is(err, gocbcore.ErrShutdown) || errors.Is(err, gocbcore.ErrCollectionsUnsupported) {
+		return nil
+	}
+
 	if errors.Is(err, gocb.ErrDocumentNotFound) {
 		var vbBlob vbucketKVBlob
 
@@ -674,6 +705,10 @@ retrySEUpdate:
 	mutateIn = append(mutateIn, gocb.UpsertSpec("worker_requested_vb_stream", "", upsertOptions))
 
 	_, err := c.gocbMetaHandle.MutateIn(vbKey.Raw(), mutateIn, nil)
+
+	if errors.Is(err, gocbcore.ErrShutdown) || errors.Is(err, gocbcore.ErrCollectionsUnsupported) {
+		return nil
+	}
 
 	if errors.Is(err, gocb.ErrDocumentNotFound) {
 		var vbBlob vbucketKVBlob
@@ -907,7 +942,7 @@ var acquireDebuggerTokenCallback = func(args ...interface{}) error {
 	key := c.producer.AddMetadataPrefix(c.app.AppName).Raw() + "::" + common.DebuggerTokenKey
 
 	result, err := c.gocbMetaHandle.Get(key, nil)
-	if errors.Is(err, gocb.ErrDocumentNotFound) {
+	if errors.Is(err, gocb.ErrDocumentNotFound) || errors.Is(err, gocbcore.ErrShutdown) || errors.Is(err, gocbcore.ErrCollectionsUnsupported) {
 		logging.Errorf("%s [%s:%s:%d] Key: %s, debugger token not found or bucket is closed, err: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), key, err)
 		*success = false
