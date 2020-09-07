@@ -26,7 +26,7 @@
     <div class="cbui-table">
       <div class="cbui-table-header" ng-if="!summaryCtrl.isAppListEmpty()">
         <span class="cbui-table-cell">function name</span>
-        <span class="cbui-table-cell">source bucket</span>
+        <span class="cbui-table-cell">source Keyspace</span>
         <span class="cbui-table-cell">status</span>
         <span class="cbui-table-cell"></span>
       </div>
@@ -37,7 +37,7 @@
         ng-click="app.toggleActionsVisibility()">
         <div class="cbui-tablerow">
           <span class="cbui-table-cell cbui-tablerow-title">{{appname}}</span>
-          <span class="cbui-table-cell cbui-tablerow-title">{{app.depcfg.source_bucket}}</span>
+          <span class="cbui-table-cell cbui-tablerow-title">{{app.depcfg.source_bucket}}, {{app.depcfg.source_scope}}, {{app.depcfg.source_collection}}</span>
           <span class="cbui-table-cell row flex-left">
             <div class="fix-width-1 margin-right-3">
               {{app.status === 'deployed' || app.status === 'undeployed' || app.status === 'paused' ? app.status : app.status + '...'}}
