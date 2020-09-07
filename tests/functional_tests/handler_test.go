@@ -1967,6 +1967,7 @@ func TestOnDeleteExpiryBucketOp(t *testing.T) {
 	dumpStats()
 	flushFunctionAndBucket(functionName)
 }
+
 func TestTimerOverWriteSameReference(t *testing.T) {
 	functionName := t.Name()
 	addedItems := 1000
@@ -2009,6 +2010,7 @@ func TestTimerOverWriteSameReference(t *testing.T) {
 	dumpStats()
 	flushFunctionAndBucket(functionName)
 }
+
 func TestCancelTimerBucketop(t *testing.T) {
 	functionName := t.Name()
 	addedItems := 2000
@@ -2031,6 +2033,36 @@ func TestCancelTimerBucketop(t *testing.T) {
 	if expectedItems != eventCount {
 		t.Error("For", "TestCancelTimerBucketop",
 			"expected", expectedItems,
+			"got", eventCount,
+		)
+	}
+
+	dumpStats()
+	flushFunctionAndBucket(functionName)
+}
+
+func TestJSExpiryDate(t *testing.T) {
+	functionName := t.Name()
+	itemCount := 5000
+	time.Sleep(time.Second * 5)
+
+	pumpBucketOps(opsType{count: itemCount, expiry: 2147483640}, &rateLimit{})
+	eventCount := verifySourceBucketOps(itemCount, statsLookupRetryCounter)
+	if eventCount != itemCount {
+		t.Error("For", "TestJSExpiryDate",
+			"pumped", itemCount,
+			"seen", eventCount,
+		)
+	}
+
+	handler := "expiry_jsdate"
+	flushFunctionAndBucket(functionName)
+	createAndDeployFunction(functionName, handler, &commonSettings{srcMutationEnabled: true})
+
+	eventCount = verifySourceBucketOps(0, statsLookupRetryCounter)
+	if eventCount != 0 {
+		t.Error("For", "TestJSExpiryDate",
+			"expected", 0,
 			"got", eventCount,
 		)
 	}
