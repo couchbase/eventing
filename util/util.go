@@ -1653,10 +1653,14 @@ func EncodeAppPayload(app *cm.Application) []byte {
 		alias := builder.CreateString(app.DeploymentConfig.Buckets[i].Alias)
 		bName := builder.CreateString(app.DeploymentConfig.Buckets[i].BucketName)
 		bAccess := builder.CreateString(app.DeploymentConfig.Buckets[i].Access)
+		sName := builder.CreateString(app.DeploymentConfig.Buckets[i].ScopeName)
+		cName := builder.CreateString(app.DeploymentConfig.Buckets[i].CollectionName)
 
 		cfg.BucketStart(builder)
 		cfg.BucketAddAlias(builder, alias)
 		cfg.BucketAddBucketName(builder, bName)
+		cfg.BucketAddScopeName(builder, sName)
+		cfg.BucketAddCollectionName(builder, cName)
 		csBucket := cfg.BucketEnd(builder)
 
 		bNames = append(bNames, csBucket)
@@ -1677,11 +1681,20 @@ func EncodeAppPayload(app *cm.Application) []byte {
 
 	metaBucket := builder.CreateString(app.DeploymentConfig.MetadataBucket)
 	sourceBucket := builder.CreateString(app.DeploymentConfig.SourceBucket)
+	metadataCollection := builder.CreateString(app.DeploymentConfig.MetadataCollection)
+	metadataScope := builder.CreateString(app.DeploymentConfig.MetadataScope)
+	sourceScope := builder.CreateString(app.DeploymentConfig.SourceScope)
+	sourceCollection := builder.CreateString(app.DeploymentConfig.SourceCollection)
 
 	cfg.DepCfgStart(builder)
 	cfg.DepCfgAddBuckets(builder, buckets)
 	cfg.DepCfgAddMetadataBucket(builder, metaBucket)
 	cfg.DepCfgAddSourceBucket(builder, sourceBucket)
+	cfg.DepCfgAddMetadataCollection(builder, metadataCollection)
+	cfg.DepCfgAddSourceCollection(builder, sourceCollection)
+	cfg.DepCfgAddSourceScope(builder, sourceScope)
+	cfg.DepCfgAddMetadataScope(builder, metadataScope)
+
 	depcfg := cfg.DepCfgEnd(builder)
 
 	appCode := builder.CreateString(app.AppHandlers)
@@ -1720,6 +1733,10 @@ func ParseFunctionPayload(data []byte, fnName string) cm.Application {
 
 	depcfg.MetadataBucket = string(dcfg.MetadataBucket())
 	depcfg.SourceBucket = string(dcfg.SourceBucket())
+	depcfg.SourceScope = string(dcfg.SourceScope())
+	depcfg.SourceCollection = string(dcfg.SourceCollection())
+	depcfg.MetadataCollection = string(dcfg.MetadataCollection())
+	depcfg.MetadataScope = string(dcfg.MetadataScope())
 
 	var buckets []cm.Bucket
 	b := new(cfg.Bucket)
@@ -1727,9 +1744,11 @@ func ParseFunctionPayload(data []byte, fnName string) cm.Application {
 
 		if dcfg.Buckets(b, i) {
 			newBucket := cm.Bucket{
-				Alias:      string(b.Alias()),
-				BucketName: string(b.BucketName()),
-				Access:     string(config.Access(i)),
+				Alias:          string(b.Alias()),
+				BucketName:     string(b.BucketName()),
+				Access:         string(config.Access(i)),
+				ScopeName:      string(b.ScopeName()),
+				CollectionName: string(b.CollectionName()),
 			}
 			buckets = append(buckets, newBucket)
 		}

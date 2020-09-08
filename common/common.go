@@ -86,16 +86,22 @@ type Application struct {
 }
 
 type DepCfg struct {
-	Buckets        []Bucket `json:"buckets"`
-	Curl           []Curl   `json:"curl"`
-	MetadataBucket string   `json:"metadata_bucket"`
-	SourceBucket   string   `json:"source_bucket"`
+	Buckets            []Bucket `json:"buckets"`
+	Curl               []Curl   `json:"curl"`
+	SourceBucket       string   `json:"source_bucket"`
+	SourceScope        string   `json:"source_scope"`
+	SourceCollection   string   `json:"source_collection"`
+	MetadataBucket     string   `json:"metadata_bucket"`
+	MetadataScope      string   `json:"metadata_scope"`
+	MetadataCollection string   `json:"metadata_collection"`
 }
 
 type Bucket struct {
-	Alias      string `json:"alias"`
-	BucketName string `json:"bucket_name"`
-	Access     string `json:"access"`
+	Alias          string `json:"alias"`
+	BucketName     string `json:"bucket_name"`
+	ScopeName      string `json:"scope_name"`
+	CollectionName string `json:"collection_name"`
+	Access         string `json:"access"`
 }
 
 type Curl struct {

@@ -1417,6 +1417,10 @@ func (m *ServiceMgr) parseFunctionPayload(data []byte, fnName string) applicatio
 
 	depcfg.MetadataBucket = string(dcfg.MetadataBucket())
 	depcfg.SourceBucket = string(dcfg.SourceBucket())
+	depcfg.SourceScope = string(dcfg.SourceScope())
+	depcfg.SourceCollection = string(dcfg.SourceCollection())
+	depcfg.MetadataCollection = string(dcfg.MetadataCollection())
+	depcfg.MetadataScope = string(dcfg.MetadataScope())
 
 	var buckets []bucket
 	b := new(cfg.Bucket)
@@ -1424,9 +1428,11 @@ func (m *ServiceMgr) parseFunctionPayload(data []byte, fnName string) applicatio
 
 		if dcfg.Buckets(b, i) {
 			newBucket := bucket{
-				Alias:      string(b.Alias()),
-				BucketName: string(b.BucketName()),
-				Access:     string(config.Access(i)),
+				Alias:          string(b.Alias()),
+				BucketName:     string(b.BucketName()),
+				Access:         string(config.Access(i)),
+				ScopeName:      string(b.ScopeName()),
+				CollectionName: string(b.CollectionName()),
 			}
 			buckets = append(buckets, newBucket)
 		}
@@ -1610,6 +1616,7 @@ func (m *ServiceMgr) saveTempStoreHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	m.addDefaultDeploymentConfig(&app)
 	if info := m.validateApplication(&app); info.Code != m.statusCodes.ok.Code {
 		m.sendErrorInfo(w, info)
 		return
@@ -1687,6 +1694,7 @@ func (m *ServiceMgr) savePrimaryStoreHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	m.addDefaultDeploymentConfig(&app)
 	if info := m.validateApplication(&app); info.Code != m.statusCodes.ok.Code {
 		m.sendErrorInfo(w, info)
 		return
@@ -1769,10 +1777,14 @@ func (m *ServiceMgr) encodeAppPayload(app *application) []byte {
 		alias := builder.CreateString(app.DeploymentConfig.Buckets[i].Alias)
 		bName := builder.CreateString(app.DeploymentConfig.Buckets[i].BucketName)
 		bAccess := builder.CreateString(app.DeploymentConfig.Buckets[i].Access)
+		sName := builder.CreateString(app.DeploymentConfig.Buckets[i].ScopeName)
+		cName := builder.CreateString(app.DeploymentConfig.Buckets[i].CollectionName)
 
 		cfg.BucketStart(builder)
 		cfg.BucketAddAlias(builder, alias)
 		cfg.BucketAddBucketName(builder, bName)
+		cfg.BucketAddScopeName(builder, sName)
+		cfg.BucketAddCollectionName(builder, cName)
 		csBucket := cfg.BucketEnd(builder)
 
 		bNames = append(bNames, csBucket)
@@ -1793,11 +1805,21 @@ func (m *ServiceMgr) encodeAppPayload(app *application) []byte {
 
 	metaBucket := builder.CreateString(app.DeploymentConfig.MetadataBucket)
 	sourceBucket := builder.CreateString(app.DeploymentConfig.SourceBucket)
+	metadataCollection := builder.CreateString(app.DeploymentConfig.MetadataCollection)
+	metadataScope := builder.CreateString(app.DeploymentConfig.MetadataScope)
+	sourceScope := builder.CreateString(app.DeploymentConfig.SourceScope)
+	sourceCollection := builder.CreateString(app.DeploymentConfig.SourceCollection)
 
 	cfg.DepCfgStart(builder)
 	cfg.DepCfgAddBuckets(builder, buckets)
+
 	cfg.DepCfgAddMetadataBucket(builder, metaBucket)
 	cfg.DepCfgAddSourceBucket(builder, sourceBucket)
+	cfg.DepCfgAddMetadataCollection(builder, metadataCollection)
+	cfg.DepCfgAddSourceCollection(builder, sourceCollection)
+	cfg.DepCfgAddSourceScope(builder, sourceScope)
+	cfg.DepCfgAddMetadataScope(builder, metadataScope)
+
 	depcfg := cfg.DepCfgEnd(builder)
 
 	appCode := builder.CreateString(app.AppHandlers)
@@ -2833,6 +2855,7 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 			}
 
 			m.addDefaultVersionIfMissing(&app)
+			m.addDefaultDeploymentConfig(&app)
 
 			var isMixedMode bool
 			if isMixedMode, info = m.isMixedModeCluster(); info.Code != m.statusCodes.ok.Code {
@@ -2962,6 +2985,31 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 func (m *ServiceMgr) addDefaultVersionIfMissing(app *application) {
 	if app.EventingVersion == "" {
 		app.EventingVersion = util.EventingVer()
+	}
+}
+
+func (m *ServiceMgr) addDefaultDeploymentConfig(app *application) {
+	if app.DeploymentConfig.SourceScope == "" {
+		app.DeploymentConfig.SourceScope = "_default"
+	}
+	if app.DeploymentConfig.SourceCollection == "" {
+		app.DeploymentConfig.SourceCollection = "_default"
+	}
+	if app.DeploymentConfig.MetadataScope == "" {
+		app.DeploymentConfig.MetadataScope = "_default"
+	}
+	if app.DeploymentConfig.MetadataCollection == "" {
+		app.DeploymentConfig.MetadataCollection = "_default"
+	}
+
+	for i := range app.DeploymentConfig.Buckets {
+		if app.DeploymentConfig.Buckets[i].ScopeName == "" {
+			app.DeploymentConfig.Buckets[i].ScopeName = "_default"
+		}
+
+		if app.DeploymentConfig.Buckets[i].CollectionName == "" {
+			app.DeploymentConfig.Buckets[i].CollectionName = "_default"
+		}
 	}
 }
 
@@ -3363,6 +3411,7 @@ func (m *ServiceMgr) createApplications(r *http.Request, appList *[]application,
 			m.addDefaultVersionIfMissing(&app)
 		}
 
+		m.addDefaultDeploymentConfig(&app)
 		if infoVal := m.validateApplication(&app); infoVal.Code != m.statusCodes.ok.Code {
 			logging.Warnf("%s Validating %ru failed: %v", logPrefix, app, infoVal)
 			infoList = append(infoList, infoVal)
