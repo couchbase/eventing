@@ -301,7 +301,7 @@ func (m *ServiceMgr) validateBoolean(field string, isOptional bool, settings map
 	return
 }
 
-func (m *ServiceMgr) validateBucketExists(bucketName string) (info *runtimeInfo) {
+func (m *ServiceMgr) validateKeyspaceExists(bucketName, scopeName, collectionName string) (info *runtimeInfo) {
 	info = &runtimeInfo{}
 
 	nsServerEndpoint := net.JoinHostPort(util.Localhost(), m.restPort)
@@ -318,6 +318,15 @@ func (m *ServiceMgr) validateBucketExists(bucketName string) (info *runtimeInfo)
 	if clusterInfo.GetBucketUUID(bucketName) == "" {
 		info.Code = m.statusCodes.errBucketMissing.Code
 		info.Info = fmt.Sprintf("Bucket %s does not exist", bucketName)
+		return
+	}
+
+	//TODO: Optimise to get collection id from streaming rest api
+	cInfo, err := util.FetchNewClusterInfoCache(nsServerEndpoint)
+	_, err = cInfo.GetCollectionID(bucketName, scopeName, collectionName)
+	if err != nil {
+		info.Code = m.statusCodes.errCollectionMissing.Code
+		info.Info = fmt.Sprintf("%s bucket: %s scope: %s collection: %s", err, bucketName, scopeName, collectionName)
 		return
 	}
 
@@ -423,7 +432,7 @@ func (m *ServiceMgr) validateDeploymentConfig(deploymentConfig *depCfg) (info *r
 		return
 	}
 
-	if info = m.validateBucketExists(deploymentConfig.SourceBucket); info.Code != m.statusCodes.ok.Code {
+	if info = m.validateKeyspaceExists(deploymentConfig.SourceBucket, deploymentConfig.SourceScope, deploymentConfig.SourceCollection); info.Code != m.statusCodes.ok.Code {
 		return
 	}
 
@@ -435,7 +444,7 @@ func (m *ServiceMgr) validateDeploymentConfig(deploymentConfig *depCfg) (info *r
 		return
 	}
 
-	if info = m.validateBucketExists(deploymentConfig.MetadataBucket); info.Code != m.statusCodes.ok.Code {
+	if info = m.validateKeyspaceExists(deploymentConfig.MetadataBucket, deploymentConfig.MetadataScope, deploymentConfig.MetadataCollection); info.Code != m.statusCodes.ok.Code {
 		return
 	}
 
