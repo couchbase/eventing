@@ -28,6 +28,7 @@ import (
 	"github.com/couchbase/cbauth"
 	"github.com/couchbase/cbauth/metakv"
 	cm "github.com/couchbase/eventing/common"
+	"github.com/couchbase/eventing/common/collections"
 	mcd "github.com/couchbase/eventing/dcp/transport"
 	"github.com/couchbase/eventing/gen/flatbuf/cfg"
 	"github.com/couchbase/eventing/logging"
@@ -273,6 +274,29 @@ func LocalEventingServiceHost(auth, hostaddress string) (string, error) {
 	}
 
 	return srvAddr, nil
+}
+
+func CheckKeyspaceExist(bucket, scope, collection, hostaddress string) bool {
+	//TODO: Optimise to get collection id from streaming rest api
+	cinfo, err := FetchNewClusterInfoCache(hostaddress)
+	if err != nil {
+		return true
+	}
+	cinfo.RLock()
+	defer cinfo.RUnlock()
+	kvAddrs, err := cinfo.GetNodesByBucket(bucket)
+	if err != nil {
+		if err.Error() == fmt.Sprintf("No bucket named "+bucket) {
+			return false
+		}
+		return true
+	}
+
+	if len(kvAddrs) == 0 {
+		return false
+	}
+	_, err = cinfo.GetCollectionID(bucket, scope, collection)
+	return !(err == collections.SCOPE_NOT_FOUND || err == collections.COLLECTION_NOT_FOUND)
 }
 
 func CountActiveKVNodes(bucket, hostaddress string) int {

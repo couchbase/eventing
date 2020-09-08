@@ -920,22 +920,13 @@ func (p *Producer) pollForDeletedVbs() {
 		select {
 		case <-p.pollBucketTicker.C:
 			hostAddress := net.JoinHostPort(util.Localhost(), p.GetNsServerPort())
+			srcKeyspaceExist := util.CheckKeyspaceExist(p.SourceBucket(), p.SourceScope(), p.SourceCollection(), hostAddress)
+			metadataKeyspaceExist := util.CheckKeyspaceExist(p.MetadataBucket(), p.MetadataScope(), p.MetadataCollection(), hostAddress)
 
-			srcBucketNodeCount := util.CountActiveKVNodes(p.SourceBucket(), hostAddress)
-			metaBucketNodeCount := util.CountActiveKVNodes(p.metadataKeyspace.BucketName, hostAddress)
-			skipMetaCleanup := (metaBucketNodeCount == 0)
-
-			if srcBucketNodeCount == 0 {
-				logging.Infof("%s [%s:%d] SrcBucketNodeCount: %d Stopping running producer",
-					logPrefix, p.appName, p.LenRunningConsumers(), srcBucketNodeCount)
-				p.superSup.StopProducer(p.appName, skipMetaCleanup, updateMetakv)
-				continue
-			}
-
-			if metaBucketNodeCount == 0 {
-				logging.Infof("%s [%s:%d] MetaBucketNodeCount: %d Stopping running producer",
-					logPrefix, p.appName, p.LenRunningConsumers(), metaBucketNodeCount)
-				p.superSup.StopProducer(p.appName, skipMetaCleanup, updateMetakv)
+			if !(srcKeyspaceExist && metadataKeyspaceExist) {
+				logging.Infof("%s [%s:%d] Stopping running producer source Keyspace: srcKeyspaceExist: %t metadataKeyspaceExist: %t",
+					logPrefix, p.appName, p.LenRunningConsumers(), srcKeyspaceExist, metadataKeyspaceExist)
+				p.superSup.StopProducer(p.appName, !metadataKeyspaceExist, updateMetakv)
 			}
 
 		case <-p.pollBucketStopCh:
