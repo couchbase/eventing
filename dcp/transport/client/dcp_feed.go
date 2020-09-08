@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"github.com/couchbase/eventing/common/collections"
 	"github.com/couchbase/eventing/dcp/transport"
 	"github.com/couchbase/eventing/logging"
 	"io"
@@ -912,15 +913,16 @@ type DcpStream struct {
 
 // DcpEvent memcached events for DCP streams.
 type DcpEvent struct {
-	Opcode     transport.CommandCode // Type of event
-	Status     transport.Status      // Response status
-	Datatype   uint8                 // Datatype per binary protocol
-	VBucket    uint16                // VBucket this event applies to
-	Opaque     uint16                // 16 MSB of opaque
-	VBuuid     uint64                // This field is set by downstream
-	Key, Value []byte                // Item key/value
-	OldValue   []byte                // TODO: TBD: old document value
-	Cas        uint64                // CAS value of the item
+	Opcode       transport.CommandCode // Type of event
+	Status       transport.Status      // Response status
+	Datatype     uint8                 // Datatype per binary protocol
+	VBucket      uint16                // VBucket this event applies to
+	Opaque       uint16                // 16 MSB of opaque
+	VBuuid       uint64                // This field is set by downstream
+	Key, Value   []byte                // Item key/value
+	OldValue     []byte                // TODO: TBD: old document value
+	Cas          uint64                // CAS value of the item
+	CollectionID uint32                // Collection Id
 	// meta fields
 	Seqno uint64 // seqno. of the mutation, doubles as rollback-seqno
 	// https://issues.couchbase.com/browse/MB-15333,
@@ -949,8 +951,17 @@ func newDcpEvent(rq *transport.MCRequest, stream *DcpStream) *DcpEvent {
 		VBuuid:   stream.Vbuuid,
 		Ctime:    time.Now().UnixNano(),
 	}
-	event.Key = make([]byte, len(rq.Key))
-	copy(event.Key, rq.Key)
+
+	docId := rq.Key
+	if true /*Collection aware*/ {
+		switch event.Opcode {
+		case transport.DCP_MUTATION, transport.DCP_DELETION, transport.DCP_EXPIRATION:
+			docId, event.CollectionID = collections.LEB128Dec(rq.Key)
+		}
+	}
+
+	event.Key = make([]byte, len(docId))
+	copy(event.Key, docId)
 	event.Value = make([]byte, len(rq.Body))
 	copy(event.Value, rq.Body)
 
