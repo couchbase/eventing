@@ -58,7 +58,7 @@ func (c *Consumer) processDCPEvents() {
 		case e, ok := <-c.aggDCPFeed:
 			if ok == false {
 				logging.Infof("%s [%s:%s:%d] Closing DCP feed for bucket %q",
-					logPrefix, c.workerName, c.tcpPort, c.Pid(), c.bucket)
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), c.sourceKeyspace.BucketName)
 				return
 			}
 
@@ -411,7 +411,7 @@ func (c *Consumer) startDcp(flogs couchbase.FailoverLog) error {
 		return err
 	}
 
-	vbSeqnos, err := util.BucketSeqnos(c.producer.NsServerHostPort(), "default", c.bucket)
+	vbSeqnos, err := util.BucketSeqnos(c.producer.NsServerHostPort(), "default", c.sourceKeyspace.BucketName)
 	if err != nil && c.dcpStreamBoundary != common.DcpEverything {
 		logging.Errorf("%s [%s:%s:%d] Failed to fetch vb seqnos, err: %v", logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
 		return nil
@@ -632,7 +632,7 @@ func (c *Consumer) addToAggChan(dcpFeed *couchbase.DcpFeed) {
 							delete(c.kvHostDcpFeedMap, addr)
 							logging.Infof("%s [%s:%s:%d] Closing dcp feed: %v, count: %d for bucket: %s",
 								logPrefix, c.workerName, c.tcpPort, c.Pid(), dcpFeed.GetName(),
-								len(dcpFeed.C), c.bucket)
+								len(dcpFeed.C), c.sourceKeyspace.BucketName)
 						}
 					}
 					c.hostDcpFeedRWMutex.Unlock()
@@ -1065,7 +1065,7 @@ func (c *Consumer) handleFailoverLog() {
 						case <-c.stopConsumerCh:
 							return
 						default:
-							vbSeqNos, err := util.BucketSeqnos(c.producer.NsServerHostPort(), "default", c.bucket)
+							vbSeqNos, err := util.BucketSeqnos(c.producer.NsServerHostPort(), "default", c.sourceKeyspace.BucketName)
 							if err == nil {
 								break vbLabel
 							}

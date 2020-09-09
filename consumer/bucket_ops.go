@@ -119,14 +119,14 @@ var commonConnectBucketOpCallback = func(args ...interface{}) error {
 	defer c.cbBucketRWMutex.Unlock()
 
 	var err error
-	*b, err = util.ConnectBucket(hostPortAddr, "default", c.bucket)
+	*b, err = util.ConnectBucket(hostPortAddr, "default", c.sourceKeyspace.BucketName)
 	if err != nil {
 		logging.Errorf("%s [%s:%d] Connect to bucket: %s failed isTerminateRunning: %d , err: %v",
-			logPrefix, c.workerName, c.producer.LenRunningConsumers(), c.bucket,
+			logPrefix, c.workerName, c.producer.LenRunningConsumers(), c.sourceKeyspace.BucketName,
 			atomic.LoadUint32(&c.isTerminateRunning), err)
 	} else {
 		logging.Infof("%s [%s:%d] Connected to bucket: %s isTerminateRunning: %d",
-			logPrefix, c.workerName, c.producer.LenRunningConsumers(), c.bucket,
+			logPrefix, c.workerName, c.producer.LenRunningConsumers(), c.sourceKeyspace.BucketName,
 			atomic.LoadUint32(&c.isTerminateRunning))
 	}
 

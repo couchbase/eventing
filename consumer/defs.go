@@ -109,7 +109,7 @@ type vbSeqNo struct {
 type Consumer struct {
 	n1qlPrepareAll bool
 	app            *common.AppConfig
-	bucket         string // source bucket
+	sourceKeyspace *common.Keyspace // source bucket
 	builderPool    *sync.Pool
 	breakpadOn     bool
 	uuid           string

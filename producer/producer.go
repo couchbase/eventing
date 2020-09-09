@@ -75,6 +75,7 @@ func NewProducer(appName, debuggerPort, eventingPort, eventingSSLPort, eventingD
 		curlLatencyStats:             util.NewStats(),
 	}
 
+	p.handlerConfig.SourceKeyspace = &common.Keyspace{}
 	p.processConfig.DebuggerPort = debuggerPort
 	p.processConfig.DiagDir = diagDir
 	p.processConfig.EventingDir = eventingDir
@@ -120,7 +121,7 @@ func (p *Producer) Serve() {
 	p.updateStatsTicker = time.NewTicker(time.Duration(p.handlerConfig.CheckpointInterval) * time.Millisecond)
 
 	logging.Infof("%s [%s:%d] Source bucket: %s vbucket count: %d using timer: %d",
-		logPrefix, p.appName, p.LenRunningConsumers(), p.handlerConfig.SourceBucket, p.numVbuckets, p.isUsingTimer)
+		logPrefix, p.appName, p.LenRunningConsumers(), p.SourceBucket(), p.numVbuckets, p.isUsingTimer)
 
 	p.seqsNoProcessedRWMutex.Lock()
 	for i := 0; i < p.numVbuckets; i++ {
@@ -140,7 +141,7 @@ func (p *Producer) Serve() {
 	p.isPlannerRunning = true
 	logging.Infof("%s [%s:%d] Planner status: %t, before vbucket to node assignment", logPrefix, p.appName, p.LenRunningConsumers(), p.isPlannerRunning)
 
-	err = p.vbEventingNodeAssign(p.handlerConfig.SourceBucket)
+	err = p.vbEventingNodeAssign(p.SourceBucket())
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
 		p.isPlannerRunning = false
@@ -220,7 +221,7 @@ func (p *Producer) Serve() {
 				oldKvNodes := p.getKvNodeAddrs()
 
 				// vbEventingNodeAssign() would update list of KV nodes. We need them soon after this call
-				err = p.vbEventingNodeAssign(p.handlerConfig.SourceBucket)
+				err = p.vbEventingNodeAssign(p.SourceBucket())
 				if err == common.ErrRetryTimeout {
 					logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
 					p.isPlannerRunning = false
@@ -483,7 +484,7 @@ func (p *Producer) String() string {
 func (p *Producer) startBucket() {
 	logPrefix := "Producer::startBucket"
 
-	logging.Infof("%s [%s:%d] Connecting with bucket: %q", logPrefix, p.appName, p.LenRunningConsumers(), p.handlerConfig.SourceBucket)
+	logging.Infof("%s [%s:%d] Connecting with bucket: %q", logPrefix, p.appName, p.LenRunningConsumers(), p.SourceBucket())
 
 	for i := 0; i < p.handlerConfig.WorkerCount; i++ {
 		workerName := fmt.Sprintf("worker_%s_%d", p.appName, i)
@@ -920,7 +921,7 @@ func (p *Producer) pollForDeletedVbs() {
 		case <-p.pollBucketTicker.C:
 			hostAddress := net.JoinHostPort(util.Localhost(), p.GetNsServerPort())
 
-			srcBucketNodeCount := util.CountActiveKVNodes(p.handlerConfig.SourceBucket, hostAddress)
+			srcBucketNodeCount := util.CountActiveKVNodes(p.SourceBucket(), hostAddress)
 			metaBucketNodeCount := util.CountActiveKVNodes(p.metadataKeyspace.BucketName, hostAddress)
 			skipMetaCleanup := (metaBucketNodeCount == 0)
 

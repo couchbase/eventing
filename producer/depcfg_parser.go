@@ -66,7 +66,9 @@ func (p *Producer) parseDepcfg() error {
 
 	p.auth = fmt.Sprintf("%s:%s", user, password)
 
-	p.handlerConfig.SourceBucket = string(depcfg.SourceBucket())
+	p.handlerConfig.SourceKeyspace.BucketName = string(depcfg.SourceBucket())
+	p.handlerConfig.SourceKeyspace.ScopeName = string(depcfg.SourceScope())
+	p.handlerConfig.SourceKeyspace.CollectionName = string(depcfg.SourceCollection())
 	p.cfgData = string(cfgData)
 	p.metadataKeyspace.BucketName = string(depcfg.MetadataBucket())
 	p.metadataKeyspace.ScopeName = string(depcfg.MetadataScope())
@@ -345,8 +347,9 @@ func (p *Producer) parseDepcfg() error {
 
 	logging.SetLogLevel(util.GetLogLevel(logLevel))
 
-	logging.Infof("%s [%s] Loaded function => wc: %v bucket: %v statsTickD: %v",
-		logPrefix, p.appName, p.handlerConfig.WorkerCount, p.handlerConfig.SourceBucket, p.handlerConfig.StatsLogInterval)
+	logging.Infof("%s [%s] Loaded function => wc: %v bucket: %v Scope: %v Collection: %s statsTickD: %v",
+		logPrefix, p.appName, p.handlerConfig.WorkerCount, p.SourceBucket(), p.SourceScope(), p.SourceCollection(),
+		p.handlerConfig.StatsLogInterval)
 
 	if p.handlerConfig.WorkerCount <= 0 {
 		return fmt.Errorf("%v", errorUnexpectedWorkerCount)
@@ -354,7 +357,7 @@ func (p *Producer) parseDepcfg() error {
 
 	p.nsServerHostPort = net.JoinHostPort(util.Localhost(), p.nsServerPort)
 
-	p.kvHostPorts, err = util.KVNodesAddresses(p.auth, p.nsServerHostPort, p.handlerConfig.SourceBucket)
+	p.kvHostPorts, err = util.KVNodesAddresses(p.auth, p.nsServerHostPort, p.SourceBucket())
 	if err != nil {
 		logging.Errorf("%s [%s] Failed to get list of kv nodes in the cluster, err: %v", logPrefix, p.appName, err)
 		return err

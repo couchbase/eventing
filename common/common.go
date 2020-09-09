@@ -385,7 +385,7 @@ type HandlerConfig struct {
 	LogLevel                 string
 	SocketWriteBatchSize     int
 	SocketTimeout            int
-	SourceBucket             string
+	SourceKeyspace           *Keyspace
 	StatsLogInterval         int
 	StreamBoundary           DcpStreamBoundary
 	TimerContextSize         int64

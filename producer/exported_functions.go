@@ -210,7 +210,17 @@ func (p *Producer) MetadataBucket() string {
 
 // SourceBucket returns the source bucket for event handler
 func (p *Producer) SourceBucket() string {
-	return p.handlerConfig.SourceBucket
+	return p.handlerConfig.SourceKeyspace.BucketName
+}
+
+// SourceScope returns the source scope for event handler
+func (p *Producer) SourceScope() string {
+	return p.handlerConfig.SourceKeyspace.ScopeName
+}
+
+// SourceCollection returns the source collection for event handler
+func (p *Producer) SourceCollection() string {
+	return p.handlerConfig.SourceKeyspace.CollectionName
 }
 
 // NotifyInit notifies the supervisor about producer initialisation

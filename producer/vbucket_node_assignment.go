@@ -320,10 +320,10 @@ func (p *Producer) getKvVbMap() error {
 		return err
 	}
 
-	kvAddrs, err := cinfo.GetNodesByBucket(p.handlerConfig.SourceBucket)
+	kvAddrs, err := cinfo.GetNodesByBucket(p.SourceBucket())
 	if err != nil {
 		logging.Errorf("%s [%s:%d] Failed to get address of KV host housing source bucket: %s, err: %v",
-			logPrefix, p.appName, p.LenRunningConsumers(), p.handlerConfig.SourceBucket, err)
+			logPrefix, p.appName, p.LenRunningConsumers(), p.SourceBucket(), err)
 		return err
 	}
 
@@ -339,7 +339,7 @@ func (p *Producer) getKvVbMap() error {
 			continue
 		}
 
-		vbs, err := cinfo.GetVBuckets(kvaddr, p.handlerConfig.SourceBucket)
+		vbs, err := cinfo.GetVBuckets(kvaddr, p.SourceBucket())
 		if err != nil {
 			logging.Errorf("%s [%s:%d] Failed to get vbuckets for given kv util.NodeId, err: %v",
 				logPrefix, p.appName, p.LenRunningConsumers(), err)

@@ -36,7 +36,7 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		aggDCPFeed:                      make(chan *memcached.DcpEvent, dcpConfig["dataChanSize"].(int)),
 		aggDCPFeedMemCap:                hConfig.AggDCPFeedMemCap,
 		breakpadOn:                      pConfig.BreakpadOn,
-		bucket:                          hConfig.SourceBucket,
+		sourceKeyspace:                  hConfig.SourceKeyspace,
 		cbBucket:                        b,
 		cbBucketRWMutex:                 &sync.RWMutex{},
 		checkpointInterval:              time.Duration(hConfig.CheckpointInterval) * time.Millisecond,
