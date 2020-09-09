@@ -95,10 +95,9 @@ func (m *ServiceMgr) fillMissingWithDefaults(appName string, settings map[string
 	// Handler related configurations
 	fillMissingDefault(app, settings, "n1ql_prepare_all", false)
 	fillMissingDefault(app, settings, "checkpoint_interval", float64(60000))
-	fillMissingDefault(app, settings, "cleanup_timers", false)
 	fillMissingDefault(app, settings, "cpp_worker_thread_count", float64(2))
-	fillMissingDefault(app, settings, "deadline_timeout", float64(62))
 	fillMissingDefault(app, settings, "execution_timeout", float64(60))
+	fillMissingDefault(app, settings, "deadline_timeout", settings["execution_timeout"].(float64)+2)
 	fillMissingDefault(app, settings, "feedback_batch_size", float64(100))
 	fillMissingDefault(app, settings, "feedback_read_buffer_size", float64(65536))
 	fillMissingDefault(app, settings, "idle_checkpoint_interval", float64(30000))
@@ -116,14 +115,8 @@ func (m *ServiceMgr) fillMissingWithDefaults(appName string, settings map[string
 	fillMissingDefault(app, settings, "worker_response_timeout", float64(3600))
 
 	// metastore related configuration
-	fillMissingDefault(app, settings, "execute_timer_routine_count", float64(3))
-	fillMissingDefault(app, settings, "timer_storage_routine_count", float64(3))
-	fillMissingDefault(app, settings, "timer_storage_chan_size", float64(10*1000))
 	fillMissingDefault(app, settings, "timer_queue_mem_cap", float64(50))
 	fillMissingDefault(app, settings, "timer_queue_size", float64(10000))
-
-	// Process related configuration
-	fillMissingDefault(app, settings, "breakpad_on", true)
 
 	// Rebalance related configurations
 	fillMissingDefault(app, settings, "vb_ownership_giveup_routine_count", float64(3))
@@ -629,14 +622,14 @@ func (m *ServiceMgr) getStatuses(appName string) (dStatus bool, pStatus bool, er
 }
 
 func (m *ServiceMgr) SetFailoverStatus(changeId string) {
-        m.failoverMu.Lock()
-        defer m.failoverMu.Unlock()
+	m.failoverMu.Lock()
+	defer m.failoverMu.Unlock()
 
-        m.failoverCounter++
-        m.failoverNotifTs = time.Now().Unix()
-        m.failoverChangeId = changeId
+	m.failoverCounter++
+	m.failoverNotifTs = time.Now().Unix()
+	m.failoverChangeId = changeId
 
-        return
+	return
 }
 
 func (m *ServiceMgr) ResetFailoverStatus() {

@@ -845,25 +845,25 @@ func CompareSlices(s1, s2 []uint16) bool {
 
 func CompareStringSlices(s1, s2 []string) bool {
 
-        if s1 == nil && s2 == nil {
-                return true
-        }
+	if s1 == nil && s2 == nil {
+		return true
+	}
 
-        if s1 == nil || s2 == nil {
-                return false
-        }
+	if s1 == nil || s2 == nil {
+		return false
+	}
 
-        if len(s1) != len(s2) {
-                return false
-        }
+	if len(s1) != len(s2) {
+		return false
+	}
 
-        for i := range s1 {
-                if s1[i] != s2[i] {
-                        return false
-                }
-        }
+	for i := range s1 {
+		if s1[i] != s2[i] {
+			return false
+		}
+	}
 
-        return true
+	return true
 }
 
 func VbsSliceDiff(X, Y []uint16) []uint16 {
@@ -1689,7 +1689,6 @@ func EncodeAppPayload(app *cm.Application) []byte {
 	fiid := builder.CreateString(app.FunctionInstanceID)
 
 	cfg.ConfigStart(builder)
-	cfg.ConfigAddId(builder, uint32(app.ID))
 	cfg.ConfigAddAppCode(builder, appCode)
 	cfg.ConfigAddAppName(builder, aName)
 	cfg.ConfigAddDepCfg(builder, depcfg)
@@ -1698,17 +1697,6 @@ func EncodeAppPayload(app *cm.Application) []byte {
 	cfg.ConfigAddAccess(builder, access)
 	cfg.ConfigAddFunctionInstanceID(builder, fiid)
 
-	udtp := byte(0x0)
-	if app.UsingTimer {
-		udtp = byte(0x1)
-	}
-	cfg.ConfigAddUsingTimer(builder, udtp)
-
-	srcMutation := byte(0x0)
-	if app.SrcMutationEnabled {
-		srcMutation = byte(0x1)
-	}
-	cfg.ConfigAddSrcMutationEnabled(builder, srcMutation)
 	config := cfg.ConfigEnd(builder)
 
 	builder.Finish(config)
@@ -1723,17 +1711,8 @@ func ParseFunctionPayload(data []byte, fnName string) cm.Application {
 	var app cm.Application
 	app.AppHandlers = string(config.AppCode())
 	app.Name = string(config.AppName())
-	app.ID = int(config.Id())
 	app.FunctionID = uint32(config.HandlerUUID())
 	app.FunctionInstanceID = string(config.FunctionInstanceID())
-	app.UsingTimer = false
-	if config.UsingTimer() == (0x1) {
-		app.UsingTimer = true
-	}
-	app.SrcMutationEnabled = false
-	if config.SrcMutationEnabled() == (0x1) {
-		app.SrcMutationEnabled = true
-	}
 
 	d := new(cfg.DepCfg)
 	depcfg := new(cm.DepCfg)

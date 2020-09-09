@@ -15,7 +15,7 @@
  **/
 
 /* This code takes in list of file names in argv and embed the contents
- * into a const char array.
+ * into a const string.
  **/
 
 package main
@@ -25,11 +25,13 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"path/filepath"
+	"strings"
 )
 
 func main() {
 	if len(os.Args) != 4 || os.Args[1] == "-h" || os.Args[1] == "--help" {
-		fmt.Printf("usage: generate <source file> <variable name> <output file to append>\n")
+		fmt.Printf("usage: generate <source file> <variable/package name> <output file to append>\n")
 		os.Exit(1)
 	}
 
@@ -47,13 +49,22 @@ func main() {
 	writer := bufio.NewWriter(dst)
 	defer writer.Flush()
 
-	fmt.Fprintf(writer, "// Automatically generated from %v, do not edit\n", os.Args[1])
-	fmt.Fprintf(writer, "const unsigned char %v[] = {", os.Args[2])
-	for idx := 0; idx < len(src); idx++ {
-		if idx%20 == 0 {
-			fmt.Fprintf(writer, "\n   ")
-		}
-		fmt.Fprintf(writer, "0x%02x,", src[idx])
+	dir := filepath.Dir(os.Args[3])
+	pkg := filepath.Base(dir)
+	if len(pkg) == 0 || strings.Contains(pkg, ".") {
+		panic(fmt.Sprintf("unable to figure out package name converting %v", os.Args))
 	}
-	fmt.Fprintf(writer, "0x00\n};\n")
+
+	fmt.Fprintf(writer, "// Automatically generated from %v, do not edit\n", os.Args[1])
+	fmt.Fprintf(writer, "package %v\n", pkg)
+	fmt.Fprintf(writer, "const %v =\n`", os.Args[2])
+	for _, ch := range src {
+		switch ch {
+		case '`':
+			fmt.Fprintf(writer, "` + \"`\" + `")
+		default:
+			fmt.Fprintf(writer, "%c", ch)
+		}
+	}
+	fmt.Fprintln(writer, "`")
 }

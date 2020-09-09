@@ -10,13 +10,15 @@ import (
 )
 
 var (
-	ipv4               bool = true
-	localusr           string
-	localkey           string
-	maxFunctionSize    int = 128 * 1024
-	metakvMaxDocSize   int = 128 * 1024
-	CrcTable           *crc32.Table
+	localusr string
+	localkey string
+	CrcTable *crc32.Table
+
+	ipv4               = true
+	maxFunctionSize    = 128 * 1024
+	metakvMaxDocSize   = 128 * 1024
 	HTTPRequestTimeout = 10 * time.Second
+	breakpadOn         = true
 )
 
 func init() {
@@ -102,4 +104,12 @@ func SetMetaKvMaxDocSize(size int) {
 
 func MetaKvMaxDocSize() int {
 	return metakvMaxDocSize
+}
+
+func SetBreakpad(val bool) {
+	breakpadOn = val
+}
+
+func BreakpadOn() bool {
+	return breakpadOn
 }

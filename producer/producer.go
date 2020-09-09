@@ -25,12 +25,11 @@ import (
 
 // NewProducer creates a new producer instance using parameters supplied by super_supervisor
 func NewProducer(appName, debuggerPort, eventingPort, eventingSSLPort, eventingDir, kvPort,
-	metakvAppHostPortsPath, nsServerPort, uuid, diagDir string, cleanupTimers bool,
-	memoryQuota int64, numVbuckets int, superSup common.EventingSuperSup) *Producer {
+	metakvAppHostPortsPath, nsServerPort, uuid, diagDir string, memoryQuota int64,
+	numVbuckets int, superSup common.EventingSuperSup) *Producer {
 	p := &Producer{
 		appName:                      appName,
 		bootstrapFinishCh:            make(chan struct{}, 1),
-		cleanupTimers:                cleanupTimers,
 		consumerListeners:            make(map[common.EventingConsumer]net.Listener),
 		dcpConfig:                    make(map[string]interface{}),
 		ejectNodeUUIDs:               make([]string, 0),
@@ -54,6 +53,8 @@ func NewProducer(appName, debuggerPort, eventingPort, eventingSSLPort, eventingD
 		runningConsumersRWMutex:      &sync.RWMutex{},
 		seqsNoProcessed:              make(map[int]int64),
 		seqsNoProcessedRWMutex:       &sync.RWMutex{},
+		isSrcMutation:                true,
+		isUsingTimer:                 true,
 		statsRWMutex:                 &sync.RWMutex{},
 		stopCh:                       make(chan struct{}, 1),
 		superSup:                     superSup,
@@ -78,6 +79,7 @@ func NewProducer(appName, debuggerPort, eventingPort, eventingSSLPort, eventingD
 	p.processConfig.EventingDir = eventingDir
 	p.processConfig.EventingPort = eventingPort
 	p.processConfig.EventingSSLPort = eventingSSLPort
+	p.processConfig.BreakpadOn = util.BreakpadOn()
 
 	p.eventingNodeUUIDs = append(p.eventingNodeUUIDs, uuid)
 	return p
@@ -112,10 +114,12 @@ func (p *Producer) Serve() {
 	n1qlParams := "{ 'consistency': '" + p.handlerConfig.N1qlConsistency + "' }"
 	p.app.ParsedAppCode, _ = parser.TranspileQueries(p.app.AppCode, n1qlParams)
 
+	p.isUsingTimer = parser.UsingTimer(p.app.AppCode)
+
 	p.updateStatsTicker = time.NewTicker(time.Duration(p.handlerConfig.CheckpointInterval) * time.Millisecond)
 
-	logging.Infof("%s [%s:%d] Source bucket: %s vbucket count: %d",
-		logPrefix, p.appName, p.LenRunningConsumers(), p.handlerConfig.SourceBucket, p.numVbuckets)
+	logging.Infof("%s [%s:%d] Source bucket: %s vbucket count: %d using timer: %d",
+		logPrefix, p.appName, p.LenRunningConsumers(), p.handlerConfig.SourceBucket, p.numVbuckets, p.isUsingTimer)
 
 	p.seqsNoProcessedRWMutex.Lock()
 	for i := 0; i < p.numVbuckets; i++ {
@@ -950,4 +954,12 @@ func (p *Producer) getConsumers() []common.EventingConsumer {
 	}
 
 	return workers
+}
+
+func (p *Producer) SrcMutation() bool {
+	return p.isSrcMutation
+}
+
+func (p *Producer) UsingTimer() bool {
+	return p.isUsingTimer
 }

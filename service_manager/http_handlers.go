@@ -1408,13 +1408,9 @@ func (m *ServiceMgr) parseFunctionPayload(data []byte, fnName string) applicatio
 	var app application
 	app.AppHandlers = string(config.AppCode())
 	app.Name = string(config.AppName())
-	app.ID = int(config.Id())
 	app.FunctionID = uint32(config.HandlerUUID())
 	app.FunctionInstanceID = string(config.FunctionInstanceID())
-	app.SrcMutationEnabled = false
-	if config.SrcMutationEnabled() == 0x1 {
-		app.SrcMutationEnabled = true
-	}
+
 	d := new(cfg.DepCfg)
 	depcfg := new(depCfg)
 	dcfg := config.DepCfg(d)
@@ -1537,11 +1533,8 @@ func (m *ServiceMgr) getTempStore(appName string) (application, *runtimeInfo) {
 
 			if app.Name == appName {
 				info.Code = m.statusCodes.ok.Code
-
 				// Hide some internal settings from being exported
-				app.UsingTimer = false
 				delete(app.Settings, "handler_uuid")
-				delete(app.Settings, "using_timers")
 				return app, info
 			}
 		}
@@ -1812,7 +1805,6 @@ func (m *ServiceMgr) encodeAppPayload(app *application) []byte {
 	fiid := builder.CreateString(app.FunctionInstanceID)
 
 	cfg.ConfigStart(builder)
-	cfg.ConfigAddId(builder, uint32(app.ID))
 	cfg.ConfigAddAppCode(builder, appCode)
 	cfg.ConfigAddAppName(builder, aName)
 	cfg.ConfigAddDepCfg(builder, depcfg)
@@ -1821,17 +1813,6 @@ func (m *ServiceMgr) encodeAppPayload(app *application) []byte {
 	cfg.ConfigAddAccess(builder, access)
 	cfg.ConfigAddFunctionInstanceID(builder, fiid)
 
-	udtp := byte(0x0)
-	if app.UsingTimer {
-		udtp = byte(0x1)
-	}
-	cfg.ConfigAddUsingTimer(builder, udtp)
-
-	srcMutation := byte(0x0)
-	if app.SrcMutationEnabled {
-		srcMutation = byte(0x1)
-	}
-	cfg.ConfigAddSrcMutationEnabled(builder, srcMutation)
 	config := cfg.ConfigEnd(builder)
 
 	builder.Finish(config)
@@ -1907,8 +1888,8 @@ func (m *ServiceMgr) savePrimaryStore(app *application) (info *runtimeInfo) {
 		}
 	}
 
-	app.SrcMutationEnabled = m.isSrcMutationEnabled(&app.DeploymentConfig)
-	if app.SrcMutationEnabled && !m.compareEventingVersion(mhVersion) {
+	srcMutationEnabled := m.isSrcMutationEnabled(&app.DeploymentConfig)
+	if srcMutationEnabled && !m.compareEventingVersion(mhVersion) {
 		info.Code = m.statusCodes.errClusterVersion.Code
 		info.Info = fmt.Sprintf("All eventing nodes in the cluster must be on version %d.%d or higher for allowing mutations against source bucket",
 			mhVersion.major, mhVersion.minor)
@@ -1916,7 +1897,7 @@ func (m *ServiceMgr) savePrimaryStore(app *application) (info *runtimeInfo) {
 		return
 	}
 
-	if app.SrcMutationEnabled {
+	if srcMutationEnabled {
 		if enabled, err := util.IsSyncGatewayEnabled(logPrefix, app.DeploymentConfig.SourceBucket, m.restPort); err == nil && enabled {
 			info.Code = m.statusCodes.errSyncGatewayEnabled.Code
 			info.Info = fmt.Sprintf("SyncGateway is enabled on: %s, deployement of source bucket mutating handler will cause Intra Bucket Recursion", app.DeploymentConfig.SourceBucket)
@@ -1965,12 +1946,6 @@ func (m *ServiceMgr) savePrimaryStore(app *application) (info *runtimeInfo) {
 		info.Info = compilationInfo
 		return
 	}
-
-	usingTimer := parser.UsingTimer(parsedCode)
-	app.Settings["using_timer"] = usingTimer
-	app.UsingTimer = usingTimer
-
-	logging.Infof("%s Function: %s using_timer: %s", logPrefix, app.Name, usingTimer)
 
 	appContent = m.encodeAppPayload(app)
 	settingsPath := metakvAppSettingsPath + app.Name

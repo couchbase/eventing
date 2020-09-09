@@ -48,9 +48,8 @@ const (
 )
 
 type supCmdMsg struct {
-	cleanupTimers bool
-	cmd           int8
-	ctx           string
+	cmd int8
+	ctx string
 }
 
 // AdminPortConfig captures settings supplied by cluster manager

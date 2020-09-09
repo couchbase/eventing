@@ -436,7 +436,6 @@ angular.module('eventing', [
                 deploymentScope.appName = app.appname;
                 deploymentScope.actionTitle = app.status === 'deployed' || app.status === 'paused' ? 'Undeploy' : 'Deploy';
                 deploymentScope.action = app.status === 'deployed' || app.status === 'paused' ? 'undeploy' : 'deploy';
-                deploymentScope.cleanupTimers = false;
 
                 if (app.status === 'deployed' || app.status === 'paused') {
                     undeployApp(app, deploymentScope);
@@ -450,7 +449,6 @@ angular.module('eventing', [
                 processingScope.appName = app.appname;
                 processingScope.actionTitle = app.status === 'paused' ? 'Resume' : 'Pause';
                 processingScope.action = app.status === 'paused' ? 'resume' : 'pause';
-                processingScope.cleanupTimers = false;
 
                 if (app.status === 'paused') {
                     changeState('resume', app, processingScope);
@@ -462,7 +460,6 @@ angular.module('eventing', [
             function changeState(operation, app, scope) {
                 var appClone = app.clone();
                 scope.settings = {};
-                scope.settings.cleanupTimers = false;
                 scope.settings.changeFeedBoundary = 'everything';
 
                 $uibModal.open({
@@ -524,7 +521,6 @@ angular.module('eventing', [
                             return $q.reject(ApplicationService.status.getErrorMsg(responseCode, response.data));
                         }
 
-                        app.settings.cleanup_timers = appClone.settings.cleanup_timers;
                         app.settings.deployment_status = appClone.settings.deployment_status;
                         app.settings.processing_status = appClone.settings.processing_status;
                         app.settings.cluster_stats = appClone.settings.cluster_stats;
@@ -999,7 +995,6 @@ angular.module('eventing', [
             self.cancelEdit = function(dismissDialog) {
                 // TODO : Consider using appModel.clone()
                 $scope.appModel = JSON.parse(JSON.stringify(appModel));
-                $scope.appModel.settings.cleanup_timers = String(appModel.settings.cleanup_timers);
                 dismissDialog('cancel');
             };
         }

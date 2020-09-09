@@ -666,7 +666,7 @@ func (p *Producer) cleanupMetadataImpl(id int, vbsToCleanup []uint16, undeployWG
 			select {
 			case e, ok := <-dcpFeed.C:
 				if ok == false {
-					logging.Infof("%s [%s:%d:id_%d] Exiting timer cleanup routine, mutations till high vb seqnos received",
+					logging.Infof("%s [%s:%d:id_%d] Exiting metadata cleanup routine, mutations till high vb seqnos received",
 						logPrefix, p.appName, p.LenRunningConsumers(), id)
 					return
 				}

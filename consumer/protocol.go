@@ -307,7 +307,8 @@ func (c *Consumer) makeDcpPayload(key, value []byte) (encodedPayload []byte, bui
 
 func (c *Consumer) makeV8InitPayload(appName, debuggerPort, currHost, eventingDir, eventingPort,
 	eventingSSLPort, depCfg string, capacity, executionTimeout, checkpointInterval int,
-	skipLcbBootstrap bool, timerContextSize int64) (encodedPayload []byte, builder *flatbuffers.Builder) {
+	skipLcbBootstrap bool, timerContextSize int64,
+	usingTimer, srcMutation bool) (encodedPayload []byte, builder *flatbuffers.Builder) {
 	builder = c.getBuilder()
 
 	app := builder.CreateString(appName)
@@ -326,8 +327,11 @@ func (c *Consumer) makeV8InitPayload(appName, debuggerPort, currHost, eventingDi
 	lcb := make([]byte, 1)
 	flatbuffers.WriteBool(lcb, skipLcbBootstrap)
 
-	usingTimer := make([]byte, 1)
-	flatbuffers.WriteBool(usingTimer, c.usingTimer)
+	utm := make([]byte, 1)
+	flatbuffers.WriteBool(utm, usingTimer)
+
+	smu := make([]byte, 1)
+	flatbuffers.WriteBool(smu, srcMutation)
 
 	payload.PayloadStart(builder)
 
@@ -345,11 +349,12 @@ func (c *Consumer) makeV8InitPayload(appName, debuggerPort, currHost, eventingDi
 	payload.PayloadAddTimerContextSize(builder, timerContextSize)
 	payload.PayloadAddFunctionInstanceId(builder, fiid)
 	payload.PayloadAddSkipLcbBootstrap(builder, lcb[0])
-	payload.PayloadAddUsingTimer(builder, usingTimer[0])
+	payload.PayloadAddUsingTimer(builder, utm[0])
 	payload.PayloadAddHandlerHeaders(builder, handlerHeaders)
 	payload.PayloadAddHandlerFooters(builder, handlerFooters)
 	payload.PayloadAddN1qlConsistency(builder, n1qlConsistency)
 	payload.PayloadAddLcbRetryCount(builder, int32(c.lcbRetryCount))
+	payload.PayloadAddSrcMutation(builder, smu[0])
 
 	if c.n1qlPrepareAll {
 		payload.PayloadAddN1qlPrepareAll(builder, 0x1)

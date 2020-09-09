@@ -242,7 +242,7 @@ func (c *Consumer) GetEventProcessingStats() map[string]uint64 {
 func (c *Consumer) GetMetaStoreStats() map[string]uint64 {
 	stats := make(map[string]uint64)
 
-	if !c.usingTimer {
+	if !c.producer.UsingTimer() {
 		return nil
 	}
 
@@ -541,9 +541,10 @@ func (c *Consumer) SpawnCompilationWorker(appCode, appContent, appName, eventing
 
 	c.handlerHeaders = handlerHeaders
 	c.handlerFooters = handlerFooters
+
 	// Framing bare minimum V8 worker init payload
 	payload, pBuilder := c.makeV8InitPayload(appName, c.debuggerPort, util.Localhost(), "", eventingPort, "",
-		appContent, 5, 10, 10*1000, true, 1024)
+		appContent, 5, 10, 10*1000, true, 1024, false, false)
 
 	c.sendInitV8Worker(payload, false, pBuilder)
 

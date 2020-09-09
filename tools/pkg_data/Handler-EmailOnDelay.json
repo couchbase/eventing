@@ -26,7 +26,6 @@
     },
     "version": "evt-6.5.0-0000-ee",
     "function_id": 1792638007,
-    "id": 0,
     "function_instance_id": "RsaIK3",
     "appname": "EmailOnDelay",
     "settings": {
@@ -38,10 +37,7 @@
       "log_level": "INFO",
       "processing_status": false,
       "user_prefix": "eventing",
-      "using_timer": true,
       "worker_count": 3
-    },
-    "using_timer": false,
-    "src_mutation": false
+    }
   }
 ]

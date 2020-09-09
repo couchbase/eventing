@@ -1,7 +1,7 @@
 #
 # Please list generated files without using wildcards
 #
-inspector/v8_inspector_protocol_json.h
+auditevent/events.go
 flatbuf/cfg_schema_generated.h
 flatbuf/header_generated.h
 flatbuf/payload_generated.h
@@ -14,7 +14,11 @@ flatbuf/header/Header.go
 flatbuf/payload/Payload.go
 flatbuf/payload/VbsThreadMap.go
 flatbuf/response/Response.go
-auditevent/events.go
+inspector/v8_inspector_protocol_json.h
+parser/handler_schema.go
+parser/depcfg_schema.go
+parser/settings_schema.go
+parser/list_schema.go
 version/version.go
 version/version.cc
 version/version.js

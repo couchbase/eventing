@@ -304,7 +304,7 @@ func (c *Consumer) startDebugger(e *cb.DcpEvent, instance common.DebuggerInstanc
 		ip, c.eventingDir, c.eventingAdminPort, c.eventingSSLPort,
 		c.producer.CfgData(), c.lcbInstCapacity,
 		c.executionTimeout, int(c.checkpointInterval.Nanoseconds()/(1000*1000)),
-		false, c.timerContextSize)
+		false, c.timerContextSize, c.producer.UsingTimer(), c.producer.SrcMutation())
 
 	c.sendInitV8Worker(payload, true, pBuilder)
 	c.sendDebuggerStart()

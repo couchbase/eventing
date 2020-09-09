@@ -802,10 +802,6 @@ func (m *ServiceMgr) validateSettings(appName string, settings map[string]interf
 		return
 	}
 
-	if info = m.validateBoolean("cleanup_timers", true, settings); info.Code != m.statusCodes.ok.Code {
-		return
-	}
-
 	if info = m.validatePositiveInteger("cpp_worker_thread_count", settings); info.Code != m.statusCodes.ok.Code {
 		return
 	}
@@ -892,19 +888,6 @@ func (m *ServiceMgr) validateSettings(appName string, settings map[string]interf
 		return
 	}
 
-	// metastore related configuration
-	if info = m.validatePositiveInteger("execute_timer_routine_count", settings); info.Code != m.statusCodes.ok.Code {
-		return
-	}
-
-	if info = m.validatePositiveInteger("timer_storage_routine_count", settings); info.Code != m.statusCodes.ok.Code {
-		return
-	}
-
-	if info = m.validatePositiveInteger("timer_storage_chan_size", settings); info.Code != m.statusCodes.ok.Code {
-		return
-	}
-
 	if info = m.validatePositiveInteger("timer_queue_mem_cap", settings); info.Code != m.statusCodes.ok.Code {
 		return
 	}
@@ -914,11 +897,6 @@ func (m *ServiceMgr) validateSettings(appName string, settings map[string]interf
 	}
 
 	if info = m.validatePositiveInteger("undeploy_routine_count", settings); info.Code != m.statusCodes.ok.Code {
-		return
-	}
-
-	// Process related configuration
-	if info = m.validateBoolean("breakpad_on", true, settings); info.Code != m.statusCodes.ok.Code {
 		return
 	}
 

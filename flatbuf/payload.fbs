@@ -40,13 +40,15 @@ table Payload {
   thr_map: [VbsThreadMap]; // Mapping of vbuckets to std::thread associated with V8Worker instance;
 
   function_instance_id:string;
-  using_timer:bool;
+  using_timer:bool; // Timers are in use
 
   vb_map:[short];
   n1ql_consistency:string; // N1QL consistency
   language_compatibility:string;
   n1ql_prepare_all:bool; // Prepares all N1QL queries if set to true.
   lcb_retry_count:int;
+
+  src_mutation:bool; // Allow source bucket mutations
 }
 
 root_type Payload;

@@ -13,7 +13,6 @@
 	"id": 0,
 	"appname": "timers-new-api",
 	"settings": {
-		"cleanup_timers": false,
 		"dcp_stream_boundary": "everything",
 		"deadline_timeout": 62,
 		"deployment_status": true,

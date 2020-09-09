@@ -4,8 +4,8 @@ import (
 	"errors"
 	"net"
 
+	"github.com/couchbase/cbauth/service"
 	"github.com/couchbase/eventing/dcp"
-        "github.com/couchbase/cbauth/service"
 )
 
 type DcpStreamBoundary string
@@ -44,7 +44,7 @@ const (
 )
 
 type TopologyChangeMsg struct {
-	CType ChangeType
+	CType     ChangeType
 	MsgSource string
 }
 
@@ -80,12 +80,9 @@ type Application struct {
 	DeploymentConfig   DepCfg                 `json:"depcfg"`
 	EventingVersion    string                 `json:"version"`
 	FunctionID         uint32                 `json:"handleruuid"`
-	ID                 int                    `json:"id"`
 	FunctionInstanceID string                 `json:"function_instance_id"`
 	Name               string                 `json:"appname"`
 	Settings           map[string]interface{} `json:"settings"`
-	UsingTimer         bool                   `json:"using_timer"`
-	SrcMutationEnabled bool                   `json:"src_mutation"`
 }
 
 type DepCfg struct {
@@ -154,6 +151,7 @@ type EventingProducer interface {
 	InternalVbDistributionStats() map[string]string
 	IsEventingNodeAlive(eventingHostPortAddr, nodeUUID string) bool
 	IsPlannerRunning() bool
+	IsTrapEvent() bool
 	KillAllConsumers()
 	KillAndRespawnEventingConsumer(consumer EventingConsumer)
 	KvHostPorts() []string
@@ -178,14 +176,15 @@ type EventingProducer interface {
 	SpanBlobDump() map[string]interface{}
 	Serve()
 	SourceBucket() string
+	SrcMutation() bool
 	Stop(context string)
 	StopProducer()
 	StopRunningConsumers()
 	String() string
-	TimerDebugStats() map[int]map[string]interface{}
-	IsTrapEvent() bool
 	SetTrapEvent(value bool)
+	TimerDebugStats() map[int]map[string]interface{}
 	UpdateMemoryQuota(quota int64)
+	UsingTimer() bool
 	VbDcpEventsRemainingToProcess() map[int]int64
 	VbDistributionStatsFromMetadata() map[string]map[string]string
 	VbSeqnoStats() map[int][]map[string]interface{}
@@ -318,12 +317,9 @@ type AppConfig struct {
 	AppVersion         string
 	FunctionID         uint32
 	FunctionInstanceID string
-	ID                 int
 	LastDeploy         string
 	Settings           map[string]interface{}
-	UsingTimer         bool
 	UserPrefix         string
-	SrcMutationEnabled bool
 }
 
 type RebalanceProgress struct {
@@ -364,7 +360,6 @@ type HandlerConfig struct {
 	AggDCPFeedMemCap         int64
 	CheckpointInterval       int
 	IdleCheckpointInterval   int
-	CleanupTimers            bool
 	CPPWorkerThrCount        int
 	ExecuteTimerRoutineCount int
 	ExecutionTimeout         int
@@ -382,12 +377,9 @@ type HandlerConfig struct {
 	StatsLogInterval         int
 	StreamBoundary           DcpStreamBoundary
 	TimerContextSize         int64
-	TimerStorageRoutineCount int
-	TimerStorageChanSize     int
 	TimerQueueMemCap         uint64
 	TimerQueueSize           uint64
 	UndeployRoutineCount     int
-	UsingTimer               bool
 	WorkerCount              int
 	WorkerQueueCap           int64
 	WorkerQueueMemCap        int64
