@@ -208,6 +208,14 @@ func (p *Producer) MetadataBucket() string {
 	return p.metadataKeyspace.BucketName
 }
 
+func (p *Producer) MetadataScope() string {
+	return p.metadataKeyspace.ScopeName
+}
+
+func (p *Producer) MetadataCollection() string {
+	return p.metadataKeyspace.CollectionName
+}
+
 // SourceBucket returns the source bucket for event handler
 func (p *Producer) SourceBucket() string {
 	return p.handlerConfig.SourceKeyspace.BucketName
@@ -282,8 +290,8 @@ func (p *Producer) StopProducer() {
 	logging.Infof("%s [%s:%d] Signalled Producer::Serve to exit",
 		logPrefix, p.appName, p.LenRunningConsumers())
 
-	if p.metadataBucketHandle != nil {
-		p.metadataBucketHandle.Close()
+	if p.metadataCluster != nil {
+		p.metadataCluster.Close(nil)
 	}
 
 	logging.Infof("%s [%s:%d] Closed metadata bucket handle",
@@ -1015,7 +1023,7 @@ func (p *Producer) CheckpointBlobDump() map[string]interface{} {
 
 	checkpointBlobDumps := make(map[string]interface{})
 
-	if p.metadataBucketHandle == nil {
+	if p.metadataHandle == nil {
 		return checkpointBlobDumps
 	}
 
@@ -1121,7 +1129,7 @@ func (p *Producer) SpanBlobDump() map[string]interface{} {
 
 	spanBlobDumps := make(map[string]interface{})
 
-	if p.metadataBucketHandle == nil {
+	if p.metadataHandle == nil {
 		return spanBlobDumps
 	}
 

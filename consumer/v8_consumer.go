@@ -372,12 +372,8 @@ func (c *Consumer) Stop(context string) {
 	logging.Infof("%s [%s:%s:%d] Gracefully shutting down consumer routine",
 		logPrefix, c.workerName, c.tcpPort, c.Pid())
 
-	if c.gocbBucket != nil {
-		c.gocbBucket.Close()
-	}
-
-	if c.gocbMetaBucket != nil {
-		c.gocbMetaBucket.Close()
+	if c.gocbCluster != nil {
+		c.gocbCluster.Close(nil)
 	}
 
 	logging.Infof("%s [%s:%s:%d] Issued close for go-couchbase and gocb handles",

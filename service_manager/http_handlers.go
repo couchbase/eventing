@@ -1920,7 +1920,11 @@ func (m *ServiceMgr) savePrimaryStore(app *application) (info *runtimeInfo) {
 	}
 
 	if srcMutationEnabled {
-		if enabled, err := util.IsSyncGatewayEnabled(logPrefix, app.DeploymentConfig.SourceBucket, m.restPort); err == nil && enabled {
+		keySpace := &common.Keyspace{BucketName: app.DeploymentConfig.SourceBucket,
+			ScopeName:      app.DeploymentConfig.SourceScope,
+			CollectionName: app.DeploymentConfig.SourceCollection,
+		}
+		if enabled, err := util.IsSyncGatewayEnabled(logPrefix, keySpace, m.restPort); err == nil && enabled {
 			info.Code = m.statusCodes.errSyncGatewayEnabled.Code
 			info.Info = fmt.Sprintf("SyncGateway is enabled on: %s, deployement of source bucket mutating handler will cause Intra Bucket Recursion", app.DeploymentConfig.SourceBucket)
 			return

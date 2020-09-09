@@ -1,3 +1,4 @@
+/*
 package timers
 
 /* This module only returns common.ErrRetryTimeout error */
@@ -13,7 +14,7 @@ import (
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
-	"gopkg.in/couchbase/gocb.v1"
+	"github.com/couchbase/gocb/v2"
 )
 
 // globals
@@ -343,3 +344,4 @@ func (auth *testAuth) Credentials(req gocb.AuthCredsRequest) ([]gocb.UserPassPai
 		Password: auth.pass,
 	}}, nil
 }
+*/

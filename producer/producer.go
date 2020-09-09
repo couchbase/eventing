@@ -310,7 +310,7 @@ func (p *Producer) Serve() {
 
 		case <-p.pauseProducerCh:
 
-			// This routine cleans up everything apart from metadataBucketHandle,
+			// This routine cleans up everything apart from metadataHandle,
 			// which would be needed to clean up metadata bucket
 			logging.Infof("%s [%s:%d] Pausing processing", logPrefix, p.appName, p.LenRunningConsumers())
 			p.isPausing = true
@@ -439,8 +439,8 @@ func (p *Producer) Stop(context string) {
 	p.feedbackListeners = make(map[common.EventingConsumer]net.Listener)
 	p.listenerRWMutex.RUnlock()
 
-	if p.metadataBucketHandle != nil {
-		p.metadataBucketHandle.Close()
+	if p.metadataCluster != nil {
+		p.metadataCluster.Close(nil)
 	}
 
 	logging.Infof("%s [%s:%d] Closed metadata bucket handle",

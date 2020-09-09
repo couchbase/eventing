@@ -5,6 +5,7 @@ import (
 	"compress/flate"
 	"crypto/md5"
 	"crypto/rand"
+	"crypto/tls"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
@@ -30,9 +31,9 @@ import (
 	mcd "github.com/couchbase/eventing/dcp/transport"
 	"github.com/couchbase/eventing/gen/flatbuf/cfg"
 	"github.com/couchbase/eventing/logging"
+	"github.com/couchbase/gocb/v2"
 	"github.com/couchbase/gomemcached"
 	flatbuffers "github.com/google/flatbuffers/go"
-	"gopkg.in/couchbase/gocb.v1"
 )
 
 const (
@@ -60,6 +61,18 @@ type ConfigHolder struct {
 
 type DynamicAuthenticator struct {
 	Caller string
+}
+
+func (dynAuth *DynamicAuthenticator) SupportsTLS() bool {
+	return true
+}
+
+func (dynAuth *DynamicAuthenticator) SupportsNonTLS() bool {
+	return true
+}
+
+func (dynAuth *DynamicAuthenticator) Certificate(req gocb.AuthCertRequest) (*tls.Certificate, error) {
+	return nil, nil
 }
 
 func (h *ConfigHolder) Store(conf Config) {

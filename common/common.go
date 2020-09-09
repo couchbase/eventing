@@ -169,6 +169,8 @@ type EventingProducer interface {
 	KvHostPorts() []string
 	LenRunningConsumers() int
 	MetadataBucket() string
+	MetadataScope() string
+	MetadataCollection() string
 	NotifyInit()
 	NotifyPrepareTopologyChange(ejectNodes, keepNodes []string, changeType service.TopologyChangeType)
 	NotifySettingsChange()

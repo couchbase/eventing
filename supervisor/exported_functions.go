@@ -3,13 +3,12 @@ package supervisor
 import (
 	"fmt"
 	"net"
-	"time"
 	"sync/atomic"
+	"time"
 
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/dcp"
 	"github.com/couchbase/eventing/logging"
-	"github.com/couchbase/eventing/timers"
 	"github.com/couchbase/eventing/util"
 )
 
@@ -488,9 +487,6 @@ func (s *SuperSupervisor) GetMetaStoreStats(appName string) map[string]uint64 {
 	stats := make(map[string]uint64)
 	if p, ok := s.runningFns()[appName]; ok {
 		stats = p.GetMetaStoreStats()
-	}
-	for stat, counter := range timers.PoolStats() {
-		stats[stat] = counter
 	}
 	return stats
 }
