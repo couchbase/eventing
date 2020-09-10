@@ -190,7 +190,7 @@ extern std::atomic<int64_t> on_update_success;
 extern std::atomic<int64_t> on_update_failure;
 extern std::atomic<int64_t> on_delete_success;
 extern std::atomic<int64_t> on_delete_failure;
-
+extern std::atomic<int64_t> timer_callback_failure;
 extern std::atomic<int64_t> timer_create_failure;
 
 extern std::atomic<int64_t> lcb_retry_failure;

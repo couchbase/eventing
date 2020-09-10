@@ -37,7 +37,7 @@ std::atomic<int64_t> on_update_success = {0};
 std::atomic<int64_t> on_update_failure = {0};
 std::atomic<int64_t> on_delete_success = {0};
 std::atomic<int64_t> on_delete_failure = {0};
-
+std::atomic<int64_t> timer_callback_failure = {0};
 std::atomic<int64_t> timer_create_failure = {0};
 
 std::atomic<int64_t> messages_processed_counter = {0};
@@ -912,6 +912,7 @@ void V8Worker::SendTimer(std::string callback, std::string timer_ctx) {
 
   auto context = context_.Get(isolate_);
   v8::Context::Scope context_scope(context);
+  v8::TryCatch try_catch(isolate_);
 
   v8::Local<v8::Value> timer_ctx_val;
   v8::Local<v8::Value> arg[1];
@@ -934,6 +935,12 @@ void V8Worker::SendTimer(std::string callback, std::string timer_ctx) {
   }
   auto callback_func = callback_func_val.As<v8::Function>();
 
+  if (try_catch.HasCaught()) {
+    auto emsg = ExceptionString(isolate_, context, &try_catch);
+    LOG(logDebug) << "Timer callback Exception: " << emsg << std::endl;
+    CodeInsight::Get(isolate_).AccumulateException(try_catch);
+  }
+
   if (debugger_started_) {
     if (!agent_->IsStarted()) {
       agent_->Start(isolate_, platform_, src_path_.c_str());
@@ -953,6 +960,14 @@ void V8Worker::SendTimer(std::string callback, std::string timer_ctx) {
 
   auto query_mgr = UnwrapData(isolate_)->query_mgr;
   query_mgr->ClearQueries();
+
+  if (try_catch.HasCaught()) {
+    UpdateHistogram(execute_start_time_);
+    timer_callback_failure++;
+    auto emsg = ExceptionString(isolate_, context, &try_catch);
+    LOG(logDebug) << "Timer callback Exception: " << emsg << std::endl;
+    CodeInsight::Get(isolate_).AccumulateException(try_catch);
+  }
 }
 
 void V8Worker::StartDebugger() {

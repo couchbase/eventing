@@ -67,6 +67,7 @@ std::string GetExecutionStats(const std::map<int16_t, V8Worker *> &workers) {
   estats["on_update_failure"] = on_update_failure.load();
   estats["on_delete_success"] = on_delete_success.load();
   estats["on_delete_failure"] = on_delete_failure.load();
+  estats["timer_callback_failure"] = timer_callback_failure.load();
   estats["timer_create_failure"] = timer_create_failure.load();
   estats["messages_parsed"] = messages_parsed;
   estats["dcp_delete_msg_counter"] = dcp_delete_msg_counter.load();
@@ -1042,8 +1043,8 @@ void AppWorker::EventGenLoop() {
 
           for (auto &v8_worker : worker->workers_) {
             if (!v8_worker.second->run_gc_.load() &&
-                      (v8_worker.second->v8_heap_size_ > MAX_V8_HEAP_SIZE ||
-                       approx_memory > worker->memory_quota_ * 0.8)) {
+                (v8_worker.second->v8_heap_size_ > MAX_V8_HEAP_SIZE ||
+                 approx_memory > worker->memory_quota_ * 0.8)) {
               v8_worker.second->run_gc_.store(true);
               std::unique_ptr<WorkerMessage> msg(new WorkerMessage);
               msg->header.event = eInternal + 1;
@@ -1114,7 +1115,8 @@ int main(int argc, char **argv) {
         << "Need at least 13 arguments: appname, ipc_type, port, "
            "feedback_port"
            "worker_id, batch_size, feedback_batch_size, diag_dir, ipv4/6, "
-           "breakpad_on, handler_uuid, user_prefix, ns_server_port, num_vbuckets, eventing_port"
+           "breakpad_on, handler_uuid, user_prefix, ns_server_port, "
+           "num_vbuckets, eventing_port"
         << std::endl;
     return 2;
   }
