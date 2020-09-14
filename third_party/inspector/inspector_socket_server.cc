@@ -10,6 +10,7 @@
 #include <map>
 #include <set>
 #include <sstream>
+#include <string>
 
 namespace inspector {
 
@@ -100,14 +101,16 @@ void PrintDebuggerReadyMessage(const std::string &host, int port,
   }
   for (const std::string &id : ids) {
     std::string frontend_url;
-    frontend_url = "chrome-devtools://devtools/bundled";
-    frontend_url += "/js_app.html?experiments=true&v8only=true&ws=";
-    frontend_url += FormatWsAddress(host, port, id, false);
+    std::map<std::string, std::string> debugger_payload;
+    debugger_payload.insert(
+        {"websocket", FormatWsAddress(host, port, id, false)});
+    frontend_url += MapToString(debugger_payload);
     fprintf(out, "%s\n", frontend_url.c_str());
     if (out_url != nullptr) {
       *out_url = frontend_url;
     }
-    fprintf(stderr, "Debugger starting on %s\n", frontend_url.c_str());
+    fprintf(stderr, "Debugger starting using payload %s\n",
+            frontend_url.c_str());
   }
   fflush(out);
 }
@@ -376,10 +379,12 @@ void InspectorSocketServer::SendListResponse(InspectorSocket *socket) {
       std::string host;
       int port = SocketSession::ServerPortForClient(socket);
       GetSocketHost(&socket->tcp, &host);
+
+      std::map<std::string, std::string> debugger_payload;
+      debugger_payload.insert(
+          {"websocket", FormatWsAddress(host, port, id, false)});
       std::ostringstream frontend_url;
-      frontend_url << "chrome-devtools://devtools/bundled";
-      frontend_url << "/js_app.html?experiments=true&v8only=true&ws=";
-      frontend_url << FormatWsAddress(host, port, id, false);
+      frontend_url << MapToString(debugger_payload);
       target_map["devtoolsFrontendUrl"] += frontend_url.str();
       target_map["webSocketDebuggerUrl"] =
           FormatWsAddress(host, port, id, true);

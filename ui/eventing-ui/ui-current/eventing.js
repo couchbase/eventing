@@ -1214,7 +1214,22 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                                                     setTimeout(getDebugUrl, 1000);
                                                 } else {
                                                     debugScope.urlReceived = true;
-                                                    debugScope.url = response.data;
+                                                    let responseContent = response.data;
+                                                    var raw = navigator.userAgent.match(/Chrom(e|ium)\/([0-9]+)\./);
+                                                    var chromeVersion = (raw ? parseInt(raw[2], 10) : false);
+                                                    if (!isNaN(chromeVersion)) {
+                                                        if (chromeVersion < 66 ) {
+                                                            debugScope.url = "chrome-devtools://devtools/bundled/inspector.html?experiments=true&v8only=true&ws=" + responseContent["websocket"];
+                                                        } else if (chromeVersion < 82) {
+                                                            debugScope.url = "chrome-devtools://devtools/bundled/js_app.html?experiments=true&v8only=true&ws=" + responseContent["websocket"];
+                                                        } else if (chromeVersion < 84) {
+                                                            debugScope.url = "devtools://devtools/bundled/js_app.html?experiments=true&v8only=true&ws=" + responseContent["websocket"]
+                                                        } else {
+                                                            debugScope.url = "devtools://devtools/bundled/inspector.html?experiments=true&v8only=true&ws=" + responseContent["websocket"];
+                                                        }
+                                                    } else {
+                                                        debugScope.url = "devtools://devtools/bundled/inspector.html?experiments=true&v8only=true&ws=" + responseContent["websocket"];
+                                                    }
                                                 }
                                             })
                                             .catch(function(errResponse) {
