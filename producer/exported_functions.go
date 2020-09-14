@@ -216,6 +216,10 @@ func (p *Producer) MetadataCollection() string {
 	return p.metadataKeyspace.CollectionName
 }
 
+func (p *Producer) GetSourceKeyspace() *common.Keyspace {
+	return p.handlerConfig.SourceKeyspace
+}
+
 // SourceBucket returns the source bucket for event handler
 func (p *Producer) SourceBucket() string {
 	return p.handlerConfig.SourceKeyspace.BucketName

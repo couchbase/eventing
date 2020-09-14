@@ -10,6 +10,8 @@ import (
 	"github.com/couchbase/eventing/util"
 )
 
+var METRICS_PREFIX = "eventing_"
+
 const (
 	metakvEventingPath       = "/eventing/"
 	metakvAppsPath           = metakvEventingPath + "apps/"
@@ -37,6 +39,7 @@ const (
 const (
 	// EventingPermissionManage for auditing
 	EventingPermissionManage = "cluster.eventing.functions!manage"
+	EventingPermissionStats  = "cluster.admin.internal.stats!read"
 )
 
 const (

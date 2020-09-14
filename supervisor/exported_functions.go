@@ -89,6 +89,13 @@ func (s *SuperSupervisor) GetCurlLatencyStats(appName string) common.StatsData {
 	return nil
 }
 
+func (s *SuperSupervisor) GetSourceKeyspace(appName string) *common.Keyspace {
+	if p, ok := s.runningFns()[appName]; ok {
+		return p.GetSourceKeyspace()
+	}
+	return nil
+}
+
 func (s *SuperSupervisor) GetInsight(appName string) *common.Insight {
 	logPrefix := "SuperSupervisor::GetInsight"
 	if p, ok := s.runningFns()[appName]; ok {
@@ -650,4 +657,12 @@ func (s *SuperSupervisor) GetBucket(bucketName string) (*couchbase.Bucket, error
 		return nil, err
 	}
 	return s.buckets[bucketName], nil
+}
+
+func (s *SuperSupervisor) IncWorkerRespawnedCount() {
+	atomic.AddUint32(&s.workerRespawnedCount, 1)
+}
+
+func (s *SuperSupervisor) WorkerRespawnedCount() uint32 {
+	return atomic.LoadUint32(&s.workerRespawnedCount)
 }

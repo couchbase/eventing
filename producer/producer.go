@@ -682,6 +682,7 @@ func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int
 func (p *Producer) KillAndRespawnEventingConsumer(c common.EventingConsumer) {
 	logPrefix := "Producer::KillAndRespawnEventingConsumer"
 
+	p.superSup.IncWorkerRespawnedCount()
 	p.workerSpawnCounter++
 
 	consumerIndex := c.Index()

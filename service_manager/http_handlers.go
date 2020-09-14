@@ -3743,3 +3743,80 @@ func (m *ServiceMgr) triggerInternalRebalance(w http.ResponseWriter, r *http.Req
 		return
 	}
 }
+
+func (m *ServiceMgr) prometheusLow(w http.ResponseWriter, r *http.Request) {
+	if !m.validateAuth(w, r, EventingPermissionStats) {
+		cbauth.SendForbidden(w, EventingPermissionStats)
+		return
+	}
+	//TODO: avg script execution time, avg timer scan time
+	out := make([]byte, 0)
+	out = append(out, []byte(fmt.Sprintf("%vworker_restart_count %v\n", METRICS_PREFIX, m.superSup.WorkerRespawnedCount()))...)
+
+	w.WriteHeader(200)
+	w.Write([]byte(out))
+}
+
+func (m *ServiceMgr) prometheusHigh(w http.ResponseWriter, r *http.Request) {
+	if !m.validateAuth(w, r, EventingPermissionStats) {
+		cbauth.SendForbidden(w, EventingPermissionStats)
+		return
+	}
+
+	list := m.highCardStats()
+	w.WriteHeader(200)
+	w.Write(list)
+}
+
+func (m *ServiceMgr) highCardStats() []byte {
+	// service_type{bucket, scope, collection, functionName} value
+	fmtStr := "%v%v{bucket: \"%v\", scope: \"%v\", collection: \"%v\", functionName: \"%v\"} %v\n"
+
+	deployedApps := m.superSup.GetDeployedApps()
+	stats := make([]byte, 0)
+	for appName, _ := range deployedApps {
+		keyspace := m.superSup.GetSourceKeyspace(appName)
+		if keyspace == nil {
+			continue
+		}
+
+		processingStats := m.superSup.GetEventProcessingStats(appName)
+		if processingStats != nil {
+			stats = populateUint(fmtStr, appName, "dcp_mutation_sent_to_worker", keyspace, stats, processingStats)
+			stats = populateUint(fmtStr, appName, "dcp_mutation_suppressed_counter", keyspace, stats, processingStats)
+			stats = populateUint(fmtStr, appName, "dcp_deletion_sent_to_worker", keyspace, stats, processingStats)
+			stats = populateUint(fmtStr, appName, "dcp_expiry_sent_to_worker", keyspace, stats, processingStats)
+			stats = populateUint(fmtStr, appName, "dcp_deletion_suppressed_counter", keyspace, stats, processingStats)
+		}
+
+		executionStats := m.superSup.GetExecutionStats(appName)
+		if executionStats != nil {
+			stats = populate(fmtStr, appName, "agg_queue_memory", keyspace, stats, executionStats)
+			stats = populate(fmtStr, appName, "agg_queue_size", keyspace, stats, executionStats)
+			stats = populate(fmtStr, appName, "on_update_success", keyspace, stats, executionStats)
+			stats = populate(fmtStr, appName, "on_update_failure", keyspace, stats, executionStats)
+			stats = populate(fmtStr, appName, "dcp_delete_msg_counter", keyspace, stats, executionStats)
+			stats = populate(fmtStr, appName, "dcp_mutations_msg_counter", keyspace, stats, executionStats)
+			stats = populate(fmtStr, appName, "on_delete_success", keyspace, stats, executionStats)
+			stats = populate(fmtStr, appName, "on_delete_failure", keyspace, stats, executionStats)
+			stats = populate(fmtStr, appName, "timer_cancel_counter", keyspace, stats, executionStats)
+			stats = populate(fmtStr, appName, "timer_create_counter", keyspace, stats, executionStats)
+			stats = populate(fmtStr, appName, "timer_create_failure", keyspace, stats, executionStats)
+			stats = populate(fmtStr, appName, "timer_callback_failure", keyspace, stats, executionStats)
+			// TODO: change it to timer_callback_success
+			stats = populate(fmtStr, appName, "timer_msg_counter", keyspace, stats, executionStats)
+		}
+
+		failureStats := m.superSup.GetFailureStats(appName)
+		if executionStats != nil {
+			//TODO: Add num_curl_exceptions, num_curl_timeout
+			stats = populate(fmtStr, appName, "bucket_op_exception_count", keyspace, stats, failureStats)
+			stats = populate(fmtStr, appName, "timeout_count", keyspace, stats, failureStats)
+			stats = populate(fmtStr, appName, "n1ql_op_exception_count", keyspace, stats, failureStats)
+			stats = populate(fmtStr, appName, "timer_context_size_exception_counter", keyspace, stats, failureStats)
+			stats = populate(fmtStr, appName, "timer_callback_missing_counter", keyspace, stats, failureStats)
+		}
+
+	}
+	return stats
+}

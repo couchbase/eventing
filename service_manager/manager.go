@@ -178,6 +178,9 @@ func (m *ServiceMgr) initService() {
 	mux.HandleFunc("/api/v1/list/functions", m.listFunctions)
 	mux.HandleFunc("/api/v1/list/functions/", m.listFunctions)
 
+	mux.HandleFunc("/_prometheusMetrics", m.prometheusLow)
+	mux.HandleFunc("/_prometheusMetricsHigh", m.prometheusHigh)
+
 	go func() {
 		addr := net.JoinHostPort("", m.adminHTTPPort)
 
