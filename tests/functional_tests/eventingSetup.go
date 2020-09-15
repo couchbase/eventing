@@ -189,8 +189,9 @@ func createFunction(deploymentStatus, processingStatus bool, id int, s *commonSe
 		var alias bucket
 		alias.BucketName = b
 		alias.Alias = bucketAliases[i]
-		if s.srcMutationEnabled && alias.BucketName == sourceBucket {
-			alias.Access = "rw"
+		alias.Access = "rw"
+		if !s.srcMutationEnabled && alias.BucketName == sourceBucket {
+			alias.Access = "r"
 		}
 		aliases = append(aliases, alias)
 	}

@@ -92,8 +92,8 @@ type Application struct {
 }
 
 type DepCfg struct {
-	Buckets            []Bucket `json:"buckets"`
-	Curl               []Curl   `json:"curl"`
+	Buckets            []Bucket `json:"buckets,omitempty"`
+	Curl               []Curl   `json:"curl,omitempty"`
 	SourceBucket       string   `json:"source_bucket"`
 	SourceScope        string   `json:"source_scope"`
 	SourceCollection   string   `json:"source_collection"`
