@@ -139,17 +139,22 @@ void V8Worker::InstallBucketBindings(
   }
 
   for (const auto &[bucket_alias, bucket_info] : buckets_it->second) {
+    // bucket_info -> {bucketName, scopeName, collectionName, alias, access}
     const auto &bucket_name = bucket_info[0];
-    const auto &bucket_access = bucket_info[2];
+    const auto &scope_name = bucket_info[1];
+    const auto &collection_name = bucket_info[2];
+    const auto &bucket_access = bucket_info[4];
+    auto source_mutation = bucket_name == cb_source_bucket_ &&
+                           scope_name == cb_source_scope_ &&
+                           collection_name == cb_source_collection_;
     bucket_bindings_.emplace_back(isolate_, bucket_factory_, bucket_name,
-                                  bucket_alias, bucket_access == "r",
-                                  bucket_name == cb_source_bucket_);
+                                  scope_name, collection_name, bucket_alias,
+                                  bucket_access == "r", source_mutation);
   }
 }
 
 void V8Worker::InitializeIsolateData(const server_settings_t *server_settings,
-                                     const handler_config_t *h_config,
-                                     const std::string &source_bucket) {
+                                     const handler_config_t *h_config) {
   v8::HandleScope handle_scope(isolate_);
 
   auto context = context_.Get(isolate_);
@@ -224,6 +229,9 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
       handler_footers_(h_config->handler_footers) {
   auto config = ParseDeployment(h_config->dep_cfg.c_str());
   cb_source_bucket_.assign(config->source_bucket);
+  cb_source_scope_.assign(config->source_scope);
+  cb_source_collection_.assign(config->source_collection);
+
   std::ostringstream oss;
   oss << "\"" << function_id << "-" << function_instance_id << "\"";
   function_instance_id_.assign(oss.str());
@@ -256,7 +264,7 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
 
   v8::Context::Scope context_scope(context);
 
-  InitializeIsolateData(server_settings, h_config, config->source_bucket);
+  InitializeIsolateData(server_settings, h_config);
   InstallCurlBindings(config->curl_bindings);
   InitializeCurlBindingValues(config->curl_bindings);
 
@@ -292,7 +300,8 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
     std::vector<int64_t> partitions;
     auto prefix = user_prefix + "::" + function_id;
     timer_store_ = new timer::TimerStore(
-        isolate_, prefix, partitions, config->metadata_bucket, num_vbuckets_);
+        isolate_, prefix, partitions, config->metadata_bucket,
+        config->metadata_scope, config->metadata_collection, num_vbuckets_);
   }
   delete config;
   this->worker_queue_ = new BlockingDeque<std::unique_ptr<WorkerMessage>>();
@@ -1262,21 +1271,21 @@ std::unordered_set<int64_t> V8Worker::GetPartitions() const {
   return partitions_;
 }
 
-lcb_error_t V8Worker::SetTimer(timer::TimerInfo &tinfo) {
+lcb_STATUS V8Worker::SetTimer(timer::TimerInfo &tinfo) {
   if (timer_store_)
     return timer_store_->SetTimer(tinfo, data_.lcb_retry_count,
                                   data_.op_timeout);
   return LCB_SUCCESS;
 }
 
-lcb_error_t V8Worker::DelTimer(timer::TimerInfo &tinfo) {
+lcb_STATUS V8Worker::DelTimer(timer::TimerInfo &tinfo) {
   if (timer_store_)
     return timer_store_->DelTimer(tinfo, data_.lcb_retry_count,
                                   data_.op_timeout);
   return LCB_SUCCESS;
 }
 
-lcb_t V8Worker::GetTimerLcbHandle() const {
+lcb_INSTANCE *V8Worker::GetTimerLcbHandle() const {
   return timer_store_->GetTimerStoreHandle();
 }
 
@@ -1292,7 +1301,7 @@ void AddLcbException(const IsolateData *isolate_data, const int code) {
   w->AddLcbException(code);
 }
 
-void AddLcbException(const IsolateData *isolate_data, lcb_error_t error) {
+void AddLcbException(const IsolateData *isolate_data, lcb_STATUS error) {
   auto w = isolate_data->v8worker;
   w->AddLcbException(static_cast<int>(error));
 }

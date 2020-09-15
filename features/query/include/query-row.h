@@ -19,7 +19,7 @@ namespace Query {
 struct Row {
   Row(bool is_done, bool is_error, bool is_auth_error, bool is_client_error,
       const std::string &client_error, bool is_query_error,
-      const std::string &query_error, lcb_error_t err_code,
+      const std::string &query_error, lcb_STATUS err_code,
       const std::string &data)
       : is_done(is_done), is_error(is_error),
         is_client_auth_error(is_auth_error), is_client_error(is_client_error),
@@ -33,7 +33,7 @@ struct Row {
   const std::string &client_error;
   bool is_query_error{false};
   const std::string &query_error;
-  lcb_error_t err_code{LCB_SUCCESS};
+  lcb_STATUS err_code{LCB_SUCCESS};
   const std::string &data;
 };
 } // namespace Query

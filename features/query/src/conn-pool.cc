@@ -11,6 +11,7 @@
 
 #include <mutex>
 #include <sstream>
+#include <string.h>
 
 #include "comm.h"
 #include "conn-pool.h"
@@ -27,23 +28,27 @@ Connection::Info Connection::Pool::CreateConnection() const {
   }
 
   std::stringstream error;
-  lcb_create_st options = {nullptr};
-  options.version = 3;
-  options.v.v3.connstr = conn_str_info.conn_str.c_str();
-  options.v.v3.type = LCB_TYPE_BUCKET;
+  lcb_CREATEOPTS *options;
+  lcb_createopts_create(&options, LCB_TYPE_BUCKET);
+  lcb_createopts_connstr(options, conn_str_info.conn_str.c_str(),
+                         strlen(conn_str_info.conn_str.c_str()));
 
-  lcb_t connection = nullptr;
-  auto result = lcb_create(&connection, &options);
+  lcb_INSTANCE *connection;
+  auto result = lcb_create(&connection, options);
   if (result != LCB_SUCCESS) {
     return FormatErrorAndDestroyConn("Unable to initialize Couchbase handle",
                                      connection, result);
   }
 
-  result = lcb_cntl(connection, LCB_CNTL_SET, LCB_CNTL_LOGGER, &evt_logger);
-  if (result != LCB_SUCCESS) {
-    return FormatErrorAndDestroyConn("Unable to set libcouchbase logger hooks",
-                                     connection, result);
-  }
+  lcb_createopts_destroy(options);
+  // TODO: loging for lcb
+  /*
+    result = lcb_cntl(connection, LCB_CNTL_SET, LCB_CNTL_LOGGER, &evt_logger);
+    if (result != LCB_SUCCESS) {
+      return FormatErrorAndDestroyConn("Unable to set libcouchbase logger
+    hooks", connection, result);
+    }
+  */
 
   auto auth = lcbauth_new();
   result = lcbauth_set_callbacks(auth, isolate_, GetUsername, GetPassword);
@@ -66,7 +71,7 @@ Connection::Info Connection::Pool::CreateConnection() const {
                                      connection, result);
   }
 
-  result = lcb_wait(connection);
+  result = lcb_wait(connection, LCB_WAIT_DEFAULT);
   if (result != LCB_SUCCESS) {
     return FormatErrorAndDestroyConn("Unable to connect", connection, result);
   }
@@ -81,8 +86,8 @@ Connection::Info Connection::Pool::CreateConnection() const {
 
 Connection::Info
 Connection::Pool::FormatErrorAndDestroyConn(const std::string &message,
-                                            lcb_t connection,
-                                            const lcb_error_t error) const {
+                                            lcb_INSTANCE *connection,
+                                            const lcb_STATUS error) const {
   auto helper = UnwrapData(isolate_)->query_helper;
   auto info =
       Connection::Info{true, helper->ErrorFormat(message, connection, error)};
@@ -120,18 +125,16 @@ void Connection::Pool::DestroyAllConnectionsInPoolLocked() {
   }
 }
 
-Connection::Pool::~Pool() {
-  DestroyAllConnectionsInPoolLocked();
-}
+Connection::Pool::~Pool() { DestroyAllConnectionsInPoolLocked(); }
 
-void Connection::Pool::RestoreConnection(lcb_t connection) {
+void Connection::Pool::RestoreConnection(lcb_INSTANCE *connection) {
   std::lock_guard<std::mutex> lock(pool_sync_);
   pool_.push_front(connection);
 }
 
 void Connection::Pool::RefreshTopConnection() {
   std::lock_guard<std::mutex> lock(pool_sync_);
-  if(!pool_.empty()) {
+  if (!pool_.empty()) {
     auto handle = pool_.front();
     pool_.pop_front();
     lcb_destroy(handle);

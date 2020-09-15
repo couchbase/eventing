@@ -11,12 +11,12 @@
 
 #include <mutex>
 
+#include "crc32.h"
 #include "isolate_data.h"
 #include "js_exception.h"
 #include "timer.h"
 #include "utils.h"
 #include "v8worker.h"
-#include "crc32.h"
 
 std::atomic<int64_t> timer_context_size_exceeded_counter = {0};
 thread_local std::mt19937_64
@@ -124,7 +124,7 @@ bool Timer::CancelTimerImpl(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
   if (err == LCB_SUCCESS) {
     args.GetReturnValue().Set(true);
-  } else if (err == LCB_KEY_ENOENT) {
+  } else if (err == LCB_ERR_DOCUMENT_NOT_FOUND) {
     args.GetReturnValue().Set(false);
     return false;
   } else {
@@ -135,7 +135,8 @@ bool Timer::CancelTimerImpl(const v8::FunctionCallbackInfo<v8::Value> &args) {
   return true;
 }
 
-bool Timer::ValidateCancelTimerArgs(const v8::FunctionCallbackInfo<v8::Value> &args) {
+bool Timer::ValidateCancelTimerArgs(
+    const v8::FunctionCallbackInfo<v8::Value> &args) {
   auto js_exception = UnwrapData(isolate_)->js_exception;
 
   if (args.Length() < 2) {
@@ -164,8 +165,8 @@ bool Timer::ValidateArgs(const v8::FunctionCallbackInfo<v8::Value> &args) {
   auto js_exception = UnwrapData(isolate_)->js_exception;
 
   if (args.Length() < 3) {
-    js_exception->ThrowEventingError(
-        "createTimer needs atleast 3 arguments - callback function, time, reference");
+    js_exception->ThrowEventingError("createTimer needs atleast 3 arguments - "
+                                     "callback function, time, reference");
     return false;
   }
 
@@ -191,11 +192,14 @@ bool Timer::ValidateArgs(const v8::FunctionCallbackInfo<v8::Value> &args) {
   return true;
 }
 
-void Timer::FillTimerPartition(timer::TimerInfo& timer_info, const int32_t& num_vbuckets) {
+void Timer::FillTimerPartition(timer::TimerInfo &timer_info,
+                               const int32_t &num_vbuckets) {
   auto ref = timer_info.callback + ":" + timer_info.reference;
   uint32_t hash = crc32_8(ref.c_str(), ref.size(), 0 /*crc_in*/);
   timer_info.vb = hash % num_vbuckets;
-  LOG(logTrace) << "ref: " << ref << "hash: " << hash << "num_vbuckets: " << num_vbuckets << "Timer Partition is: " << timer_info.vb << " " << std::endl;
+  LOG(logTrace) << "ref: " << ref << "hash: " << hash
+                << "num_vbuckets: " << num_vbuckets
+                << "Timer Partition is: " << timer_info.vb << " " << std::endl;
 }
 
 void CreateTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {

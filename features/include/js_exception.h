@@ -65,7 +65,7 @@ public:
   JsException &operator=(JsException &&exc_obj);
 
   void ThrowKVError(const std::string &err_msg);
-  void ThrowKVError(lcb_t instance, lcb_error_t error);
+  void ThrowKVError(lcb_INSTANCE *instance, lcb_STATUS error);
   void ThrowN1QLError(const std::string &err_msg);
   void ThrowEventingError(const std::string &err_msg);
   void ThrowCurlError(const std::string &err_msg);

@@ -12,7 +12,7 @@
 #ifndef QUERY_INFO_H
 #define QUERY_INFO_H
 
-#include <libcouchbase/n1ql.h>
+#include <libcouchbase/couchbase.h>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -40,8 +40,9 @@ struct Options {
                    Options &opt_out) const;
 
   private:
-    ::Info ExtractConsistency(const v8::Local<v8::Object> &options_obj,
-                              std::unique_ptr<int> &consistency_out) const;
+    ::Info ExtractConsistency(
+        const v8::Local<v8::Object> &options_obj,
+        std::unique_ptr<lcb_QUERY_CONSISTENCY> &consistency_out) const;
     ::Info
     ExtractClientCtxId(const v8::Local<v8::Object> &options_obj,
                        std::unique_ptr<std::string> &client_ctx_id_out) const;
@@ -57,9 +58,9 @@ struct Options {
   };
 
   bool GetOrDefaultIsPrepared(v8::Isolate *isolate) const;
-  int GetOrDefaultConsistency(v8::Isolate *isolate) const;
+  lcb_QUERY_CONSISTENCY GetOrDefaultConsistency(v8::Isolate *isolate) const;
 
-  std::unique_ptr<int> consistency;
+  std::unique_ptr<lcb_QUERY_CONSISTENCY> consistency;
   std::unique_ptr<std::string> client_context_id;
   std::unique_ptr<bool> is_prepared;
 };

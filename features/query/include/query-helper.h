@@ -41,9 +41,9 @@ public:
   bool CheckRetriable(int max_retry_count, uint32_t max_retry_secs,
                       int retry_count, uint32_t start_time);
   void HandleRowError(const Query::Row &row);
-  std::string ErrorFormat(const std::string &message, lcb_t connection,
-                          lcb_error_t error);
-  static int GetConsistency(const std::string &consistency);
+  std::string ErrorFormat(const std::string &message, lcb_INSTANCE *connection,
+                          lcb_STATUS error);
+  static lcb_QUERY_CONSISTENCY GetConsistency(const std::string &consistency);
 
 private:
   struct ErrorCodesInfo : public ::Info {

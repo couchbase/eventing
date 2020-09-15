@@ -23,7 +23,12 @@
 
 typedef struct deployment_config_s {
   std::string metadata_bucket;
+  std::string metadata_scope;
+  std::string metadata_collection;
   std::string source_bucket;
+  std::string source_scope;
+  std::string source_collection;
+
   std::unordered_map<std::string,
                      std::unordered_map<std::string, std::vector<std::string>>>
       component_configs;

@@ -13,33 +13,42 @@
 #include "log.h"
 #include "query-builder.h"
 #include <algorithm>
+#include <libcouchbase/couchbase.h>
 #include <sstream>
 
-::Info Query::Builder::Build(void (*row_callback)(lcb_t, int,
-                                                  const lcb_RESPN1QL *),
+::Info Query::Builder::Build(void (*row_callback)(lcb_INSTANCE *, int,
+                                                  const lcb_RESPQUERY *),
                              void *cookie) {
-  auto result = lcb_n1p_setstmtz(params_, query_info_.query.c_str());
+  lcb_cmdquery_create(&cmd_);
+  auto result = lcb_cmdquery_statement(cmd_, query_info_.query.c_str(),
+                                       query_info_.query.size());
   if (result != LCB_SUCCESS) {
     return ErrorFormat("Unable to set query", connection_, result);
   }
 
   for (const auto &[key, value] : query_info_.named_params) {
-    result = lcb_n1p_namedparamz(params_, key.c_str(), value.c_str());
+    size_t first = key.find_first_not_of(' ');
+    std::string key2 = key.substr(first, key.size() - first);
+    first = key2.find_first_not_of('$');
+    std::string key3 = key2.substr(first, key2.size() - first);
+    result = lcb_cmdquery_named_param(cmd_, key3.c_str(), key3.size(),
+                                      value.c_str(), value.size());
+
     if (result != LCB_SUCCESS) {
       return ErrorFormat("Unable to set named parameter", connection_, result);
     }
   }
 
   for (const auto &param : query_info_.pos_params) {
-    result = lcb_n1p_posparam(params_, param.c_str(), param.size());
+    result = lcb_cmdquery_positional_param(cmd_, param.c_str(), param.size());
     if (result != LCB_SUCCESS) {
       return ErrorFormat("Unable to set positional parameter", connection_,
                          result);
     }
   }
 
-  result = lcb_n1p_setconsistency(
-      params_, query_info_.options.GetOrDefaultConsistency(isolate_));
+  result = lcb_cmdquery_consistency(
+      cmd_, query_info_.options.GetOrDefaultConsistency(isolate_));
   if (result != LCB_SUCCESS) {
     return ErrorFormat("Unable to set consistency", connection_, result);
   }
@@ -59,7 +68,7 @@
       }
       int line = frame->GetLineNumber();
       std::ostringstream id;
-      id << '"' << line << "@" << file << "(" << func << ')' << '"';
+      id << line << "@" << file << "(" << func << ')';
       query_info_.options.client_context_id =
           std::make_unique<std::string>(id.str());
     }
@@ -73,42 +82,43 @@
     if (id.length() > 62) {
       id.erase(62);
     }
-    id = "\"" + id + "\"";
-    result = lcb_n1p_setoptz(params_, "client_context_id", id.c_str());
+
+    result = lcb_cmdquery_client_context_id(cmd_, id.c_str(), id.size());
     if (result != LCB_SUCCESS) {
       return ErrorFormat("Unable to set clientContextId", connection_, result);
     }
   }
 
-  result = lcb_n1p_mkcmd(params_, &cmd_);
-  if (result != LCB_SUCCESS) {
-    return ErrorFormat("Unable to make query cmd", connection_, result);
-  }
+  lcb_cmdquery_handle(cmd_, &handle_);
+  lcb_cmdquery_callback(cmd_, row_callback);
+  lcb_cmdquery_adhoc(cmd_,
+                     !query_info_.options.GetOrDefaultIsPrepared(isolate_));
 
-  cmd_.handle = &handle_;
-  cmd_.callback = row_callback;
-  if (query_info_.options.GetOrDefaultIsPrepared(isolate_)) {
-    cmd_.cmdflags |= LCB_CMDN1QL_F_PREPCACHE;
-  }
   lcb_set_cookie(connection_, cookie);
 
-  result =
-      lcb_cntl(connection_, LCB_CNTL_SET, LCB_CNTL_N1QL_TIMEOUT, &timeout_);
+  result = lcb_cmdquery_timeout(cmd_, timeout_);
   if (result != LCB_SUCCESS) {
     return ErrorFormat("Unable to set timeout for query", connection_, result);
   }
-  lcb_U32 n1ql_grace_period = Query::n1ql_grace_period;
-  result = lcb_cntl(connection_, LCB_CNTL_SET, LCB_CNTL_N1QL_GRACE_PERIOD,
-                    &n1ql_grace_period);
-  if (result != LCB_SUCCESS) {
-    return ErrorFormat("Unable to set n1ql grace period for query", connection_,
-                       result);
-  }
+
+  // TODO: Currently lcb is not suppporting n1ql grace time period. Add it once
+  // its available
+  /*
+    lcb_U32 n1ql_grace_period = Query::n1ql_grace_period;
+    result = lcb_cntl(connection_, LCB_CNTL_SET, LCB_CNTL_N1QL_GRACE_PERIOD,
+                      &n1ql_grace_period);
+    if (result != LCB_SUCCESS) {
+      return ErrorFormat("Unable to set n1ql grace period for query",
+    connection_, result);
+    }
+  */
+
   return {false};
 }
 
-::Info Query::Builder::ErrorFormat(const std::string &message, lcb_t connection,
-                                   const lcb_error_t error) const {
+::Info Query::Builder::ErrorFormat(const std::string &message,
+                                   lcb_INSTANCE *connection,
+                                   const lcb_STATUS error) const {
   auto helper = UnwrapData(isolate_)->query_helper;
   return {true, helper->ErrorFormat(message, connection, error)};
 }

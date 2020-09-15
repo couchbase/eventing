@@ -9,8 +9,8 @@
 // or implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-#include <thread>
 #include <nlohmann/json.hpp>
+#include <thread>
 
 #include "isolate_data.h"
 #include "lcb_utils.h"
@@ -57,292 +57,330 @@ const char *GetPassword(void *cookie, const char *host, const char *port,
 }
 
 // lcb related callbacks
-void GetCallback(lcb_t instance, int, const lcb_RESPBASE *rb) {
+void GetCallback(lcb_INSTANCE *instance, int, const lcb_RESPBASE *rb) {
   auto resp = reinterpret_cast<const lcb_RESPGET *>(rb);
 
-  auto result = reinterpret_cast<Result *>(rb->cookie);
-  result->rc = resp->rc;
+  Result *result;
+  lcb_respget_cookie(resp, reinterpret_cast<void **>(&result));
+  result->rc = lcb_respget_status(resp);
 
   LOG(logTrace) << "Bucket: LCB_GET callback, res: "
-                << lcb_strerror(nullptr, rb->rc) << rb->rc << " cas " << rb->cas
-                << std::endl;
+                << lcb_strerror_short(result->rc) << std::endl;
 
-  if (rb->rc == LCB_PROTOCOL_ERROR) {
+  if (result->rc == LCB_ERR_PROTOCOL_ERROR) {
     LOG(logError) << "Bucket: LCB_GET breaking out" << std::endl;
     lcb_breakout(instance);
   }
-  result->cas = resp->cas;
+  lcb_respget_cas(resp, &result->cas);
 
-  if (resp->rc == LCB_SUCCESS) {
-    result->value.assign(reinterpret_cast<const char *>(resp->value),
-                         static_cast<int>(resp->nvalue));
-    LOG(logTrace) << "Bucket: Value: " << RU(result->value)
-                  << " flags: " << resp->itmflags << std::endl;
+  if (result->rc == LCB_SUCCESS) {
+    const char *value;
+    size_t nValue;
+    lcb_respget_value(resp, &value, &nValue);
+    result->value.assign(value, nValue);
+    LOG(logTrace) << "Bucket: Value: " << RU(result->value) << std::endl;
   }
 }
 
-void SetCallback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
+void SetCallback(lcb_INSTANCE *instance, int cbtype, const lcb_RESPBASE *rb) {
   auto resp = reinterpret_cast<const lcb_RESPSTORE *>(rb);
-  auto result = reinterpret_cast<Result *>(rb->cookie);
-  result->rc = resp->rc;
+  Result *result;
+  lcb_respstore_cookie(resp, reinterpret_cast<void **>(&result));
+  result->rc = lcb_respstore_status(resp);
 
-  if (rb->rc == LCB_PROTOCOL_ERROR) {
+  if (result->rc == LCB_ERR_PROTOCOL_ERROR) {
     LOG(logError) << "Bucket: LCB_STORE breaking out" << std::endl;
     lcb_breakout(instance);
   }
 
-  result->cas = resp->cas;
+  lcb_respstore_cas(resp, &result->cas);
 
   LOG(logTrace) << "Bucket: LCB_STORE callback "
-                << lcb_strerror(instance, result->rc) << " cas " << resp->cas
-                << std::endl;
+                << lcb_strerror_short(result->rc) << std::endl;
 }
 
-void SubDocumentCallback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
-  const lcb_RESPSUBDOC *resp = (const lcb_RESPSUBDOC*)rb;
-  auto result = reinterpret_cast<Result *>(rb->cookie);
-  result->rc = resp->rc;
+void SubDocumentCallback(lcb_INSTANCE *instance, int cbtype,
+                         const lcb_RESPBASE *rb) {
+  const lcb_RESPSUBDOC *resp = (const lcb_RESPSUBDOC *)rb;
+  Result *result;
+  lcb_respsubdoc_cookie(resp, reinterpret_cast<void **>(&result));
+  result->rc = lcb_respsubdoc_status(resp);
 
-  if (rb->rc == LCB_PROTOCOL_ERROR) {
+  if (result->rc == LCB_ERR_PROTOCOL_ERROR) {
     LOG(logError) << "Bucket: LCB_SDMUTATE breaking out" << std::endl;
     lcb_breakout(instance);
   }
 
-  if (rb->rc == LCB_SUCCESS) {
-    lcb_SDENTRY respitem;
-    size_t iter = 0;
-    while (lcb_sdresult_next(resp, &respitem, &iter)) {
-      if (respitem.status != LCB_SUCCESS) {
-        result->rc = respitem.status;
+  if (result->rc == LCB_SUCCESS) {
+    auto total = lcb_respsubdoc_result_size(resp);
+    for (uint index = 0; index < total; index++) {
+      result->rc = lcb_respsubdoc_result_status(resp, index);
+      if (result->rc != LCB_SUCCESS) {
+        LOG(logTrace) << "Bucket: LCB_SDMUTATE callback "
+                      << lcb_strerror_short(result->rc) << std::endl;
         return;
       }
+      const char *value;
+      size_t nvalue;
       std::string temp;
-      temp.assign(reinterpret_cast<const char *>(respitem.value), static_cast<int>(respitem.nvalue));
-      result->counter = std::stoll(temp, nullptr, 10);
+
+      lcb_respsubdoc_result_value(resp, index, &value, &nvalue);
+      if (nvalue != 0) {
+        temp.assign(value, nvalue);
+        result->subdoc_counter = std::stoll(temp, nullptr, 10);
+      }
     }
   }
-  result->cas = rb->cas;
+  lcb_respsubdoc_cas(resp, &result->cas);
 
   LOG(logTrace) << "Bucket: LCB_SDMUTATE callback "
-                << lcb_strerror(nullptr, result->rc) << std::endl;
+                << lcb_strerror_short(result->rc) << std::endl;
 }
 
-void SubDocumentLookupCallback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
-  const lcb_RESPSUBDOC *resp = (const lcb_RESPSUBDOC*)rb;
-  auto result = reinterpret_cast<Result *>(rb->cookie);
+void SubDocumentLookupCallback(lcb_INSTANCE *instance, int cbtype,
+                               const lcb_RESPBASE *rb) {
+  const lcb_RESPSUBDOC *resp = (const lcb_RESPSUBDOC *)rb;
+  Result *result;
+  lcb_respsubdoc_cookie(resp, reinterpret_cast<void **>(&result));
+  result->rc = lcb_respsubdoc_status(resp);
 
-  result->rc = rb->rc;
-
-  if (rb->rc == LCB_PROTOCOL_ERROR) {
+  if (result->rc == LCB_ERR_PROTOCOL_ERROR) {
     LOG(logError) << "Bucket: LCB_SDLOOKUP breaking out" << std::endl;
     lcb_breakout(instance);
   }
 
-  if (rb->rc == LCB_SUCCESS) {
-    lcb_SDENTRY resp_item;
-    size_t iter = 0;
-    size_t index = 0;
-    while (lcb_sdresult_next(resp, &resp_item, &iter)) {
-      if (resp_item.status != LCB_SUCCESS) {
-        result->rc = resp_item.status;
+  if (result->rc == LCB_SUCCESS) {
+    auto total = lcb_respsubdoc_result_size(resp);
+    for (uint index = 0; index < total; index++) {
+      result->rc = lcb_respsubdoc_result_status(resp, 0);
+      if (result->rc != LCB_SUCCESS) {
         return;
       }
+
+      const char *cValue;
+      size_t nValue;
+      lcb_respsubdoc_result_value(resp, index, &cValue, &nValue);
+
       if (index == 0) {
         std::string value;
-        value.assign(reinterpret_cast<const char *>(resp_item.value),
-                         static_cast<int>(resp_item.nvalue));
+        value.assign(cValue, nValue);
         result->exptime = std::stoul(value, nullptr, 10);
-      } else if(index == 1) {
+      } else if (index == 1) {
         // 0x00: raw, 0x01 json, 0x05: jsonXattr, 0x04: rawXattr
-        auto json = nlohmann::json::parse(reinterpret_cast<const char *>(resp_item.value));
+        auto json = nlohmann::json::parse(cValue);
         auto values = json.get<std::vector<std::string>>();
         for (const auto &type : values) {
-          if(type == "json"){
+          if (type == "json") {
             result->datatype = result->datatype | 1;
           }
-          if(type == "xattr") {
+          if (type == "xattr") {
             result->datatype = result->datatype | 4;
           }
         }
       } else {
-        if(result->datatype & 1) {
-          result->value.assign(reinterpret_cast<const char *>(resp_item.value),
-                           static_cast<int>(resp_item.nvalue));
+        if (result->datatype & 1) {
+          result->value.assign(cValue, nValue);
         } else {
-          result->binary = resp_item.value;
-          result->byteLength = static_cast<size_t>(resp_item.nvalue);
+          result->binary = cValue;
+          result->byteLength = nValue;
         }
       }
-      index++;
     }
   }
 
-  result->cas = rb->cas;
+  lcb_respsubdoc_cas(resp, &result->cas);
   LOG(logTrace) << "Bucket: LCB_SDLOOKUP callback "
-                << lcb_strerror(nullptr, result->rc) << std::endl;
+                << lcb_strerror_short(result->rc) << std::endl;
 }
 
-void DeleteCallback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
-  auto result = reinterpret_cast<Result *>(rb->cookie);
-  result->rc = rb->rc;
+void DeleteCallback(lcb_INSTANCE *instance, int cbtype,
+                    const lcb_RESPBASE *rb) {
+  auto resp = reinterpret_cast<const lcb_RESPREMOVE *>(rb);
+  Result *result;
+  lcb_respremove_cookie(resp, reinterpret_cast<void **>(&result));
+  result->rc = lcb_respremove_status(resp);
 
-  if (rb->rc == LCB_PROTOCOL_ERROR) {
+  if (result->rc == LCB_ERR_PROTOCOL_ERROR) {
     LOG(logError) << "Bucket: LCB_DEL breaking out" << std::endl;
     lcb_breakout(instance);
   }
-  result->cas = rb->cas;
 
-  LOG(logTrace) << "Bucket: LCB_DEL callback "
-                << lcb_strerror(nullptr, result->rc) << std::endl;
+  lcb_respremove_cas(resp, &result->cas);
+
+  LOG(logTrace) << "Bucket: LCB_DEL callback " << lcb_strerror_short(result->rc)
+                << std::endl;
 }
 
-void counter_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
-  auto result = reinterpret_cast<Result *>(rb->cookie);
+void counter_callback(lcb_INSTANCE *instance, int cbtype,
+                      const lcb_RESPBASE *rb) {
   const lcb_RESPCOUNTER *resp = reinterpret_cast<const lcb_RESPCOUNTER *>(rb);
-  result->rc = resp->rc;
+  Result *result;
+  lcb_respcounter_cookie(resp, reinterpret_cast<void **>(&result));
+  result->rc = lcb_respcounter_status(resp);
 
-  if (rb->rc == LCB_PROTOCOL_ERROR) {
+  if (result->rc == LCB_ERR_PROTOCOL_ERROR) {
     LOG(logError) << "Bucket: LCB_COUNTER breaking out" << std::endl;
     lcb_breakout(instance);
   }
-  result->counter = resp->value;
+
+  lcb_respcounter_value(resp, &result->counter);
   LOG(logTrace) << "Bucket: LCB_COUNTER callback "
-                << lcb_strerror(nullptr, result->rc) << std::endl;
+                << lcb_strerror_short(result->rc) << std::endl;
 }
 
-void unlock_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb) {
-  auto result = reinterpret_cast<Result *>(rb->cookie);
-  result->rc = rb->rc;
+void unlock_callback(lcb_INSTANCE *instance, int cbtype,
+                     const lcb_RESPBASE *rb) {
+  const lcb_RESPUNLOCK *resp = reinterpret_cast<const lcb_RESPUNLOCK *>(rb);
+  Result *result;
+  lcb_respunlock_cookie(resp, reinterpret_cast<void **>(&result));
+  result->rc = lcb_respunlock_status(resp);
 
-  if (rb->rc == LCB_PROTOCOL_ERROR) {
+  if (result->rc == LCB_ERR_PROTOCOL_ERROR) {
     LOG(logError) << "Bucket: LCB_UNLOCK breaking out" << std::endl;
     lcb_breakout(instance);
   }
 }
 
-std::pair<lcb_error_t, Result> LcbGet(lcb_t instance, lcb_CMDGET &cmd) {
+std::pair<lcb_STATUS, Result> LcbGet(lcb_INSTANCE *instance, lcb_CMDGET &cmd) {
   Result result;
-  auto err = lcb_get3(instance, &result, &cmd);
+  auto err = lcb_get(instance, &result, &cmd);
   if (err != LCB_SUCCESS) {
     LOG(logTrace) << "Bucket: Unable to set params for LCB_GET: "
-                  << lcb_strerror(instance, err) << std::endl;
+                  << lcb_strerror_short(err) << std::endl;
     return {err, result};
   }
-  err = lcb_wait(instance);
+
+  lcb_cmdget_destroy(&cmd);
+  err = lcb_wait(instance, LCB_WAIT_DEFAULT);
+
   if (err != LCB_SUCCESS) {
     LOG(logTrace) << "Bucket: Unable to schedule LCB_GET: "
-                  << lcb_strerror(instance, err) << std::endl;
+                  << lcb_strerror_short(err) << std::endl;
   }
   return {err, result};
 }
 
-std::pair<lcb_error_t, Result> LcbSet(lcb_t instance, lcb_CMDSTORE &cmd) {
+std::pair<lcb_STATUS, Result> LcbSet(lcb_INSTANCE *instance,
+                                     lcb_CMDSTORE &cmd) {
   Result result;
-  auto err = lcb_store3(instance, &result, &cmd);
+  auto err = lcb_store(instance, &result, &cmd);
   if (err != LCB_SUCCESS) {
     LOG(logTrace) << "Bucket: Unable to set params for LCB_SET: "
-                  << lcb_strerror(instance, err) << std::endl;
+                  << lcb_strerror_short(err) << std::endl;
     return {err, result};
   }
 
-  err = lcb_wait(instance);
+  lcb_cmdstore_destroy(&cmd);
+  err = lcb_wait(instance, LCB_WAIT_DEFAULT);
+
   if (err != LCB_SUCCESS) {
     LOG(logTrace) << "Bucket: Unable to schedule LCB_SET: "
-                  << lcb_strerror(instance, err) << std::endl;
+                  << lcb_strerror_short(err) << std::endl;
   }
   return {err, result};
 }
 
-std::pair<lcb_error_t, Result> LcbDelete(lcb_t instance, lcb_CMDREMOVE &cmd) {
+std::pair<lcb_STATUS, Result> LcbDelete(lcb_INSTANCE *instance,
+                                        lcb_CMDREMOVE &cmd) {
   Result result;
-  auto err = lcb_remove3(instance, &result, &cmd);
+  auto err = lcb_remove(instance, &result, &cmd);
   if (err != LCB_SUCCESS) {
     LOG(logTrace) << "Bucket: Unable to set params for LCB_REMOVE: "
-                  << lcb_strerror(instance, err) << std::endl;
+                  << lcb_strerror_short(err) << std::endl;
     return {err, result};
   }
 
-  err = lcb_wait(instance);
+  lcb_cmdremove_destroy(&cmd);
+  err = lcb_wait(instance, LCB_WAIT_DEFAULT);
+
   if (err != LCB_SUCCESS) {
     LOG(logTrace) << "Bucket: Unable to schedule LCB_REMOVE: "
-                  << lcb_strerror(instance, err) << std::endl;
+                  << lcb_strerror_short(err) << std::endl;
   }
   return {err, result};
 }
 
-std::pair<lcb_error_t, Result> LcbSubdocSet(lcb_t instance,
-                                            lcb_CMDSUBDOC &cmd) {
+std::pair<lcb_STATUS, Result> LcbSubdocSet(lcb_INSTANCE *instance,
+                                           lcb_CMDSUBDOC &cmd) {
   Result result;
-  auto err = lcb_subdoc3(instance, &result, &cmd);
+  auto err = lcb_subdoc(instance, &result, &cmd);
   if (err != LCB_SUCCESS) {
     LOG(logTrace) << "Bucket: Unable to set params for LCB_SUBDOC_SET: "
-                  << lcb_strerror(instance, err) << std::endl;
+                  << lcb_strerror_short(err) << std::endl;
     return {err, result};
   }
-  err = lcb_wait(instance);
+
+  lcb_cmdsubdoc_destroy(&cmd);
+  err = lcb_wait(instance, LCB_WAIT_DEFAULT);
+
   if (err != LCB_SUCCESS) {
     LOG(logTrace) << "Bucket: Unable to schedule LCB_SUBDOC_SET: "
-                  << lcb_strerror(instance, err) << std::endl;
+                  << lcb_strerror_short(err) << std::endl;
   }
   return {err, result};
 }
 
-std::pair<lcb_error_t, Result> LcbSubdocDelete(lcb_t instance,
-                                               lcb_CMDSUBDOC &cmd) {
+std::pair<lcb_STATUS, Result> LcbSubdocDelete(lcb_INSTANCE *instance,
+                                              lcb_CMDSUBDOC &cmd) {
   Result result;
-  auto err = lcb_subdoc3(instance, &result, &cmd);
+  auto err = lcb_subdoc(instance, &result, &cmd);
   if (err != LCB_SUCCESS) {
     LOG(logTrace) << "Bucket: Unable to set params for LCB_SUBDOC_REMOVE: "
-                  << lcb_strerror(instance, err) << std::endl;
+                  << lcb_strerror_short(err) << std::endl;
     return {err, result};
   }
 
-  err = lcb_wait(instance);
+  lcb_cmdsubdoc_destroy(&cmd);
+  err = lcb_wait(instance, LCB_WAIT_DEFAULT);
+
   if (err != LCB_SUCCESS) {
     LOG(logTrace) << "Bucket: Unable to schedule LCB_SUBDOC_REMOVE: "
-                  << lcb_strerror(instance, err) << std::endl;
+                  << lcb_strerror_short(err) << std::endl;
   }
   return {err, result};
 }
 
-std::pair<lcb_error_t, Result> LcbGetCounter(lcb_t instance,
-                                             lcb_CMDCOUNTER &cmd) {
+std::pair<lcb_STATUS, Result> LcbGetCounter(lcb_INSTANCE *instance,
+                                            lcb_CMDCOUNTER &cmd) {
   Result result;
-  auto err = lcb_counter3(instance, &result, &cmd);
+  auto err = lcb_counter(instance, &result, &cmd);
   if (err != LCB_SUCCESS) {
     LOG(logTrace) << "Bucket: Unable to set params for LCB_COUNTER: "
-                  << lcb_strerror(instance, err) << std::endl;
+                  << lcb_strerror_short(err) << std::endl;
     return {err, result};
   }
 
-  err = lcb_wait(instance);
+  lcb_cmdcounter_destroy(&cmd);
+  err = lcb_wait(instance, LCB_WAIT_DEFAULT);
+
   if (err != LCB_SUCCESS) {
     LOG(logTrace) << "Bucket: Unable to schedule LCB_COUNTER: "
-                  << lcb_strerror(instance, err) << std::endl;
+                  << lcb_strerror_short(err) << std::endl;
   }
   return {err, result};
 }
 
-std::pair<lcb_error_t, Result> LcbUnlock(lcb_t instance,
-                                         lcb_CMDUNLOCK &cmd) {
+std::pair<lcb_STATUS, Result> LcbUnlock(lcb_INSTANCE *instance,
+                                        lcb_CMDUNLOCK &cmd) {
   Result result;
-  auto err = lcb_unlock3(instance, &result, &cmd);
+  auto err = lcb_unlock(instance, &result, &cmd);
   if (err != LCB_SUCCESS) {
     LOG(logTrace) << "Bucket: Unable to set params for LCB_UNLOCK: "
-                  << lcb_strerror(instance, err) << std::endl;
+                  << lcb_strerror_short(err) << std::endl;
     return {err, result};
   }
 
-  err = lcb_wait(instance);
+  err = lcb_wait(instance, LCB_WAIT_DEFAULT);
   if (err != LCB_SUCCESS) {
     LOG(logTrace) << "Bucket: Unable to schedule LCB_UNLOCK: "
-                  << lcb_strerror(instance, err) << std::endl;
+                  << lcb_strerror_short(err) << std::endl;
   }
   return {err, result};
 }
 
-bool IsRetriable(lcb_error_t error) {
-  return static_cast<bool>(LCB_EIFTMP(error));
+bool IsRetriable(lcb_STATUS error) {
+  // TODO: There is no equivalent for LCB_EIFTMP in SDK3 CCBC-1308
+  return false;
 }
 
 void evt_log_formatter(char *buf, int buf_size, const char *subsystem,
@@ -396,6 +434,8 @@ bool evt_should_log(int severity, const char *subsys) {
   return false;
 }
 
+// TODO: Logger for lcb
+/*
 void evt_log_handler(struct lcb_logprocs_st *procs, unsigned int iid,
                      const char *subsys, int severity, const char *srcfile,
                      int srcline, const char *fmt, va_list ap) {
@@ -407,8 +447,9 @@ void evt_log_handler(struct lcb_logprocs_st *procs, unsigned int iid,
 }
 
 struct lcb_logprocs_st evt_logger = {
-    0, /* version */
+    0,
     {
-        {evt_log_handler} /* v1 */
-    }                     /* v */
+        {evt_log_handler}
+    }
 };
+*/

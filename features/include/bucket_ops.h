@@ -12,11 +12,10 @@
 #ifndef BUCKETOPS_H
 #define BUCKETOPS_H
 
-
-#include<v8.h>
-#include "lcb_utils.h"
-#include "info.h"
 #include "bucket.h"
+#include "info.h"
+#include "lcb_utils.h"
+#include <v8.h>
 
 struct MetaData {
   std::string key;
@@ -62,37 +61,46 @@ public:
 private:
   EpochInfo Epoch(const v8::Local<v8::Value> &date_val);
   MetaInfo ExtractMetaInfo(v8::Local<v8::Value> meta_object,
-                    bool cas_check = false, bool expiry_check = false);
+                           bool cas_check = false, bool expiry_check = false);
 
   Info ResponseSuccessObject(std::unique_ptr<Result> const &result,
-                      v8::Local<v8::Object> &response_obj, bool is_doc_needed=false,
-                      bool counter_needed=false);
+                             v8::Local<v8::Object> &response_obj,
+                             bool is_doc_needed = false,
+                             bool counter_needed = false);
 
   Info VerifyBucketObject(v8::Local<v8::Value> bucket_binding);
 
-  Info SetDocBody(std::unique_ptr<Result> const &result, v8::Local<v8::Object> &response_obj);
-  Info SetMetaObject(std::unique_ptr<Result> const &result, v8::Local<v8::Object> &response_obj);
-  Info SetCounterData(std::unique_ptr<Result> const &result, v8::Local<v8::Object> &response_obj);
+  Info SetDocBody(std::unique_ptr<Result> const &result,
+                  v8::Local<v8::Object> &response_obj);
+  Info SetMetaObject(std::unique_ptr<Result> const &result,
+                     v8::Local<v8::Object> &response_obj);
+  Info SetCounterData(std::unique_ptr<Result> const &result,
+                      v8::Local<v8::Object> &response_obj);
 
-  std::tuple<Error, std::unique_ptr<lcb_error_t>, std::unique_ptr<Result>>
-  Delete(const std::string &key, lcb_CAS cas, bool is_source_bucket, Bucket *bucket);
+  std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
+  Delete(const std::string &key, uint64_t cas, bool is_source_bucket,
+         Bucket *bucket);
 
-  std::tuple<Error, std::unique_ptr<lcb_error_t>, std::unique_ptr<Result>>
-  Counter(const std::string &key, lcb_CAS cas, lcb_U32 expiry, std::string delta, bool is_source_bucket, Bucket *bucket);
+  std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
+  Counter(const std::string &key, uint64_t cas, lcb_U32 expiry, int64_t delta,
+          bool is_source_bucket, Bucket *bucket);
 
-  std::tuple<Error, std::unique_ptr<lcb_error_t>, std::unique_ptr<Result>>
-  Set(const std::string &key, const void* value, int value_length, lcb_storage_t op_type, lcb_U32 expiry,
-                              lcb_CAS cas, lcb_U32 doc_type, bool is_source_bucket, Bucket *bucket);
+  std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
+  Set(const std::string &key, const char *value, int value_length,
+      lcb_STORE_OPERATION op_type, lcb_U32 expiry, uint64_t cas,
+      lcb_U32 doc_type, bool is_source_bucket, Bucket *bucket);
 
-  std::tuple<Error, std::unique_ptr<lcb_error_t>, std::unique_ptr<Result>>
-  BucketSet(const std::string &key, v8::Local<v8::Value> data, lcb_storage_t op_type, lcb_U32 expiry,
-                              lcb_CAS cas, bool is_source_bucket, Bucket *bucket);
+  std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
+  BucketSet(const std::string &key, v8::Local<v8::Value> data,
+            lcb_STORE_OPERATION op_type, lcb_U32 expiry, uint64_t cas,
+            bool is_source_bucket, Bucket *bucket);
 
-  void CounterOps(v8::FunctionCallbackInfo<v8::Value> args, std::string delta);
+  void CounterOps(v8::FunctionCallbackInfo<v8::Value> args, int64_t delta);
 
-  void HandleBucketOpFailure(lcb_t connection, lcb_error_t error);
-  Info SetErrorObject(v8::Local<v8::Object> &response_obj, std::string name, std::string desc,
-                       lcb_error_t error, const char *error_type, bool value);
+  void HandleBucketOpFailure(lcb_INSTANCE *connection, lcb_STATUS error);
+  Info SetErrorObject(v8::Local<v8::Object> &response_obj, std::string name,
+                      std::string desc, lcb_STATUS error,
+                      const char *error_type, bool value);
 
   v8::Isolate *isolate_;
   v8::Persistent<v8::Context> context_;

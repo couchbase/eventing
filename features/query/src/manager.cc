@@ -17,10 +17,10 @@
 #include "info.h"
 #include "isolate_data.h"
 #include "js_exception.h"
+#include "lcb_utils.h"
 #include "query-helper.h"
 #include "query-iterable.h"
 #include "query-mgr.h"
-#include "lcb_utils.h"
 #include "utils.h"
 
 extern std::atomic<int64_t> n1ql_op_exception_count;
@@ -77,7 +77,7 @@ void QueryFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
   auto conn_refreshed = false;
   auto retry = 0;
-  while(true) {
+  while (true) {
     retry++;
     auto query_info = helper->CreateQuery(args);
     if (query_info.is_fatal) {
@@ -95,8 +95,8 @@ void QueryFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
     auto &iterator = it_info.iterator;
     if (auto start_info = iterator->Start(); start_info.is_fatal) {
-      if (!conn_refreshed && (start_info.is_retriable ||
-                              start_info.is_lcb_special_error)) {
+      if (!conn_refreshed &&
+          (start_info.is_retriable || start_info.is_lcb_special_error)) {
         iterator->Wait();
         query_mgr->RefreshTopConnection();
         conn_refreshed = true;
@@ -116,8 +116,8 @@ void QueryFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
     if (first_row.is_done || first_row.is_error) {
       // Error reported by lcb_wait (coming from LCB client)
       if (auto it_result = iterator->Wait(); it_result.is_fatal) {
-        if (!conn_refreshed && (it_result.is_retriable ||
-                                it_result.is_lcb_special_error)) {
+        if (!conn_refreshed &&
+            (it_result.is_retriable || it_result.is_lcb_special_error)) {
           query_mgr->RefreshTopConnection();
           conn_refreshed = true;
           continue;
@@ -135,8 +135,7 @@ void QueryFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
     auto retriable = IsRetriable(first_row.err_code);
     if (!conn_refreshed && (first_row.is_client_auth_error ||
-                            first_row.err_code == LCB_HTTP_ERROR ||
-                            retriable)) {
+                            first_row.err_code == LCB_ERR_HTTP || retriable)) {
       query_mgr->RefreshTopConnection();
       conn_refreshed = true;
       continue;
