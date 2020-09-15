@@ -113,7 +113,7 @@ void SubDocumentCallback(lcb_INSTANCE *instance, int cbtype,
 
   if (result->rc == LCB_SUCCESS) {
     auto total = lcb_respsubdoc_result_size(resp);
-    for (uint index = 0; index < total; index++) {
+    for (size_t index = 0; index < total; index++) {
       result->rc = lcb_respsubdoc_result_status(resp, index);
       if (result->rc != LCB_SUCCESS) {
         LOG(logTrace) << "Bucket: LCB_SDMUTATE callback "
@@ -151,7 +151,7 @@ void SubDocumentLookupCallback(lcb_INSTANCE *instance, int cbtype,
 
   if (result->rc == LCB_SUCCESS) {
     auto total = lcb_respsubdoc_result_size(resp);
-    for (uint index = 0; index < total; index++) {
+    for (size_t index = 0; index < total; index++) {
       result->rc = lcb_respsubdoc_result_status(resp, 0);
       if (result->rc != LCB_SUCCESS) {
         return;
