@@ -205,12 +205,34 @@ func (p *Producer) LenRunningConsumers() int {
 
 // MetadataBucket return metadata bucket for event handler
 func (p *Producer) MetadataBucket() string {
-	return p.metadatabucket
+	return p.metadataKeyspace.BucketName
+}
+
+func (p *Producer) MetadataScope() string {
+	return p.metadataKeyspace.ScopeName
+}
+
+func (p *Producer) MetadataCollection() string {
+	return p.metadataKeyspace.CollectionName
+}
+
+func (p *Producer) GetSourceKeyspace() *common.Keyspace {
+	return p.handlerConfig.SourceKeyspace
 }
 
 // SourceBucket returns the source bucket for event handler
 func (p *Producer) SourceBucket() string {
-	return p.handlerConfig.SourceBucket
+	return p.handlerConfig.SourceKeyspace.BucketName
+}
+
+// SourceScope returns the source scope for event handler
+func (p *Producer) SourceScope() string {
+	return p.handlerConfig.SourceKeyspace.ScopeName
+}
+
+// SourceCollection returns the source collection for event handler
+func (p *Producer) SourceCollection() string {
+	return p.handlerConfig.SourceKeyspace.CollectionName
 }
 
 // NotifyInit notifies the supervisor about producer initialisation
@@ -272,8 +294,8 @@ func (p *Producer) StopProducer() {
 	logging.Infof("%s [%s:%d] Signalled Producer::Serve to exit",
 		logPrefix, p.appName, p.LenRunningConsumers())
 
-	if p.metadataBucketHandle != nil {
-		p.metadataBucketHandle.Close()
+	if p.metadataCluster != nil {
+		p.metadataCluster.Close(nil)
 	}
 
 	logging.Infof("%s [%s:%d] Closed metadata bucket handle",
@@ -550,7 +572,7 @@ func (p *Producer) CleanupMetadataBucket(skipCheckpointBlobs bool) error {
 
 	hostAddress := net.JoinHostPort(util.Localhost(), p.GetNsServerPort())
 
-	metaBucketNodeCount := util.CountActiveKVNodes(p.metadatabucket, hostAddress)
+	metaBucketNodeCount := util.CountActiveKVNodes(p.metadataKeyspace.BucketName, hostAddress)
 	if metaBucketNodeCount == 0 {
 		logging.Infof("%s [%s:%d] MetaBucketNodeCount: %d exiting",
 			logPrefix, p.appName, p.LenRunningConsumers(), metaBucketNodeCount)
@@ -558,7 +580,7 @@ func (p *Producer) CleanupMetadataBucket(skipCheckpointBlobs bool) error {
 	}
 
 	// Distribute vbuckets to cleanup based on planner
-	err := p.vbEventingNodeAssign(p.metadatabucket)
+	err := p.vbEventingNodeAssign(p.metadataKeyspace.BucketName)
 	if err != nil {
 		logging.Errorf("%s [%s:%d] Failed to get vb to node assignment, err: %v",
 			logPrefix, p.appName, p.LenRunningConsumers(), err)
@@ -606,7 +628,7 @@ func (p *Producer) cleanupMetadataImpl(id int, vbsToCleanup []uint16, undeployWG
 	logging.Infof("%s [%s:%d:id_%d] vbs to cleanup len: %d dump: %s",
 		logPrefix, p.appName, p.LenRunningConsumers(), id, len(vbsToCleanup), util.Condense(vbsToCleanup))
 
-	err := util.Retry(util.NewFixedBackoff(time.Second), &p.retryCount, getKVNodesAddressesOpCallback, p, p.metadatabucket)
+	err := util.Retry(util.NewFixedBackoff(time.Second), &p.retryCount, getKVNodesAddressesOpCallback, p, p.metadataKeyspace.BucketName)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%d:id_%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers(), id)
 		return err
@@ -627,7 +649,7 @@ func (p *Producer) cleanupMetadataImpl(id int, vbsToCleanup []uint16, undeployWG
 	}
 
 	logging.Infof("%s [%s:%d:id_%d] Started up dcpfeed to cleanup artifacts from metadata bucket: %s",
-		logPrefix, p.appName, p.LenRunningConsumers(), id, p.metadatabucket)
+		logPrefix, p.appName, p.LenRunningConsumers(), id, p.metadataKeyspace.BucketName)
 
 	var vbSeqNos map[uint16]uint64
 	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, dcpGetSeqNosCallback, p, &dcpFeed, &vbSeqNos)
@@ -711,6 +733,8 @@ func (p *Producer) cleanupMetadataImpl(id int, vbsToCleanup []uint16, undeployWG
 					rw.Lock()
 					receivedVbSeqNos[e.VBucket] = uint64(0xFFFFFFFFFFFFFFFF)
 					rw.Unlock()
+
+				case mcd.DCP_SYSTEM_EVENT:
 				}
 			}
 		}
@@ -728,7 +752,7 @@ func (p *Producer) cleanupMetadataImpl(id int, vbsToCleanup []uint16, undeployWG
 	end := uint64(0xFFFFFFFFFFFFFFFF)
 
 	logging.Infof("%s [%s:%d:id_%d] Going to start DCP streams from metadata bucket: %s, vbs len: %d dump: %s",
-		logPrefix, p.appName, p.LenRunningConsumers(), id, p.metadatabucket, len(vbs), util.Condense(vbs))
+		logPrefix, p.appName, p.LenRunningConsumers(), id, p.metadataKeyspace.BucketName, len(vbs), util.Condense(vbs))
 
 	for vb, flog := range flogs {
 		if !cleanupVbs[vb] {
@@ -1005,7 +1029,7 @@ func (p *Producer) CheckpointBlobDump() map[string]interface{} {
 
 	checkpointBlobDumps := make(map[string]interface{})
 
-	if p.metadataBucketHandle == nil {
+	if p.metadataHandle == nil {
 		return checkpointBlobDumps
 	}
 
@@ -1111,7 +1135,7 @@ func (p *Producer) SpanBlobDump() map[string]interface{} {
 
 	spanBlobDumps := make(map[string]interface{})
 
-	if p.metadataBucketHandle == nil {
+	if p.metadataHandle == nil {
 		return spanBlobDumps
 	}
 

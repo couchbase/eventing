@@ -19,23 +19,72 @@
       <div class="formrow">
         <label class="inline">Source Bucket</label>
         <span class="fa-stack icon-info"
-              uib-tooltip="The function will listen to this bucket for changes. Memcached buckets are not allowed."
+              uib-tooltip="The function will listen to this {bucket, scope, collection} for changes. Memcached buckets are not allowed."
               tooltip-placement="right">
         <span class="icon fa-circle-thin fa-stack-2x"></span>
         <span class="icon fa-info fa-stack-1x"></span>
         </span>
         <select ng-disabled="!formCtrl.isDialog"
                 ng-model="appModel.depcfg.source_bucket"
+                ng-change = "formCtrl.populateSourceScopes(appModel.depcfg.source_bucket)"
                 ng-options="bucket for bucket in formCtrl.sourceBuckets"
                 name="source_bucket">
         </select>
+        <label class="inline">Source Scope</label>
+        <span class="fa-stack icon-info"
+              uib-tooltip="The function will listen to this {bucket, scope, collection} for changes. Memcached buckets are not allowed."
+              tooltip-placement="right">
+        <span class="icon fa-circle-thin fa-stack-2x"></span>
+        <span class="icon fa-info fa-stack-1x"></span>
+        </span>
+        <select ng-disabled="!formCtrl.isDialog"
+                ng-model="appModel.depcfg.source_scope"
+                ng-change = "formCtrl.populateSourceCollections(appModel.depcfg.source_scope)"
+                ng-options="scope for scope in formCtrl.sourceScopes"
+                name="source_scope">
+        </select>
+        <label class="inline">Source Collection</label>
+        <span class="fa-stack icon-info"
+              uib-tooltip="The function will listen to this {bucket, scope, collection} for changes. Memcached buckets are not allowed."
+              tooltip-placement="right">
+        <span class="icon fa-circle-thin fa-stack-2x"></span>
+        <span class="icon fa-info fa-stack-1x"></span>
+        </span>
+        <select ng-disabled="!formCtrl.isDialog"
+                ng-model="appModel.depcfg.source_collection"
+                ng-options="collection for collection in formCtrl.sourceCollections"
+                name="source_collection">
+        </select>
         <div class="error field-error"
-             ng-show="formCtrl.sourceBuckets.indexOf(appModel.depcfg.source_bucket) === -1">
-          Please specify a source bucket for your function.
+             ng-show="formCtrl.sourceBuckets.indexOf(appModel.depcfg.source_bucket) === -1 &&
+                      formCtrl.sourceScopes.indexOf(appModel.depcfg.source_scope) === -1 &&
+                      formCtrl.sourceCollections.indexOf(appModel.depcfg.source_collection) === -1">
+          Please specify a source Keyspace for your function.
         </div>
       </div>
       <div class="formrow">
         <label class="inline">Metadata Bucket</label>
+        <span class="fa-stack icon-info"
+              uib-tooltip="This {bucket, scope, collection} is used to store system data and should not be used by other applications."
+              tooltip-placement="right">
+        <span class="icon fa-circle-thin fa-stack-2x"></span>
+        <span class="icon fa-info fa-stack-1x"></span>
+        </span>
+        <select
+                ng-disabled="!formCtrl.isDialog"
+                ng-model="appModel.depcfg.metadata_bucket"
+                ng-change = "formCtrl.populateMetadataScopes(appModel.depcfg.metadata_bucket)"
+                ng-options="bucket for bucket in formCtrl.metadataBuckets"
+                name="metadata_bucket">
+        </select>
+        <small>System data stored in this {bucket, scope, collection} will have the document ID prefixed with <strong>{{appModel.settings.user_prefix}}</strong></small>
+        <div
+                class="error field-error"
+                ng-show="formCtrl.metadataBuckets.indexOf(appModel.depcfg.metadata_bucket) === -1">
+          Please specify a metadata bucket.
+        </div>
+        <div class="formrow">
+        <label class="inline">Metadata Scope</label>
         <span class="fa-stack icon-info"
               uib-tooltip="This bucket is used to store system data and should not be used by other applications."
               tooltip-placement="right">
@@ -44,20 +93,39 @@
         </span>
         <select
                 ng-disabled="!formCtrl.isDialog"
-                ng-model="appModel.depcfg.metadata_bucket"
-                ng-options="bucket for bucket in formCtrl.metadataBuckets"
-                name="metadata_bucket">
+                ng-model="appModel.depcfg.metadata_scope"
+                ng-change = "formCtrl.populateMetadataCollections(appModel.depcfg.metadata_scope)"
+                ng-options="scope for scope in formCtrl.metadataScopes"
+                name="metadata_scope">
         </select>
-        <small>System data stored in this bucket will have the document ID prefixed with <strong>{{appModel.settings.user_prefix}}</strong></small>
         <div
                 class="error field-error"
-                ng-show="formCtrl.metadataBuckets.indexOf(appModel.depcfg.metadata_bucket) === -1">
-          Please specify a metadata bucket.
+                ng-show="formCtrl.metadataScopes.indexOf(appModel.depcfg.metadata_scope) === -1">
+          Please specify a metadata Scope.
+        </div>
+        <div class="formrow">
+        <label class="inline">Metadata Collection</label>
+        <span class="fa-stack icon-info"
+              uib-tooltip="This bucket:scope is used to store system data and should not be used by other applications."
+              tooltip-placement="right">
+        <span class="icon fa-circle-thin fa-stack-2x"></span>
+        <span class="icon fa-info fa-stack-1x"></span>
+        </span>
+        <select
+                ng-disabled="!formCtrl.isDialog"
+                ng-model="appModel.depcfg.metadata_collection"
+                ng-options="collection for collection in formCtrl.metadataCollections"
+                name="metadata_collection">
+        </select>
+        <div
+                class="error field-error"
+                ng-show="formCtrl.metadataCollections.indexOf(appModel.depcfg.metadata_collection) === -1">
+          Please specify a metadata collection.
         </div>
         <div
                 class="error field-error"
                 ng-show="formCtrl.srcMetaSameBucket(appModel)">
-          Source and metadata buckets cannot be the same.
+          Source and metadata Keyspace cannot be the same.
         </div>
       </div>
       <div class="formrow">
@@ -223,14 +291,14 @@
                   class="outline btn-small"
                   title="Add a binding"
                   ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
-                  ng-click="(formCtrl.isDialog ? bindings : formCtrl.bindings).push({type:'', name:formCtrl.sourceBuckets[0], value:'', auth_type:'no-auth', allow_cookies: true, access:'r'})">
+                  ng-click="formCtrl.Initialize();">
             +
           </button>
           <button
                   class="outline btn-small"
                   title="Remove parameter"
                   ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
-                  ng-click="(formCtrl.isDialog ? bindings : formCtrl.bindings).splice(-1, 1)">
+                  ng-click="formCtrl.Remove(-1)">
             -
           </button>
         </div>
@@ -266,11 +334,29 @@
           <span
                   class="fix-width-2 padding-right-half margin-bottom-half"
                   ng-if="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].type === 'alias'">
+           <label>BucketName: </label>
             <select
                     ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
                     ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].name"
+		    ng-change="formCtrl.populateScope((formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].name, $index)"
                     ng-options="bucket for bucket in formCtrl.sourceBuckets">
               <option value=""></option>
+	     </select>
+            <label>ScopeName: </label>
+             <select
+                    ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
+                    ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].scope"
+		    ng-change="formCtrl.populateCollections((formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].scope, $index)"
+                    ng-options="scope for scope in formCtrl.scopes[$index]">
+              <option value=""></option>
+             </select>
+	     <label>CollectionName: </label>
+             <select
+                    ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
+                    ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].collection"
+                    ng-options="collection for collection in formCtrl.collections[$index]">
+              <option value=""></option>
+	     </select>
               <!-- empty <option> fixes layout of subsequent elements -->
             </select>
           </span>
@@ -399,7 +485,7 @@
           <div
                   class="red-2 cursor-pointer"
                   ng-show="!formCtrl.isAppDeployed"
-                  ng-click="(formCtrl.isDialog ? bindings : formCtrl.bindings).splice($index, 1)"
+                  ng-click="(formCtrl.isDialog ? bindings : formCtrl.bindings).Remove(1)"
                   style="position: absolute; top: 0; right: -16px;">
             <span class="icon fa-close"></span>
           </div>

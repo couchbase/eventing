@@ -10,7 +10,6 @@
 // permissions and limitations under the License.
 
 #include <algorithm>
-#include <libcouchbase/n1ql.h>
 #include <memory>
 #include <sstream>
 #include <string>
@@ -267,27 +266,28 @@ void Query::Helper::HandleRowError(const Query::Row &row) {
 }
 
 std::string Query::Helper::ErrorFormat(const std::string &message,
-                                       lcb_t connection,
-                                       const lcb_error_t error) {
+                                       lcb_INSTANCE *connection,
+                                       const lcb_STATUS error) {
   AccountLCBError(error);
   std::stringstream formatter;
-  formatter << message << " : " << lcb_strerror(connection, error);
+  formatter << message << " : " << lcb_strerror_short(error);
   return formatter.str();
 }
 
-int Query::Helper::GetConsistency(const std::string &consistency) {
+lcb_QUERY_CONSISTENCY
+Query::Helper::GetConsistency(const std::string &consistency) {
   if (consistency == "none") {
-    return LCB_N1P_CONSISTENCY_NONE;
+    return LCB_QUERY_CONSISTENCY_NONE;
   }
   if (consistency == "request") {
-    return LCB_N1P_CONSISTENCY_REQUEST;
+    return LCB_QUERY_CONSISTENCY_REQUEST;
   }
-  return LCB_N1P_CONSISTENCY_NONE;
+  return LCB_QUERY_CONSISTENCY_NONE;
 }
 
 bool Query::Helper::CheckRetriable(int max_retry_count, uint32_t max_retry_secs,
-                                    int retry_count, uint32_t start_time) {
-  if(max_retry_count && max_retry_count <= retry_count) {
+                                   int retry_count, uint32_t start_time) {
+  if (max_retry_count && max_retry_count <= retry_count) {
     return false;
   }
   auto now = GetUnixTime();
@@ -340,7 +340,7 @@ Query::Options::Extractor::~Extractor() {
 
 ::Info Query::Options::Extractor::ExtractConsistency(
     const v8::Local<v8::Object> &options_obj,
-    std::unique_ptr<int> &consistency_out) const {
+    std::unique_ptr<lcb_QUERY_CONSISTENCY> &consistency_out) const {
   v8::HandleScope handle_scope(isolate_);
   auto context = context_.Get(isolate_);
 
@@ -360,8 +360,8 @@ Query::Options::Extractor::~Extractor() {
   if (consistencies_.find(*consistency_utf8) == consistencies_.end()) {
     return {true, "consistency must be one of 'none', 'request'"};
   }
-  consistency_out =
-      std::make_unique<int>(Query::Helper::GetConsistency(*consistency_utf8));
+  consistency_out = std::make_unique<lcb_QUERY_CONSISTENCY>(
+      Query::Helper::GetConsistency(*consistency_utf8));
   return {false};
 }
 
@@ -422,7 +422,8 @@ bool Query::Options::GetOrDefaultIsPrepared(v8::Isolate *isolate) const {
   return UnwrapData(isolate)->n1ql_prepare_all;
 }
 
-int Query::Options::GetOrDefaultConsistency(v8::Isolate *isolate) const {
+lcb_QUERY_CONSISTENCY
+Query::Options::GetOrDefaultConsistency(v8::Isolate *isolate) const {
   if (consistency != nullptr) {
     return *consistency;
   }

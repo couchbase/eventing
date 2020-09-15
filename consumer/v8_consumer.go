@@ -36,7 +36,7 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		aggDCPFeed:                      make(chan *memcached.DcpEvent, dcpConfig["dataChanSize"].(int)),
 		aggDCPFeedMemCap:                hConfig.AggDCPFeedMemCap,
 		breakpadOn:                      pConfig.BreakpadOn,
-		bucket:                          hConfig.SourceBucket,
+		sourceKeyspace:                  hConfig.SourceKeyspace,
 		cbBucket:                        b,
 		cbBucketRWMutex:                 &sync.RWMutex{},
 		checkpointInterval:              time.Duration(hConfig.CheckpointInterval) * time.Millisecond,
@@ -176,7 +176,15 @@ func (c *Consumer) Serve() {
 
 	c.cppWorkerThrPartitionMap()
 
-	err := util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), c.retryCount, getKvNodesFromVbMap, c)
+	cid, err := c.getCollectionID()
+	if err != nil {
+		logging.Infof("%s [%s:%s:%d] failed to getCollectionID: for bucket: %s scope: %s collection: %s error: %v", logPrefix, c.workerName,
+			c.tcpPort, c.Pid(), c.sourceKeyspace.BucketName, c.sourceKeyspace.ScopeName, c.sourceKeyspace.CollectionName, err)
+		return
+	}
+	c.collectionID = cid
+
+	err = util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), c.retryCount, getKvNodesFromVbMap, c)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 		return
@@ -364,12 +372,8 @@ func (c *Consumer) Stop(context string) {
 	logging.Infof("%s [%s:%s:%d] Gracefully shutting down consumer routine",
 		logPrefix, c.workerName, c.tcpPort, c.Pid())
 
-	if c.gocbBucket != nil {
-		c.gocbBucket.Close()
-	}
-
-	if c.gocbMetaBucket != nil {
-		c.gocbMetaBucket.Close()
+	if c.gocbCluster != nil {
+		c.gocbCluster.Close(nil)
 	}
 
 	logging.Infof("%s [%s:%s:%d] Issued close for go-couchbase and gocb handles",
@@ -557,4 +561,21 @@ func (c *Consumer) getKvNodes() []string {
 	copy(kvNodes, c.kvNodes)
 
 	return kvNodes
+}
+
+func (c *Consumer) getCollectionID() (uint32, error) {
+	hostAddress := net.JoinHostPort(util.Localhost(), c.nsServerPort)
+	cinfo, err := util.FetchNewClusterInfoCache(hostAddress)
+	if err != nil {
+		return 0, err
+	}
+
+	cid, err := cinfo.GetCollectionID(c.sourceKeyspace.BucketName,
+		c.sourceKeyspace.ScopeName,
+		c.sourceKeyspace.CollectionName)
+	if err != nil {
+		return 0, err
+	}
+
+	return cid, nil
 }

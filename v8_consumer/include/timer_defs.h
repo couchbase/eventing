@@ -12,7 +12,7 @@
 #ifndef COUCHBASE_TIMER_DEFS_H
 #define COUCHBASE_TIMER_DEFS_H
 
-#include <libcouchbase/api3.h>
+#include <libcouchbase/couchbase.h>
 #include <nlohmann/json.hpp>
 #include <string>
 #include <unordered_set>

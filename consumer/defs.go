@@ -15,8 +15,8 @@ import (
 	mcd "github.com/couchbase/eventing/dcp/transport"
 	cb "github.com/couchbase/eventing/dcp/transport/client"
 	"github.com/couchbase/eventing/suptree"
+	"github.com/couchbase/gocb/v2"
 	"github.com/google/flatbuffers/go"
-	"gopkg.in/couchbase/gocb.v1"
 )
 
 const (
@@ -109,10 +109,11 @@ type vbSeqNo struct {
 type Consumer struct {
 	n1qlPrepareAll bool
 	app            *common.AppConfig
-	bucket         string // source bucket
+	sourceKeyspace *common.Keyspace // source bucket
 	builderPool    *sync.Pool
 	breakpadOn     bool
 	uuid           string
+	collectionID   uint32
 	retryCount     *int64
 
 	handlerFooters []string
@@ -139,33 +140,34 @@ type Consumer struct {
 	debugListener         net.Listener
 	diagDir               string // Location that will house minidumps from from crashed cpp workers
 
-	aggDCPFeed                    chan *cb.DcpEvent
-	aggDCPFeedMem                 int64
-	aggDCPFeedMemCap              int64
-	cbBucket                      *couchbase.Bucket
-	cbBucketRWMutex               *sync.RWMutex
-	checkpointInterval            time.Duration
-	compileInfo                   *common.CompileStatus
-	controlRoutineWg              *sync.WaitGroup
-	dcpEventsRemaining            uint64
-	fetchingdcpEventsRemaining    uint32
-	dcpFeedsClosed                bool
-	dcpFeedVbMap                  map[*couchbase.DcpFeed][]uint16 // Access controlled by default lock
-	debuggerPort                  string
-	ejectNodesUUIDs               []string
-	eventingAdminPort             string
-	eventingDir                   string
-	eventingSSLPort               string
-	eventingNodeAddrs             []string
-	eventingNodeUUIDs             []string
-	executeTimerRoutineCount      int
-	executionTimeout              int
-	lcbRetryCount                 int
-	filterVbEvents                map[uint16]struct{} // Access controlled by filterVbEventsRWMutex
-	filterVbEventsRWMutex         *sync.RWMutex
-	filterDataCh                  chan *vbSeqNo
-	gocbBucket                    *gocb.Bucket
-	gocbMetaBucket                *gocb.Bucket
+	aggDCPFeed                 chan *cb.DcpEvent
+	aggDCPFeedMem              int64
+	aggDCPFeedMemCap           int64
+	cbBucket                   *couchbase.Bucket
+	cbBucketRWMutex            *sync.RWMutex
+	checkpointInterval         time.Duration
+	compileInfo                *common.CompileStatus
+	controlRoutineWg           *sync.WaitGroup
+	dcpEventsRemaining         uint64
+	fetchingdcpEventsRemaining uint32
+	dcpFeedsClosed             bool
+	dcpFeedVbMap               map[*couchbase.DcpFeed][]uint16 // Access controlled by default lock
+	debuggerPort               string
+	ejectNodesUUIDs            []string
+	eventingAdminPort          string
+	eventingDir                string
+	eventingSSLPort            string
+	eventingNodeAddrs          []string
+	eventingNodeUUIDs          []string
+	executeTimerRoutineCount   int
+	executionTimeout           int
+	lcbRetryCount              int
+	filterVbEvents             map[uint16]struct{} // Access controlled by filterVbEventsRWMutex
+	filterVbEventsRWMutex      *sync.RWMutex
+	filterDataCh               chan *vbSeqNo
+
+	gocbCluster                   *gocb.Cluster
+	gocbMetaHandle                *gocb.Collection
 	idleCheckpointInterval        time.Duration
 	index                         int
 	inflightDcpStreams            map[uint16]struct{} // Access controlled by inflightDcpStreamsRWMutex

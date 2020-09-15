@@ -102,6 +102,9 @@ type SuperSupervisor struct {
 	// to signify app has been undeployed. Access controlled by appListRWMutex
 	locallyDeployedApps map[string]string
 
+	// Count of how many times worker Respawned
+	workerRespawnedCount uint32
+
 	// Global config
 	memoryQuota int64 // In MB
 

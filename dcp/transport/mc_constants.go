@@ -41,6 +41,7 @@ const (
 	FLUSHQ     = CommandCode(0x18)
 	APPENDQ    = CommandCode(0x19)
 	PREPENDQ   = CommandCode(0x1a)
+	HELO       = CommandCode(0x1f)
 	RGET       = CommandCode(0x30)
 	RSET       = CommandCode(0x31)
 	RSETQ      = CommandCode(0x32)
@@ -69,25 +70,28 @@ const (
 	TAP_CHECKPOINT_END   = CommandCode(0x47) // Notifies end of checkpoint
 	DCP_GET_SEQNO        = CommandCode(0x48) // Get sequence number for all vbuckets.
 
-	DCP_OPEN        = CommandCode(0x50) // Open a DCP connection with a name
-	DCP_ADDSTREAM   = CommandCode(0x51) // Sent by ebucketMigrator to DCP Consumer
-	DCP_CLOSESTREAM = CommandCode(0x52) // Sent by eBucketMigrator to DCP Consumer
-	DCP_FAILOVERLOG = CommandCode(0x54) // Request failover logs
-	DCP_STREAMREQ   = CommandCode(0x53) // Stream request from consumer to producer
-	DCP_STREAMEND   = CommandCode(0x55) // Sent by producer when it has no more messages to stream
-	DCP_SNAPSHOT    = CommandCode(0x56) // Start of a new snapshot
-	DCP_MUTATION    = CommandCode(0x57) // Key mutation
-	DCP_DELETION    = CommandCode(0x58) // Key deletion
-	DCP_EXPIRATION  = CommandCode(0x59) // Key expiration
-	DCP_FLUSH       = CommandCode(0x5a) // Delete all the data for a vbucket
-	DCP_NOOP        = CommandCode(0x5c) // DCP NOOP
-	DCP_BUFFERACK   = CommandCode(0x5d) // DCP Buffer Acknowledgement
-	DCP_CONTROL     = CommandCode(0x5e) // Set flow control params
+	DCP_OPEN         = CommandCode(0x50) // Open a DCP connection with a name
+	DCP_ADDSTREAM    = CommandCode(0x51) // Sent by ebucketMigrator to DCP Consumer
+	DCP_CLOSESTREAM  = CommandCode(0x52) // Sent by eBucketMigrator to DCP Consumer
+	DCP_FAILOVERLOG  = CommandCode(0x54) // Request failover logs
+	DCP_STREAMREQ    = CommandCode(0x53) // Stream request from consumer to producer
+	DCP_STREAMEND    = CommandCode(0x55) // Sent by producer when it has no more messages to stream
+	DCP_SNAPSHOT     = CommandCode(0x56) // Start of a new snapshot
+	DCP_MUTATION     = CommandCode(0x57) // Key mutation
+	DCP_DELETION     = CommandCode(0x58) // Key deletion
+	DCP_EXPIRATION   = CommandCode(0x59) // Key expiration
+	DCP_FLUSH        = CommandCode(0x5a) // Delete all the data for a vbucket
+	DCP_NOOP         = CommandCode(0x5c) // DCP NOOP
+	DCP_BUFFERACK    = CommandCode(0x5d) // DCP Buffer Acknowledgement
+	DCP_CONTROL      = CommandCode(0x5e) // Set flow control params
+	DCP_SYSTEM_EVENT = CommandCode(0x5f) // DCP system events for collection lifecycle messages
 
 	SELECT_BUCKET = CommandCode(0x89) // Select bucket
 
 	OBSERVE = CommandCode(0x92)
 )
+
+const FEATURE_COLLECTIONS byte = 0x12
 
 // Status field for memcached response.
 type Status uint16

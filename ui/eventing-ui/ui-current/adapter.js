@@ -39,6 +39,8 @@ Adapter.prototype.createBucketConfig = function(binding) {
     var config = {};
     config[binding.type] = binding.value;
     config.bucket_name = binding.name;
+    config.scope_name = binding.scope;
+    config.collection_name = binding.collection;
     config.access = binding.access;
     return config;
 };
@@ -47,6 +49,8 @@ Adapter.prototype.createBucketBinding = function(config) {
     return {
         type: 'alias',
         name: config.bucket_name,
+        scope: config.scope_name,
+        collection: config.collection_name,
         value: config.alias,
         access: config.access ? config.access : (config.source_bucket === config.bucket_name ? 'r' : 'rw')
     };

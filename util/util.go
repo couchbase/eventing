@@ -5,6 +5,7 @@ import (
 	"compress/flate"
 	"crypto/md5"
 	"crypto/rand"
+	"crypto/tls"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
@@ -27,12 +28,13 @@ import (
 	"github.com/couchbase/cbauth"
 	"github.com/couchbase/cbauth/metakv"
 	cm "github.com/couchbase/eventing/common"
+	"github.com/couchbase/eventing/common/collections"
 	mcd "github.com/couchbase/eventing/dcp/transport"
 	"github.com/couchbase/eventing/gen/flatbuf/cfg"
 	"github.com/couchbase/eventing/logging"
+	"github.com/couchbase/gocb/v2"
 	"github.com/couchbase/gomemcached"
 	flatbuffers "github.com/google/flatbuffers/go"
-	"gopkg.in/couchbase/gocb.v1"
 )
 
 const (
@@ -60,6 +62,18 @@ type ConfigHolder struct {
 
 type DynamicAuthenticator struct {
 	Caller string
+}
+
+func (dynAuth *DynamicAuthenticator) SupportsTLS() bool {
+	return true
+}
+
+func (dynAuth *DynamicAuthenticator) SupportsNonTLS() bool {
+	return true
+}
+
+func (dynAuth *DynamicAuthenticator) Certificate(req gocb.AuthCertRequest) (*tls.Certificate, error) {
+	return nil, nil
 }
 
 func (h *ConfigHolder) Store(conf Config) {
@@ -260,6 +274,29 @@ func LocalEventingServiceHost(auth, hostaddress string) (string, error) {
 	}
 
 	return srvAddr, nil
+}
+
+func CheckKeyspaceExist(bucket, scope, collection, hostaddress string) bool {
+	//TODO: Optimise to get collection id from streaming rest api
+	cinfo, err := FetchNewClusterInfoCache(hostaddress)
+	if err != nil {
+		return true
+	}
+	cinfo.RLock()
+	defer cinfo.RUnlock()
+	kvAddrs, err := cinfo.GetNodesByBucket(bucket)
+	if err != nil {
+		if err.Error() == fmt.Sprintf("No bucket named "+bucket) {
+			return false
+		}
+		return true
+	}
+
+	if len(kvAddrs) == 0 {
+		return false
+	}
+	_, err = cinfo.GetCollectionID(bucket, scope, collection)
+	return !(err == collections.SCOPE_NOT_FOUND || err == collections.COLLECTION_NOT_FOUND)
 }
 
 func CountActiveKVNodes(bucket, hostaddress string) int {
@@ -1653,10 +1690,14 @@ func EncodeAppPayload(app *cm.Application) []byte {
 		alias := builder.CreateString(app.DeploymentConfig.Buckets[i].Alias)
 		bName := builder.CreateString(app.DeploymentConfig.Buckets[i].BucketName)
 		bAccess := builder.CreateString(app.DeploymentConfig.Buckets[i].Access)
+		sName := builder.CreateString(app.DeploymentConfig.Buckets[i].ScopeName)
+		cName := builder.CreateString(app.DeploymentConfig.Buckets[i].CollectionName)
 
 		cfg.BucketStart(builder)
 		cfg.BucketAddAlias(builder, alias)
 		cfg.BucketAddBucketName(builder, bName)
+		cfg.BucketAddScopeName(builder, sName)
+		cfg.BucketAddCollectionName(builder, cName)
 		csBucket := cfg.BucketEnd(builder)
 
 		bNames = append(bNames, csBucket)
@@ -1677,11 +1718,20 @@ func EncodeAppPayload(app *cm.Application) []byte {
 
 	metaBucket := builder.CreateString(app.DeploymentConfig.MetadataBucket)
 	sourceBucket := builder.CreateString(app.DeploymentConfig.SourceBucket)
+	metadataCollection := builder.CreateString(app.DeploymentConfig.MetadataCollection)
+	metadataScope := builder.CreateString(app.DeploymentConfig.MetadataScope)
+	sourceScope := builder.CreateString(app.DeploymentConfig.SourceScope)
+	sourceCollection := builder.CreateString(app.DeploymentConfig.SourceCollection)
 
 	cfg.DepCfgStart(builder)
 	cfg.DepCfgAddBuckets(builder, buckets)
 	cfg.DepCfgAddMetadataBucket(builder, metaBucket)
 	cfg.DepCfgAddSourceBucket(builder, sourceBucket)
+	cfg.DepCfgAddMetadataCollection(builder, metadataCollection)
+	cfg.DepCfgAddSourceCollection(builder, sourceCollection)
+	cfg.DepCfgAddSourceScope(builder, sourceScope)
+	cfg.DepCfgAddMetadataScope(builder, metadataScope)
+
 	depcfg := cfg.DepCfgEnd(builder)
 
 	appCode := builder.CreateString(app.AppHandlers)
@@ -1720,6 +1770,10 @@ func ParseFunctionPayload(data []byte, fnName string) cm.Application {
 
 	depcfg.MetadataBucket = string(dcfg.MetadataBucket())
 	depcfg.SourceBucket = string(dcfg.SourceBucket())
+	depcfg.SourceScope = string(dcfg.SourceScope())
+	depcfg.SourceCollection = string(dcfg.SourceCollection())
+	depcfg.MetadataCollection = string(dcfg.MetadataCollection())
+	depcfg.MetadataScope = string(dcfg.MetadataScope())
 
 	var buckets []cm.Bucket
 	b := new(cfg.Bucket)
@@ -1727,9 +1781,11 @@ func ParseFunctionPayload(data []byte, fnName string) cm.Application {
 
 		if dcfg.Buckets(b, i) {
 			newBucket := cm.Bucket{
-				Alias:      string(b.Alias()),
-				BucketName: string(b.BucketName()),
-				Access:     string(config.Access(i)),
+				Alias:          string(b.Alias()),
+				BucketName:     string(b.BucketName()),
+				Access:         string(config.Access(i)),
+				ScopeName:      string(b.ScopeName()),
+				CollectionName: string(b.CollectionName()),
 			}
 			buckets = append(buckets, newBucket)
 		}

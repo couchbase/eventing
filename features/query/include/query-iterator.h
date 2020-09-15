@@ -14,7 +14,6 @@
 
 #include <condition_variable>
 #include <libcouchbase/couchbase.h>
-#include <libcouchbase/n1ql.h>
 #include <string>
 #include <thread>
 #include <utility>
@@ -36,7 +35,8 @@ public:
     Info(bool is_fatal, const std::string &msg) : ::Info(is_fatal, msg) {}
     Info(bool is_fatal, const std::string &msg, bool is_retriable)
         : ::Info(is_fatal, msg, is_retriable) {}
-    Info(bool is_fatal, const std::string &msg, bool is_retriable, bool is_lcb_special_error)
+    Info(bool is_fatal, const std::string &msg, bool is_retriable,
+         bool is_lcb_special_error)
         : ::Info(is_fatal, msg, is_retriable, is_lcb_special_error) {}
 
     Info(Iterator *iterator) : ::Info(false), iterator(iterator) {}
@@ -44,7 +44,7 @@ public:
     Iterator *iterator{nullptr};
   };
 
-  Iterator(Query::Info query_info, lcb_t instance, v8::Isolate *isolate)
+  Iterator(Query::Info query_info, lcb_INSTANCE *instance, v8::Isolate *isolate)
       : connection_(instance), isolate_(isolate),
         builder_(isolate_, std::move(query_info), instance) {}
   ~Iterator();
@@ -62,7 +62,8 @@ public:
   ::Info Wait();
 
 private:
-  static void RowCallback(lcb_t connection, int type, const lcb_RESPN1QL *resp);
+  static void RowCallback(lcb_INSTANCE *connection, int type,
+                          const lcb_RESPQUERY *resp);
   static bool IsStatusSuccess(const std::string &row);
 
   struct Cursor {
@@ -74,7 +75,7 @@ private:
     void WaitFor(ExecutionControl control);
     void YieldTo(ExecutionControl control);
 
-    lcb_error_t client_err_code{LCB_SUCCESS};
+    lcb_STATUS client_err_code{LCB_SUCCESS};
     bool is_error{false};
     bool is_client_auth_error{false};
     bool is_client_error{false}; // Error reported by SDK client
@@ -109,7 +110,7 @@ private:
   Cursor cursor_;
   bool has_peeked_{false};
 
-  lcb_t connection_;
+  lcb_INSTANCE *connection_;
   ::Info result_info_{false};
   v8::Isolate *isolate_;
   State state_{State::kIdle};

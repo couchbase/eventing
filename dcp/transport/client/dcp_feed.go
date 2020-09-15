@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"github.com/couchbase/eventing/common/collections"
 	"github.com/couchbase/eventing/dcp/transport"
 	"github.com/couchbase/eventing/logging"
 	"io"
@@ -32,6 +33,9 @@ var ErrorConnection = errors.New("dcp.connection")
 
 // ErrorInvalidFeed
 var ErrorInvalidFeed = errors.New("dcp.invalidFeed")
+
+// ErrorEnableCollections
+var ErrorEnableCollections = errors.New("dcp.EnableCollections")
 
 // DcpFeed represents an DCP feed. A feed contains a connection to a single
 // host and multiple vBuckets
@@ -388,6 +392,12 @@ func (feed *DcpFeed) handlePacket(
 		fmsg := "%v ##%x opcode DCP_ADDSTREAM not implemented\n"
 		logging.Fatalf(fmsg, prefix, stream.AppOpaque)
 
+	case transport.DCP_SYSTEM_EVENT:
+		event = newDcpEvent(pkt, stream)
+		feed.handleSystemEvent(pkt, event)
+		stream.Seqno = event.Seqno
+		sendAck = true
+
 	default:
 		fmsg := "%v opcode %v not known for vbucket %d\n"
 		logging.Warnf(fmsg, prefix, pkt.Opcode, vb)
@@ -410,6 +420,11 @@ func (feed *DcpFeed) handlePacket(
 	}
 	feed.sendBufferAck(sendAck, uint32(bytes))
 	return rc
+}
+
+func (feed *DcpFeed) handleSystemEvent(pkt *transport.MCRequest, dcpEvent *DcpEvent) {
+	extras := pkt.Extras
+	dcpEvent.Seqno = binary.BigEndian.Uint64(extras[0:8])
 }
 
 func (feed *DcpFeed) doDcpGetFailoverLog(
@@ -557,16 +572,6 @@ func (feed *DcpFeed) doDcpOpen(
 	opaque uint16,
 	rcvch chan []interface{}) error {
 
-	rq := &transport.MCRequest{
-		Opcode: transport.DCP_OPEN,
-		Key:    []byte(name),
-		Opaque: opaqueOpen,
-	}
-	rq.Extras = make([]byte, 8)
-	flags = flags | openConnFlag | includeDeleteTime
-	binary.BigEndian.PutUint32(rq.Extras[:4], sequence)
-	binary.BigEndian.PutUint32(rq.Extras[4:], flags) // we are consumer
-
 	prefix := feed.logPrefix
 
 	// Enable read deadline at function exit
@@ -579,6 +584,22 @@ func (feed *DcpFeed) doDcpOpen(
 
 	feed.conn.SetMcdConnectionDeadline()
 	defer feed.conn.ResetMcdConnectionDeadline()
+
+	if true /* if collection aware */ {
+		if err := feed.enableCollections(rcvch); err != nil {
+			return err
+		}
+	}
+
+	rq := &transport.MCRequest{
+		Opcode: transport.DCP_OPEN,
+		Key:    []byte(name),
+		Opaque: opaqueOpen,
+	}
+	rq.Extras = make([]byte, 8)
+	flags = flags | openConnFlag | includeDeleteTime
+	binary.BigEndian.PutUint32(rq.Extras[:4], sequence)
+	binary.BigEndian.PutUint32(rq.Extras[4:], flags) // we are consumer
 
 	if err := feed.conn.Transmit(rq); err != nil {
 		return err
@@ -746,6 +767,43 @@ func (feed *DcpFeed) doDcpCloseStream(vbno, opaqueMSB uint16) error {
 	return nil
 }
 
+func (feed *DcpFeed) enableCollections(rcvch chan []interface{}) error {
+	prefix := feed.logPrefix
+
+	rq := &transport.MCRequest{
+		Opcode: transport.HELO,
+		Key:    []byte(feed.name),
+		Body:   []byte{0x00, transport.FEATURE_COLLECTIONS},
+	}
+	if err := feed.conn.Transmit(rq); err != nil {
+		fmsg := "%v doDcpOpen.Transmit DCP_HELO (feature_collections): %v"
+		logging.Errorf(fmsg, prefix, err)
+		return err
+	}
+	msg, ok := <-rcvch
+	if !ok {
+		fmsg := "%v doDcpOpen.rcvch (feature_collections) closed"
+		logging.Errorf(fmsg, prefix)
+		return ErrorConnection
+	}
+
+	pkt := msg[0].(*transport.MCRequest)
+	opcode, body := pkt.Opcode, pkt.Body
+	if opcode != transport.HELO {
+		fmsg := "%v DCP_HELO (feature_collections) opcode = %v. Expecting opcode = 0x1f"
+		logging.Errorf(fmsg, prefix, opcode)
+		return ErrorEnableCollections
+	} else if (len(body) != 2) || (body[0] != 0x00 && body[1] != transport.FEATURE_COLLECTIONS) {
+		fmsg := "%v DCP_HELO (feature_collections) body = %v. Expecting body = 0x0012"
+		logging.Errorf(fmsg, prefix, opcode)
+		return ErrorEnableCollections
+	}
+
+	fmsg := "%v received response for DCP_HELO (feature_collections)"
+	logging.Infof(fmsg, prefix)
+	return nil
+}
+
 // generate stream end responses for all active vb streams
 func (feed *DcpFeed) sendStreamEnd(outch chan<- *DcpEvent) {
 	if feed.vbstreams != nil {
@@ -866,15 +924,16 @@ type DcpStream struct {
 
 // DcpEvent memcached events for DCP streams.
 type DcpEvent struct {
-	Opcode     transport.CommandCode // Type of event
-	Status     transport.Status      // Response status
-	Datatype   uint8                 // Datatype per binary protocol
-	VBucket    uint16                // VBucket this event applies to
-	Opaque     uint16                // 16 MSB of opaque
-	VBuuid     uint64                // This field is set by downstream
-	Key, Value []byte                // Item key/value
-	OldValue   []byte                // TODO: TBD: old document value
-	Cas        uint64                // CAS value of the item
+	Opcode       transport.CommandCode // Type of event
+	Status       transport.Status      // Response status
+	Datatype     uint8                 // Datatype per binary protocol
+	VBucket      uint16                // VBucket this event applies to
+	Opaque       uint16                // 16 MSB of opaque
+	VBuuid       uint64                // This field is set by downstream
+	Key, Value   []byte                // Item key/value
+	OldValue     []byte                // TODO: TBD: old document value
+	Cas          uint64                // CAS value of the item
+	CollectionID uint32                // Collection Id
 	// meta fields
 	Seqno uint64 // seqno. of the mutation, doubles as rollback-seqno
 	// https://issues.couchbase.com/browse/MB-15333,
@@ -903,8 +962,17 @@ func newDcpEvent(rq *transport.MCRequest, stream *DcpStream) *DcpEvent {
 		VBuuid:   stream.Vbuuid,
 		Ctime:    time.Now().UnixNano(),
 	}
-	event.Key = make([]byte, len(rq.Key))
-	copy(event.Key, rq.Key)
+
+	docId := rq.Key
+	if true /*Collection aware*/ {
+		switch event.Opcode {
+		case transport.DCP_MUTATION, transport.DCP_DELETION, transport.DCP_EXPIRATION:
+			docId, event.CollectionID = collections.LEB128Dec(rq.Key)
+		}
+	}
+
+	event.Key = make([]byte, len(docId))
+	copy(event.Key, docId)
 	event.Value = make([]byte, len(rq.Body))
 	copy(event.Value, rq.Body)
 

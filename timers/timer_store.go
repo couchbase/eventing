@@ -1,3 +1,4 @@
+/*
 package timers
 
 /* This module returns only common.ErrRetryTimeout error */
@@ -13,7 +14,7 @@ import (
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
 	"golang.org/x/crypto/ripemd160"
-	"gopkg.in/couchbase/gocb.v1"
+	"github.com/couchbase/gocb/v2"
 )
 
 // Constants
@@ -769,3 +770,4 @@ func roundDown(val int64) int64 {
 	q := val / Resolution
 	return q * Resolution
 }
+*/

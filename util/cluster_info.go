@@ -754,6 +754,10 @@ func (c *ClusterInfoClient) Close() {
 	close(c.finch)
 }
 
+func (c *ClusterInfoCache) GetCollectionID(bucket, scope, collection string) (uint32, error) {
+	return c.pool.GetCollectionID(bucket, scope, collection)
+}
+
 func getConfig() (c common.Config) {
 
 	data, err := MetakvGet(common.MetakvConfigPath)

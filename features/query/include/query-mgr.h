@@ -37,17 +37,15 @@ public:
 
   Iterable::Info NewIterable(Query::Info query_info);
   void ClearQueries();
-  void RestoreConnection(lcb_t connection) {
+  void RestoreConnection(lcb_INSTANCE *connection) {
     conn_pool_.RestoreConnection(connection);
   }
-  void RefreshTopConnection() {
-    conn_pool_.RefreshTopConnection();
-  }
+  void RefreshTopConnection() { conn_pool_.RefreshTopConnection(); }
 
 private:
   v8::Isolate *isolate_;
   Connection::Pool conn_pool_;
-  std::unordered_map<lcb_t, std::unique_ptr<Iterator>> iterators_;
+  std::unordered_map<lcb_INSTANCE *, std::unique_ptr<Iterator>> iterators_;
 };
 } // namespace Query
 

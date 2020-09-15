@@ -423,6 +423,11 @@ angular.module('eventing', [
                                 function(ApplicationService) {
                                     return ApplicationService.server.getLogFileLocation();
                                 }
+                            ],
+                            scopeInBucket: ['ApplicationService',
+                                function(ApplicationService) {
+                                    return ApplicationService.server.getBucketCollections;
+                                }
                             ]
                         }
                     }).result
@@ -694,6 +699,11 @@ angular.module('eventing', [
                                 function(ApplicationService) {
                                     return ApplicationService.server.getLogFileLocation();
                                 }
+                            ],
+                            scopeInBucket: ['ApplicationService',
+                                function(ApplicationService) {
+                                    return ApplicationService.server.getBucketCollections;
+                                }
                             ]
                         }
                     }).result
@@ -789,11 +799,14 @@ angular.module('eventing', [
                             var scope = $scope.$new(true);
                             scope.appModel = new ApplicationModel(app);
                             scope.bindings = ApplicationService.getBindingFromConfig(app.depcfg);
+
                             if (!scope.bindings.length) {
                                 // Add a sample row of bindings.
                                 scope.bindings.push({
                                     type: '',
                                     name: '',
+                                    scope: '',
+                                    collection: '',
                                     value: '',
                                     access: 'r'
                                 });
@@ -839,24 +852,36 @@ angular.module('eventing', [
         }
     ])
     // Controller for creating an application.
-    .controller('CreateCtrl', ['$scope', 'FormValidationService', 'bucketsResolve', 'savedApps', 'logFileLocation',
-        function($scope, FormValidationService, bucketsResolve, savedApps, logFileLocation) {
+    .controller('CreateCtrl', ['$scope', 'FormValidationService', 'bucketsResolve', 'savedApps', 'logFileLocation', 'scopeInBucket',
+        function($scope, FormValidationService, bucketsResolve, savedApps, logFileLocation, scopeInBucket) {
             var self = this;
             self.isDialog = true;
 
+            self.Scopes = [];
+            self.Collections = [];
+            self.sourceCollections = [];
+            self.metadataCollections = [];
+            self.sourceResponses = [];
+            self.metadataResponses = [];
+
+            self.sourceScopes = [];
+            self.metadataScopes = [];
+            self.bucketDetails = scopeInBucket;
             self.sourceBuckets = bucketsResolve;
             self.logFileLocation = logFileLocation;
             self.metadataBuckets = bucketsResolve.reverse();
             self.savedApps = savedApps.getApplications();
 
             self.bindings = [];
-            if (($scope.bindings.length > 0) && ($scope.bindings[0].name === '')) {
-                $scope.bindings[0].name = bucketsResolve[0];
-            }
+            self.scopes = [];
+            self.collections = [];
+            self.responses = [];
 
             // Checks whether source and metadata buckets are the same.
             self.srcMetaSameBucket = function(appModel) {
-                return appModel.depcfg.source_bucket === appModel.depcfg.metadata_bucket;
+                return appModel.depcfg.source_bucket === appModel.depcfg.metadata_bucket &&
+                    appModel.depcfg.source_scope === appModel.depcfg.metadata_scope &&
+                    appModel.depcfg.source_collection === appModel.depcfg.metadata_collection;
             };
 
             self.srcBindingSameBucket = function(appModel, binding) {
@@ -865,6 +890,102 @@ angular.module('eventing', [
 
             self.executionTimeoutCheck = function(appModel) {
                 return appModel.settings.execution_timeout > 60;
+            };
+
+            self.populateScope = function(bucketName, index) {
+                self.bucketDetails(bucketName).then(function(response) {
+                    var scopes = [];
+                    self.responses[index] = response.data.scopes;
+                    for (var scope of response.data.scopes) {
+                        scopes.push(scope.name);
+                    }
+                    self.scopes[index] = scopes;
+                });
+            };
+
+            self.populateCollections = function(scopeName, index) {
+                var collections = [];
+                for (var scope of self.responses[index]) {
+                    if (scope.name == scopeName) {
+                        for (var collection of scope.collections) {
+                            collections.push(collection.name);
+                        }
+                        break;
+                    }
+                }
+                self.collections[index] = collections
+            };
+
+            self.populateSourceScopes = function(bucketName) {
+                self.bucketDetails(bucketName).then(function(response) {
+                    self.sourceResponses = response.data.scopes;
+                    var scopes = [];
+                    for (var scope of self.sourceResponses) {
+                        scopes.push(scope.name);
+                    }
+                    self.sourceScopes = scopes;
+                    self.populateSourceCollections("_default");
+                });
+            };
+
+            self.populateSourceCollections = function(scopeName) {
+                var collections = [];
+                for (var scope of self.sourceResponses) {
+                    if (scope.name == scopeName) {
+                        for (var collection of scope.collections) {
+                            collections.push(collection.name);
+                        }
+                        break;
+                    }
+                }
+                self.sourceCollections = collections;
+            };
+
+            self.Initialize = function() {
+                $scope.bindings.push({
+                    type: '',
+                    name: self.sourceBuckets[0],
+                    value: '',
+                    auth_type: 'no-auth',
+                    allow_cookies: true,
+                    access: 'r'
+                });
+                self.scopes.push([]);
+                self.collections.push([]);
+                self.responses.push([]);
+                self.populateScope(self.sourceBucket[0], 0);
+            };
+
+            self.Remove = function(index) {
+                $scope.bindings.splice(index, 1);
+                self.scopes.splice(index, 1);
+                self.responses.splice(index, 1);
+                self.collections.splice(index, 1);
+            }
+
+            self.populateMetadataScopes = function(bucketName) {
+                self.bucketDetails(bucketName).then(function(response) {
+                    self.metadataResponses = response.data.scopes;
+                    var scopes = [];
+                    for (var scope of self.metadataResponses) {
+                        scopes.push(scope.name);
+                    }
+                    self.metadataScopes = scopes;
+                    self.populateMetadataCollections("_default");
+                });
+            };
+
+            self.populateMetadataCollections = function(scopeName) {
+                var collections = [];
+                for (var scope of self.metadataResponses) {
+                    if (scope.name == scopeName) {
+                        for (var collection of scope.collections) {
+                            collections.push(collection.name);
+                        }
+                        break;
+                    }
+                }
+                self.metadataCollections = collections;
             };
 
             self.isFormInvalid = function() {
@@ -890,6 +1011,29 @@ angular.module('eventing', [
 
                 return true;
             }
+
+            if (($scope.bindings.length > 0) && ($scope.bindings[0].name === '')) {
+                $scope.bindings[0].name = bucketsResolve[0];
+                self.scopes.push([]);
+                self.collections.push([]);
+                self.responses.push([]);
+                self.populateScope(bucketsResolve[0], 0);
+            }
+
+            for (var binding in $scope.bindings) {
+                console.log(binding);
+                self.scopes.push([]);
+                self.collections.push([]);
+                self.responses.push([]);
+                if ($scope.bindings[binding].name != "") {
+                    self.populateScope($scope.bindings[binding].name, binding);
+                }
+                if ($scope.bindings[binding].collection != "") {
+                    self.populateCollections($scope.bindings[binding].scope, binding);
+                }
+            }
+            self.populateSourceScopes("default");
+            self.populateMetadataScopes("eventing");
         }
     ])
     // Controller for settings.
@@ -912,14 +1056,26 @@ angular.module('eventing', [
             // otherwise self.saveSettings() would compare 'null' with '[]'.
             appModel.depcfg.buckets = appModel.depcfg.buckets ? appModel.depcfg.buckets : [];
             self.bindings = ApplicationService.getBindingFromConfig(appModel.depcfg);
-
+            self.scopes = [];
+            self.collections = [];
+            self.responses = [];
             // TODO : The following two lines may not be needed as we don't allow the user to edit
             //        the source and metadata buckets in the settings page.
 
             self.sourceBuckets = bucketsResolve;
             self.metadataBuckets = bucketsResolve.reverse();
+            self.sourceCollections = [appModel.depcfg.source_collection];
+            self.metadataCollections = [appModel.depcfg.metadata_collection];
+            self.sourceScopes = [appModel.depcfg.source_scope];
+            self.metadataScopes = [appModel.depcfg.metadata_scope];
+
             self.sourceBucket = appModel.depcfg.source_bucket;
             self.metadataBucket = appModel.depcfg.metadata_bucket;
+            self.sourceScope = appModel.depcfg.source_scope;
+            self.sourceCollection = appModel.depcfg.source_collection;
+            self.metadataScope = appModel.depcfg.metadata_scope;
+            self.metadataCollection = appModel.depcfg.metadata_collection;
+
             self.savedApps = savedApps;
 
             // Need to pass a deep copy or the changes will be stored locally till refresh.
@@ -941,6 +1097,41 @@ angular.module('eventing', [
                 return true;
             };
 
+            self.populateScope = function(bucketName, index) {
+                ApplicationService.server.getBucketCollections(bucketName).then(function(response) {
+                    var scopes = [];
+                    self.responses[index] = response.data.scopes;
+                    for (var scope of response.data.scopes) {
+                        scopes.push(scope.name);
+                    }
+                    self.scopes[index] = scopes;
+                }).catch(function(data) {
+                    console.log(data);
+                });
+            };
+
+            self.populateCollections = function(scopeName, index) {
+                var collections = [];
+                console.log(self.responses[0]);
+                for (var scope of self.responses[index]) {
+                    if (scope.name == scopeName) {
+                        for (var collection of scope.collections) {
+                            collections.push(collection.name);
+                        }
+                        break;
+                    }
+                }
+                self.collections[index] = collections
+            };
+
+            for (var binding in self.bindings) {
+                self.scopes.push([]);
+                self.collections.push([]);
+                self.responses.push([]);
+                self.populateScope(self.bindings[binding].name, binding);
+                self.populateCollections(self.bindings[binding].scope, binding);
+            }
+
             self.validateVariable = function(binding) {
                 if (binding && binding.value) {
                     return FormValidationService.isValidVariable(binding.value);
@@ -948,6 +1139,27 @@ angular.module('eventing', [
 
                 return true;
             };
+
+            self.Initialize = function() {
+                self.bindings.push({
+                    type: '',
+                    name: self.sourceBuckets[0],
+                    value: '',
+                    auth_type: 'no-auth',
+                    allow_cookies: true,
+                    access: 'r'
+                });
+                self.scopes.push([]);
+                self.collections.push([]);
+                self.responses.push([]);
+            };
+
+            self.Remove = function(index) {
+                self.bindings.splice(index, 1);
+                self.scopes.splice(index, 1);
+                self.responses.splice(index, 1);
+                self.collections.splice(index, 1);
+            }
 
             self.saveSettings = function(dismissDialog, closeDialog) {
                 var config = JSON.parse(JSON.stringify(appModel.depcfg));
@@ -1604,6 +1816,11 @@ angular.module('eventing', [
                             .catch(function(errResponse) {
                                 console.error('Unable to load buckets from server', errResponse);
                             });
+                    },
+                    getBucketCollections: function(bucket) {
+                        var poolDefault = mnPoolDefault.latestValue().value;
+                        var uri = "/pools/default/buckets/" + bucket + "/collections/"
+                        return $http.get(uri)
                     },
                     isEventingRunning: function() {
                         return mnPoolDefault.get()

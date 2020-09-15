@@ -30,6 +30,12 @@ type InsightLine struct {
 	LastLog        string  `json:"last_log"`
 }
 
+type Keyspace struct {
+	BucketName     string
+	ScopeName      string
+	CollectionName string
+}
+
 type Insight struct {
 	Script string              `json:"script"`
 	Lines  map[int]InsightLine `json:"lines"`
@@ -86,16 +92,22 @@ type Application struct {
 }
 
 type DepCfg struct {
-	Buckets        []Bucket `json:"buckets"`
-	Curl           []Curl   `json:"curl"`
-	MetadataBucket string   `json:"metadata_bucket"`
-	SourceBucket   string   `json:"source_bucket"`
+	Buckets            []Bucket `json:"buckets"`
+	Curl               []Curl   `json:"curl"`
+	SourceBucket       string   `json:"source_bucket"`
+	SourceScope        string   `json:"source_scope"`
+	SourceCollection   string   `json:"source_collection"`
+	MetadataBucket     string   `json:"metadata_bucket"`
+	MetadataScope      string   `json:"metadata_scope"`
+	MetadataCollection string   `json:"metadata_collection"`
 }
 
 type Bucket struct {
-	Alias      string `json:"alias"`
-	BucketName string `json:"bucket_name"`
-	Access     string `json:"access"`
+	Alias          string `json:"alias"`
+	BucketName     string `json:"bucket_name"`
+	ScopeName      string `json:"scope_name"`
+	CollectionName string `json:"collection_name"`
+	Access         string `json:"access"`
 }
 
 type Curl struct {
@@ -148,6 +160,7 @@ type EventingProducer interface {
 	GetVbOwner(vb uint16) (string, string, error)
 	GetSeqsProcessed() map[int]int64
 	GetDebuggerToken() string
+	GetSourceKeyspace() *Keyspace
 	InternalVbDistributionStats() map[string]string
 	IsEventingNodeAlive(eventingHostPortAddr, nodeUUID string) bool
 	IsPlannerRunning() bool
@@ -157,6 +170,8 @@ type EventingProducer interface {
 	KvHostPorts() []string
 	LenRunningConsumers() int
 	MetadataBucket() string
+	MetadataScope() string
+	MetadataCollection() string
 	NotifyInit()
 	NotifyPrepareTopologyChange(ejectNodes, keepNodes []string, changeType service.TopologyChangeType)
 	NotifySettingsChange()
@@ -277,6 +292,7 @@ type EventingSuperSup interface {
 	GetLocallyDeployedApps() map[string]string
 	GetMetaStoreStats(appName string) map[string]uint64
 	GetBucket(bucketName string) (*couchbase.Bucket, error)
+	GetSourceKeyspace(appName string) *Keyspace
 	GetSeqsProcessed(appName string) map[int]int64
 	InternalVbDistributionStats(appName string) map[string]string
 	KillAllConsumers()
@@ -297,6 +313,8 @@ type EventingSuperSup interface {
 	VbSeqnoStats(appName string) (map[int][]map[string]interface{}, error)
 	WriteDebuggerURL(appName, url string)
 	WriteDebuggerToken(appName, token string, hostnames []string)
+	IncWorkerRespawnedCount()
+	WorkerRespawnedCount() uint32
 }
 
 type EventingServiceMgr interface {
@@ -373,7 +391,7 @@ type HandlerConfig struct {
 	LogLevel                 string
 	SocketWriteBatchSize     int
 	SocketTimeout            int
-	SourceBucket             string
+	SourceKeyspace           *Keyspace
 	StatsLogInterval         int
 	StreamBoundary           DcpStreamBoundary
 	TimerContextSize         int64

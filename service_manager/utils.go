@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"runtime/debug"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/couchbase/cbauth/service"
@@ -360,14 +361,26 @@ func (m *ServiceMgr) isAppDeployable(app *application) bool {
 	return true
 }
 
-func (m *ServiceMgr) getSourceAndDestinationsFromDepCfg(cfg *depCfg) (src string, dest map[string]struct{}) {
-	dest = make(map[string]struct{})
-	src = cfg.SourceBucket
-	dest[cfg.MetadataBucket] = struct{}{}
+func (m *ServiceMgr) getSourceAndDestinationsFromDepCfg(cfg *depCfg) (src common.Keyspace, dest map[common.Keyspace]struct{}) {
+	dest = make(map[common.Keyspace]struct{})
+	src = common.Keyspace{BucketName: cfg.SourceBucket,
+		ScopeName:      cfg.SourceScope,
+		CollectionName: cfg.SourceCollection,
+	}
+
+	metaData := common.Keyspace{BucketName: cfg.MetadataBucket,
+		ScopeName:      cfg.MetadataScope,
+		CollectionName: cfg.MetadataCollection,
+	}
+	dest[metaData] = struct{}{}
 	for idx := 0; idx < len(cfg.Buckets); idx++ {
-		bucketName := cfg.Buckets[idx].BucketName
-		if bucketName != src && cfg.Buckets[idx].Access == "rw" {
-			dest[bucketName] = struct{}{}
+		binding := common.Keyspace{BucketName: cfg.Buckets[idx].BucketName,
+			ScopeName:      cfg.Buckets[idx].ScopeName,
+			CollectionName: cfg.Buckets[idx].CollectionName,
+		}
+
+		if binding != src && cfg.Buckets[idx].Access == "rw" {
+			dest[binding] = struct{}{}
 		}
 	}
 	return src, dest
@@ -401,7 +414,10 @@ func (m *ServiceMgr) UpdateBucketGraphFromMetakv(functionName string) error {
 	source, destinations := m.getSourceAndDestinationsFromDepCfg(&app.DeploymentConfig)
 	_, pinfos := parser.TranspileQueries(app.AppHandlers, "")
 	for _, pinfo := range pinfos {
-		destinations[pinfo.PInfo.KeyspaceName] = struct{}{}
+		if pinfo.PInfo.KeyspaceName != "" {
+			dest := ConstructKeyspace(pinfo.PInfo.KeyspaceName)
+			destinations[dest] = struct{}{}
+		}
 	}
 	if len(destinations) != 0 {
 		m.graph.insertEdges(functionName, source, destinations)
@@ -522,54 +538,58 @@ func (m *ServiceMgr) getFunctionList(query url.Values) (fnlist functionList, inf
 	if info.Code != m.statusCodes.ok.Code {
 		return
 	}
-	m.fnMu.RLock()
-	defer m.fnMu.RUnlock()
-	bucket := query.Get("source_bucket")
-	buckets := make(map[string]struct{})
-	if bucket == "" {
-		for currBucket := range m.bucketFunctionMap {
-			buckets[currBucket] = struct{}{}
-		}
-	} else {
-		buckets[bucket] = struct{}{}
-	}
 
-	functionType := query.Get("function_type")
-	fnTypes := make(map[string]struct{})
-	if functionType == "" {
-		fnTypes = funtionTypes
-	} else {
-		fnTypes[functionType] = struct{}{}
-	}
-
-	deployStatus := query.Get("deployed")
-	deployStatusList := make(map[bool]struct{})
-	if deployStatus == "" {
-		deployStatusList[true] = struct{}{}
-		deployStatusList[false] = struct{}{}
-	} else {
-		if deployStatus == "true" {
-			deployStatusList[true] = struct{}{}
+	// TODO: return list by bucket, scope, collection
+	/*
+		m.fnMu.RLock()
+		defer m.fnMu.RUnlock()
+		bucket := query.Get("source_bucket")
+		buckets := make(map[string]struct{})
+		if bucket == "" {
+			for currBucket := range m.bucketFunctionMap {
+				buckets[currBucket] = struct{}{}
+			}
 		} else {
-			deployStatusList[false] = struct{}{}
+			buckets[bucket] = struct{}{}
 		}
-	}
 
-	for currBucket := range buckets {
-		functions, ok := m.bucketFunctionMap[currBucket]
-		if !ok {
-			continue
+		functionType := query.Get("function_type")
+		fnTypes := make(map[string]struct{})
+		if functionType == "" {
+			fnTypes = funtionTypes
+		} else {
+			fnTypes[functionType] = struct{}{}
 		}
-		for function, meta := range functions {
-			if _, ok = fnTypes[meta.fnType]; !ok {
+
+		deployStatus := query.Get("deployed")
+		deployStatusList := make(map[bool]struct{})
+		if deployStatus == "" {
+			deployStatusList[true] = struct{}{}
+			deployStatusList[false] = struct{}{}
+		} else {
+			if deployStatus == "true" {
+				deployStatusList[true] = struct{}{}
+			} else {
+				deployStatusList[false] = struct{}{}
+			}
+		}
+
+		for currBucket := range buckets {
+			functions, ok := m.bucketFunctionMap[currBucket]
+			if !ok {
 				continue
 			}
-			if _, ok = deployStatusList[meta.fnDeployed]; !ok {
-				continue
+			for function, meta := range functions {
+				if _, ok = fnTypes[meta.fnType]; !ok {
+					continue
+				}
+				if _, ok = deployStatusList[meta.fnDeployed]; !ok {
+					continue
+				}
+				fnlist.Functions = append(fnlist.Functions, function)
 			}
-			fnlist.Functions = append(fnlist.Functions, function)
 		}
-	}
+	*/
 	return
 }
 
@@ -747,4 +767,59 @@ func (m *ServiceMgr) checkTopologyChangeReadiness(changeType service.TopologyCha
 	}
 
 	return nil
+}
+
+func ConstructKeyspace(keyspace string) common.Keyspace {
+	// var namespace string
+	scope, collection := "_default", "_default"
+
+	n := strings.IndexByte(keyspace, ':')
+	_, keyspace = trim(keyspace, n)
+	d := strings.IndexByte(keyspace, '.')
+	if d >= 0 {
+		keyspace, scope = trim(keyspace, d)
+		d = strings.IndexByte(scope, '.')
+		if d >= 0 {
+			scope, collection = trim(scope, d)
+		}
+	}
+
+	return common.Keyspace{BucketName: keyspace,
+		ScopeName:      scope,
+		CollectionName: collection,
+	}
+}
+
+func trim(right string, i int) (string, string) {
+	var left string
+
+	if i >= 0 {
+		left = right[:i]
+		if i < len(right)-1 {
+			right = right[i+1:]
+		} else {
+			right = ""
+		}
+	}
+	return left, right
+}
+
+func populate(fmtStr, appName, key string, keySpace *common.Keyspace, stats []byte, cStats map[string]interface{}) []byte {
+	var str string
+	if val, ok := cStats[key]; ok {
+		str = fmt.Sprintf(fmtStr, METRICS_PREFIX, key, keySpace.BucketName, keySpace.ScopeName, keySpace.CollectionName, appName, val)
+	} else {
+		str = fmt.Sprintf(fmtStr, METRICS_PREFIX, key, keySpace.BucketName, keySpace.ScopeName, keySpace.CollectionName, appName, 0)
+	}
+	return append(stats, []byte(str)...)
+}
+
+func populateUint(fmtStr, appName, key string, keySpace *common.Keyspace, stats []byte, cStats map[string]uint64) []byte {
+	var str string
+	if val, ok := cStats[key]; ok {
+		str = fmt.Sprintf(fmtStr, METRICS_PREFIX, key, keySpace.BucketName, keySpace.ScopeName, keySpace.CollectionName, appName, val)
+	} else {
+		str = fmt.Sprintf(fmtStr, METRICS_PREFIX, key, keySpace.BucketName, keySpace.ScopeName, keySpace.CollectionName, appName, 0)
+	}
+	return append(stats, []byte(str)...)
 }

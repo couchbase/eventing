@@ -18,7 +18,11 @@ deployment_config *ParseDeployment(const char *app_code) {
 
   auto dep_cfg = app_cfg->depCfg();
   config->metadata_bucket = dep_cfg->metadataBucket()->str();
+  config->metadata_scope = dep_cfg->metadataScope()->str();
+  config->metadata_collection = dep_cfg->metadataCollection()->str();
   config->source_bucket = dep_cfg->sourceBucket()->str();
+  config->source_scope = dep_cfg->sourceScope()->str();
+  config->source_collection = dep_cfg->sourceCollection()->str();
 
   auto buckets = dep_cfg->buckets();
 
@@ -27,6 +31,8 @@ deployment_config *ParseDeployment(const char *app_code) {
   for (flatbuffers::uoffset_t i = 0; i < buckets->size(); i++) {
     std::vector<std::string> bucket_info;
     bucket_info.push_back(buckets->Get(i)->bucketName()->str());
+    bucket_info.push_back(buckets->Get(i)->scopeName()->str());
+    bucket_info.push_back(buckets->Get(i)->collectionName()->str());
     bucket_info.push_back(buckets->Get(i)->alias()->str());
     bucket_alias.push_back(buckets->Get(i)->alias()->str());
 

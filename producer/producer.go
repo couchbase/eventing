@@ -67,6 +67,7 @@ func NewProducer(appName, debuggerPort, eventingPort, eventingSSLPort, eventingD
 		workerNameConsumerMap:        make(map[string]common.EventingConsumer),
 		workerNameConsumerMapRWMutex: &sync.RWMutex{},
 		workerVbMapRWMutex:           &sync.RWMutex{},
+		metadataKeyspace:             &common.Keyspace{},
 		handlerConfig:                &common.HandlerConfig{},
 		processConfig:                &common.ProcessConfig{},
 		rebalanceConfig:              &common.RebalanceConfig{},
@@ -74,6 +75,7 @@ func NewProducer(appName, debuggerPort, eventingPort, eventingSSLPort, eventingD
 		curlLatencyStats:             util.NewStats(),
 	}
 
+	p.handlerConfig.SourceKeyspace = &common.Keyspace{}
 	p.processConfig.DebuggerPort = debuggerPort
 	p.processConfig.DiagDir = diagDir
 	p.processConfig.EventingDir = eventingDir
@@ -119,7 +121,7 @@ func (p *Producer) Serve() {
 	p.updateStatsTicker = time.NewTicker(time.Duration(p.handlerConfig.CheckpointInterval) * time.Millisecond)
 
 	logging.Infof("%s [%s:%d] Source bucket: %s vbucket count: %d using timer: %d",
-		logPrefix, p.appName, p.LenRunningConsumers(), p.handlerConfig.SourceBucket, p.numVbuckets, p.isUsingTimer)
+		logPrefix, p.appName, p.LenRunningConsumers(), p.SourceBucket(), p.numVbuckets, p.isUsingTimer)
 
 	p.seqsNoProcessedRWMutex.Lock()
 	for i := 0; i < p.numVbuckets; i++ {
@@ -139,7 +141,7 @@ func (p *Producer) Serve() {
 	p.isPlannerRunning = true
 	logging.Infof("%s [%s:%d] Planner status: %t, before vbucket to node assignment", logPrefix, p.appName, p.LenRunningConsumers(), p.isPlannerRunning)
 
-	err = p.vbEventingNodeAssign(p.handlerConfig.SourceBucket)
+	err = p.vbEventingNodeAssign(p.SourceBucket())
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
 		p.isPlannerRunning = false
@@ -219,7 +221,7 @@ func (p *Producer) Serve() {
 				oldKvNodes := p.getKvNodeAddrs()
 
 				// vbEventingNodeAssign() would update list of KV nodes. We need them soon after this call
-				err = p.vbEventingNodeAssign(p.handlerConfig.SourceBucket)
+				err = p.vbEventingNodeAssign(p.SourceBucket())
 				if err == common.ErrRetryTimeout {
 					logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
 					p.isPlannerRunning = false
@@ -308,7 +310,7 @@ func (p *Producer) Serve() {
 
 		case <-p.pauseProducerCh:
 
-			// This routine cleans up everything apart from metadataBucketHandle,
+			// This routine cleans up everything apart from metadataHandle,
 			// which would be needed to clean up metadata bucket
 			logging.Infof("%s [%s:%d] Pausing processing", logPrefix, p.appName, p.LenRunningConsumers())
 			p.isPausing = true
@@ -437,8 +439,8 @@ func (p *Producer) Stop(context string) {
 	p.feedbackListeners = make(map[common.EventingConsumer]net.Listener)
 	p.listenerRWMutex.RUnlock()
 
-	if p.metadataBucketHandle != nil {
-		p.metadataBucketHandle.Close()
+	if p.metadataCluster != nil {
+		p.metadataCluster.Close(nil)
 	}
 
 	logging.Infof("%s [%s:%d] Closed metadata bucket handle",
@@ -482,7 +484,7 @@ func (p *Producer) String() string {
 func (p *Producer) startBucket() {
 	logPrefix := "Producer::startBucket"
 
-	logging.Infof("%s [%s:%d] Connecting with bucket: %q", logPrefix, p.appName, p.LenRunningConsumers(), p.handlerConfig.SourceBucket)
+	logging.Infof("%s [%s:%d] Connecting with bucket: %q", logPrefix, p.appName, p.LenRunningConsumers(), p.SourceBucket())
 
 	for i := 0; i < p.handlerConfig.WorkerCount; i++ {
 		workerName := fmt.Sprintf("worker_%s_%d", p.appName, i)
@@ -680,6 +682,7 @@ func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int
 func (p *Producer) KillAndRespawnEventingConsumer(c common.EventingConsumer) {
 	logPrefix := "Producer::KillAndRespawnEventingConsumer"
 
+	p.superSup.IncWorkerRespawnedCount()
 	p.workerSpawnCounter++
 
 	consumerIndex := c.Index()
@@ -918,22 +921,13 @@ func (p *Producer) pollForDeletedVbs() {
 		select {
 		case <-p.pollBucketTicker.C:
 			hostAddress := net.JoinHostPort(util.Localhost(), p.GetNsServerPort())
+			srcKeyspaceExist := util.CheckKeyspaceExist(p.SourceBucket(), p.SourceScope(), p.SourceCollection(), hostAddress)
+			metadataKeyspaceExist := util.CheckKeyspaceExist(p.MetadataBucket(), p.MetadataScope(), p.MetadataCollection(), hostAddress)
 
-			srcBucketNodeCount := util.CountActiveKVNodes(p.handlerConfig.SourceBucket, hostAddress)
-			metaBucketNodeCount := util.CountActiveKVNodes(p.metadatabucket, hostAddress)
-			skipMetaCleanup := (metaBucketNodeCount == 0)
-
-			if srcBucketNodeCount == 0 {
-				logging.Infof("%s [%s:%d] SrcBucketNodeCount: %d Stopping running producer",
-					logPrefix, p.appName, p.LenRunningConsumers(), srcBucketNodeCount)
-				p.superSup.StopProducer(p.appName, skipMetaCleanup, updateMetakv)
-				continue
-			}
-
-			if metaBucketNodeCount == 0 {
-				logging.Infof("%s [%s:%d] MetaBucketNodeCount: %d Stopping running producer",
-					logPrefix, p.appName, p.LenRunningConsumers(), metaBucketNodeCount)
-				p.superSup.StopProducer(p.appName, skipMetaCleanup, updateMetakv)
+			if !(srcKeyspaceExist && metadataKeyspaceExist) {
+				logging.Infof("%s [%s:%d] Stopping running producer source Keyspace: srcKeyspaceExist: %t metadataKeyspaceExist: %t",
+					logPrefix, p.appName, p.LenRunningConsumers(), srcKeyspaceExist, metadataKeyspaceExist)
+				p.superSup.StopProducer(p.appName, !metadataKeyspaceExist, updateMetakv)
 			}
 
 		case <-p.pollBucketStopCh:

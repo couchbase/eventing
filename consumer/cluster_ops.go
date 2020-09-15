@@ -39,10 +39,10 @@ var getKvVbMap = func(args ...interface{}) error {
 
 	hostAddress := net.JoinHostPort(util.Localhost(), c.producer.GetNsServerPort())
 
-	kvVbMap, err := util.KVVbMap(c.producer.Auth(), c.bucket, hostAddress)
+	kvVbMap, err := util.KVVbMap(c.producer.Auth(), c.sourceKeyspace.BucketName, hostAddress)
 	if err != nil {
 		logging.Errorf("%s [%s:%s:%d] Failed to grab vbMap for bucket: %v, err: %v",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), c.bucket, err)
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), c.sourceKeyspace.BucketName, err)
 	} else {
 		c.kvVbMap = kvVbMap
 	}
@@ -61,10 +61,10 @@ var getKvNodesFromVbMap = func(args ...interface{}) error {
 
 	hostAddress := net.JoinHostPort(util.Localhost(), c.producer.GetNsServerPort())
 
-	kvVbMap, err := util.KVVbMap(c.producer.Auth(), c.bucket, hostAddress)
+	kvVbMap, err := util.KVVbMap(c.producer.Auth(), c.sourceKeyspace.BucketName, hostAddress)
 	if err != nil {
 		logging.Errorf("%s [%s:%s:%d] Failed to grab vbMap for bucket: %v, err: %v",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), c.bucket, err)
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), c.sourceKeyspace.BucketName, err)
 	} else {
 		kvNodes := make(map[string]struct{})
 
@@ -83,7 +83,7 @@ var getKvNodesFromVbMap = func(args ...interface{}) error {
 			}
 
 			logging.Infof("%s [%s:%s:%d] Bucket: %s kvNodes: %v",
-				logPrefix, c.workerName, c.tcpPort, c.Pid(), c.bucket, c.kvNodes)
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), c.sourceKeyspace.BucketName, c.kvNodes)
 		}()
 
 	}

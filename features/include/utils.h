@@ -14,7 +14,6 @@
 
 #include <algorithm>
 #include <curl/curl.h>
-#include <libcouchbase/api3.h>
 #include <libcouchbase/couchbase.h>
 #include <libplatform/libplatform.h>
 #include <limits>

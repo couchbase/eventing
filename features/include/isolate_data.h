@@ -12,6 +12,7 @@
 #ifndef ISOLATE_DATA_H
 #define ISOLATE_DATA_H
 
+#include <libcouchbase/couchbase.h>
 #include <libcouchbase/sysdefs.h>
 #include <mutex>
 #include <v8.h>
@@ -44,7 +45,7 @@ struct IsolateData {
   static const uint32_t index{0};
   lcb_U32 n1ql_timeout{0};
   long op_timeout{0};
-  int n1ql_consistency{0};
+  lcb_QUERY_CONSISTENCY n1ql_consistency = LCB_QUERY_CONSISTENCY_NONE;
   int lcb_retry_count{0};
   bool n1ql_prepare_all{false};
 

@@ -55,16 +55,21 @@ func (m *ServiceMgr) validateAppRecursion(app *application) (info *runtimeInfo) 
 
 	source, destinations := m.getSourceAndDestinationsFromDepCfg(&app.DeploymentConfig)
 	_, pinfos := parser.TranspileQueries(app.AppHandlers, "")
-	// Prevent deployment of handler with N1QL writing to source bucket
+
+	// Prevent deployment of handler with N1QL writing to source
 	for _, pinfo := range pinfos {
-		if pinfo.PInfo.KeyspaceName == app.DeploymentConfig.SourceBucket {
-			info.Code = m.statusCodes.errInterBucketRecursion.Code
-			info.Info = fmt.Sprintf("Function: %s N1QL dml to source bucket %s", app.Name, pinfo.PInfo.KeyspaceName)
-			logging.Errorf("%s %s", logPrefix, info.Info)
-			return
+		if pinfo.PInfo.KeyspaceName != "" {
+			dest := ConstructKeyspace(pinfo.PInfo.KeyspaceName)
+			if dest == source {
+				info.Code = m.statusCodes.errInterBucketRecursion.Code
+				info.Info = fmt.Sprintf("Function: %s N1QL dml to source bucket %s", app.Name, pinfo.PInfo.KeyspaceName)
+				logging.Errorf("%s %s", logPrefix, info.Info)
+				return
+			}
+			destinations[dest] = struct{}{}
 		}
-		destinations[pinfo.PInfo.KeyspaceName] = struct{}{}
 	}
+
 	if !allowInterBucketRecursion && len(destinations) != 0 {
 		if possible, path := m.graph.isAcyclicInsertPossible(app.Name, source, destinations); !possible {
 			info.Code = m.statusCodes.errInterBucketRecursion.Code
@@ -296,7 +301,7 @@ func (m *ServiceMgr) validateBoolean(field string, isOptional bool, settings map
 	return
 }
 
-func (m *ServiceMgr) validateBucketExists(bucketName string) (info *runtimeInfo) {
+func (m *ServiceMgr) validateKeyspaceExists(bucketName, scopeName, collectionName string) (info *runtimeInfo) {
 	info = &runtimeInfo{}
 
 	nsServerEndpoint := net.JoinHostPort(util.Localhost(), m.restPort)
@@ -313,6 +318,15 @@ func (m *ServiceMgr) validateBucketExists(bucketName string) (info *runtimeInfo)
 	if clusterInfo.GetBucketUUID(bucketName) == "" {
 		info.Code = m.statusCodes.errBucketMissing.Code
 		info.Info = fmt.Sprintf("Bucket %s does not exist", bucketName)
+		return
+	}
+
+	//TODO: Optimise to get collection id from streaming rest api
+	cInfo, err := util.FetchNewClusterInfoCache(nsServerEndpoint)
+	_, err = cInfo.GetCollectionID(bucketName, scopeName, collectionName)
+	if err != nil {
+		info.Code = m.statusCodes.errCollectionMissing.Code
+		info.Info = fmt.Sprintf("%s bucket: %s scope: %s collection: %s", err, bucketName, scopeName, collectionName)
 		return
 	}
 
@@ -418,7 +432,7 @@ func (m *ServiceMgr) validateDeploymentConfig(deploymentConfig *depCfg) (info *r
 		return
 	}
 
-	if info = m.validateBucketExists(deploymentConfig.SourceBucket); info.Code != m.statusCodes.ok.Code {
+	if info = m.validateKeyspaceExists(deploymentConfig.SourceBucket, deploymentConfig.SourceScope, deploymentConfig.SourceCollection); info.Code != m.statusCodes.ok.Code {
 		return
 	}
 
@@ -430,7 +444,7 @@ func (m *ServiceMgr) validateDeploymentConfig(deploymentConfig *depCfg) (info *r
 		return
 	}
 
-	if info = m.validateBucketExists(deploymentConfig.MetadataBucket); info.Code != m.statusCodes.ok.Code {
+	if info = m.validateKeyspaceExists(deploymentConfig.MetadataBucket, deploymentConfig.MetadataScope, deploymentConfig.MetadataCollection); info.Code != m.statusCodes.ok.Code {
 		return
 	}
 

@@ -26,9 +26,9 @@ struct Info : public ::Info {
   Info() = delete;
   Info(bool is_fatal) : ::Info(is_fatal) {}
   Info(bool is_fatal, const std::string &msg) : ::Info(is_fatal, msg) {}
-  Info(lcb_t instance) : ::Info(false), connection(instance) {}
+  Info(lcb_INSTANCE *instance) : ::Info(false), connection(instance) {}
 
-  lcb_t connection{nullptr};
+  lcb_INSTANCE *connection{nullptr};
 };
 
 class Pool {
@@ -47,20 +47,20 @@ public:
 
   void DestroyAllConnectionsInPoolLocked();
   Connection::Info GetConnection();
-  void RestoreConnection(lcb_t connection);
+  void RestoreConnection(lcb_INSTANCE *connection);
   void RefreshTopConnection();
 
 private:
   Connection::Info CreateConnection() const;
   Connection::Info FormatErrorAndDestroyConn(const std::string &message,
-                                             lcb_t connection,
-                                             lcb_error_t error) const;
+                                             lcb_INSTANCE *connection,
+                                             lcb_STATUS error) const;
 
   v8::Isolate *isolate_;
   std::string src_bucket_;
   const std::size_t capacity_;
   std::size_t current_size_{0};
-  std::deque<lcb_t> pool_;
+  std::deque<lcb_INSTANCE *> pool_;
   std::mutex pool_sync_;
 };
 } // namespace Connection

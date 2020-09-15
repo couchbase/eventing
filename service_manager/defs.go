@@ -10,6 +10,8 @@ import (
 	"github.com/couchbase/eventing/util"
 )
 
+var METRICS_PREFIX = "eventing_"
+
 const (
 	metakvEventingPath       = "/eventing/"
 	metakvAppsPath           = metakvEventingPath + "apps/"
@@ -37,6 +39,7 @@ const (
 const (
 	// EventingPermissionManage for auditing
 	EventingPermissionManage = "cluster.eventing.functions!manage"
+	EventingPermissionStats  = "cluster.admin.internal.stats!read"
 )
 
 const (
@@ -78,9 +81,9 @@ type ServiceMgr struct {
 	failoverNotifTs   int64
 	failoverChangeId  string
 	finch             chan bool
-	fnsInPrimaryStore map[string]depCfg                  // Access controlled by fnMu
-	fnsInTempStore    map[string]struct{}                // Access controlled by fnMu
-	bucketFunctionMap map[string]map[string]functionInfo // Access controlled by fnMu
+	fnsInPrimaryStore map[string]depCfg                           // Access controlled by fnMu
+	fnsInTempStore    map[string]struct{}                         // Access controlled by fnMu
+	bucketFunctionMap map[common.Keyspace]map[string]functionInfo // Access controlled by fnMu
 	fnMu              *sync.RWMutex
 	keepNodeUUIDs     []string
 	keyFile           string
@@ -178,16 +181,22 @@ type application struct {
 }
 
 type depCfg struct {
-	Buckets        []bucket      `json:"buckets"`
-	Curl           []common.Curl `json:"curl"`
-	MetadataBucket string        `json:"metadata_bucket"`
-	SourceBucket   string        `json:"source_bucket"`
+	Buckets            []bucket      `json:"buckets"`
+	Curl               []common.Curl `json:"curl"`
+	SourceBucket       string        `json:"source_bucket"`
+	SourceScope        string        `json:"source_scope"`
+	SourceCollection   string        `json:"source_collection"`
+	MetadataBucket     string        `json:"metadata_bucket"`
+	MetadataScope      string        `json:"metadata_scope"`
+	MetadataCollection string        `json:"metadata_collection"`
 }
 
 type bucket struct {
-	Alias      string `json:"alias"`
-	BucketName string `json:"bucket_name"`
-	Access     string `json:"access"`
+	Alias          string `json:"alias"`
+	BucketName     string `json:"bucket_name"`
+	ScopeName      string `json:"scope_name"`
+	CollectionName string `json:"collection_name"`
+	Access         string `json:"access"`
 }
 
 type backlogStat struct {

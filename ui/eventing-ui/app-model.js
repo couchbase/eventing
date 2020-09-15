@@ -1,10 +1,12 @@
 import _ from "/ui/web_modules/lodash.js";
 import getVersion from "./gen/version.js";
-export {Application,
-        ApplicationManager,
-        ApplicationModel,
-        determineUIStatus,
-        getWarnings};
+export {
+    Application,
+    ApplicationManager,
+    ApplicationModel,
+    determineUIStatus,
+    getWarnings
+};
 
 function Application(data) {
     for (var key of Object.keys(data)) {
@@ -147,7 +149,11 @@ ApplicationModel.prototype.getDefaultModel = function() {
         depcfg: {
             buckets: [],
             metadata_bucket: 'eventing',
-            source_bucket: 'default'
+            metadata_scope: '_default',
+            metadata_collection: '_default',
+            source_bucket: 'default',
+            source_scope: '_default',
+            source_collection: '_default'
         },
         version: getVersion(),
         settings: {

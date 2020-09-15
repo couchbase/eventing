@@ -10,7 +10,6 @@
 // permissions and limitations under the License.
 
 #include <libcouchbase/couchbase.h>
-#include <libcouchbase/n1ql.h>
 #include <memory>
 #include <mutex>
 #include <regex>
@@ -61,9 +60,9 @@ Query::Row Query::Iterator::Next() {
   std::thread runner([this]() -> void {
     RunnerGuard guard(cursor_);
 
-    auto result = lcb_n1ql_query(connection_, nullptr, builder_.GetCmd());
+    auto result = lcb_query(connection_, nullptr, builder_.GetCmd());
     if (result == LCB_SUCCESS) {
-      result = lcb_wait(connection_);
+      result = lcb_wait(connection_, LCB_WAIT_DEFAULT);
     }
 
     if (result != LCB_SUCCESS) {
@@ -71,8 +70,8 @@ Query::Row Query::Iterator::Next() {
       auto helper = UnwrapData(isolate_)->query_helper;
       helper->AccountLCBError(static_cast<int>(result));
       auto is_retriable = IsRetriable(result);
-      auto is_lcb_not_supported = (result == LCB_NOT_SUPPORTED);
-      result_info_ = {true, lcb_strerror(connection_, result), is_retriable,
+      auto is_lcb_not_supported = (result == LCB_ERR_UNSUPPORTED_OPERATION);
+      result_info_ = {true, lcb_strerror_short(result), is_retriable,
                       is_lcb_not_supported};
     }
 
@@ -87,22 +86,28 @@ Query::Row Query::Iterator::Next() {
   return result_info_;
 }
 
-void Query::Iterator::RowCallback(lcb_t connection, int,
-                                  const lcb_RESPN1QL *resp) {
+void Query::Iterator::RowCallback(lcb_INSTANCE *connection, int,
+                                  const lcb_RESPQUERY *resp) {
   auto cursor =
       static_cast<Cursor *>(const_cast<void *>(lcb_get_cookie(connection)));
 
-  cursor->data.assign(resp->row, resp->nrow);
-  cursor->is_last = (resp->rflags & LCB_RESP_F_FINAL) != 0;
-  cursor->client_err_code = resp->rc;
-  cursor->is_client_error = cursor->is_last && resp->rc != LCB_SUCCESS;
+  const char *row;
+  size_t nrow;
+  lcb_respquery_row(resp, &row, &nrow);
+
+  cursor->data.assign(row, nrow);
+  cursor->is_last = lcb_respquery_is_final(resp);
+  cursor->client_err_code = lcb_respquery_status(resp);
+  cursor->is_client_error =
+      cursor->is_last && cursor->client_err_code != LCB_SUCCESS;
   cursor->is_query_error = cursor->is_last && !IsStatusSuccess(cursor->data);
   cursor->is_error = cursor->is_client_error || cursor->is_query_error;
   cursor->is_client_auth_error =
-      cursor->is_error && (resp->rc == LCB_AUTH_ERROR);
+      cursor->is_error &&
+      (cursor->client_err_code == LCB_ERR_AUTHENTICATION_FAILURE);
 
   if (cursor->is_client_error) {
-    cursor->client_error = lcb_strerror(connection, resp->rc);
+    cursor->client_error = lcb_strerror_short(cursor->client_err_code);
   }
   if (cursor->is_query_error) {
     cursor->query_error = cursor->data;
@@ -112,8 +117,7 @@ void Query::Iterator::RowCallback(lcb_t connection, int,
                 << " is_last : " << cursor->is_last
                 << " is_error : " << cursor->is_error
                 << " is_client_auth_error : " << cursor->is_client_auth_error
-                << " resp rflags : " << resp->rflags
-                << " resp rc : " << resp->rc << std::endl;
+                << " resp rc : " << cursor->client_err_code << std::endl;
 
   cursor->YieldTo(Cursor::ExecutionControl::kV8);
   if (!cursor->is_last) {
@@ -128,7 +132,7 @@ void Query::Iterator::Stop() {
 
   if (!cursor_.is_last) {
     // Subsequent RowCallback won't be invoked
-    lcb_n1ql_cancel(connection_, builder_.GetHandle());
+    lcb_query_cancel(connection_, builder_.GetHandle());
     cursor_.YieldTo(Cursor::ExecutionControl::kSDK);
   }
 

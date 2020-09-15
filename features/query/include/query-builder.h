@@ -13,7 +13,6 @@
 #define QUERY_BUILDER_H
 
 #include <libcouchbase/couchbase.h>
-#include <libcouchbase/n1ql.h>
 #include <string>
 #include <v8.h>
 
@@ -25,32 +24,31 @@ namespace Query {
 const lcb_U32 n1ql_grace_period = 2000000;
 class Builder {
 public:
-  Builder(v8::Isolate *isolate, Query::Info query_info, lcb_t connection)
-      : isolate_(isolate), params_(lcb_n1p_new()),
-        query_info_(std::move(query_info)), connection_(connection),
-        timeout_(UnwrapData(isolate)->n1ql_timeout) {}
-  ~Builder() { lcb_n1p_free(params_); }
+  Builder(v8::Isolate *isolate, Query::Info query_info,
+          lcb_INSTANCE *connection)
+      : isolate_(isolate), query_info_(std::move(query_info)),
+        connection_(connection), timeout_(UnwrapData(isolate)->n1ql_timeout) {}
+  ~Builder() { lcb_cmdquery_destroy(cmd_); }
 
   Builder(const Builder &) = delete;
   Builder(Builder &&) = delete;
   Builder &operator=(const Builder &) = delete;
   Builder &operator=(Builder &&) = delete;
 
-  ::Info Build(void (*row_callback)(lcb_t, int, const lcb_RESPN1QL *),
+  ::Info Build(void (*row_callback)(lcb_INSTANCE *, int, const lcb_RESPQUERY *),
                void *cookie);
-  lcb_CMDN1QL *GetCmd() { return &cmd_; }
-  lcb_N1QLHANDLE GetHandle() const { return handle_; }
+  lcb_CMDQUERY *GetCmd() { return cmd_; }
+  lcb_QUERY_HANDLE *GetHandle() const { return handle_; }
 
 private:
-  ::Info ErrorFormat(const std::string &message, lcb_t connection,
-                     lcb_error_t error) const;
+  ::Info ErrorFormat(const std::string &message, lcb_INSTANCE *connection,
+                     lcb_STATUS error) const;
 
   v8::Isolate *isolate_{nullptr};
-  lcb_CMDN1QL cmd_{0};
-  lcb_N1QLPARAMS *params_{nullptr};
-  lcb_N1QLHANDLE handle_{nullptr};
+  lcb_CMDQUERY *cmd_{0};
+  lcb_QUERY_HANDLE *handle_{nullptr};
   Query::Info query_info_;
-  lcb_t connection_{nullptr};
+  lcb_INSTANCE *connection_{nullptr};
   lcb_U32 timeout_{0};
 };
 } // namespace Query

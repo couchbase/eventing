@@ -3,13 +3,12 @@ package supervisor
 import (
 	"fmt"
 	"net"
-	"time"
 	"sync/atomic"
+	"time"
 
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/dcp"
 	"github.com/couchbase/eventing/logging"
-	"github.com/couchbase/eventing/timers"
 	"github.com/couchbase/eventing/util"
 )
 
@@ -86,6 +85,13 @@ func (s *SuperSupervisor) GetLatencyStats(appName string) common.StatsData {
 func (s *SuperSupervisor) GetCurlLatencyStats(appName string) common.StatsData {
 	if p, ok := s.runningFns()[appName]; ok {
 		return p.GetCurlLatencyStats()
+	}
+	return nil
+}
+
+func (s *SuperSupervisor) GetSourceKeyspace(appName string) *common.Keyspace {
+	if p, ok := s.runningFns()[appName]; ok {
+		return p.GetSourceKeyspace()
 	}
 	return nil
 }
@@ -489,9 +495,6 @@ func (s *SuperSupervisor) GetMetaStoreStats(appName string) map[string]uint64 {
 	if p, ok := s.runningFns()[appName]; ok {
 		stats = p.GetMetaStoreStats()
 	}
-	for stat, counter := range timers.PoolStats() {
-		stats[stat] = counter
-	}
 	return stats
 }
 
@@ -654,4 +657,12 @@ func (s *SuperSupervisor) GetBucket(bucketName string) (*couchbase.Bucket, error
 		return nil, err
 	}
 	return s.buckets[bucketName], nil
+}
+
+func (s *SuperSupervisor) IncWorkerRespawnedCount() {
+	atomic.AddUint32(&s.workerRespawnedCount, 1)
+}
+
+func (s *SuperSupervisor) WorkerRespawnedCount() uint32 {
+	return atomic.LoadUint32(&s.workerRespawnedCount)
 }

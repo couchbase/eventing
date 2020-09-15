@@ -20,7 +20,6 @@
 #include <cstring>
 #include <ctime>
 #include <fstream>
-#include <libcouchbase/api3.h>
 #include <libcouchbase/couchbase.h>
 #include <libplatform/libplatform.h>
 #include <list>
@@ -191,7 +190,7 @@ extern std::atomic<int64_t> on_update_success;
 extern std::atomic<int64_t> on_update_failure;
 extern std::atomic<int64_t> on_delete_success;
 extern std::atomic<int64_t> on_delete_failure;
-
+extern std::atomic<int64_t> timer_callback_failure;
 extern std::atomic<int64_t> timer_create_failure;
 
 extern std::atomic<int64_t> lcb_retry_failure;
@@ -222,7 +221,8 @@ public:
            const std::string &function_id,
            const std::string &function_instance_id,
            const std::string &user_prefix, Histogram *latency_stats,
-           Histogram *curl_latency_stats, const std::string &ns_server_port, const int32_t& num_vbuckets);
+           Histogram *curl_latency_stats, const std::string &ns_server_port,
+           const int32_t &num_vbuckets);
   ~V8Worker();
 
   int V8WorkerLoad(std::string source_s);
@@ -279,10 +279,10 @@ public:
 
   std::unordered_set<int64_t> GetPartitions() const;
 
-  lcb_error_t SetTimer(timer::TimerInfo &tinfo);
-  lcb_error_t DelTimer(timer::TimerInfo &tinfo);
+  lcb_STATUS SetTimer(timer::TimerInfo &tinfo);
+  lcb_STATUS DelTimer(timer::TimerInfo &tinfo);
 
-  lcb_t GetTimerLcbHandle() const;
+  lcb_INSTANCE *GetTimerLcbHandle() const;
   void AddTimerPartition(int vb_no);
   void RemoveTimerPartition(int vb_no);
 
@@ -299,6 +299,8 @@ public:
   std::string script_to_execute_;
 
   std::string cb_source_bucket_;
+  std::string cb_source_scope_;
+  std::string cb_source_collection_;
   int64_t max_task_duration_;
 
   server_settings_t *settings_;
@@ -341,8 +343,8 @@ private:
           std::string,
           std::unordered_map<std::string, std::vector<std::string>>> &config);
   void InitializeIsolateData(const server_settings_t *server_settings,
-                             const handler_config_t *h_config,
-                             const std::string &source_bucket);
+                             const handler_config_t *h_config);
+
   void
   InitializeCurlBindingValues(const std::vector<CurlBinding> &curl_bindings);
   void FreeCurlBindings();

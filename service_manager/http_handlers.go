@@ -1417,6 +1417,10 @@ func (m *ServiceMgr) parseFunctionPayload(data []byte, fnName string) applicatio
 
 	depcfg.MetadataBucket = string(dcfg.MetadataBucket())
 	depcfg.SourceBucket = string(dcfg.SourceBucket())
+	depcfg.SourceScope = string(dcfg.SourceScope())
+	depcfg.SourceCollection = string(dcfg.SourceCollection())
+	depcfg.MetadataCollection = string(dcfg.MetadataCollection())
+	depcfg.MetadataScope = string(dcfg.MetadataScope())
 
 	var buckets []bucket
 	b := new(cfg.Bucket)
@@ -1424,9 +1428,11 @@ func (m *ServiceMgr) parseFunctionPayload(data []byte, fnName string) applicatio
 
 		if dcfg.Buckets(b, i) {
 			newBucket := bucket{
-				Alias:      string(b.Alias()),
-				BucketName: string(b.BucketName()),
-				Access:     string(config.Access(i)),
+				Alias:          string(b.Alias()),
+				BucketName:     string(b.BucketName()),
+				Access:         string(config.Access(i)),
+				ScopeName:      string(b.ScopeName()),
+				CollectionName: string(b.CollectionName()),
 			}
 			buckets = append(buckets, newBucket)
 		}
@@ -1610,6 +1616,7 @@ func (m *ServiceMgr) saveTempStoreHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	m.addDefaultDeploymentConfig(&app)
 	if info := m.validateApplication(&app); info.Code != m.statusCodes.ok.Code {
 		m.sendErrorInfo(w, info)
 		return
@@ -1687,6 +1694,7 @@ func (m *ServiceMgr) savePrimaryStoreHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	m.addDefaultDeploymentConfig(&app)
 	if info := m.validateApplication(&app); info.Code != m.statusCodes.ok.Code {
 		m.sendErrorInfo(w, info)
 		return
@@ -1769,10 +1777,14 @@ func (m *ServiceMgr) encodeAppPayload(app *application) []byte {
 		alias := builder.CreateString(app.DeploymentConfig.Buckets[i].Alias)
 		bName := builder.CreateString(app.DeploymentConfig.Buckets[i].BucketName)
 		bAccess := builder.CreateString(app.DeploymentConfig.Buckets[i].Access)
+		sName := builder.CreateString(app.DeploymentConfig.Buckets[i].ScopeName)
+		cName := builder.CreateString(app.DeploymentConfig.Buckets[i].CollectionName)
 
 		cfg.BucketStart(builder)
 		cfg.BucketAddAlias(builder, alias)
 		cfg.BucketAddBucketName(builder, bName)
+		cfg.BucketAddScopeName(builder, sName)
+		cfg.BucketAddCollectionName(builder, cName)
 		csBucket := cfg.BucketEnd(builder)
 
 		bNames = append(bNames, csBucket)
@@ -1793,11 +1805,21 @@ func (m *ServiceMgr) encodeAppPayload(app *application) []byte {
 
 	metaBucket := builder.CreateString(app.DeploymentConfig.MetadataBucket)
 	sourceBucket := builder.CreateString(app.DeploymentConfig.SourceBucket)
+	metadataCollection := builder.CreateString(app.DeploymentConfig.MetadataCollection)
+	metadataScope := builder.CreateString(app.DeploymentConfig.MetadataScope)
+	sourceScope := builder.CreateString(app.DeploymentConfig.SourceScope)
+	sourceCollection := builder.CreateString(app.DeploymentConfig.SourceCollection)
 
 	cfg.DepCfgStart(builder)
 	cfg.DepCfgAddBuckets(builder, buckets)
+
 	cfg.DepCfgAddMetadataBucket(builder, metaBucket)
 	cfg.DepCfgAddSourceBucket(builder, sourceBucket)
+	cfg.DepCfgAddMetadataCollection(builder, metadataCollection)
+	cfg.DepCfgAddSourceCollection(builder, sourceCollection)
+	cfg.DepCfgAddSourceScope(builder, sourceScope)
+	cfg.DepCfgAddMetadataScope(builder, metadataScope)
+
 	depcfg := cfg.DepCfgEnd(builder)
 
 	appCode := builder.CreateString(app.AppHandlers)
@@ -1898,7 +1920,11 @@ func (m *ServiceMgr) savePrimaryStore(app *application) (info *runtimeInfo) {
 	}
 
 	if srcMutationEnabled {
-		if enabled, err := util.IsSyncGatewayEnabled(logPrefix, app.DeploymentConfig.SourceBucket, m.restPort); err == nil && enabled {
+		keySpace := &common.Keyspace{BucketName: app.DeploymentConfig.SourceBucket,
+			ScopeName:      app.DeploymentConfig.SourceScope,
+			CollectionName: app.DeploymentConfig.SourceCollection,
+		}
+		if enabled, err := util.IsSyncGatewayEnabled(logPrefix, keySpace, m.restPort); err == nil && enabled {
 			info.Code = m.statusCodes.errSyncGatewayEnabled.Code
 			info.Info = fmt.Sprintf("SyncGateway is enabled on: %s, deployement of source bucket mutating handler will cause Intra Bucket Recursion", app.DeploymentConfig.SourceBucket)
 			return
@@ -2833,6 +2859,7 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 			}
 
 			m.addDefaultVersionIfMissing(&app)
+			m.addDefaultDeploymentConfig(&app)
 
 			var isMixedMode bool
 			if isMixedMode, info = m.isMixedModeCluster(); info.Code != m.statusCodes.ok.Code {
@@ -2962,6 +2989,31 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 func (m *ServiceMgr) addDefaultVersionIfMissing(app *application) {
 	if app.EventingVersion == "" {
 		app.EventingVersion = util.EventingVer()
+	}
+}
+
+func (m *ServiceMgr) addDefaultDeploymentConfig(app *application) {
+	if app.DeploymentConfig.SourceScope == "" {
+		app.DeploymentConfig.SourceScope = "_default"
+	}
+	if app.DeploymentConfig.SourceCollection == "" {
+		app.DeploymentConfig.SourceCollection = "_default"
+	}
+	if app.DeploymentConfig.MetadataScope == "" {
+		app.DeploymentConfig.MetadataScope = "_default"
+	}
+	if app.DeploymentConfig.MetadataCollection == "" {
+		app.DeploymentConfig.MetadataCollection = "_default"
+	}
+
+	for i := range app.DeploymentConfig.Buckets {
+		if app.DeploymentConfig.Buckets[i].ScopeName == "" {
+			app.DeploymentConfig.Buckets[i].ScopeName = "_default"
+		}
+
+		if app.DeploymentConfig.Buckets[i].CollectionName == "" {
+			app.DeploymentConfig.Buckets[i].CollectionName = "_default"
+		}
 	}
 }
 
@@ -3363,6 +3415,7 @@ func (m *ServiceMgr) createApplications(r *http.Request, appList *[]application,
 			m.addDefaultVersionIfMissing(&app)
 		}
 
+		m.addDefaultDeploymentConfig(&app)
 		if infoVal := m.validateApplication(&app); infoVal.Code != m.statusCodes.ok.Code {
 			logging.Warnf("%s Validating %ru failed: %v", logPrefix, app, infoVal)
 			infoList = append(infoList, infoVal)
@@ -3689,4 +3742,81 @@ func (m *ServiceMgr) triggerInternalRebalance(w http.ResponseWriter, r *http.Req
 		m.sendErrorInfo(w, info)
 		return
 	}
+}
+
+func (m *ServiceMgr) prometheusLow(w http.ResponseWriter, r *http.Request) {
+	if !m.validateAuth(w, r, EventingPermissionStats) {
+		cbauth.SendForbidden(w, EventingPermissionStats)
+		return
+	}
+	//TODO: avg script execution time, avg timer scan time
+	out := make([]byte, 0)
+	out = append(out, []byte(fmt.Sprintf("%vworker_restart_count %v\n", METRICS_PREFIX, m.superSup.WorkerRespawnedCount()))...)
+
+	w.WriteHeader(200)
+	w.Write([]byte(out))
+}
+
+func (m *ServiceMgr) prometheusHigh(w http.ResponseWriter, r *http.Request) {
+	if !m.validateAuth(w, r, EventingPermissionStats) {
+		cbauth.SendForbidden(w, EventingPermissionStats)
+		return
+	}
+
+	list := m.highCardStats()
+	w.WriteHeader(200)
+	w.Write(list)
+}
+
+func (m *ServiceMgr) highCardStats() []byte {
+	// service_type{bucket, scope, collection, functionName} value
+	fmtStr := "%v%v{bucket: \"%v\", scope: \"%v\", collection: \"%v\", functionName: \"%v\"} %v\n"
+
+	deployedApps := m.superSup.GetDeployedApps()
+	stats := make([]byte, 0)
+	for appName, _ := range deployedApps {
+		keyspace := m.superSup.GetSourceKeyspace(appName)
+		if keyspace == nil {
+			continue
+		}
+
+		processingStats := m.superSup.GetEventProcessingStats(appName)
+		if processingStats != nil {
+			stats = populateUint(fmtStr, appName, "dcp_mutation_sent_to_worker", keyspace, stats, processingStats)
+			stats = populateUint(fmtStr, appName, "dcp_mutation_suppressed_counter", keyspace, stats, processingStats)
+			stats = populateUint(fmtStr, appName, "dcp_deletion_sent_to_worker", keyspace, stats, processingStats)
+			stats = populateUint(fmtStr, appName, "dcp_expiry_sent_to_worker", keyspace, stats, processingStats)
+			stats = populateUint(fmtStr, appName, "dcp_deletion_suppressed_counter", keyspace, stats, processingStats)
+		}
+
+		executionStats := m.superSup.GetExecutionStats(appName)
+		if executionStats != nil {
+			stats = populate(fmtStr, appName, "agg_queue_memory", keyspace, stats, executionStats)
+			stats = populate(fmtStr, appName, "agg_queue_size", keyspace, stats, executionStats)
+			stats = populate(fmtStr, appName, "on_update_success", keyspace, stats, executionStats)
+			stats = populate(fmtStr, appName, "on_update_failure", keyspace, stats, executionStats)
+			stats = populate(fmtStr, appName, "dcp_delete_msg_counter", keyspace, stats, executionStats)
+			stats = populate(fmtStr, appName, "dcp_mutations_msg_counter", keyspace, stats, executionStats)
+			stats = populate(fmtStr, appName, "on_delete_success", keyspace, stats, executionStats)
+			stats = populate(fmtStr, appName, "on_delete_failure", keyspace, stats, executionStats)
+			stats = populate(fmtStr, appName, "timer_cancel_counter", keyspace, stats, executionStats)
+			stats = populate(fmtStr, appName, "timer_create_counter", keyspace, stats, executionStats)
+			stats = populate(fmtStr, appName, "timer_create_failure", keyspace, stats, executionStats)
+			stats = populate(fmtStr, appName, "timer_callback_failure", keyspace, stats, executionStats)
+			// TODO: change it to timer_callback_success
+			stats = populate(fmtStr, appName, "timer_msg_counter", keyspace, stats, executionStats)
+		}
+
+		failureStats := m.superSup.GetFailureStats(appName)
+		if executionStats != nil {
+			//TODO: Add num_curl_exceptions, num_curl_timeout
+			stats = populate(fmtStr, appName, "bucket_op_exception_count", keyspace, stats, failureStats)
+			stats = populate(fmtStr, appName, "timeout_count", keyspace, stats, failureStats)
+			stats = populate(fmtStr, appName, "n1ql_op_exception_count", keyspace, stats, failureStats)
+			stats = populate(fmtStr, appName, "timer_context_size_exception_counter", keyspace, stats, failureStats)
+			stats = populate(fmtStr, appName, "timer_callback_missing_counter", keyspace, stats, failureStats)
+		}
+
+	}
+	return stats
 }

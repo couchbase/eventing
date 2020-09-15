@@ -12,19 +12,20 @@
 #ifndef COUCHBASE_LCB_UTILS_H
 #define COUCHBASE_LCB_UTILS_H
 
+#include "utils.h"
 #include <libcouchbase/couchbase.h>
 #include <string>
 #include <thread>
-#include "utils.h"
 
 struct Result {
   std::string key;
-  lcb_CAS cas{0};
-  lcb_error_t rc{LCB_SUCCESS};
+  uint64_t cas{0};
+  lcb_STATUS rc{LCB_SUCCESS};
   uint8_t datatype{0};
   std::string value;
   uint32_t exptime{0};
-  int64_t counter{0};
+  int64_t subdoc_counter{0};
+  uint64_t counter{0};
   const void *binary{0};
   size_t byteLength;
 };
@@ -39,51 +40,58 @@ const char *GetPassword(void *cookie, const char *host, const char *port,
                         const char *bucket);
 
 // lcb related callbacks
-void GetCallback(lcb_t instance, int, const lcb_RESPBASE *rb);
+void GetCallback(lcb_INSTANCE *instance, int, const lcb_RESPBASE *rb);
 
-void SetCallback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb);
+void SetCallback(lcb_INSTANCE *instance, int cbtype, const lcb_RESPBASE *rb);
 
-void SubDocumentLookupCallback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb);
+void SubDocumentLookupCallback(lcb_INSTANCE *instance, int cbtype,
+                               const lcb_RESPBASE *rb);
 
-void SubDocumentCallback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb);
+void SubDocumentCallback(lcb_INSTANCE *instance, int cbtype,
+                         const lcb_RESPBASE *rb);
 
-void DeleteCallback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb);
+void DeleteCallback(lcb_INSTANCE *instance, int cbtype, const lcb_RESPBASE *rb);
 
-void counter_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb);
+void counter_callback(lcb_INSTANCE *instance, int cbtype,
+                      const lcb_RESPBASE *rb);
 
-void unlock_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb);
+void unlock_callback(lcb_INSTANCE *instance, int cbtype,
+                     const lcb_RESPBASE *rb);
 
-std::pair<lcb_error_t, Result> LcbGet(lcb_t instance, lcb_CMDGET &cmd);
+std::pair<lcb_STATUS, Result> LcbGet(lcb_INSTANCE *instance, lcb_CMDGET &cmd);
 
-std::pair<lcb_error_t, Result> LcbSet(lcb_t instance, lcb_CMDSTORE &cmd);
+std::pair<lcb_STATUS, Result> LcbSet(lcb_INSTANCE *instance, lcb_CMDSTORE &cmd);
 
-std::pair<lcb_error_t, Result> LcbDelete(lcb_t instance, lcb_CMDREMOVE &cmd);
+std::pair<lcb_STATUS, Result> LcbDelete(lcb_INSTANCE *instance,
+                                        lcb_CMDREMOVE &cmd);
 
-std::pair<lcb_error_t, Result> LcbSubdocSet(lcb_t instance, lcb_CMDSUBDOC &cmd);
+std::pair<lcb_STATUS, Result> LcbSubdocSet(lcb_INSTANCE *instance,
+                                           lcb_CMDSUBDOC &cmd);
 
-std::pair<lcb_error_t, Result> LcbSubdocDelete(lcb_t instance,
-                                               lcb_CMDSUBDOC &cmd);
+std::pair<lcb_STATUS, Result> LcbSubdocDelete(lcb_INSTANCE *instance,
+                                              lcb_CMDSUBDOC &cmd);
 
-std::pair<lcb_error_t, Result> LcbGetCounter(lcb_t instance,
-                                             lcb_CMDCOUNTER &cmd);
+std::pair<lcb_STATUS, Result> LcbGetCounter(lcb_INSTANCE *instance,
+                                            lcb_CMDCOUNTER &cmd);
 
-std::pair<lcb_error_t, Result> LcbUnlock(lcb_t instance,
-                                         lcb_CMDUNLOCK &cmd);
+std::pair<lcb_STATUS, Result> LcbUnlock(lcb_INSTANCE *instance,
+                                        lcb_CMDUNLOCK &cmd);
 
-bool IsRetriable(lcb_error_t error);
+bool IsRetriable(lcb_STATUS error);
 
 template <typename CmdType, typename Callable>
-std::pair<lcb_error_t, Result> RetryLcbCommand(lcb_t instance, CmdType &cmd,
-                                               int max_retry_count, uint32_t max_retry_secs,
-                                               Callable &&callable) {
+std::pair<lcb_STATUS, Result>
+RetryLcbCommand(lcb_INSTANCE *instance, CmdType &cmd, int max_retry_count,
+                uint32_t max_retry_secs, Callable &&callable) {
   int retry_count = 1;
-  std::pair<lcb_error_t, Result> result;
+  std::pair<lcb_STATUS, Result> result;
   auto start = GetUnixTime();
 
   while (true) {
     result = callable(instance, cmd);
 
-    if ((result.first == LCB_SUCCESS && result.second.rc == LCB_SUCCESS) || (!IsRetriable(result.first) && !IsRetriable(result.second.rc)) ||
+    if ((result.first == LCB_SUCCESS && result.second.rc == LCB_SUCCESS) ||
+        (!IsRetriable(result.first) && !IsRetriable(result.second.rc)) ||
         (max_retry_count && retry_count >= max_retry_count))
       break;
 
@@ -101,6 +109,15 @@ std::pair<lcb_error_t, Result> RetryLcbCommand(lcb_t instance, CmdType &cmd,
   return result;
 }
 
-extern struct lcb_logprocs_st evt_logger;
+struct Logger {
+  Logger() : base(NULL) {}
+  lcb_LOGGER *base;
+};
+
+void evt_log_handler(const lcb_LOGGER *procs, uint64_t iid, const char *subsys,
+                     lcb_LOG_SEVERITY severity, const char *srcfile,
+                     int srcline, const char *fmt, va_list ap);
+
+extern Logger evt_logger;
 
 #endif // COUCHBASE_LCB_UTILS_H

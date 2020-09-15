@@ -92,6 +92,7 @@ type statusCodes struct {
 	errAppNotFound            statusBase
 	errMetakvWriteFailed      statusBase
 	errRequestedOpFailed      statusBase
+	errCollectionMissing      statusBase
 }
 
 func (m *ServiceMgr) getDisposition(code int) int {
@@ -194,6 +195,8 @@ func (m *ServiceMgr) getDisposition(code int) int {
 		return http.StatusInternalServerError
 	case m.statusCodes.errRequestedOpFailed.Code:
 		return http.StatusNotAcceptable
+	case m.statusCodes.errCollectionMissing.Code:
+		return http.StatusInternalServerError
 	default:
 		logging.Warnf("Unknown status code: %v", code)
 		return http.StatusInternalServerError
@@ -252,6 +255,7 @@ func (m *ServiceMgr) initErrCodes() {
 		errAppNotFound:            statusBase{"ERR_APP_NOT_FOUND", 53},
 		errMetakvWriteFailed:      statusBase{"ERR_METAKV_WRITE_FAILED", 54},
 		errRequestedOpFailed:      statusBase{"ERR_REQUESTED_OP_FAILED", 55},
+		errCollectionMissing:      statusBase{"ERR_COLLECTION_MISSING", 56},
 	}
 
 	errors := []errorPayload{
@@ -522,6 +526,11 @@ func (m *ServiceMgr) initErrCodes() {
 			Name:        m.statusCodes.errRequestedOpFailed.Name,
 			Code:        m.statusCodes.errRequestedOpFailed.Code,
 			Description: "Request operation failed",
+		},
+		{
+			Name:        m.statusCodes.errCollectionMissing.Name,
+			Code:        m.statusCodes.errCollectionMissing.Code,
+			Description: "Collection does not exist in the cluster",
 		},
 	}
 

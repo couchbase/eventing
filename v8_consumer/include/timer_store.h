@@ -12,7 +12,7 @@
 #ifndef COUCHBASE_TIMER_STORE_H
 #define COUCHBASE_TIMER_STORE_H
 
-#include <libcouchbase/api3.h>
+#include <libcouchbase/couchbase.h>
 #include <mutex>
 #include <string>
 #include <unordered_map>
@@ -29,11 +29,16 @@ class TimerStore {
 public:
   explicit TimerStore(v8::Isolate *isolate, const std::string &prefix,
                       const std::vector<int64_t> &partitions,
-                      const std::string &metadata_bucket, int32_t num_vbuckets);
+                      const std::string &metadata_bucket,
+                      const std::string &metadata_scope,
+                      const std::string &metadata_collection,
+                      int32_t num_vbuckets);
   ~TimerStore();
 
-  lcb_error_t SetTimer(TimerInfo &timer, int max_retry_count, uint32_t max_retry_secs);
-  lcb_error_t DelTimer(TimerInfo &timer, int max_retry_count, uint32_t max_retry_secs);
+  lcb_STATUS SetTimer(TimerInfo &timer, int max_retry_count,
+                      uint32_t max_retry_secs);
+  lcb_STATUS DelTimer(TimerInfo &timer, int max_retry_count,
+                      uint32_t max_retry_secs);
 
   void DeleteTimer(TimerEvent &event);
 
@@ -45,51 +50,63 @@ public:
 
   void SyncSpan();
 
-  lcb_t GetTimerStoreHandle() const;
+  lcb_INSTANCE *GetTimerStoreHandle() const;
 
 private:
   void Connect();
-  std::pair<bool, lcb_error_t> InitSpan(int partition);
-  std::pair<bool, lcb_error_t> InitSpanLocked(int partition);
+  std::pair<bool, lcb_STATUS> InitSpan(int partition);
+  std::pair<bool, lcb_STATUS> InitSpanLocked(int partition);
 
-  std::pair<bool, lcb_error_t> SyncSpan(int partition);
-  std::pair<bool, lcb_error_t> SyncSpanLocked(int partition);
-  lcb_error_t MayBeMoveSpanBack(int partition, int64_t due, int max_retry_count, uint32_t max_retry_secs);
+  std::pair<bool, lcb_STATUS> SyncSpan(int partition);
+  std::pair<bool, lcb_STATUS> SyncSpanLocked(int partition);
+  lcb_STATUS MayBeMoveSpanBack(int partition, int64_t due, int max_retry_count,
+                               uint32_t max_retry_secs);
 
   bool ExpandSpan(int64_t partition, int64_t point);
 
   void ShrinkSpan(int64_t partition, int64_t start);
 
-  std::pair<lcb_error_t, Result> GetCounter(const std::string &key,
-                                            int max_retry_count, uint32_t max_retry_secs);
+  std::pair<lcb_STATUS, Result> GetCounter(const std::string &key,
+                                           int max_retry_count,
+                                           uint32_t max_retry_secs);
 
-  std::pair<lcb_error_t, Result> Insert(const std::string &key,
+  std::pair<lcb_STATUS, Result> Insert(const std::string &key,
+                                       const nlohmann::json &value,
+                                       int max_retry_count,
+                                       uint32_t max_retry_secs);
+
+  std::pair<lcb_STATUS, Result> Upsert(const std::string &key,
+                                       const nlohmann::json &value,
+                                       int max_retry_count,
+                                       uint32_t max_retry_secs);
+
+  std::pair<lcb_STATUS, Result> Replace(const std::string &key,
                                         const nlohmann::json &value,
-                                        int max_retry_count, uint32_t max_retry_secs);
+                                        uint64_t cas, int max_retry_count,
+                                        uint32_t max_retry_secs);
 
-  std::pair<lcb_error_t, Result> Upsert(const std::string &key,
-                                        const nlohmann::json &value,
-                                        int max_retry_count, uint32_t max_retry_secs);
+  lcb_STATUS Delete(const std::string &key, uint64_t cas, int max_retry_count,
+                    uint32_t max_retry_secs);
 
-  std::pair<lcb_error_t, Result> Replace(const std::string &key,
-                                         const nlohmann::json &value,
-                                         lcb_CAS cas, int max_retry_count, uint32_t max_retry_secs);
+  std::pair<lcb_STATUS, Result> Get(const std::string &key, int max_retry_count,
+                                    uint32_t max_retry_secs);
 
-  lcb_error_t Delete(const std::string &key, uint64_t cas, int max_retry_count, uint32_t max_retry_secs);
-
-  std::pair<lcb_error_t, Result> Get(const std::string &key,
-                                     int max_retry_count, uint32_t max_retry_secs);
-
-  std::pair<lcb_error_t, Result> Lock(const std::string &key, int max_retry_count,
-                                                uint32_t max_retry_secs, uint32_t max_lock_time);
-  std::pair<lcb_error_t, Result> Unlock(const std::string &key, int max_retry_count,
-                                                uint32_t max_retry_secs, lcb_CAS cas);
+  std::pair<lcb_STATUS, Result> Lock(const std::string &key,
+                                     int max_retry_count,
+                                     uint32_t max_retry_secs,
+                                     uint32_t max_lock_time);
+  std::pair<lcb_STATUS, Result> Unlock(const std::string &key,
+                                       int max_retry_count,
+                                       uint32_t max_retry_secs, uint64_t cas);
   v8::Isolate *isolate_;
   std::vector<bool> partitons_;
   std::unordered_map<int64_t, TimerSpan> span_map_;
   std::string prefix_;
   std::string metadata_bucket_;
-  lcb_t crud_handle_{nullptr};
+  std::string metadata_scope_;
+  std::string metadata_collection_;
+  size_t metadata_collection_length_, metadata_scope_length_;
+  lcb_INSTANCE *crud_handle_{nullptr};
   std::mutex store_lock_;
   int32_t num_vbuckets_{1024};
   friend class Iterator;

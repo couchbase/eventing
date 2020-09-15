@@ -8,7 +8,7 @@ import (
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/suptree"
 	"github.com/couchbase/eventing/util"
-	"gopkg.in/couchbase/gocb.v1"
+	"github.com/couchbase/gocb/v2"
 )
 
 const (
@@ -60,8 +60,9 @@ type Producer struct {
 	firstRebalanceDone     bool
 	kvPort                 string
 	kvHostPorts            []string
-	metadatabucket         string
-	metadataBucketHandle   *gocb.Bucket
+	metadataKeyspace       *common.Keyspace
+	metadataCluster        *gocb.Cluster
+	metadataHandle         *gocb.Collection
 	metakvAppHostPortsPath string
 	nsServerPort           string
 	nsServerHostPort       string
