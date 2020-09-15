@@ -3787,6 +3787,7 @@ func (m *ServiceMgr) highCardStats() []byte {
 			stats = populateUint(fmtStr, appName, "dcp_deletion_sent_to_worker", keyspace, stats, processingStats)
 			stats = populateUint(fmtStr, appName, "dcp_expiry_sent_to_worker", keyspace, stats, processingStats)
 			stats = populateUint(fmtStr, appName, "dcp_deletion_suppressed_counter", keyspace, stats, processingStats)
+			stats = populateUint(fmtStr, appName, "worker_spawn_counter", keyspace, stats, processingStats)
 		}
 
 		executionStats := m.superSup.GetExecutionStats(appName)
