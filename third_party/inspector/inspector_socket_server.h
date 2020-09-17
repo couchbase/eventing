@@ -16,29 +16,26 @@ class SocketSession;
 class ServerSocket;
 
 class SocketServerDelegate {
- public:
-  virtual bool StartSession(int session_id, const std::string& target_id) = 0;
+public:
+  virtual bool StartSession(int session_id, const std::string &target_id) = 0;
   virtual void EndSession(int session_id) = 0;
-  virtual void MessageReceived(int session_id, const std::string& message) = 0;
+  virtual void MessageReceived(int session_id, const std::string &message) = 0;
   virtual std::vector<std::string> GetTargetIds() = 0;
-  virtual std::string GetTargetTitle(const std::string& id) = 0;
-  virtual std::string GetTargetUrl(const std::string& id) = 0;
+  virtual std::string GetTargetTitle(const std::string &id) = 0;
+  virtual std::string GetTargetUrl(const std::string &id) = 0;
   virtual void ServerDone() = 0;
 };
 
 // HTTP Server, writes messages requested as TransportActions, and responds
 // to HTTP requests and WS upgrades.
 
-
-
 class InspectorSocketServer {
- public:
-  using ServerCallback = void (*)(InspectorSocketServer*);
-  InspectorSocketServer(SocketServerDelegate* delegate,
-                        uv_loop_t* loop,
-                        const std::string& host,
-                        int port,
-                        FILE* out = stderr);
+public:
+  using ServerCallback = void (*)(InspectorSocketServer *);
+  InspectorSocketServer(SocketServerDelegate *delegate, uv_loop_t *loop,
+                        const std::string &host,
+                        const std::string &host_name_display, int port,
+                        PostURLCallback on_connect, FILE *out = stderr);
   // Start listening on host/port
   bool Start();
 
@@ -46,48 +43,48 @@ class InspectorSocketServer {
   //   kKill and kStop
   void Stop(ServerCallback callback);
   //   kSendMessage
-  void Send(int session_id, const std::string& message);
+  void Send(int session_id, const std::string &message);
   //   kKill
   void TerminateConnections();
 
   int Port() const;
 
   // Server socket lifecycle. There may be multiple sockets
-  void ServerSocketListening(ServerSocket* server_socket);
-  void ServerSocketClosed(ServerSocket* server_socket);
+  void ServerSocketListening(ServerSocket *server_socket);
+  void ServerSocketClosed(ServerSocket *server_socket);
 
   // Session connection lifecycle
-  bool HandleGetRequest(InspectorSocket* socket, const std::string& path);
-  bool SessionStarted(SocketSession* session, const std::string& id);
-  void SessionTerminated(SocketSession* session);
-  void MessageReceived(int session_id, const std::string& message) {
+  bool HandleGetRequest(InspectorSocket *socket, const std::string &path);
+  bool SessionStarted(SocketSession *session, const std::string &id);
+  void SessionTerminated(SocketSession *session);
+  void MessageReceived(int session_id, const std::string &message) {
     delegate_->MessageReceived(session_id, message);
   }
 
-  int GenerateSessionId() {
-    return next_session_id_++;
-  }
+  int GenerateSessionId() { return next_session_id_++; }
 
- private:
-  void SendListResponse(InspectorSocket* socket);
-  bool TargetExists(const std::string& id);
+private:
+  void SendListResponse(InspectorSocket *socket);
+  bool TargetExists(const std::string &id);
 
-  enum class ServerState {kNew, kRunning, kStopping, kStopped};
-  uv_loop_t* loop_;
-  SocketServerDelegate* const delegate_;
+  enum class ServerState { kNew, kRunning, kStopping, kStopped };
+  PostURLCallback on_connect_;
+  uv_loop_t *loop_;
+  SocketServerDelegate *const delegate_;
   const std::string host_;
+  const std::string host_name_display_;
   int port_;
   std::string path_;
-  std::vector<ServerSocket*> server_sockets_;
-  Closer* closer_;
-  std::map<int, SocketSession*> connected_sessions_;
+  std::vector<ServerSocket *> server_sockets_;
+  Closer *closer_;
+  std::map<int, SocketSession *> connected_sessions_;
   int next_session_id_;
-  FILE* out_;
+  FILE *out_;
   ServerState state_;
 
   friend class Closer;
 };
 
-}  // namespace inspector
+} // namespace inspector
 
-#endif  // SRC_INSPECTOR_SOCKET_SERVER_H_
+#endif // SRC_INSPECTOR_SOCKET_SERVER_H_

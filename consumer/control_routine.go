@@ -9,7 +9,7 @@ import (
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
-	"github.com/couchbase/gocb"
+	"gopkg.in/couchbase/gocb.v1"
 )
 
 func (c *Consumer) controlRoutine() error {
@@ -24,11 +24,17 @@ func (c *Consumer) controlRoutine() error {
 			err := util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), c.retryCount, getEventingNodeAddrOpCallback, c)
 			if err == common.ErrRetryTimeout {
 				logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-				return common.ErrRetryTimeout
+				return err
 			}
 
-			c.stopVbOwnerGiveupCh = make(chan struct{}, c.vbOwnershipGiveUpRoutineCount)
-			c.stopVbOwnerTakeoverCh = make(chan struct{}, c.vbOwnershipTakeoverRoutineCount)
+			// If this node is going out of cluster, we need to pause the c++ consumer altogether (similar to pausing the handler)
+			if util.Contains(c.NodeUUID(), c.ejectNodesUUIDs) {
+				c.PauseConsumer()
+			}
+
+			c.CloseAllRunningDcpFeeds()
+
+			c.stopVbOwnerTakeoverCh = make(chan struct{})
 
 			logging.Infof("%s [%s:%s:%d] Got notification that cluster state has changed",
 				logPrefix, c.workerName, c.tcpPort, c.Pid())
@@ -37,13 +43,9 @@ func (c *Consumer) controlRoutine() error {
 			c.vbsStreamClosed = make(map[uint16]bool)
 			c.vbsStreamClosedRWMutex.Unlock()
 
-			c.isRebalanceOngoing = true
-			logging.Infof("%s [%s:%s:%d] Updated isRebalanceOngoing to %t, vbsStateUpdateRunning: %t",
-				logPrefix, c.workerName, c.tcpPort, c.Pid(), c.isRebalanceOngoing, c.vbsStateUpdateRunning)
-
 			if !c.vbsStateUpdateRunning {
-				logging.Infof("%s [%s:%s:%d] Kicking off vbsStateUpdate routine",
-					logPrefix, c.workerName, c.tcpPort, c.Pid())
+				logging.Infof("%s [%s:%s:%d] Kicking off vbsStateUpdate routine, isRebalanceOngoing %t",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), c.isRebalanceOngoing)
 				go c.vbsStateUpdate()
 			}
 
@@ -74,8 +76,9 @@ func (c *Consumer) controlRoutine() error {
 				c.sendLogLevel(c.logLevel, false)
 			}
 
-			if val, ok := settings["skip_timer_threshold"]; ok {
-				c.skipTimerThreshold = int(val.(float64))
+			if val, ok := settings["timer_context_size"]; ok {
+				c.timerContextSize = int64(val.(float64))
+				c.sendTimerContextSize(c.timerContextSize, false)
 			}
 
 			if val, ok := settings["vb_ownership_giveup_routine_count"]; ok {
@@ -95,9 +98,12 @@ func (c *Consumer) controlRoutine() error {
 
 			vbsRemainingToClose := make([]uint16, len(c.vbsRemainingToClose))
 			copy(vbsRemainingToClose, c.vbsRemainingToClose)
+
+			vbsRemainingToCleanup := make([]uint16, len(c.vbsRemainingToCleanup))
+			copy(vbsRemainingToCleanup, c.vbsRemainingToCleanup)
 			c.RUnlock()
 
-			if len(vbsToRestream) == 0 && len(vbsRemainingToClose) == 0 {
+			if len(vbsToRestream) == 0 && len(vbsRemainingToClose) == 0 && len(vbsRemainingToCleanup) == 0 {
 				continue
 			}
 
@@ -112,10 +118,47 @@ func (c *Consumer) controlRoutine() error {
 				c.vbsRemainingToClose = make([]uint16, 0)
 				c.Unlock()
 
-				logging.Infof("%s [%s:%s:%d] Discarding request to restream vbs: %v and vbsRemainingToClose: %v as the app has been undeployed",
+				logging.Infof("%s [%s:%s:%d] Discarding request to restream vbs: %s and vbsRemainingToClose: %s as the app has been undeployed",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), util.Condense(vbsToRestream), util.Condense(vbsRemainingToClose))
 				continue
 			}
+
+			sort.Sort(util.Uint16Slice(vbsRemainingToCleanup))
+			logging.Infof("%s [%s:%s:%d] vbsRemainingToCleanup len: %d dump: %v",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), len(vbsRemainingToCleanup), util.Condense(vbsRemainingToCleanup))
+
+			metadataCorrectedVbs := make([]uint16, 0)
+			for _, vb := range vbsRemainingToCleanup {
+				if c.producer.IsPlannerRunning() {
+					continue
+				}
+
+				if !c.checkIfCurrentConsumerShouldOwnVb(vb) {
+					err := c.cleanupVbMetadata(vb)
+					if err == common.ErrRetryTimeout {
+						logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+						return err
+					}
+
+					if err == nil {
+						metadataCorrectedVbs = append(metadataCorrectedVbs, vb)
+					}
+				} else if c.checkIfVbAlreadyOwnedByCurrConsumer(vb) {
+					metadataCorrectedVbs = append(metadataCorrectedVbs, vb)
+				}
+			}
+
+			c.Lock()
+			diff := util.VbsSliceDiff(metadataCorrectedVbs, c.vbsRemainingToCleanup)
+			c.vbsRemainingToCleanup = make([]uint16, len(diff))
+			copy(c.vbsRemainingToCleanup, diff)
+
+			sort.Sort(util.Uint16Slice(c.vbsRemainingToCleanup))
+			if len(c.vbsRemainingToCleanup) > 0 {
+				logging.Infof("%s [%s:%s:%d] vbsRemainingToCleanup => remaining len: %d dump: %v",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), len(c.vbsRemainingToCleanup), util.Condense(c.vbsRemainingToCleanup))
+			}
+			c.Unlock()
 
 			sort.Sort(util.Uint16Slice(vbsRemainingToClose))
 			logging.Infof("%s [%s:%s:%d] vbsRemainingToClose len: %d dump: %v",
@@ -154,7 +197,7 @@ func (c *Consumer) controlRoutine() error {
 				err = c.updateCheckpoint(vbKey, vb, &vbBlob)
 				if err == common.ErrRetryTimeout {
 					logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-					return common.ErrRetryTimeout
+					return err
 				}
 			}
 
@@ -189,24 +232,16 @@ func (c *Consumer) controlRoutine() error {
 					c, c.producer.AddMetadataPrefix(vbKey), &vbBlob, &cas, true, &isNoEnt, true)
 				if err == common.ErrRetryTimeout {
 					logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-					return common.ErrRetryTimeout
+					return err
 				}
 
-				err = c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob, false)
+				err = c.updateVbOwnerAndStartDCPStream(vbKey, vb, &vbBlob)
 				if err == common.ErrRetryTimeout {
 					logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-					return common.ErrRetryTimeout
+					return err
 				}
 				if err != nil {
-					c.vbsStreamRRWMutex.Lock()
-					if _, ok := c.vbStreamRequested[vb]; ok {
-						logging.Infof("%s [%s:%s:%d] vb: %d Purging entry from vbStreamRequested",
-							logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
-
-						delete(c.vbStreamRequested, vb)
-					}
-					c.vbsStreamRRWMutex.Unlock()
-
+					c.purgeVbStreamRequested(logPrefix, vb)
 					vbsFailedToStartStream = append(vbsFailedToStartStream, vb)
 				}
 			}
@@ -217,8 +252,9 @@ func (c *Consumer) controlRoutine() error {
 			vbsToRestream = util.VbsSliceDiff(vbsFailedToStartStream, vbsToRestream)
 
 			c.Lock()
-			diff := util.VbsSliceDiff(vbsToRestream, c.vbsRemainingToRestream)
-			c.vbsRemainingToRestream = diff
+			diff = util.VbsSliceDiff(vbsToRestream, c.vbsRemainingToRestream)
+			c.vbsRemainingToRestream = make([]uint16, len(diff))
+			copy(c.vbsRemainingToRestream, diff)
 			vbsRemainingToRestream := len(c.vbsRemainingToRestream)
 			c.Unlock()
 
@@ -230,9 +266,8 @@ func (c *Consumer) controlRoutine() error {
 				goto retryVbsRemainingToRestream
 			}
 
-		case <-c.stopControlRoutineCh:
-			logging.Infof("%s [%s:%s:%d] Exiting control routine",
-				logPrefix, c.workerName, c.tcpPort, c.Pid())
+		case <-c.stopConsumerCh:
+			logging.Infof("%s [%s:%s:%d] Exiting control routine", logPrefix, c.workerName, c.tcpPort, c.Pid())
 			return nil
 		}
 	}

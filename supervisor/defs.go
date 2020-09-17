@@ -4,6 +4,7 @@ import (
 	"sync"
 
 	"github.com/couchbase/eventing/common"
+	"github.com/couchbase/eventing/dcp"
 	"github.com/couchbase/eventing/suptree"
 )
 
@@ -13,6 +14,8 @@ const (
 	// MetakvAppsPath refers to path under metakv where app handlers are stored
 	MetakvAppsPath = metakvEventingPath + "apps/"
 
+	// MetakvAppsRetryPath refers to path where retry counter for bailing out
+	// from operations that are retried upon failure
 	MetakvAppsRetryPath = metakvEventingPath + "retry/"
 
 	// MetakvAppSettingsPath refers to path under metakv where app settings are stored
@@ -25,10 +28,13 @@ const (
 	// MetakvRebalanceTokenPath refers to path under metakv where rebalance tokens are stored
 	MetakvRebalanceTokenPath = metakvEventingPath + "rebalanceToken/"
 	stopRebalance            = "stopRebalance"
+	startFailover            = "startFailover"
 
 	// Store list of eventing keepNodes
 	metakvConfigKeepNodes = metakvEventingPath + "config/keepNodes"
-	MetakvChecksumPath    = metakvEventingPath + "checksum/"
+
+	// MetakvChecksumPath within metakv is updated when new function definition is loaded
+	MetakvChecksumPath = metakvEventingPath + "checksum/"
 )
 
 const (
@@ -38,7 +44,6 @@ const (
 const (
 	supCmdType int8 = iota
 	cmdAppDelete
-	cmdAppLoad
 	cmdSettingsUpdate
 )
 
@@ -49,10 +54,11 @@ type supCmdMsg struct {
 
 // AdminPortConfig captures settings supplied by cluster manager
 type AdminPortConfig struct {
-	HTTPPort string
-	SslPort  string
-	CertFile string
-	KeyFile  string
+	DebuggerPort string
+	HTTPPort     string
+	SslPort      string
+	CertFile     string
+	KeyFile      string
 }
 
 // SuperSupervisor is responsible for managing/supervising all producer instances
@@ -66,10 +72,18 @@ type SuperSupervisor struct {
 	kvPort      string
 	numVbuckets int
 	restPort    string
+	retryCount  int64
 	superSup    *suptree.Supervisor
 	supCmdCh    chan supCmdMsg
 	uuid        string
 	diagDir     string
+
+	bucketsRWMutex          *sync.RWMutex
+	servicesNotifierRetryTm uint
+	finch                   chan bool
+	buckets                 map[string]*couchbase.Bucket // Access controlled by bucketsRWMutex
+	bucketsCount            map[string]uint              // Access controlled by bucketsRWMutex
+	isRebalanceOngoing      int32
 
 	appRWMutex *sync.RWMutex
 
@@ -78,6 +92,7 @@ type SuperSupervisor struct {
 
 	appListRWMutex    *sync.RWMutex
 	bootstrappingApps map[string]string // Captures list of apps undergoing bootstrap, access controlled by appListRWMutex
+	pausingApps       map[string]string // Captures list of apps being paused, access controlled by appListRWMutex
 
 	// Captures list of deployed apps and their last deployment time. Leveraged to report deployed app status
 	// via rest endpoints. Access controlled by appListRWMutex
@@ -87,19 +102,17 @@ type SuperSupervisor struct {
 	// to signify app has been undeployed. Access controlled by appListRWMutex
 	locallyDeployedApps map[string]string
 
-	plasmaMemQuota int64 // In MB
+	// Global config
+	memoryQuota int64 // In MB
 
 	cleanedUpAppMap            map[string]struct{} // Access controlled by default lock
 	mu                         *sync.RWMutex
-	producerSupervisorTokenMap map[common.EventingProducer]suptree.ServiceToken
-	runningProducers           map[string]common.EventingProducer
+	producerSupervisorTokenMap map[common.EventingProducer]suptree.ServiceToken // Access controlled by tokenMapRWMutex
+	tokenMapRWMutex            *sync.RWMutex
+	runningProducers           map[string]common.EventingProducer // Access controlled by runningProducersRWMutex
+	runningProducersRWMutex    *sync.RWMutex
 	vbucketsToOwn              []uint16
 
 	serviceMgr common.EventingServiceMgr
 	sync.RWMutex
-}
-
-type eventingConfig struct {
-	RAMQuota       int64  `json:"ram_quota"`
-	MetadataBucket string `json:"metadata_bucket"`
 }

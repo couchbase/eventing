@@ -13,17 +13,17 @@ import (
 )
 
 func newRebalancer(eventingAdminPort string, change service.TopologyChange,
-	done doneCallback, progress progressCallback, keepNodes []string) *rebalancer {
+	done doneCallback, progress progressCallback, keepNodes []string, NumberOfProducers int) *rebalancer {
 
 	r := &rebalancer{
-		cb:     callbacks{done, progress},
-		change: change,
-
-		c:    make(chan struct{}),
-		done: make(chan struct{}),
-
-		adminPort: eventingAdminPort,
-		keepNodes: keepNodes,
+		adminPort:        eventingAdminPort,
+		c:                make(chan struct{}),
+		cb:               callbacks{done, progress},
+		change:           change,
+		done:             make(chan struct{}),
+		keepNodes:        keepNodes,
+		RebalanceStartTs: time.Now().String(),
+		numApps:          NumberOfProducers,
 	}
 
 	go r.doRebalance()
@@ -49,7 +49,7 @@ func (r *rebalancer) storeRebalanceProgress(progress *common.RebalanceProgress) 
 	buf, err := json.Marshal(progress)
 	if err != nil {
 		logging.Errorf("%s Failed to marshal rebalance progress. Stopping rebalance.", logPrefix)
-		util.Retry(util.NewFixedBackoff(time.Second), nil, stopRebalanceCallback, r)
+		util.Retry(util.NewFixedBackoff(time.Second), nil, stopRebalanceCallback, r, r.change.ID)
 		return err
 	}
 
@@ -57,7 +57,7 @@ func (r *rebalancer) storeRebalanceProgress(progress *common.RebalanceProgress) 
 	err = util.MetakvSet(progressPath, buf, nil)
 	if err != nil {
 		logging.Errorf("%s Failed to write rebalance init progress to metakv. Stopping rebalance.", logPrefix)
-		util.Retry(util.NewFixedBackoff(time.Second), nil, stopRebalanceCallback, r)
+		util.Retry(util.NewFixedBackoff(time.Second), nil, stopRebalanceCallback, r, r.change.ID)
 		return err
 	}
 
@@ -67,6 +67,24 @@ func (r *rebalancer) storeRebalanceProgress(progress *common.RebalanceProgress) 
 func (r *rebalancer) gatherProgress() {
 	logPrefix := "rebalancer::gatherProgress"
 
+	// vbucket distribution happens in producer.
+	// If no handler is running or getting deployed on any node then we can store progress to 100% and return.
+	// If there is any error while aggregating progress fall through only if there are more than 1 eventing node.
+	if r.numApps == 0 {
+		p, _, errMap := util.GetProgress("/getAggRebalanceProgress", []string{net.JoinHostPort(util.Localhost(), r.adminPort)})
+		if len(errMap) > 0 && len(r.keepNodes) > 1 {
+			logging.Warnf("%s Failed to capture cluster wide rebalance progress from all nodes. initProgress: %v errMap dump: %rm",
+				logPrefix, p, errMap)
+		} else if len(errMap) == 1 && len(r.keepNodes) == 1 {
+			logging.Warnf("%s Failed to capture rebalance progress, initProgress: %v errMap dump: %rm",
+				logPrefix, p, errMap)
+			return
+		} else if p.VbsOwnedPerPlan == 0 && p.VbsRemainingToShuffle == 0 {
+			logging.Infof("%s Rebalance completed", logPrefix)
+			r.cb.progress(1.0, r.c)
+			return
+		}
+	}
 	progressTicker := time.NewTicker(rebalanceProgressUpdateTickInterval)
 
 	<-progressTicker.C
@@ -79,9 +97,9 @@ func (r *rebalancer) gatherProgress() {
 	retryCounter := 0
 
 retryRebProgress:
-	initProgress, errMap := util.GetProgress("/getAggRebalanceProgress", []string{net.JoinHostPort(util.Localhost(), r.adminPort)})
+	initProgress, _, errMap := util.GetProgress("/getAggRebalanceProgress", []string{net.JoinHostPort(util.Localhost(), r.adminPort)})
 	if len(errMap) > 0 && len(r.keepNodes) > 1 {
-		logging.Warnf(" %s Failed to capture cluster wide rebalance progress from all nodes. Retry counter: %d initProgress: %v errMap dump: %rm",
+		logging.Warnf("%s Failed to capture cluster wide rebalance progress from all nodes. Retry counter: %d initProgress: %v errMap dump: %rm",
 			logPrefix, retryCounter, initProgress, errMap)
 		retryCounter++
 
@@ -89,7 +107,7 @@ retryRebProgress:
 			time.Sleep(time.Second)
 			goto retryRebProgress
 		} else {
-			util.Retry(util.NewFixedBackoff(time.Second), nil, stopRebalanceCallback, r)
+			util.Retry(util.NewFixedBackoff(time.Second), nil, stopRebalanceCallback, r, r.change.ID)
 			r.cb.done(fmt.Errorf("failed to aggregate rebalance progress from all eventing nodes, err: %v", errMap), r.done)
 			return
 		}
@@ -114,11 +132,11 @@ retryRebProgress:
 	for {
 		select {
 		case <-progressTicker.C:
-			p, errMap := util.GetProgress("/getAggRebalanceProgress", []string{net.JoinHostPort(util.Localhost(), r.adminPort)})
+			p, _, errMap := util.GetProgress("/getAggRebalanceProgress", []string{net.JoinHostPort(util.Localhost(), r.adminPort)})
 			if len(errMap) == len(r.keepNodes) && len(r.keepNodes) > 1 {
 				logging.Errorf("%s Failed to capture cluster wide rebalance progress from all nodes, errMap dump: %rm", logPrefix, errMap)
 
-				util.Retry(util.NewFixedBackoff(time.Second), nil, stopRebalanceCallback, r)
+				util.Retry(util.NewFixedBackoff(time.Second), nil, stopRebalanceCallback, r, r.change.ID)
 				r.cb.done(fmt.Errorf("failed to aggregate rebalance progress from all eventing nodes, err: %v", errMap), r.done)
 				progressTicker.Stop()
 				return
@@ -126,7 +144,9 @@ retryRebProgress:
 				continue
 			}
 
-			if p.VbsOwnedPerPlan == 0 {
+			r.NodeLevelStats = p.NodeLevelStats
+
+			if p.VbsOwnedPerPlan == 0 && p.VbsRemainingToShuffle == 0 {
 				progress = 1.0
 				logging.Infof("%s Rebalance completed", logPrefix)
 			} else {
@@ -163,17 +183,22 @@ retryRebProgress:
 					rebProgressCounter = 0
 				}
 
+				r.RebProgressCounter = rebProgressCounter
+
 				logging.Infof("%s total vbs to shuffle: %d remaining to shuffle: %d progress: %g counter: %d cmp: %t",
 					logPrefix, aggProgress.VbsRemainingToShuffle, p.VbsRemainingToShuffle, (1.0-workRemaining)*100, rebProgressCounter,
 					util.FloatEquals(progress, (1.0-workRemaining)))
 
 				progress = 1.0 - workRemaining
+				r.RebalanceProgress = progress * 100
+				r.VbsRemainingToShuffle = p.VbsRemainingToShuffle
+				r.TotalVbsToShuffle = aggProgress.VbsRemainingToShuffle
 			}
 
 			if rebProgressCounter == rebalanceStalenessCounter {
 				logging.Errorf("%s Failing rebalance as progress hasn't made progress for past %d secs", logPrefix, rebProgressCounter*3)
 
-				util.Retry(util.NewFixedBackoff(time.Second), nil, stopRebalanceCallback, r)
+				util.Retry(util.NewFixedBackoff(time.Second), nil, stopRebalanceCallback, r, r.change.ID)
 				r.cb.done(fmt.Errorf("eventing rebalance hasn't made progress for past %d secs", rebProgressCounter*3), r.done)
 				progressTicker.Stop()
 				return

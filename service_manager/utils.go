@@ -1,16 +1,33 @@
 package servicemanager
 
 import (
+	"bytes"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"net"
 	"net/http"
+	"net/url"
+	"runtime/debug"
 	"strconv"
+	"time"
 
 	"github.com/couchbase/cbauth/service"
+	"github.com/couchbase/eventing/common"
+	"github.com/couchbase/eventing/gen/flatbuf/cfg"
 	"github.com/couchbase/eventing/logging"
+	"github.com/couchbase/eventing/parser"
+	"github.com/couchbase/eventing/util"
 )
+
+func (m *ServiceMgr) checkAppExists(appName string) bool {
+	_, info := m.getTempStore(appName)
+	if info.Code == m.statusCodes.errAppNotFoundTs.Code {
+		return false
+	}
+	return true
+}
 
 func (m *ServiceMgr) checkIfDeployed(appName string) bool {
 	deployedApps := m.superSup.DeployedAppList()
@@ -20,6 +37,44 @@ func (m *ServiceMgr) checkIfDeployed(appName string) bool {
 		}
 	}
 	return false
+}
+
+func (m *ServiceMgr) checkIfDeployedAndRunning(appName string) bool {
+	mhVersion := eventingVerMap["mad-hatter"]
+	if m.compareEventingVersion(mhVersion) {
+		logPrefix := "ServiceMgr::CheckIfDeployedAndRunning"
+		bootstrapStatus, err := util.GetAggBootstrapAppStatus(net.JoinHostPort(util.Localhost(), m.adminHTTPPort), appName)
+		if err != nil {
+			logging.Errorf("%s %s", logPrefix, err)
+			return false
+		}
+
+		if bootstrapStatus {
+			return false
+		}
+
+		return m.superSup.GetAppState(appName) == common.AppStateEnabled
+	}
+	bootstrappingApps := m.superSup.BootstrapAppList()
+	_, isBootstrapping := bootstrappingApps[appName]
+
+	return !isBootstrapping && m.superSup.GetAppState(appName) == common.AppStateEnabled
+}
+
+func (m *ServiceMgr) checkCompressHandler() bool {
+	mhVersion := eventingVerMap["mad-hatter"]
+	config, info := m.getConfig()
+	if info.Code != m.statusCodes.ok.Code {
+		return m.compareEventingVersion(mhVersion)
+	}
+
+	// In Mad-Hatter,eventing handler will be compressed by default
+	// It can be turned off by setting force_compress to false
+	if val, exists := config["force_compress"]; exists {
+		return val.(bool) && m.compareEventingVersion(mhVersion)
+	}
+
+	return m.compareEventingVersion(mhVersion)
 }
 
 func decodeRev(b service.Revision) uint64 {
@@ -33,87 +88,73 @@ func encodeRev(rev uint64) service.Revision {
 	return ext
 }
 
-func fillMissingWithDefaults(settings map[string]interface{}) {
-	// Handler related configurations
-	fillMissingDefault(settings, "checkpoint_interval", float64(60000))
-	fillMissingDefault(settings, "cpp_worker_thread_count", float64(2))
-	fillMissingDefault(settings, "cron_timers_per_doc", float64(1000))
-	fillMissingDefault(settings, "curl_timeout", float64(500))
-	fillMissingDefault(settings, "deadline_timeout", float64(62))
-	fillMissingDefault(settings, "enable_recursive_mutation", true)
-	fillMissingDefault(settings, "execution_timeout", float64(60))
-	fillMissingDefault(settings, "feedback_batch_size", float64(100))
-	fillMissingDefault(settings, "feedback_read_buffer_size", float64(65536))
-	fillMissingDefault(settings, "fuzz_offset", float64(0))
-	fillMissingDefault(settings, "lcb_inst_capacity", float64(5))
-	fillMissingDefault(settings, "log_level", "INFO")
-	fillMissingDefault(settings, "skip_timer_threshold", float64(86400))
-	fillMissingDefault(settings, "sock_batch_size", float64(100))
-	fillMissingDefault(settings, "tick_duration", float64(60000))
-	fillMissingDefault(settings, "timer_processing_tick_interval", float64(500))
-	fillMissingDefault(settings, "worker_count", float64(3))
-	fillMissingDefault(settings, "worker_feedback_queue_cap", float64(10*1000))
-	fillMissingDefault(settings, "worker_queue_cap", float64(100*1000))
-	fillMissingDefault(settings, "worker_queue_mem_cap", float64(1024))
-	fillMissingDefault(settings, "xattr_doc_timer_entry_prune_threshold", float64(100))
+func (m *ServiceMgr) fillMissingWithDefaults(appName string, settings map[string]interface{}) {
+	// Fill from temp store if available
+	app, _ := m.getTempStore(appName)
 
-	// Process related configuration
-	fillMissingDefault(settings, "breakpad_on", true)
+	// Handler related configurations
+	fillMissingDefault(app, settings, "n1ql_prepare_all", false)
+	fillMissingDefault(app, settings, "checkpoint_interval", float64(60000))
+	fillMissingDefault(app, settings, "cpp_worker_thread_count", float64(2))
+	fillMissingDefault(app, settings, "execution_timeout", float64(60))
+	fillMissingDefault(app, settings, "deadline_timeout", settings["execution_timeout"].(float64)+2)
+	fillMissingDefault(app, settings, "feedback_batch_size", float64(100))
+	fillMissingDefault(app, settings, "feedback_read_buffer_size", float64(65536))
+	fillMissingDefault(app, settings, "idle_checkpoint_interval", float64(30000))
+	fillMissingDefault(app, settings, "lcb_inst_capacity", float64(5))
+	fillMissingDefault(app, settings, "log_level", "INFO")
+	fillMissingDefault(app, settings, "poll_bucket_interval", float64(10))
+	fillMissingDefault(app, settings, "sock_batch_size", float64(100))
+	fillMissingDefault(app, settings, "tick_duration", float64(60000))
+	fillMissingDefault(app, settings, "timer_context_size", float64(1024))
+	fillMissingDefault(app, settings, "undeploy_routine_count", float64(6))
+	fillMissingDefault(app, settings, "worker_count", float64(3))
+	fillMissingDefault(app, settings, "worker_feedback_queue_cap", float64(500))
+	fillMissingDefault(app, settings, "worker_queue_cap", float64(100*1000))
+	fillMissingDefault(app, settings, "worker_queue_mem_cap", float64(1024))
+	fillMissingDefault(app, settings, "worker_response_timeout", float64(3600))
+
+	// metastore related configuration
+	fillMissingDefault(app, settings, "timer_queue_mem_cap", float64(50))
+	fillMissingDefault(app, settings, "timer_queue_size", float64(10000))
 
 	// Rebalance related configurations
-	fillMissingDefault(settings, "vb_ownership_giveup_routine_count", float64(1))
-	fillMissingDefault(settings, "vb_ownership_takeover_routine_count", float64(1))
+	fillMissingDefault(app, settings, "vb_ownership_giveup_routine_count", float64(3))
+	fillMissingDefault(app, settings, "vb_ownership_takeover_routine_count", float64(3))
 
 	// Application logging related configurations
-	fillMissingDefault(settings, "app_log_max_size", float64(1024*1024*40))
-	fillMissingDefault(settings, "app_log_max_files", float64(10))
-	fillMissingDefault(settings, "enable_applog_rotation", true)
-
-	// Doc timer configurations for plasma
-	fillMissingDefault(settings, "auto_swapper", true)
-	fillMissingDefault(settings, "enable_snapshot_smr", false)
-	fillMissingDefault(settings, "lss_cleaner_max_threshold", float64(70))
-	fillMissingDefault(settings, "lss_cleaner_threshold", float64(30))
-	fillMissingDefault(settings, "lss_read_ahead_size", float64(1024*1024))
-	fillMissingDefault(settings, "max_delta_chain_len", float64(200))
-	fillMissingDefault(settings, "max_page_items", float64(400))
-	fillMissingDefault(settings, "min_page_items", float64(50))
-	fillMissingDefault(settings, "persist_interval", float64(5000))
-	fillMissingDefault(settings, "use_memory_manager", true)
+	fillMissingDefault(app, settings, "app_log_max_size", float64(1024*1024*40))
+	fillMissingDefault(app, settings, "app_log_max_files", float64(10))
+	fillMissingDefault(app, settings, "enable_applog_rotation", true)
 
 	// DCP connection related configurations
-	fillMissingDefault(settings, "agg_dcp_feed_mem_cap", float64(1024))
-	fillMissingDefault(settings, "data_chan_size", float64(50))
-	fillMissingDefault(settings, "dcp_gen_chan_size", float64(10000))
-	fillMissingDefault(settings, "dcp_num_connections", float64(1))
+	fillMissingDefault(app, settings, "agg_dcp_feed_mem_cap", float64(1024))
+	fillMissingDefault(app, settings, "data_chan_size", float64(50))
+	fillMissingDefault(app, settings, "dcp_gen_chan_size", float64(10000))
+	fillMissingDefault(app, settings, "dcp_num_connections", float64(1))
+
+	// N1QL related configuration
+	fillMissingDefault(app, settings, "n1ql_consistency", "none")
+
+	// Language related configuration
+	fillMissingDefault(app, settings, "language_compatibility", common.LanguageCompatibility[0])
+	fillMissingDefault(app, settings, "lcb_retry_count", float64(0))
 }
 
-func fillMissingDefault(settings map[string]interface{}, field string, defaultValue interface{}) {
+func fillMissingDefault(app application, settings map[string]interface{}, field string, defaultValue interface{}) {
 	if _, ok := settings[field]; !ok {
-		settings[field] = defaultValue
+		if _, tOk := app.Settings[field]; !tOk {
+			settings[field] = defaultValue
+			return
+		}
+		settings[field] = app.Settings[field]
 	}
-}
-
-func (m *ServiceMgr) getHandler(appName string) string {
-	if m.checkIfDeployed(appName) {
-		return m.superSup.GetHandlerCode(appName)
-	}
-
-	return ""
-}
-
-func (m *ServiceMgr) getSourceMap(appName string) string {
-	if m.checkIfDeployed(appName) {
-		return m.superSup.GetSourceMap(appName)
-	}
-
-	return ""
 }
 
 func (m *ServiceMgr) sendErrorInfo(w http.ResponseWriter, runtimeInfo *runtimeInfo) {
 	errInfo := m.errorCodes[runtimeInfo.Code]
 	errInfo.RuntimeInfo = *runtimeInfo
-	response, err := json.Marshal(errInfo)
+	response, err := json.MarshalIndent(errInfo, "", " ")
 	if err != nil {
 		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
 		w.WriteHeader(m.getDisposition(m.statusCodes.errMarshalResp.Code))
@@ -135,7 +176,7 @@ func (m *ServiceMgr) sendRuntimeInfo(w http.ResponseWriter, runtimeInfo *runtime
 		return
 	}
 
-	response, err := json.Marshal(runtimeInfo)
+	response, err := json.MarshalIndent(runtimeInfo, "", " ")
 	if err != nil {
 		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
 		w.WriteHeader(m.getDisposition(m.statusCodes.errMarshalResp.Code))
@@ -147,7 +188,7 @@ func (m *ServiceMgr) sendRuntimeInfo(w http.ResponseWriter, runtimeInfo *runtime
 }
 
 func (m *ServiceMgr) sendRuntimeInfoList(w http.ResponseWriter, runtimeInfoList []*runtimeInfo) {
-	response, err := json.Marshal(runtimeInfoList)
+	response, err := json.MarshalIndent(runtimeInfoList, "", " ")
 	if err != nil {
 		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
 		w.WriteHeader(m.getDisposition(m.statusCodes.errMarshalResp.Code))
@@ -185,6 +226,7 @@ func (m *ServiceMgr) unmarshalApp(r *http.Request) (app application, info *runti
 		return
 	}
 
+	data = bytes.Trim(data, "[]\n ")
 	err = json.Unmarshal(data, &app)
 	if err != nil {
 		info.Code = m.statusCodes.errUnmarshalPld.Code
@@ -212,6 +254,11 @@ func (m *ServiceMgr) unmarshalAppList(w http.ResponseWriter, r *http.Request) (a
 		return
 	}
 
+	// Create array of apps so that passed valid app object not fail during unmarshalling.
+	data = bytes.Trim(data, "[]\n ")
+	data = append([]byte("["), data...)
+	data = append(data, []byte("]")...)
+
 	err = json.Unmarshal(data, &appList)
 	if err != nil {
 		info.Code = m.statusCodes.errUnmarshalPld.Code
@@ -222,4 +269,482 @@ func (m *ServiceMgr) unmarshalAppList(w http.ResponseWriter, r *http.Request) (a
 
 	info.Code = m.statusCodes.ok.Code
 	return
+}
+
+func (m *ServiceMgr) checkLifeCycleOpsDuringRebalance() (info *runtimeInfo) {
+	logPrefix := "ServiceMgr:enableLifeCycleOpsDuringRebalance"
+
+	info = &runtimeInfo{}
+	var lifeCycleOpsDuringReb bool
+
+	config, configInfo := m.getConfig()
+	if configInfo.Code != m.statusCodes.ok.Code {
+		lifeCycleOpsDuringReb = false
+	} else {
+		if enableVal, exists := config["enable_lifecycle_ops_during_rebalance"]; !exists {
+			lifeCycleOpsDuringReb = false
+		} else {
+			enable, ok := enableVal.(bool)
+			if !ok {
+				logging.Infof("%s [%d] Supplied enable_lifecycle_ops_during_rebalance value unexpected. Defaulting to false", logPrefix)
+				enable = false
+			}
+			lifeCycleOpsDuringReb = enable
+		}
+	}
+
+	if rebStatus := m.checkRebalanceStatus(); !lifeCycleOpsDuringReb && rebStatus.Code != m.statusCodes.ok.Code {
+		info.Code = rebStatus.Code
+		info.Info = rebStatus.Info
+		logging.Errorf("%s %s", logPrefix, info.Info)
+		return
+	}
+
+	info.Code = m.statusCodes.ok.Code
+	return
+}
+
+func (m *ServiceMgr) getSourceBinding(cfg *depCfg) *bucket {
+	for _, binding := range cfg.Buckets {
+		if binding.BucketName == cfg.SourceBucket && binding.Access == "rw" {
+			return &binding
+		}
+	}
+	return nil
+}
+
+func (m *ServiceMgr) getSourceBindingFromFlatBuf(config *cfg.DepCfg, appdata *cfg.Config) *cfg.Bucket {
+	binding := new(cfg.Bucket)
+	for idx := 0; idx < config.BucketsLength(); idx++ {
+		if config.Buckets(binding, idx) {
+			if string(binding.BucketName()) == string(config.SourceBucket()) && string(appdata.Access(idx)) == "rw" {
+				return binding
+			}
+		}
+	}
+	return nil
+}
+
+func (m *ServiceMgr) isSrcMutationEnabled(cfg *depCfg) bool {
+	for _, binding := range cfg.Buckets {
+		if binding.BucketName == cfg.SourceBucket && binding.Access == "rw" {
+			return true
+		}
+	}
+	return false
+}
+
+func (m *ServiceMgr) isAppDeployable(app *application) bool {
+	appSrcBinding := m.getSourceBinding(&app.DeploymentConfig)
+	if appSrcBinding == nil {
+		return true
+	}
+	for _, appName := range m.superSup.DeployedAppList() {
+		if appName == app.Name {
+			continue
+		}
+		data, err := util.ReadAppContent(metakvAppsPath, metakvChecksumPath, appName)
+		if err != nil {
+			return false
+		}
+		appdata := cfg.GetRootAsConfig(data, 0)
+		config := new(cfg.DepCfg)
+		depcfg := appdata.DepCfg(config)
+		if app.DeploymentConfig.SourceBucket == string(depcfg.SourceBucket()) {
+			binding := m.getSourceBindingFromFlatBuf(depcfg, appdata)
+			if binding != nil {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func (m *ServiceMgr) getSourceAndDestinationsFromDepCfg(cfg *depCfg) (src string, dest map[string]struct{}) {
+	dest = make(map[string]struct{})
+	src = cfg.SourceBucket
+	dest[cfg.MetadataBucket] = struct{}{}
+	for idx := 0; idx < len(cfg.Buckets); idx++ {
+		bucketName := cfg.Buckets[idx].BucketName
+		if bucketName != src && cfg.Buckets[idx].Access == "rw" {
+			dest[bucketName] = struct{}{}
+		}
+	}
+	return src, dest
+}
+
+// GetNodesHostname returns hostnames of all nodes
+func GetNodesHostname(data map[string]interface{}) []string {
+	hostnames := make([]string, 0)
+
+	nodes, exists := data["nodes"].([]interface{})
+	if !exists {
+		return hostnames
+	}
+	for _, value := range nodes {
+		nodeInfo := value.(map[string]interface{})
+		if hostname, exists := nodeInfo["hostname"].(string); exists {
+			hostnames = append(hostnames, hostname)
+		}
+	}
+	return hostnames
+}
+
+func (m *ServiceMgr) UpdateBucketGraphFromMetakv(functionName string) error {
+	logPrefix := "ServiceMgr::UpdateBucketGraphFromMektakv"
+	appData, err := util.ReadAppContent(metakvAppsPath, metakvChecksumPath, functionName)
+	if err != nil {
+		logging.Errorf("%s Function read from metakv failed, err: %v", logPrefix, err)
+		return err
+	}
+	app := m.parseFunctionPayload(appData, functionName)
+	source, destinations := m.getSourceAndDestinationsFromDepCfg(&app.DeploymentConfig)
+	_, pinfos := parser.TranspileQueries(app.AppHandlers, "")
+	for _, pinfo := range pinfos {
+		destinations[pinfo.PInfo.KeyspaceName] = struct{}{}
+	}
+	if len(destinations) != 0 {
+		m.graph.insertEdges(functionName, source, destinations)
+	}
+	return nil
+}
+
+func (m *ServiceMgr) validateQueryKey(query url.Values) (info *runtimeInfo) {
+	info = &runtimeInfo{}
+	info.Code = m.statusCodes.ok.Code
+
+	for key := range query {
+		if _, found := functionQueryKeys[key]; !found {
+			info.Info = "key mismatch error, supported keys in function list query are: source_bucket, function_type, deployed"
+			info.Code = m.statusCodes.errReadReq.Code
+			return
+		}
+	}
+	return
+}
+
+func (m *ServiceMgr) validateQueryBucket(query url.Values) (info *runtimeInfo) {
+	info = &runtimeInfo{}
+	info.Code = m.statusCodes.ok.Code
+	buckets, found := query["source_bucket"]
+	if !found {
+		return
+	}
+	bucketLen := len(buckets)
+	if bucketLen > 1 {
+		info.Info = "more than one bucket name present in function list query"
+		info.Code = m.statusCodes.errReadReq.Code
+		return
+	}
+	return
+}
+
+func (m *ServiceMgr) validateQueryFunctionType(query url.Values) (info *runtimeInfo) {
+	info = &runtimeInfo{}
+	info.Code = m.statusCodes.ok.Code
+
+	functionTypes, found := query["function_type"]
+	if !found {
+		return
+	}
+	typeLen := len(functionTypes)
+
+	if typeLen == 1 {
+		if _, ok := funtionTypes[functionTypes[0]]; !ok {
+			info.Info = "invalid function type, supported function types are: sbm, notsbm"
+			info.Code = m.statusCodes.errReadReq.Code
+			return
+		}
+
+	}
+
+	if typeLen > 1 {
+		info.Info = "more than one function type present in function list query"
+		info.Code = m.statusCodes.errReadReq.Code
+		return
+	}
+	return
+}
+
+func (m *ServiceMgr) validateQueryFunctionDeployment(query url.Values) (info *runtimeInfo) {
+	info = &runtimeInfo{}
+	info.Code = m.statusCodes.ok.Code
+
+	deploymentStatus, found := query["deployed"]
+	if !found {
+		return
+	}
+	deployedLen := len(deploymentStatus)
+
+	if deployedLen == 1 {
+		if deploymentStatus[0] != "true" && deploymentStatus[0] != "false" {
+			info.Info = "invalid deployment status, supported deployment status are: true, false"
+			info.Code = m.statusCodes.errReadReq.Code
+			return
+		}
+	}
+
+	if deployedLen > 1 {
+		info.Info = "more than one deployment status present in function list query"
+		info.Code = m.statusCodes.errReadReq.Code
+	}
+	return
+}
+
+func (m *ServiceMgr) validateFunctionListQuery(query url.Values) (info *runtimeInfo) {
+	logPrefix := "ServiceMgr::getFunctionList"
+
+	if info = m.validateQueryKey(query); info.Code != m.statusCodes.ok.Code {
+		logging.Errorf("%s %s", logPrefix, info.Info)
+		return
+	}
+
+	if info = m.validateQueryBucket(query); info.Code != m.statusCodes.ok.Code {
+		logging.Errorf("%s %s", logPrefix, info.Info)
+		return
+	}
+
+	if info = m.validateQueryFunctionType(query); info.Code != m.statusCodes.ok.Code {
+		logging.Errorf("%s %s", logPrefix, info.Info)
+		return
+	}
+
+	if info = m.validateQueryFunctionDeployment(query); info.Code != m.statusCodes.ok.Code {
+		logging.Errorf("%s %s", logPrefix, info.Info)
+		return
+	}
+	return
+}
+
+func (m *ServiceMgr) getFunctionList(query url.Values) (fnlist functionList, info *runtimeInfo) {
+
+	info = m.validateFunctionListQuery(query)
+	if info.Code != m.statusCodes.ok.Code {
+		return
+	}
+	m.fnMu.RLock()
+	defer m.fnMu.RUnlock()
+	bucket := query.Get("source_bucket")
+	buckets := make(map[string]struct{})
+	if bucket == "" {
+		for currBucket := range m.bucketFunctionMap {
+			buckets[currBucket] = struct{}{}
+		}
+	} else {
+		buckets[bucket] = struct{}{}
+	}
+
+	functionType := query.Get("function_type")
+	fnTypes := make(map[string]struct{})
+	if functionType == "" {
+		fnTypes = funtionTypes
+	} else {
+		fnTypes[functionType] = struct{}{}
+	}
+
+	deployStatus := query.Get("deployed")
+	deployStatusList := make(map[bool]struct{})
+	if deployStatus == "" {
+		deployStatusList[true] = struct{}{}
+		deployStatusList[false] = struct{}{}
+	} else {
+		if deployStatus == "true" {
+			deployStatusList[true] = struct{}{}
+		} else {
+			deployStatusList[false] = struct{}{}
+		}
+	}
+
+	for currBucket := range buckets {
+		functions, ok := m.bucketFunctionMap[currBucket]
+		if !ok {
+			continue
+		}
+		for function, meta := range functions {
+			if _, ok = fnTypes[meta.fnType]; !ok {
+				continue
+			}
+			if _, ok = deployStatusList[meta.fnDeployed]; !ok {
+				continue
+			}
+			fnlist.Functions = append(fnlist.Functions, function)
+		}
+	}
+	return
+}
+
+func (m *ServiceMgr) getStatuses(appName string) (dStatus bool, pStatus bool, err error) {
+	logPrefix := "ServiceMgr::getStatuses"
+
+	defer func() {
+		if r := recover(); r != nil {
+			trace := debug.Stack()
+			logging.Errorf("%s getStatuses recovered from panic,  stack trace: %rm", logPrefix, string(trace))
+			err = fmt.Errorf("%s Error getting statuses for appName: %s, please see logs for more information", logPrefix, appName)
+		}
+	}()
+
+	var sData []byte
+	metakvPath := metakvAppSettingsPath + appName
+	util.Retry(util.NewFixedBackoff(time.Second), nil, metakvGetCallback, metakvPath, &sData)
+	settings := make(map[string]interface{})
+	err = json.Unmarshal(sData, &settings)
+	if err != nil {
+		logging.Errorf("%s Failed to unmarshal settings", logPrefix)
+		return false, false, err
+	}
+
+	val, ok := settings["deployment_status"]
+	if !ok {
+		logging.Errorf("%s Missing deployment_status", logPrefix)
+		return false, false, fmt.Errorf("missing deployment_status")
+	}
+
+	dStatus, ok = val.(bool)
+	if !ok {
+		logging.Errorf("%s Supplied deployment_status unexpected", logPrefix)
+		return false, false, fmt.Errorf("non boolean deployment_status")
+	}
+
+	val, ok = settings["processing_status"]
+	if !ok {
+		logging.Errorf("%s Missing processing_status", logPrefix)
+		return false, false, fmt.Errorf("missing processing_status")
+	}
+
+	pStatus, ok = val.(bool)
+	if !ok {
+		logging.Errorf("%s Supplied processing_status unexpected", logPrefix)
+		return false, false, fmt.Errorf("non boolean processing_status")
+	}
+
+	return dStatus, pStatus, nil
+}
+
+func (m *ServiceMgr) SetFailoverStatus(changeId string) {
+	m.failoverMu.Lock()
+	defer m.failoverMu.Unlock()
+
+	m.failoverCounter++
+	m.failoverNotifTs = time.Now().Unix()
+	m.failoverChangeId = changeId
+
+	return
+}
+
+func (m *ServiceMgr) ResetFailoverStatus() {
+	m.failoverMu.Lock()
+	defer m.failoverMu.Unlock()
+
+	if m.failoverCounter > 0 {
+		m.failoverCounter--
+	}
+
+	if 0 == m.failoverCounter {
+		m.failoverNotifTs = 0
+		m.failoverChangeId = ""
+	}
+	return
+}
+
+func (m *ServiceMgr) GetFailoverStatus() (failoverNotifTs int64, changeId string) {
+	return m.failoverNotifTs, m.failoverChangeId
+}
+
+func (m *ServiceMgr) watchFailoverEvents() {
+	logPrefix := "ServiceMgr::watchFailoverEvents"
+
+	ticker := time.NewTicker(time.Duration(5) * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			if m.failoverNotifTs != 0 {
+				now := time.Now().Unix()
+				if now-m.failoverNotifTs > 5 {
+					info := &runtimeInfo{}
+					info.Code = m.statusCodes.errInvalidConfig.Code
+					var config common.Config
+
+					if config, info = m.getConfig(); info.Code != m.statusCodes.ok.Code {
+						logging.Errorf("%s getConfig failed: %v", logPrefix, info)
+						continue
+					}
+
+					autoRedistributeVbsOnFailover := true
+					var ok bool
+					var flag interface{}
+					if flag, ok = config["auto_redistribute_vbs_on_failover"]; ok {
+						autoRedistributeVbsOnFailover = flag.(bool)
+					}
+
+					if autoRedistributeVbsOnFailover {
+						err := m.checkTopologyChangeReadiness(service.TopologyChangeTypeFailover)
+						if err == nil {
+							path := metakvRebalanceTokenPath + m.failoverChangeId
+							value := []byte(startFailover)
+							logging.Infof("%s triggering failover processing path: %v, value:%v", logPrefix, path, value)
+							m.superSup.TopologyChangeNotifCallback(path, value, m.state.rev)
+						}
+					}
+				}
+			}
+
+		case <-m.finch:
+			return
+		}
+	}
+}
+
+func (m *ServiceMgr) checkTopologyChangeReadiness(changeType service.TopologyChangeType) error {
+	logPrefix := "ServiceMgr::checkTopologyChangeReadiness"
+
+	nodeAddrs, err := m.getActiveNodeAddrs()
+	logging.Infof("%s Active Eventing nodes in the cluster: %rs", logPrefix, nodeAddrs)
+
+	if len(nodeAddrs) > 0 && err == nil {
+
+		logging.Infof("%s Querying nodes: %rs for bootstrap status", logPrefix, nodeAddrs)
+
+		// Fail rebalance if some apps are undergoing bootstrap
+		mhVersion := eventingVerMap["mad-hatter"]
+		if !m.compareEventingVersion(mhVersion) {
+			appsBootstrapping, err := util.GetAggBootstrappingApps("/getBootstrappingApps", nodeAddrs)
+			logging.Infof("%s Status of app bootstrap across all Eventing nodes: %v", logPrefix, appsBootstrapping)
+			if err != nil {
+				logging.Warnf("%s Some apps are deploying or resuming on some or all Eventing nodes, err: %v", logPrefix, err)
+				return err
+			}
+		} else {
+			appsBootstrapStatus, err := util.CheckIfBootstrapOngoing("/getBootstrapStatus", nodeAddrs)
+			logging.Infof("%s Bootstrap status across all Eventing nodes: %v", logPrefix, appsBootstrapStatus)
+			if err != nil {
+				return err
+			}
+			if appsBootstrapStatus {
+				logging.Warnf("%s Some apps are undergoing bootstrap", logPrefix)
+				return fmt.Errorf("Some apps are deploying or resuming on some or all Eventing nodes")
+			}
+
+			appsPausing, err := util.GetAggPausingApps("/getPausingApps", nodeAddrs)
+			logging.Infof("%s Status of pausing apps across all Eventing nodes: %v %v", logPrefix, appsPausing, err)
+			if err != nil {
+				logging.Warnf("%s Some apps are being paused on some or all Eventing nodes, err: %v", logPrefix, err)
+				return err
+			}
+		}
+		if changeType == service.TopologyChangeTypeRebalance { // For failover we do not want to wait
+			if rebStatus := m.checkRebalanceStatus(); rebStatus.Code != m.statusCodes.ok.Code {
+				return fmt.Errorf(rebStatus.Info.(string))
+			}
+		}
+	}
+
+	if err != nil {
+		logging.Warnf("%s Error encountered while fetching active Eventing nodes, err: %v", logPrefix, err)
+		return fmt.Errorf("failed to get active eventing nodes in the cluster")
+	}
+
+	return nil
 }

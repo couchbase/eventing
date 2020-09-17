@@ -22,6 +22,12 @@ event_type getEvent(int8_t event) {
     return eTimer;
   if (event == 5)
     return eDebugger;
+  if (event == 6)
+    return eFilter;
+  if (event == 7)
+    return eInternal;
+  if (event == 8)
+    return ePauseConsumer;
   return Event_Unknown;
 }
 
@@ -35,9 +41,9 @@ v8_worker_opcode getV8WorkerOpcode(int8_t opcode) {
   if (opcode == 4)
     return oTerminate;
   if (opcode == 5)
-    return oGetSourceMap;
+    return oUnused1;
   if (opcode == 6)
-    return oGetHandlerCode;
+    return oUnused2;
   if (opcode == 7)
     return oGetLatencyStats;
   if (opcode == 8)
@@ -48,6 +54,10 @@ v8_worker_opcode getV8WorkerOpcode(int8_t opcode) {
     return oGetCompileInfo;
   if (opcode == 11)
     return oGetLcbExceptions;
+  if (opcode == 12)
+    return oGetCurlLatencyStats;
+  if (opcode == 13)
+    return oInsight;
   return V8_Worker_Opcode_Unknown;
 }
 
@@ -66,15 +76,27 @@ app_worker_setting_opcode getAppWorkerSettingOpcode(int8_t opcode) {
     return oWorkerThreadCount;
   if (opcode == 3)
     return oWorkerThreadMap;
+  if (opcode == 4)
+    return oTimerContextSize;
+  if (opcode == 5)
+    return oVbMap;
+  if (opcode == 6)
+    return oWorkerMemQuota;
   return App_Worker_Setting_Opcode_Unknown;
 }
 
 timer_opcode getTimerOpcode(int8_t opcode) {
   if (opcode == 1)
-    return oDocTimer;
-  if (opcode == 2)
-    return oCronTimer;
+    return oTimer;
   return Timer_Opcode_Unknown;
+}
+
+filter_opcode getFilterOpcode(int8_t opcode) {
+  if (opcode == 1)
+    return oVbFilter;
+  if (opcode == 2)
+    return oProcessedSeqNo;
+  return Filter_Opcode_Unknown;
 }
 
 debugger_opcode getDebuggerOpcode(int8_t opcode) {

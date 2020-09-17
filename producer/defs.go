@@ -1,15 +1,14 @@
 package producer
 
 import (
-	"io"
 	"net"
 	"sync"
 	"time"
 
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/suptree"
-	"github.com/couchbase/gocb"
-	"github.com/couchbase/plasma"
+	"github.com/couchbase/eventing/util"
+	"gopkg.in/couchbase/gocb.v1"
 )
 
 const (
@@ -39,7 +38,6 @@ type appStatus uint16
 
 const (
 	appUndeployed appStatus = iota
-	appDeployed
 )
 
 type startDebugBlob struct {
@@ -51,10 +49,15 @@ type Producer struct {
 	appName                string
 	app                    *common.AppConfig
 	auth                   string
-	cleanupTimers          bool
 	cfgData                string
 	handleV8ConsumerMutex  *sync.Mutex // controls access to Producer.handleV8Consumer
+	isBootstrapping        bool
 	isPlannerRunning       bool
+	isTerminateRunning     bool
+	isRebalanceOngoing     int32
+	isSrcMutation          bool
+	isUsingTimer           bool
+	firstRebalanceDone     bool
 	kvPort                 string
 	kvHostPorts            []string
 	metadatabucket         string
@@ -63,13 +66,23 @@ type Producer struct {
 	nsServerPort           string
 	nsServerHostPort       string
 	numVbuckets            int
+	isPausing              bool
 	pauseProducerCh        chan struct{}
-	persistAllTicker       *time.Ticker
+	pollBucketInterval     time.Duration
+	pollBucketStopCh       chan struct{}
+	pollBucketTicker       *time.Ticker
 	retryCount             int64
-	statsTicker            *time.Ticker
+	stopCh                 chan struct{}
+	stopChClosed           bool
 	stopProducerCh         chan struct{}
 	superSup               common.EventingSuperSup
+	trapEvent              bool
+	debuggerToken          string
 	uuid                   string
+	workerSpawnCounter     uint64
+
+	latencyStats     *util.Stats
+	curlLatencyStats *util.Stats
 
 	handlerConfig   *common.HandlerConfig
 	processConfig   *common.ProcessConfig
@@ -81,22 +94,9 @@ type Producer struct {
 	// app log related configs
 	appLogPath     string
 	appLogMaxSize  int64
-	appLogMaxFiles int
+	appLogMaxFiles int64
 	appLogRotation bool
-	appLogWriter   io.WriteCloser
-
-	// Plasma configs
-	autoSwapper            bool
-	enableSnapshotSMR      bool
-	iteratorRefreshCounter int
-	lssCleanerMaxThreshold int
-	lssCleanerThreshold    int
-	lssReadAheadSize       int64
-	maxDeltaChainLen       int
-	maxPageItems           int
-	minPageItems           int
-	persistInterval        int //in ms
-	useMemoryMgmt          bool
+	appLogWriter   *appLogCloser
 
 	// Chan used to signal if Eventing.Producer has finished bootstrap
 	// i.e. started up all it's child routines
@@ -127,8 +127,10 @@ type Producer struct {
 	clusterStateChange chan struct{}
 
 	// List of running consumers, will be needed if we want to gracefully shut them down
-	runningConsumers           []common.EventingConsumer // Access controlled by default lock
-	consumerSupervisorTokenMap map[common.EventingConsumer]suptree.ServiceToken
+	runningConsumers           []common.EventingConsumer // Access controlled by runningConsumersRWMutex
+	runningConsumersRWMutex    *sync.RWMutex
+	consumerSupervisorTokenMap map[common.EventingConsumer]suptree.ServiceToken // Access controlled by tokenRWMutex
+	tokenRWMutex               *sync.RWMutex
 
 	workerNameConsumerMap        map[string]common.EventingConsumer // Access controlled by workerNameConsumerMapRWMutex
 	workerNameConsumerMapRWMutex *sync.RWMutex
@@ -137,13 +139,10 @@ type Producer struct {
 	vbEventingNodeAssignMap     map[uint16]string // Access controlled by vbEventingNodeAssignRWMutex
 	vbEventingNodeAssignRWMutex *sync.RWMutex
 
-	plasmaMemQuota int64
-	vbPlasmaStore  *plasma.Plasma
+	MemoryQuota int64
 
 	// copy of KV vbmap, needed while opening up dcp feed
 	kvVbMap map[uint16]string
-
-	signalStopPersistAllCh chan struct{}
 
 	// topologyChangeCh used by super_supervisor to notify producer
 	// about topology change
@@ -156,7 +155,6 @@ type Producer struct {
 	seqsNoProcessed            map[int]int64 // Access controlled by seqsNoProcessedRWMutex
 	seqsNoProcessedRWMutex     *sync.RWMutex
 	updateStatsTicker          *time.Ticker
-	updateStatsStopCh          chan struct{}
 
 	// Captures vbucket assignment to different eventing nodes
 	vbEventingNodeMap     map[string]map[string]string // Access controlled by vbEventingNodeRWMutex
@@ -172,11 +170,14 @@ type Producer struct {
 	// Supervisor of workers responsible for
 	// pipelining messages to V8
 	workerSupervisor *suptree.Supervisor
-
-	sync.RWMutex
 }
 
 type vbNodeWorkerMapping struct {
 	ownerNode      string
 	assignedWorker string
+}
+
+type acceptedConn struct {
+	conn net.Conn
+	err  error
 }

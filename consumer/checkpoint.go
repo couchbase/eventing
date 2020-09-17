@@ -8,7 +8,7 @@ import (
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
-	"github.com/couchbase/gocb"
+	"gopkg.in/couchbase/gocb.v1"
 )
 
 func (c *Consumer) doLastSeqNoCheckpoint() {
@@ -108,7 +108,7 @@ func (c *Consumer) doLastSeqNoCheckpoint() {
 				}
 			}
 
-		case <-c.stopCheckpointingCh:
+		case <-c.stopConsumerCh:
 			logging.Infof("%s [%s:%s:%d] Exited checkpointing routine",
 				logPrefix, c.workerName, c.tcpPort, c.Pid())
 			return
@@ -140,7 +140,7 @@ func (c *Consumer) updateCheckpointInfo(vbKey string, vb uint16, vbBlob *vbucket
 		c, c.producer.AddMetadataPrefix(vbKey), vbBlob)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-		return common.ErrRetryTimeout
+		return err
 	}
 
 	return nil
@@ -152,8 +152,7 @@ func (c *Consumer) isVbIdle(vbno uint16, checkpointTime *time.Time) bool {
 		currentTime.Sub(*checkpointTime) < c.idleCheckpointInterval &&
 		c.backupVbStats.getVbStat(vbno, "last_processed_seq_no").(uint64) == c.vbProcessingStats.getVbStat(vbno, "last_processed_seq_no").(uint64) &&
 		c.backupVbStats.getVbStat(vbno, "last_doc_timer_feedback_seqno").(uint64) == c.vbProcessingStats.getVbStat(vbno, "last_doc_timer_feedback_seqno").(uint64) &&
-		c.backupVbStats.getVbStat(vbno, "sent_to_worker_counter").(uint64) == c.vbProcessingStats.getVbStat(vbno, "sent_to_worker_counter").(uint64) &&
-		c.backupVbStats.getVbStat(vbno, "processed_crontimer_counter").(uint64) == c.vbProcessingStats.getVbStat(vbno, "processed_crontimer_counter").(uint64) {
+		c.backupVbStats.getVbStat(vbno, "sent_to_worker_counter").(uint64) == c.vbProcessingStats.getVbStat(vbno, "sent_to_worker_counter").(uint64) {
 		return true
 	}
 	*checkpointTime = currentTime

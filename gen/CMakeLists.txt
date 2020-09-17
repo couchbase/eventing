@@ -12,21 +12,21 @@
 INCLUDE (FindCouchbaseGo)
 INCLUDE (FindCouchbaseFlatbuffers)
 
-FIND_PACKAGE(FLEX REQUIRED)
-
 SET(LDFLAGS)
 IF(APPLE)
   SET (LDFLAGS "-s -extldflags '-Wl,-rpath,@executable_path/../lib'")
 ENDIF()
 IF(WIN32)
-   SET (LDFLAGS "${LDFLAGS} -linkmode internal")
+   IF("${MSVC_VERSION}" LESS 1910)
+      SET (LDFLAGS "${LDFLAGS} -linkmode internal")
+   ENDIF()
 ENDIF()
 
 IF(NOT DEFINED GOVERSION)
   MESSAGE(FATAL_ERROR "GOVERSION must be defined")
 ENDIF()
 
-SET(TAGS "jemalloc")
+SET(TAGS "")
 IF(BUILD_ENTERPRISE)
   SET(TAGS "${TAGS} enterprise")
 ENDIF()
@@ -40,10 +40,14 @@ CONFIGURE_FILE(
   "${PROJECT_SOURCE_DIR}/v8_consumer/src/version.in"
   "${PROJECT_SOURCE_DIR}/gen/version/version.cc"
 )
+CONFIGURE_FILE(
+  "${PROJECT_SOURCE_DIR}/ui/eventing-ui/version.in"
+  "${PROJECT_SOURCE_DIR}/gen/version/version.js"
+)
 
 GoInstall(
-  TARGET convertjs
-  PACKAGE github.com/couchbase/eventing/gen/convertjs
+  TARGET convertgo
+  PACKAGE github.com/couchbase/eventing/gen/convertgo
   GOPATH "${PROJECT_SOURCE_DIR}/../../../.."
   GOTAGS "${TAGS}"
   LDFLAGS "${LDFLAGS}"
@@ -67,63 +71,52 @@ ADD_CUSTOM_COMMAND(
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         COMMENT "Coverting ../audit/audit_descriptor.json to auditevent/events.go"
 )
+
 ADD_CUSTOM_COMMAND(
-        OUTPUT js/builtin.h
-        COMMAND ${PROJECT_SOURCE_DIR}/../../../../bin/convertjs
-        ARGS ../v8_consumer/src/builtin.js js_builtin js/builtin.h
-        DEPENDS ../v8_consumer/src/builtin.js
+        OUTPUT parser/handler_schema.go
+        COMMAND ${PROJECT_SOURCE_DIR}/../../../../bin/convertgo
+        ARGS ../parser/handler_schema.json HandlerSchema parser/handler_schema.go
+        DEPENDS ../parser/handler_schema.json
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-        COMMENT "Converting ../v8_consumer/src/builtin.js to js/builtin.h with variable js_builtin"
+        COMMENT "Embedding ../parser/handler_schema.json to parser/handler_schema.go"
 )
+
 ADD_CUSTOM_COMMAND(
-        OUTPUT js/transpiler.h
-        COMMAND ${PROJECT_SOURCE_DIR}/../../../../bin/convertjs
-        ARGS ../v8_consumer/src/transpiler.js js_transpiler js/transpiler.h
-        DEPENDS ../v8_consumer/src/transpiler.js
+        OUTPUT parser/depcfg_schema.go
+        COMMAND ${PROJECT_SOURCE_DIR}/../../../../bin/convertgo
+        ARGS ../parser/depcfg_schema.json DepcfgSchema parser/depcfg_schema.go
+        DEPENDS ../parser/depcfg_schema.json
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-        COMMENT "Converting ../v8_consumer/src/transpiler.js to js/transpiler.h with variable js_transpiler"
+        COMMENT "Embedding ../parser/depcfg_schema.json to parser/depcfg_schema.go"
 )
+
 ADD_CUSTOM_COMMAND(
-        OUTPUT js/esprima.h
-        COMMAND ${PROJECT_SOURCE_DIR}/../../../../bin/convertjs
-        ARGS ../third_party/estools/esprima.js js_esprima js/esprima.h
-        DEPENDS ../third_party/estools/esprima.js
+        OUTPUT parser/settings_schema.go
+        COMMAND ${PROJECT_SOURCE_DIR}/../../../../bin/convertgo
+        ARGS ../parser/settings_schema.json SettingsSchema parser/settings_schema.go
+        DEPENDS ../parser/settings_schema.json
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-        COMMENT "Converting ../third_party/estools/esprima.js to js/esprima.h with variable js_esprima"
+        COMMENT "Embedding ../parser/settings_schema.json to parser/settings_schema.go"
 )
+
 ADD_CUSTOM_COMMAND(
-        OUTPUT js/escodegen.h
-        COMMAND ${PROJECT_SOURCE_DIR}/../../../../bin/convertjs
-        ARGS ../third_party/estools/escodegen.js js_escodegen js/escodegen.h
-        DEPENDS ../third_party/estools/escodegen.js
+        OUTPUT parser/list_schema.go
+        COMMAND ${PROJECT_SOURCE_DIR}/../../../../bin/convertgo
+        ARGS ../parser/list_schema.json ListSchema parser/list_schema.go
+        DEPENDS ../parser/list_schema.json
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-        COMMENT "Converting ../third_party/estools/escodegen.js to js/escodegen.h with variable js_escodegen"
-)
-ADD_CUSTOM_COMMAND(
-        OUTPUT js/estraverse.h
-        COMMAND ${PROJECT_SOURCE_DIR}/../../../../bin/convertjs
-        ARGS ../third_party/estools/estraverse.js js_estraverse js/estraverse.h
-        DEPENDS ../third_party/estools/estraverse.js
-        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-        COMMENT "Converting ../third_party/estools/estraverse.js to js/estraverse.h with variable js_estraverse"
-)
-ADD_CUSTOM_COMMAND(
-        OUTPUT js/source-map.h
-        COMMAND ${PROJECT_SOURCE_DIR}/../../../../bin/convertjs
-        ARGS ../third_party/source-map/source-map.js js_source_map js/source-map.h
-        DEPENDS ../third_party/source-map/source-map.js
-        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-        COMMENT "Converting ../third_party/source-map/source-map.js to js/source-map.h with variable js_source_map"
+        COMMENT "Embedding ../parser/list_schema.json to parser/list_schema.go"
 )
 
 ADD_CUSTOM_COMMAND(
         OUTPUT inspector/v8_inspector_protocol_json.h
-        COMMAND python
+        COMMAND ${PYTHON_EXE}
         ARGS
           ../third_party/inspector/compress_json.py
           ../third_party/inspector/js_protocol.json
           inspector/v8_inspector_protocol_json.h
         DEPENDS
+          local-cbpy
           ../third_party/inspector/compress_json.py
           ../third_party/inspector/js_protocol.json
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
@@ -138,6 +131,7 @@ ADD_CUSTOM_COMMAND(
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../flatbuf
         COMMENT "Converting ../flatbuf/header.fbs to flatbuf/header_generated.h and flatbuf/header/Header.go"
 )
+
 ADD_CUSTOM_COMMAND(
         OUTPUT flatbuf/payload_generated.h flatbuf/payload/Payload.go
         COMMAND ${FLATC} -c ARGS -o ../gen/flatbuf payload.fbs
@@ -146,6 +140,7 @@ ADD_CUSTOM_COMMAND(
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../flatbuf
         COMMENT "Converting ../flatbuf/payload.fbs to flatbuf/payload_generated.h and flatbuf/payload/Payload.go"
 )
+
 ADD_CUSTOM_COMMAND(
         OUTPUT flatbuf/cfg_schema_generated.h flatbuf/cfg_schema/Cfg_schema.go
         COMMAND ${FLATC} -c ARGS -o ../gen/flatbuf cfg_schema.fbs
@@ -154,6 +149,7 @@ ADD_CUSTOM_COMMAND(
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../flatbuf
         COMMENT "Converting ../flatbuf/cfg_schema.fbs to flatbuf/cfg_schema_generated.h and flatbuf/cfg_schema/Cfg_schema.go"
 )
+
 ADD_CUSTOM_COMMAND(
         OUTPUT flatbuf/response_generated.h flatbuf/response/Response.go
         COMMAND ${FLATC} -c ARGS -o ../gen/flatbuf response.fbs
@@ -163,44 +159,16 @@ ADD_CUSTOM_COMMAND(
         COMMENT "Converting ../flatbuf/response.fbs to flatbuf/response_generated.h and flatbuf/response/Response.go"
 )
 
-# On Unix platforms, our cbdeps flex package includes m4, and we need to tell
-# flex how to find it. Unfortunately the only way to do that (short of
-# hacking the PATH, which is tricky and platform-dependent) is to set the M4
-# environment variable. "cmake -E env" gives us a way to set that for this
-# flex invocation.
-# On Windows, it appears that the flex we use doesn't require m4, or has it
-# built-in, so we can just call out to flex directly.
-
-IF (WIN32)
-    SET (_flex_command ${FLEX_EXECUTABLE})
-ELSE ()
-    FIND_PROGRAM (M4_EXECUTABLE m4)
-    IF (NOT M4_EXECUTABLE)
-        MESSAGE (WARNING "'m4' was not found - may have difficulty building")
-    ENDIF ()
-    SET (_flex_command ${CMAKE_COMMAND} -E env M4=${M4_EXECUTABLE} ${FLEX_EXECUTABLE})
-ENDIF ()
-
-ADD_CUSTOM_COMMAND(
-        OUTPUT parser/jsify.cc
-        COMMAND ${_flex_command}
-        ARGS -B -oparser/jsify.cc ../v8_consumer/src/jsify.lex
-        DEPENDS ../v8_consumer/src/jsify.lex
-        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-        COMMENT "Converting ../v8_consumer/src/jsify.lex to parser/jsify.cc"
-)
-
-ADD_CUSTOM_TARGET(generated DEPENDS
-        js/builtin.h js/transpiler.h js/esprima.h js/escodegen.h js/estraverse.h js/source-map.h
+ADD_CUSTOM_TARGET(eventing-generated DEPENDS
         inspector/v8_inspector_protocol_json.h
         flatbuf/header_generated.h flatbuf/header/Header.go
         flatbuf/payload_generated.h flatbuf/payload/Payload.go
         flatbuf/response_generated.h flatbuf/response/Response.go
         flatbuf/cfg_schema_generated.h flatbuf/cfg_schema/Cfg_schema.go
-        parser/jsify.cc
         auditevent/events.go
+        parser/handler_schema.go parser/depcfg_schema.go parser/settings_schema.go parser/list_schema.go
         version/version.go
         version/version.cc
 )
 
-ADD_DEPENDENCIES(generated convertjs convertaudit)
+ADD_DEPENDENCIES(eventing-generated convertgo convertaudit)

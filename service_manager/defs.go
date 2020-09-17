@@ -1,6 +1,7 @@
 package servicemanager
 
 import (
+	"errors"
 	"sync"
 	"time"
 
@@ -22,10 +23,15 @@ const (
 	metakvChecksumPath       = metakvEventingPath + "checksum/"
 	metakvTempChecksumPath   = metakvEventingPath + "tempchecksum/"
 	stopRebalance            = "stopRebalance"
+	startRebalance           = "startRebalance"
+	startFailover            = "startFailover"
 )
 
 const (
 	rebalanceProgressUpdateTickInterval = time.Duration(3000) * time.Millisecond
+	metakvOpRetryInterval               = time.Duration(1000) * time.Millisecond
+	httpReadTimeOut                     = time.Duration(60) * time.Second
+	httpWriteTimeOut                    = time.Duration(60) * time.Second
 )
 
 const (
@@ -37,20 +43,24 @@ const (
 	headerKey                = "status"
 	maxApplicationNameLength = 100
 	maxAliasLength           = 20 // Technically, there isn't any limit on a JavaScript variable length.
+	maxPrefixLength          = 16
 
-	// Rebalance progress ticker ticks at every 3s, 1200 ticks would amount to 1hr.
-	// If rebalance is stuck are specific progress % for longer than 1hr, rebalance
-	// would be failed.
-	rebalanceStalenessCounter = 1200
+	rebalanceStalenessCounter = 200
 )
 
-const (
-	srcMapExt  = ".map.json"
-	srcCodeExt = ".js"
-)
+var (
+	errInvalidVersion = errors.New("invalid eventing version")
 
-const (
-	maxHandlerSize = 128 * 1024
+	funtionTypes = map[string]struct{}{
+		"sbm":    struct{}{},
+		"notsbm": struct{}{},
+	}
+
+	functionQueryKeys = map[string]struct{}{
+		"source_bucket": struct{}{},
+		"function_type": struct{}{},
+		"deployed":      struct{}{},
+	}
 )
 
 // ServiceMgr implements cbauth_service interface
@@ -58,11 +68,20 @@ type ServiceMgr struct {
 	adminHTTPPort     string
 	adminSSLPort      string
 	auth              string
+	graph             *bucketMultiDiGraph
 	certFile          string
 	config            util.ConfigHolder
 	ejectNodeUUIDs    []string
 	eventingNodeAddrs []string
-	failoverNotif     bool
+	failoverMu        *sync.RWMutex
+	failoverCounter   uint32
+	failoverNotifTs   int64
+	failoverChangeId  string
+	finch             chan bool
+	fnsInPrimaryStore map[string]depCfg                  // Access controlled by fnMu
+	fnsInTempStore    map[string]struct{}                // Access controlled by fnMu
+	bucketFunctionMap map[string]map[string]functionInfo // Access controlled by fnMu
+	fnMu              *sync.RWMutex
 	keepNodeUUIDs     []string
 	keyFile           string
 	lcbCredsCounter   int64
@@ -77,9 +96,8 @@ type ServiceMgr struct {
 	rebalancer       *rebalancer
 	rebalanceRunning bool
 
-	rebUpdateTicker *time.Ticker
-	restPort        string
-	servers         []service.NodeID
+	restPort string
+	servers  []service.NodeID
 	state
 
 	superSup common.EventingSuperSup
@@ -88,6 +106,18 @@ type ServiceMgr struct {
 	statusCodes   statusCodes
 	statusPayload []byte
 	errorCodes    map[int]errorPayload
+
+	consistencyValues []string
+}
+
+type functionInfo struct {
+	fnName     string
+	fnType     string
+	fnDeployed bool
+}
+
+type functionList struct {
+	Functions []string `json:"functions"`
 }
 
 type doneCallback func(err error, cancel <-chan struct{})
@@ -107,6 +137,14 @@ type rebalancer struct {
 
 	adminPort string
 	keepNodes []string
+
+	NodeLevelStats        interface{}
+	RebalanceProgress     float64
+	RebalanceStartTs      string
+	RebProgressCounter    int
+	TotalVbsToShuffle     int
+	VbsRemainingToShuffle int
+	numApps               int
 }
 
 type rebalanceContext struct {
@@ -130,25 +168,26 @@ type cleanup struct {
 }
 
 type application struct {
-	AppHandlers      string                 `json:"appcode"`
-	DeploymentConfig depCfg                 `json:"depcfg"`
-	EventingVersion  string                 `json:"version"`
-	HandlerUUID      uint32                 `json:"handleruuid"`
-	ID               int                    `json:"id"`
-	Name             string                 `json:"appname"`
-	Settings         map[string]interface{} `json:"settings"`
-	UsingDocTimer    bool                   `json:"using_doc_timer"`
+	AppHandlers        string                 `json:"appcode"`
+	DeploymentConfig   depCfg                 `json:"depcfg"`
+	EventingVersion    string                 `json:"version"`
+	FunctionID         uint32                 `json:"handleruuid"`
+	FunctionInstanceID string                 `json:"function_instance_id"`
+	Name               string                 `json:"appname"`
+	Settings           map[string]interface{} `json:"settings"`
 }
 
 type depCfg struct {
-	Buckets        []bucket `json:"buckets"`
-	MetadataBucket string   `json:"metadata_bucket"`
-	SourceBucket   string   `json:"source_bucket"`
+	Buckets        []bucket      `json:"buckets"`
+	Curl           []common.Curl `json:"curl"`
+	MetadataBucket string        `json:"metadata_bucket"`
+	SourceBucket   string        `json:"source_bucket"`
 }
 
 type bucket struct {
 	Alias      string `json:"alias"`
 	BucketName string `json:"bucket_name"`
+	Access     string `json:"access"`
 }
 
 type backlogStat struct {
@@ -157,6 +196,7 @@ type backlogStat struct {
 
 type stats struct {
 	CheckpointBlobDump              interface{} `json:"checkpoint_blob_dump,omitempty"`
+	DCPFeedBoundary                 interface{} `json:"dcp_feed_boundary"`
 	DocTimerDebugStats              interface{} `json:"doc_timer_debug_stats,omitempty"`
 	EventProcessingStats            interface{} `json:"event_processing_stats,omitempty"`
 	EventsRemaining                 interface{} `json:"events_remaining,omitempty"`
@@ -164,34 +204,69 @@ type stats struct {
 	FailureStats                    interface{} `json:"failure_stats,omitempty"`
 	FunctionName                    interface{} `json:"function_name"`
 	GocbCredsRequestCounter         interface{} `json:"gocb_creds_request_counter,omitempty"`
+	FunctionID                      interface{} `json:"function_id,omitempty"`
 	InternalVbDistributionStats     interface{} `json:"internal_vb_distribution_stats,omitempty"`
 	LatencyPercentileStats          interface{} `json:"latency_percentile_stats,omitempty"`
 	LatencyStats                    interface{} `json:"latency_stats,omitempty"`
+	CurlLatencyStats                interface{} `json:"curl_latency_stats,omitempty"`
 	LcbCredsRequestCounter          interface{} `json:"lcb_creds_request_counter,omitempty"`
 	LcbExceptionStats               interface{} `json:"lcb_exception_stats,omitempty"`
 	PlannerStats                    interface{} `json:"planner_stats,omitempty"`
-	PlasmaStats                     interface{} `json:"plasma_stats,omitempty"`
+	MetastoreStats                  interface{} `json:"metastore_stats,omitempty"`
+	RebalanceStats                  interface{} `json:"rebalance_stats,omitempty"`
 	SeqsProcessed                   interface{} `json:"seqs_processed,omitempty"`
+	SpanBlobDump                    interface{} `json:"span_blob_dump,omitempty"`
 	VbDcpEventsRemaining            interface{} `json:"dcp_event_backlog_per_vb,omitempty"`
 	VbDistributionStatsFromMetadata interface{} `json:"vb_distribution_stats_from_metadata,omitempty"`
 	VbSeqnoStats                    interface{} `json:"vb_seq_no_stats,omitempty"`
 	WorkerPids                      interface{} `json:"worker_pids,omitempty"`
 }
 
-type config struct {
-	RAMQuota       int    `json:"ram_quota"`
-	MetadataBucket string `json:"metadata_bucket"`
-}
-
 type configResponse struct {
 	Restart bool `json:"restart"`
 }
 
-type credsInfo struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
-}
-
 type retry struct {
 	Count int64 `json:"count"`
+}
+
+type appStatus struct {
+	CompositeStatus       string `json:"composite_status"`
+	Name                  string `json:"name"`
+	NumBootstrappingNodes int    `json:"num_bootstrapping_nodes"`
+	NumDeployedNodes      int    `json:"num_deployed_nodes"`
+	DeploymentStatus      bool   `json:"deployment_status"`
+	ProcessingStatus      bool   `json:"processing_status"`
+}
+
+type appStatusResponse struct {
+	Apps             []appStatus `json:"apps"`
+	NumEventingNodes int         `json:"num_eventing_nodes"`
+}
+
+type eventingVer struct {
+	major        int
+	minor        int
+	mpVersion    int
+	build        int
+	isEnterprise bool
+}
+
+var eventingVerMap = map[string]eventingVer{
+	"vulcan": eventingVer{major: 5,
+		minor:        5,
+		mpVersion:    0,
+		build:        0,
+		isEnterprise: true},
+	"alice": eventingVer{
+		major:        6,
+		minor:        0,
+		mpVersion:    0,
+		build:        0,
+		isEnterprise: true},
+	"mad-hatter": eventingVer{major: 6,
+		minor:        5,
+		mpVersion:    0,
+		build:        0,
+		isEnterprise: true},
 }

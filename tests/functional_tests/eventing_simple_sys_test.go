@@ -31,15 +31,7 @@ func TestSimpleSystem(t *testing.T) {
 	handler1AliasSources := make([]string, 0)
 	handler1AliasSources = append(handler1AliasSources, handler1DstBucket)
 
-	handler2 := "sys_test_cron_timer"
-	handler2SrcBucket := "other-2"
-	handler2DstBucket := "other-dst-2"
-	handler2AliasHandles := make([]string, 0)
-	handler2AliasHandles = append(handler2AliasHandles, "dst_bucket3")
-	handler2AliasSources := make([]string, 0)
-	handler2AliasSources = append(handler2AliasSources, handler2DstBucket)
-
-	handler3 := "sys_test_doc_timer"
+	handler3 := "sys_test_timer"
 	handler3SrcBucket := "other-1"
 	handler3DstBucket := "other-dst-1"
 	handler3AliasHandles := make([]string, 0)
@@ -56,12 +48,6 @@ func TestSimpleSystem(t *testing.T) {
 			sourceBucket: handler1SrcBucket,
 			thrCount:     2})
 
-		createAndDeployFunction(handler2, handler2, &commonSettings{
-			aliasHandles: handler2AliasHandles,
-			aliasSources: handler2AliasSources,
-			sourceBucket: handler2SrcBucket,
-			thrCount:     2})
-
 		createAndDeployFunction(handler3, handler3, &commonSettings{
 			aliasHandles: handler3AliasHandles,
 			aliasSources: handler3AliasSources,
@@ -70,7 +56,6 @@ func TestSimpleSystem(t *testing.T) {
 			workerCount:  6})
 
 		waitForDeployToFinish(handler1)
-		waitForDeployToFinish(handler2)
 		waitForDeployToFinish(handler3)
 
 		rl1 := &rateLimit{
@@ -98,7 +83,6 @@ func TestSimpleSystem(t *testing.T) {
 		}
 
 		go pumpBucketOpsSrc(opsType{count: rlItemCount, expiry: 60}, handler1SrcBucket, rl1)
-		go pumpBucketOpsSrc(opsType{count: rlItemCount, expiry: 60}, handler2SrcBucket, rl2)
 		go pumpBucketOpsSrc(opsType{count: rlItemCount, expiry: 60}, handler3SrcBucket, rl3)
 
 		var wg sync.WaitGroup
@@ -123,18 +107,13 @@ func TestSimpleSystem(t *testing.T) {
 		wg.Wait()
 
 		setSettings(handler1, false, false, &commonSettings{})
-		setSettings(handler2, false, false, &commonSettings{})
 		setSettings(handler3, false, false, &commonSettings{})
 
 		waitForUndeployToFinish(handler1)
-		waitForUndeployToFinish(handler2)
 		waitForUndeployToFinish(handler3)
 
 		bucketFlush(handler1SrcBucket)
 		bucketFlush(handler1DstBucket)
-
-		bucketFlush(handler2SrcBucket)
-		bucketFlush(handler2DstBucket)
 
 		bucketFlush(handler3SrcBucket)
 		bucketFlush(handler3DstBucket)

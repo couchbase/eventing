@@ -1,0 +1,23 @@
+#!/bin/bash -xv
+set -e
+rm -rf /home/buildbot/.reference
+rm -f /home/buildbot/*.good
+rm -f /home/buildbot/*.maybe
+rm -f /home/buildbot/gerrit.list
+sudo rm -rf /var/www/lost+found
+sudo rm -rf /opt/lost+found
+sudo cp -r /home/buildbot/xvdb/var/www/. /var/www/
+sudo rm -rf /opt/build
+sudo mkdir /opt/build
+sudo rm -rf /opt/.ccache
+sudo mkdir /opt/.ccache
+sudo chown -R buildbot.buildbot /var/www
+sudo chown -R buildbot.buildbot /opt/build
+sudo chown -R buildbot.buildbot /opt/.ccache
+if grep -qs CCACHE_DIR /home/buildbot/.profile; then
+  echo ccache already setup
+else
+  echo 'export PATH="/usr/lib/ccache:$PATH"' >> /home/buildbot/.profile
+  echo 'export CCACHE_DIR=/opt/.ccache' >> /home/buildbot/.profile
+  echo 'max_size = 12G' >> /opt/.ccache/ccache.conf
+fi

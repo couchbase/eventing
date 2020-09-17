@@ -1,0 +1,46 @@
+{
+  "$schema": "http://json-schema.org/schema#",
+  "type": "object",
+  "required": [
+    "appcode",
+    "depcfg",
+    "version",
+    "appname",
+    "settings"
+  ],
+  "properties": {
+    "appcode": {
+      "type": "string",
+      "description": "handler code",
+      "minLength": 1
+    },
+    "depcfg": {
+      "ref": "depcfgSchema"
+    },
+    "version": {
+      "type": "string",
+      "description": "authoring tool. use 'external' if authored or edited outside eventing ui",
+      "pattern": "^evt-[5-6].[0-9]+.[0-9]+-[0-9]{4}-(ee|ce)|external$",
+      "default": "external"
+    },
+    "handleruuid": {
+      "type": "integer",
+      "description":"unique identifer of this handler",
+      "minimum": 0
+    },
+    "function_instance_id": {
+      "type": "string",
+      "description":"unique identifer of the deployment of the handler",
+      "minLength": 1
+    },
+    "appname": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100,
+      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]*$"
+    },
+    "settings": {
+      "ref": "settingsSchema"
+    }
+  }
+}

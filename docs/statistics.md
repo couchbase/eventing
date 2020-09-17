@@ -34,17 +34,33 @@ This will return the stats regardings events processing, events remaining, execu
      "on_delete_failure": 0,
      "on_delete_success": 14,
      "on_update_failure": 0,
-     "on_update_success": 1
+     "on_update_success": 1,
+     "curl": {
+	  "get": 55,
+	  "post": 68,
+	  "head": 43,
+	  "put": 22,
+	  "delete": 12
+     }
    },
    "failure_stats": {
      "bucket_op_exception_count": 0,
      "checkpoint_failure_count": 66,
      "n1ql_op_exception_count": 0,
-     "timeout_count": 0
+     "timeout_count": 0,
+     "curl_non_200_response": 32
    },
    "latency_stats": {
      "100": 12,
      "1000": 3
+   },
+   "curl_latency_stats": {
+    "414200": 1,
+    "442400": 1,
+    "484400": 1,
+    "493800": 1,
+    "576500": 1,
+    "587500": 1,
    },
    "worker_pids": {
      "worker_h1_0": 28558,
@@ -112,7 +128,14 @@ curl http://user:pass@localhost:8096/getExecutionStats?name=function_name
   "on_delete_failure": 5108,
   "on_delete_success": 6400893,
   "on_update_failure": 0,
-  "on_update_success": 11510282
+  "on_update_success": 11510282,
+  "curl": {
+    "get": 55,
+    "post": 68,
+    "head": 43,
+    "put": 22,
+    "delete": 12
+  }
 }
 ```
 
@@ -130,7 +153,7 @@ Name|Datatype|Field|Descripton
 | OnUpdate handler successful invocations | int64 | `on_update_success` | Counter for number of times OnUpdate handler was executed successfully. |
 
 ## Latency Stats
-These give latency of handler executions in wall clock time, in aggregate, across all handlers and timers. The returned object has a key which is the latency range in **microseconds** and value which is the count of executions in this range.
+These give latency of handler executions in wall clock time, in aggregate, across all handlers and timers. The returned object has a key which is the latency range in **microseconds** and value which is the count of executions in this range. `curl_latency_stats` represents the latency (i.e. the time that was spent in transfer of data) of `curl()` calls made in the handler.
 
 ```json
 curl http://user:pass@localhost:8096/getLatencyStats?name=function_name
@@ -170,7 +193,8 @@ curl http://user:password@localhost:8096/getFailureStats?name=function_name
   "bucket_op_exception_count": 5108,
   "checkpoint_failure_count": 0,
   "n1ql_op_exception_count": 0,
-  "timeout_count": 0
+  "timeout_count": 0,
+  "curl_non_200_response": 32
 }
 ```
 

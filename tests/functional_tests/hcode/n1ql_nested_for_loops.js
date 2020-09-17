@@ -1,18 +1,18 @@
 function OnUpdate(doc, meta) {
-	var lim = 1,
-	count = 0;
+	let lim = 1,
+	    count = 0;
 
-	var res1 = SELECT * FROM default LIMIT $lim;
-	for(var row1 of res1) {
-		var res2 = SELECT * FROM default LIMIT $lim;
-		for(var row2 of res2) {
-			var res3 = SELECT * FROM default LIMIT $lim;
-			for(var row3 of res3) {
-				var res4 = SELECT * FROM default LIMIT $lim;
-				for(var row4 of res4) {
-					var res5 = SELECT * FROM default LIMIT $lim;
-					for(var row5 of res5) {
-						var docId = meta.id + (++count);
+	let res1 = SELECT * FROM default LIMIT $lim;
+	for(let row1 of res1) {
+		let res2 = SELECT * FROM default LIMIT $lim;
+		for(let row2 of res2) {
+			let res3 = SELECT * FROM default LIMIT $lim;
+			for(let row3 of res3) {
+				let res4 = SELECT * FROM default LIMIT $lim;
+				for(let row4 of res4) {
+					let res5 = SELECT * FROM default LIMIT $lim;
+					for(let row5 of res5) {
+						let docId = meta.id + (++count);
 						INSERT INTO `hello-world` (KEY, VALUE) VALUES ($docId, 'Hello world');
 					}
 				}

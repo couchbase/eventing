@@ -11,10 +11,39 @@
 
 PROJECT(eventing-consumer)
 
-INCLUDE (FindCouchbaseJemalloc)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_C_STANDARD 99)
+
 INCLUDE (FindCouchbaseLibuv)
 INCLUDE (FindCouchbaseV8)
 INCLUDE (FindCouchbaseBreakpad)
+INCLUDE (../features/query/FindEventingQuery.cmake)
+INCLUDE (FindCouchbaseNlohmannJson)
+INCLUDE (FindCouchbaseOpenSSL)
+
+SET(FEATURES_HEADERS
+        ../features/include
+        ../third_party/crc64
+        ../third_party/crc32)
+
+SET(FEATURES_SRC
+        ../../eventing-ee/features/src/curl.cc
+        ../../eventing-ee/features/src/timer_defs.cc
+        ../../eventing-ee/features/src/timer_store.cc
+        ../../eventing-ee/features/src/timer_iterator.cc
+        ../features/src/lcb_util.cc
+        ../features/src/lang_compat.cc
+        ../features/src/bucket.cc
+        ../features/src/comm.cc
+        ../features/src/log.cc
+        ../features/src/js_exception.cc
+        ../features/src/v8log.cc
+        ../features/src/utils.cc
+        ../features/src/base64.cc
+        ../features/src/insight.cc
+        ../features/src/bucket_ops.cc
+        ../third_party/crc64/crc64.cc
+        ../third_party/crc32/crc32.cc)
 
 INCLUDE_DIRECTORIES(BEFORE
                      "${libcouchbase_SOURCE_DIR}/include"
@@ -23,52 +52,49 @@ INCLUDE_DIRECTORIES(BEFORE
 
 INCLUDE_DIRECTORIES(AFTER
                      ${ICU_INCLUDE_DIR}
+                     ${EVENTING_QUERY_INCLUDE_DIR}
                      ${V8_INCLUDE_DIR}
                      ${CURL_INCLUDE_DIR}
+                     ${OPENSSL_INCLUDE_DIR}
                      ${CMAKE_CURRENT_BINARY_DIR}
                      ${CMAKE_CURRENT_SOURCE_DIR}
                      ${CMAKE_CURRENT_SOURCE_DIR}/include
                      ${FLATBUFFERS_INCLUDE_DIR}
-                     ${Platform_SOURCE_DIR}/include
                      ${CMAKE_INSTALL_PREFIX}/include
-                     ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/inspector)
+                     ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/inspector
+                     ${FEATURES_HEADERS}
+                     ${NLOHMANN_JSON_INCLUDE_DIR})
 
-SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -msse4.2 -DYY_NEVER_INTERACTIVE -DYY_NO_UNPUT -DYY_NO_INPUT")
+IF (NOT WIN32)
+  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-omit-frame-pointer")
+ENDIF ()
 
 IF(BUILD_ENTERPRISE)
   SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DENTERPRISE")
 ENDIF()
 
-SET_SOURCE_FILES_PROPERTIES(${CMAKE_CURRENT_SOURCE_DIR}/../gen/parser/jsify.cc PROPERTIES GENERATED TRUE)
 
 SET(EVENTING_SOURCES
     src/client.cc
-    src/comm.cc
     src/commands.cc
     src/v8worker.cc
-    src/assert.cc
-    src/bucket.cc
-    src/n1ql.cc
     src/parse_deployment.cc
-    src/crc32c.cc
-    src/log.cc
-    src/transpiler.cc
-    src/js_exception.cc
-    src/utils.cc
-    src/function_templates.cc
     src/breakpad.cc
-    ${CMAKE_CURRENT_SOURCE_DIR}/../gen/parser/jsify.cc
+    src/timer.cc
+    src/histogram.cc
+    ${FEATURES_SRC}
+    ${EVENTING_QUERY_SRC}
     ${CMAKE_CURRENT_SOURCE_DIR}/../gen/version/version.cc)
 
 SET(EVENTING_LIBRARIES
     ${V8_LIBRARIES}
     ${ICU_LIBRARIES}
-    ${JEMALLOC_LIBRARIES}
     ${CURL_LIBRARIES}
+    ${OPENSSL_LIBRARIES}
     ${LIBUV_LIBRARIES}
     ${ZLIB_LIBRARIES}
-    eventing-inspector
-    platform)
+    ${EVENTING_QUERY_LIBRARIES}
+    eventing-inspector)
 
 IF(APPLE)
   SET(EVENTING_LIBRARIES ${EVENTING_LIBRARIES} ${FLEX_LIBRARIES})
@@ -77,12 +103,11 @@ ENDIF()
 IF(BREAKPAD_FOUND)
   SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DBREAKPAD_FOUND")
   SET(EVENTING_LIBRARIES ${EVENTING_LIBRARIES} ${BREAKPAD_LIBRARIES})
-  INCLUDE_DIRECTORIES(AFTER ${BREAKPAD_INCLUDE_DIR})
+  INCLUDE_DIRECTORIES(AFTER SYSTEM ${BREAKPAD_INCLUDE_DIR})
 ENDIF()
 
 ADD_EXECUTABLE(eventing-consumer ${EVENTING_SOURCES})
-ADD_DEPENDENCIES(eventing-consumer generated platform couchbase)
+ADD_DEPENDENCIES(eventing-consumer eventing-generated couchbase)
 
 TARGET_LINK_LIBRARIES(eventing-consumer ${EVENTING_LIBRARIES} couchbase)
-TARGET_COMPILE_OPTIONS(eventing-consumer PRIVATE ${CB_CXX_FLAGS_NO_OPTIMIZE})
 INSTALL(TARGETS eventing-consumer RUNTIME DESTINATION bin)

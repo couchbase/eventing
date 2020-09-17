@@ -14,28 +14,28 @@ import (
 
 // Generates the vbucket to eventing node assignment, ideally generated map should
 // be consistent across all nodes
-func (p *Producer) vbEventingNodeAssign() error {
+func (p *Producer) vbEventingNodeAssign(bucketName string) error {
 	logPrefix := "Producer::vbEventingNodeAssign"
 
 	// Adding a sleep to mitigate stale values from metakv
 	time.Sleep(5 * time.Second)
 
-	err := util.Retry(util.NewFixedBackoff(time.Second), &p.retryCount, getKVNodesAddressesOpCallback, p)
+	err := util.Retry(util.NewFixedBackoff(time.Second), &p.retryCount, getKVNodesAddressesOpCallback, p, bucketName)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
-		return common.ErrRetryTimeout
+		return err
 	}
 
 	err = util.Retry(util.NewFixedBackoff(time.Second), &p.retryCount, getEventingNodesAddressesOpCallback, p)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
-		return common.ErrRetryTimeout
+		return err
 	}
 
 	err = util.Retry(util.NewFixedBackoff(time.Second), &p.retryCount, getNsServerNodesAddressesOpCallback, p)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
-		return common.ErrRetryTimeout
+		return err
 	}
 
 	// Would include eventing nodes that are about to be ejected out of the cluster
@@ -58,7 +58,7 @@ func (p *Producer) vbEventingNodeAssign() error {
 	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, metakvGetCallback, p, metakvConfigKeepNodes, &data)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
-		return common.ErrRetryTimeout
+		return err
 	}
 
 	var keepNodes []string
@@ -68,6 +68,10 @@ func (p *Producer) vbEventingNodeAssign() error {
 			logPrefix, p.appName, p.LenRunningConsumers(), err)
 		return err
 	}
+
+	p.vbEventingNodeAssignRWMutex.Lock()
+	defer p.vbEventingNodeAssignRWMutex.Unlock()
+	p.vbEventingNodeAssignMap = make(map[uint16]string)
 
 	if len(keepNodes) > 0 {
 		logging.Infof("%s [%s:%d] Updating Eventing keepNodes uuids. Previous: %v current: %v",
@@ -92,10 +96,6 @@ func (p *Producer) vbEventingNodeAssign() error {
 	vbucketsPerNode := p.numVbuckets / len(eventingNodeAddrs)
 	var vbNo int
 	var startVb uint16
-
-	p.vbEventingNodeAssignRWMutex.Lock()
-	defer p.vbEventingNodeAssignRWMutex.Unlock()
-	p.vbEventingNodeAssignMap = make(map[uint16]string)
 
 	vbCountPerNode := make([]int, len(eventingNodeAddrs))
 	for i := 0; i < len(eventingNodeAddrs); i++ {
@@ -137,10 +137,7 @@ func (p *Producer) vbEventingNodeAssign() error {
 		vbEventingNodeAssignMap[vb] = node
 	}
 
-	p.RLock()
-	defer p.RUnlock()
-
-	for _, consumer := range p.runningConsumers {
+	for _, consumer := range p.getConsumers() {
 		consumer.VbEventingNodeAssignMapUpdate(vbEventingNodeAssignMap)
 	}
 
@@ -226,7 +223,7 @@ func (p *Producer) vbNodeWorkerMap() {
 	}
 }
 
-func (p *Producer) initWorkerVbMap() {
+func (p *Producer) initWorkerVbMap() map[string][]uint16 {
 	logPrefix := "Producer::initWorkerVbMap"
 
 	hostAddress := net.JoinHostPort(util.Localhost(), p.nsServerPort)
@@ -273,6 +270,8 @@ func (p *Producer) initWorkerVbMap() {
 
 	p.workerVbMapRWMutex.Lock()
 	defer p.workerVbMapRWMutex.Unlock()
+
+	oldworkerVbucketMap := p.workerVbucketMap // save old workerVbucketMap reference
 	p.workerVbucketMap = make(map[string][]uint16)
 
 	startVbIndex = 0
@@ -295,29 +294,40 @@ func (p *Producer) initWorkerVbMap() {
 		workerVbucketMap[workerName] = assignedVbs
 	}
 
-	p.RLock()
-	defer p.RUnlock()
-
 	logging.Infof("%s [%s:%d] Sending workerVbucketMap: %v to all consumers",
 		logPrefix, p.appName, p.LenRunningConsumers(), workerVbucketMap)
 
-	for _, consumer := range p.runningConsumers {
+	for _, consumer := range p.getConsumers() {
 		consumer.WorkerVbMapUpdate(workerVbucketMap)
+		consumer.SendAssignedVbs()
 	}
+
+	return oldworkerVbucketMap
 }
 
 func (p *Producer) getKvVbMap() error {
 	logPrefix := "Producer::getKvVbMap"
+
+	if p.isTerminateRunning {
+		return nil
+	}
 
 	var cinfo *util.ClusterInfoCache
 
 	err := util.Retry(util.NewFixedBackoff(time.Second), &p.retryCount, getClusterInfoCacheOpCallback, p, &cinfo)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
-		return common.ErrRetryTimeout
+		return err
 	}
 
-	kvAddrs := cinfo.GetNodesByServiceType(dataService)
+	kvAddrs, err := cinfo.GetNodesByBucket(p.handlerConfig.SourceBucket)
+	if err != nil {
+		logging.Errorf("%s [%s:%d] Failed to get address of KV host housing source bucket: %s, err: %v",
+			logPrefix, p.appName, p.LenRunningConsumers(), p.handlerConfig.SourceBucket, err)
+		return err
+	}
+
+	logging.Infof("%s [%s:%d] kvAddrs: %v", logPrefix, p.appName, p.LenRunningConsumers(), kvAddrs)
 
 	p.kvVbMap = make(map[uint16]string)
 

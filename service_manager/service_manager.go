@@ -2,6 +2,7 @@ package servicemanager
 
 import (
 	"bytes"
+	"net"
 	"os"
 	"time"
 
@@ -95,7 +96,6 @@ func (m *ServiceMgr) GetCurrentTopology(rev service.Revision, cancel service.Can
 	logging.Debugf("%s topology: %#v", logPrefix, topology)
 
 	return topology, nil
-
 }
 
 // PrepareTopologyChange callback for cbauth service.Manager
@@ -106,6 +106,23 @@ func (m *ServiceMgr) PrepareTopologyChange(change service.TopologyChange) error 
 	defer m.mu.Unlock()
 
 	logging.Infof("%s change: %#v", logPrefix, change)
+
+	// refresh cluster info to ensure we use latest
+	hostaddress := net.JoinHostPort(util.Localhost(), m.restPort)
+	cic, err := util.FetchClusterInfoClient(hostaddress)
+	if err != nil {
+		return err
+	}
+	cinfo := cic.GetClusterInfoCache()
+	cinfo.FetchWithLock()
+
+	if change.Type == service.TopologyChangeTypeRebalance {
+		err = m.checkTopologyChangeReadiness(change.Type)
+		if err != nil {
+			logging.Infof("%s failed: %v", logPrefix, err)
+			return err
+		}
+	}
 
 	m.ejectNodeUUIDs = make([]string, 0)
 
@@ -135,8 +152,15 @@ func (m *ServiceMgr) PrepareTopologyChange(change service.TopologyChange) error 
 		m.servers = nodeList
 	})
 
-	m.superSup.NotifyPrepareTopologyChange(m.ejectNodeUUIDs, m.keepNodeUUIDs)
+	logging.Infof("%s m.rebalanceID: %v m.servers: %v", logPrefix, m.rebalanceID, m.servers)
 
+	m.superSup.NotifyPrepareTopologyChange(m.ejectNodeUUIDs, m.keepNodeUUIDs, change.Type)
+
+	if change.Type == service.TopologyChangeTypeFailover {
+		m.SetFailoverStatus(change.ID)
+	}
+
+	logging.Infof("%s completed: %v", logPrefix, err)
 	return nil
 }
 
@@ -174,30 +198,9 @@ func (m *ServiceMgr) StartTopologyChange(change service.TopologyChange) error {
 	switch change.Type {
 	case service.TopologyChangeTypeFailover:
 		util.Retry(util.NewFixedBackoff(time.Second), nil, storeKeepNodesCallback, m.keepNodeUUIDs)
-		m.failoverNotif = true
+		logging.Infof("%s failover completed", logPrefix)
 
 	case service.TopologyChangeTypeRebalance:
-
-		nodeAddrs, err := m.getActiveNodeAddrs()
-		logging.Infof("%s Active Eventing nodes in the cluster: %rs", logPrefix, nodeAddrs)
-
-		if len(nodeAddrs) > 0 && err == nil {
-
-			logging.Infof("%s Querying nodes: %rs for bootstrap status", logPrefix, nodeAddrs)
-
-			// Fail rebalance if some apps are undergoing bootstrap
-			appsBootstrapping, err := util.GetAggBootstrappingApps("/getBootstrappingApps", nodeAddrs)
-			logging.Infof("%s Status of app bootstrap across all Eventing nodes: %v", logPrefix, appsBootstrapping)
-			if err != nil {
-				logging.Warnf("%s Some apps are undergoing bootstrap on some/all Eventing nodes, err: %v", logPrefix, err)
-				return err
-			}
-		}
-
-		if err != nil {
-			logging.Warnf("%s Error encountered while fetching active Eventing nodes, err: %v", logPrefix, err)
-		}
-
 		util.Retry(util.NewFixedBackoff(time.Second), nil, storeKeepNodesCallback, m.keepNodeUUIDs)
 
 		m.startRebalance(change)
@@ -205,7 +208,7 @@ func (m *ServiceMgr) StartTopologyChange(change service.TopologyChange) error {
 		logging.Infof("%s Starting up rebalancer", logPrefix)
 
 		rebalancer := newRebalancer(m.adminHTTPPort, change, m.rebalanceDoneCallback, m.rebalanceProgressCallback,
-			m.keepNodeUUIDs)
+			m.keepNodeUUIDs, len(m.fnsInPrimaryStore))
 		m.rebalancer = rebalancer
 
 	default:
@@ -214,3 +217,4 @@ func (m *ServiceMgr) StartTopologyChange(change service.TopologyChange) error {
 
 	return nil
 }
+

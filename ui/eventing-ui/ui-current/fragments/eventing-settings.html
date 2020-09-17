@@ -1,0 +1,25 @@
+<div class="dialog-small">
+    <div class="panel-header">
+        <h2>Eventing Settings</h2>
+    </div>
+    <div class="panel-content">
+        <input type="checkbox" id="debugger" ng-model="ctrl.enableDebugger" ng-click="$event.stopPropagation();">
+        <label for="debugger" class="margin-right-0">Enable debugger</label>
+        <span
+           class="fa-stack icon-info"
+           uib-tooltip="Enable debugging for all functions. Not recommended for production environments."
+           tooltip-placement="auto right"
+           tooltip-trigger="'mouseenter'">
+          <span class="icon fa-circle-thin fa-stack-2x"></span>
+          <span class="icon fa-info fa-stack-1x"></span>
+          </span>
+    </div>
+    <div class="panel-footer">
+        <a ng-click="$dismiss('cancel')">
+            Cancel
+        </a>
+        <button ng-click="ctrl.saveSettings($close)">
+            Save
+        </button>
+    </div>
+</div>

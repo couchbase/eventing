@@ -1,0 +1,43 @@
+[
+  {
+    "appcode": "// This function runs at the promised delivery date to see status of package\nfunction statusCheck(context) {\n    var label = labels_bucket[context];\n    if (label.delivered) return;\n    sendEmail('someone@example.com', // Put in a valid email address here\n              label.number,\n              label.exceptions);\n}\n\n// This function executes whenever a label is created or modified\nfunction OnUpdate(label, meta) {\n    if (label.delivered) return; // ignore packages that are already delivered\n    var deliver_by = new Date(label.deliver_by);\n    log(\"Delayed package, sending email: \", label.number);\n    createTimer(statusCheck,     // function to run when timer fires\n                deliver_by,      // date for timer to fire\n                meta.id,         // unique key set to document key\n                label.number);   // user context set to label number\n}\n\n// This function sends an email with details of the delay\nfunction sendEmail(to, reference, reasons) {\n    var msg = 'We are sorry, your package ' + reference + ' is delayed due to following reasons:<p>';\n    for (var i = 0; reasons && i < reasons.length; i++) {\n        msg += 'Exception: [' + reasons[i].date + '] - ' + reasons[i].description + '<br>';\n    }\n    msg += '<p>Please call us at 1-800-555-1212 if you need further information';\n    var email = {\n        'personalizations': [{'to': [{'email': to}]}],\n        'from': {'email': 'cb.ci.bot@gmail.com'},\n        'subject': 'Package delivery delay: ' + reference,\n        'content': [{'type': 'text/html', value: msg}]\n    };\n    var response = curl('POST', mailer_binding, {body: email});\n    if (response.status < 200 || response.status >= 300) {\n        log(\"Failed to send email: \", response);\n    }\n}",
+    "depcfg": {
+      "buckets": [
+        {
+          "alias": "labels_bucket",
+          "bucket_name": "labels",
+          "access": "r"
+        }
+      ],
+      "curl": [
+        {
+          "hostname": "https://api.sendgrid.com/v3/mail/send",
+          "value": "mailer_binding",
+          "auth_type": "bearer",
+          "username": "",
+          "password": "",
+          "bearer_key": "",
+          "allow_cookies": true,
+          "validate_ssl_certificate": true
+        }
+      ],
+      "metadata_bucket": "meta",
+      "source_bucket": "labels"
+    },
+    "version": "evt-6.5.0-0000-ee",
+    "function_id": 1792638007,
+    "function_instance_id": "RsaIK3",
+    "appname": "EmailOnDelay",
+    "settings": {
+      "dcp_stream_boundary": "everything",
+      "deadline_timeout": 62,
+      "deployment_status": false,
+      "description": "Send an email when a package misses promised delivery date",
+      "execution_timeout": 60,
+      "log_level": "INFO",
+      "processing_status": false,
+      "user_prefix": "eventing",
+      "worker_count": 3
+    }
+  }
+]

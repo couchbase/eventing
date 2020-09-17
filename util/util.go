@@ -2,8 +2,10 @@ package util
 
 import (
 	"bytes"
+	"compress/flate"
 	"crypto/md5"
 	"crypto/rand"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,7 +14,9 @@ import (
 	"io/ioutil"
 	"math"
 	"net/url"
+	"os"
 	"reflect"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -24,9 +28,11 @@ import (
 	"github.com/couchbase/cbauth/metakv"
 	cm "github.com/couchbase/eventing/common"
 	mcd "github.com/couchbase/eventing/dcp/transport"
+	"github.com/couchbase/eventing/gen/flatbuf/cfg"
 	"github.com/couchbase/eventing/logging"
-	"github.com/couchbase/gocb"
 	"github.com/couchbase/gomemcached"
+	flatbuffers "github.com/google/flatbuffers/go"
+	"gopkg.in/couchbase/gocb.v1"
 )
 
 const (
@@ -34,13 +40,8 @@ const (
 	DataService          = "kv"
 	MgmtService          = "mgmt"
 
-	HTTPRequestTimeout = time.Duration(5000) * time.Millisecond
-
 	EPSILON = 1e-5
-)
-
-const (
-	metakvMaxDocSize = 4096 //Fragment size for Appcontent
+	dict    = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ*&"
 )
 
 var GocbCredsRequestCounter = 0
@@ -153,10 +154,13 @@ func SprintV8Counts(counts map[string]uint64) string {
 }
 
 func NsServerNodesAddresses(auth, hostaddress string) ([]string, error) {
-	cinfo, err := FetchNewClusterInfoCache(hostaddress)
+	cic, err := FetchClusterInfoClient(hostaddress)
 	if err != nil {
 		return nil, err
 	}
+	cinfo := cic.GetClusterInfoCache()
+	cinfo.RLock()
+	defer cinfo.RUnlock()
 
 	nsServerAddrs := cinfo.GetNodesByServiceType(MgmtService)
 
@@ -171,13 +175,19 @@ func NsServerNodesAddresses(auth, hostaddress string) ([]string, error) {
 	return nsServerNodes, nil
 }
 
-func KVNodesAddresses(auth, hostaddress string) ([]string, error) {
-	cinfo, err := FetchNewClusterInfoCache(hostaddress)
+func KVNodesAddresses(auth, hostaddress, bucket string) ([]string, error) {
+	cic, err := FetchClusterInfoClient(hostaddress)
 	if err != nil {
 		return nil, err
 	}
+	cinfo := cic.GetClusterInfoCache()
+	cinfo.RLock()
+	defer cinfo.RUnlock()
 
-	kvAddrs := cinfo.GetNodesByServiceType(DataService)
+	kvAddrs, err := cinfo.GetNodesByBucket(bucket)
+	if err != nil {
+		return nil, err
+	}
 
 	kvNodes := []string{}
 	for _, kvAddr := range kvAddrs {
@@ -192,11 +202,13 @@ func KVNodesAddresses(auth, hostaddress string) ([]string, error) {
 
 func EventingNodesAddresses(auth, hostaddress string) ([]string, error) {
 	logPrefix := "util::EventingNodesAddresses"
-
-	cinfo, err := FetchNewClusterInfoCache(hostaddress)
+	cic, err := FetchClusterInfoClient(hostaddress)
 	if err != nil {
 		return nil, err
 	}
+	cinfo := cic.GetClusterInfoCache()
+	cinfo.RLock()
+	defer cinfo.RUnlock()
 
 	eventingAddrs := cinfo.GetNodesByServiceType(EventingAdminService)
 
@@ -218,10 +230,14 @@ func EventingNodesAddresses(auth, hostaddress string) ([]string, error) {
 func CurrentEventingNodeAddress(auth, hostaddress string) (string, error) {
 	logPrefix := "util::CurrentEventingNodeAddress"
 
-	cinfo, err := FetchNewClusterInfoCache(hostaddress)
+	cic, err := FetchClusterInfoClient(hostaddress)
 	if err != nil {
 		return "", err
 	}
+
+	cinfo := cic.GetClusterInfoCache()
+	cinfo.RLock()
+	defer cinfo.RUnlock()
 
 	cNodeID := cinfo.GetCurrentNode()
 	eventingNode, err := cinfo.GetServiceAddress(cNodeID, EventingAdminService)
@@ -246,13 +262,35 @@ func LocalEventingServiceHost(auth, hostaddress string) (string, error) {
 	return srvAddr, nil
 }
 
+func CountActiveKVNodes(bucket, hostaddress string) int {
+	cic, err := FetchClusterInfoClient(hostaddress)
+	if err != nil {
+		return -1
+	}
+	cinfo := cic.GetClusterInfoCache()
+	cinfo.RLock()
+	defer cinfo.RUnlock()
+
+	kvAddrs, err := cinfo.GetNodesByBucket(bucket)
+	if err != nil {
+		if err.Error() == fmt.Sprintf("No bucket named "+bucket) {
+			return 0
+		}
+		return -1
+	}
+
+	return len(kvAddrs)
+}
+
 func KVVbMap(auth, bucket, hostaddress string) (map[uint16]string, error) {
 	logPrefix := "util::KVVbMap"
-
-	cinfo, err := FetchNewClusterInfoCache(hostaddress)
+	cic, err := FetchClusterInfoClient(hostaddress)
 	if err != nil {
 		return nil, err
 	}
+	cinfo := cic.GetClusterInfoCache()
+	cinfo.RLock()
+	defer cinfo.RUnlock()
 
 	kvAddrs := cinfo.GetNodesByServiceType(DataService)
 
@@ -294,43 +332,18 @@ func Console(clusterAddr string, format string, v ...interface{}) error {
 	return err
 }
 
-func StopDebugger(urlSuffix, nodeAddr, appName string) {
+func StopDebugger(nodeAddr, appName string) {
 	endpointURL := fmt.Sprintf("http://%s/stopDebugger/?name=%s", nodeAddr, appName)
-	netClient := NewClient(HTTPRequestTimeout)
-
-	_, err := netClient.Get(endpointURL)
-	if err != nil {
-		logging.Errorf("UTIL Failed to capture v8 debugger url from url: %rs, err: %v", endpointURL, err)
-		return
-	}
-	return
-}
-
-func GetDebuggerURL(urlSuffix, nodeAddr, appName string) string {
-	logPrefix := "util::GetDebuggerURL"
-
-	if nodeAddr == "" {
-		logging.Verbosef("%s Debugger host not found. Debugger not started", logPrefix)
-		return ""
-	}
-
-	endpointURL := fmt.Sprintf("http://%s/%s/?name=%s", nodeAddr, urlSuffix, appName)
-
 	netClient := NewClient(HTTPRequestTimeout)
 
 	res, err := netClient.Get(endpointURL)
 	if err != nil {
-		logging.Errorf("%s Failed to capture v8 debugger url from url: %rs, err: %v", logPrefix, endpointURL, err)
-		return ""
+		logging.Errorf("UTIL Failed to capture v8 debugger url from url: %rs, err: %v", endpointURL, err)
+		return
 	}
 
-	buf, err := ioutil.ReadAll(res.Body)
-	if err != nil {
-		logging.Errorf("%s Failed to read v8 debugger url response from url: %rs, err: %v", logPrefix, endpointURL, err)
-		return ""
-	}
-
-	return string(buf)
+	defer res.Body.Close()
+	return
 }
 
 func GetNodeUUIDs(urlSuffix string, nodeAddrs []string) (map[string]string, error) {
@@ -402,7 +415,7 @@ func GetEventProcessingStats(urlSuffix string, nodeAddrs []string) (map[string]i
 	return pStats, nil
 }
 
-func GetProgress(urlSuffix string, nodeAddrs []string) (*cm.RebalanceProgress, map[string]error) {
+func GetProgress(urlSuffix string, nodeAddrs []string) (*cm.RebalanceProgress, map[string]interface{}, map[string]error) {
 	logPrefix := "util::GetProgress"
 
 	aggProgress := &cm.RebalanceProgress{}
@@ -410,6 +423,8 @@ func GetProgress(urlSuffix string, nodeAddrs []string) (*cm.RebalanceProgress, m
 	netClient := NewClient(HTTPRequestTimeout)
 
 	errMap := make(map[string]error)
+
+	progressMap := make(map[string]interface{})
 
 	for _, nodeAddr := range nodeAddrs {
 		endpointURL := fmt.Sprintf("http://%s%s", nodeAddr, urlSuffix)
@@ -440,17 +455,29 @@ func GetProgress(urlSuffix string, nodeAddrs []string) (*cm.RebalanceProgress, m
 		logging.Infof("%s endpointURL: %rs VbsRemainingToShuffle: %d VbsOwnedPerPlan: %d",
 			logPrefix, endpointURL, progress.VbsRemainingToShuffle, progress.VbsOwnedPerPlan)
 
+		rebProgress := make(map[string]interface{})
+		rebProgress["close_stream_vbs_len"] = progress.CloseStreamVbsLen
+		rebProgress["stream_req_vbs_len"] = progress.StreamReqVbsLen
+		rebProgress["vbs_owned_per_plan"] = progress.VbsOwnedPerPlan
+		rebProgress["vbs_remaining_to_shuffle"] = progress.VbsRemainingToShuffle
+
+		progressMap[nodeAddr] = rebProgress
+
 		aggProgress.VbsRemainingToShuffle += progress.VbsRemainingToShuffle
 		aggProgress.VbsOwnedPerPlan += progress.VbsOwnedPerPlan
+
+		if urlSuffix == "/getAggRebalanceProgress" {
+			aggProgress.NodeLevelStats = progress.NodeLevelStats
+		}
 	}
 
-	return aggProgress, errMap
+	return aggProgress, progressMap, errMap
 }
 
-func GetDeployedApps(urlSuffix string, nodeAddrs []string) (map[string]map[string]string, error) {
-	logPrefix := "util::GetDeployedApps"
+func GetAppStatus(urlSuffix string, nodeAddrs []string) (map[string]map[string]string, error) {
+	logPrefix := "util::GetAppStatus"
 
-	deployedApps := make(map[string]map[string]string)
+	appStatuses := make(map[string]map[string]string)
 
 	netClient := NewClient(HTTPRequestTimeout)
 
@@ -459,7 +486,7 @@ func GetDeployedApps(urlSuffix string, nodeAddrs []string) (map[string]map[strin
 
 		res, err := netClient.Get(endpointURL)
 		if err != nil {
-			logging.Errorf("%s Failed to get deployed apps from url: %rs, err: %v", logPrefix, endpointURL, err)
+			logging.Errorf("%s Failed to get app statuses from url: %rs, err: %v", logPrefix, endpointURL, err)
 			return nil, err
 		}
 		defer res.Body.Close()
@@ -470,18 +497,18 @@ func GetDeployedApps(urlSuffix string, nodeAddrs []string) (map[string]map[strin
 			return nil, err
 		}
 
-		var locallyDeployedApps map[string]string
-		err = json.Unmarshal(buf, &locallyDeployedApps)
+		var appStatus map[string]string
+		err = json.Unmarshal(buf, &appStatus)
 		if err != nil {
-			logging.Errorf("%s Failed to unmarshal deployed apps from url: %rs, err: %v", logPrefix, endpointURL, err)
+			logging.Errorf("%s Failed to unmarshal apps statuses from url: %rs, err: %v", logPrefix, endpointURL, err)
 			return nil, err
 		}
 
-		deployedApps[nodeAddr] = make(map[string]string)
-		deployedApps[nodeAddr] = locallyDeployedApps
+		appStatuses[nodeAddr] = make(map[string]string)
+		appStatuses[nodeAddr] = appStatus
 	}
 
-	return deployedApps, nil
+	return appStatuses, nil
 }
 
 func ListChildren(path string) []string {
@@ -514,84 +541,153 @@ func MetakvGet(path string) ([]byte, error) {
 	return data, err
 }
 
+var metakvSetCallback = func(args ...interface{}) error {
+	logPrefix := "Util::metakvSetCallback"
+
+	metakvPath := args[0].(string)
+	data := args[1].([]byte)
+	rev := args[2]
+
+	err := metakv.Set(metakvPath, data, rev)
+	if err != nil {
+		logging.Errorf("%s metakv set failed for path: %s, err: %v", logPrefix, metakvPath, err)
+	}
+	return err
+}
+
 func MetakvSet(path string, value []byte, rev interface{}) error {
-	return metakv.Set(path, value, rev)
+	return Retry(NewFixedBackoff(time.Second), &cm.MetakvMaxRetries, metakvSetCallback, path, value, rev)
+}
+
+var metakvSetSensitiveCallback = func(args ...interface{}) error {
+	logPrefix := "Util::metakvSetSensitiveCallback"
+
+	metakvPath := args[0].(string)
+	data := args[1].([]byte)
+	rev := args[2]
+
+	err := metakv.SetSensitive(metakvPath, data, rev)
+	if err != nil {
+		logging.Errorf("%s metakv set sensitive failed for path: %s, err: %v", logPrefix, metakvPath, err)
+	}
+	return err
+}
+
+func MetakvSetSensitive(path string, value []byte, rev interface{}) error {
+	return Retry(NewFixedBackoff(time.Second), &cm.MetakvMaxRetries, metakvSetSensitiveCallback, path, value, rev)
+}
+
+var metakvDelCallback = func(args ...interface{}) error {
+	logPrefix := "Util::metakvDelCallback"
+
+	metakvPath := args[0].(string)
+	rev := args[1]
+
+	err := metakv.Delete(metakvPath, rev)
+	if err != nil {
+		logging.Errorf("%s metakv delete failed for path: %s, err: %v", logPrefix, metakvPath, err)
+	}
+	return err
 }
 
 func MetaKvDelete(path string, rev interface{}) error {
-	return metakv.Delete(path, rev)
+	return Retry(NewFixedBackoff(time.Second), &cm.MetakvMaxRetries, metakvDelCallback, path, rev)
+}
+
+var metakvRecDelCallback = func(args ...interface{}) error {
+	logPrefix := "Util::metakvRecDelCallback"
+
+	metakvPath := args[0].(string)
+
+	err := metakv.RecursiveDelete(metakvPath)
+	if err != nil {
+		logging.Errorf("%s metakv recursive delete failed for path: %s, err: %v", logPrefix, metakvPath, err)
+	}
+	return err
 }
 
 func MetakvRecursiveDelete(dirpath string) error {
-	return metakv.RecursiveDelete(dirpath)
-}
-
-func RecursiveDelete(dirpath string) error {
-	return metakv.RecursiveDelete(dirpath)
+	return Retry(NewFixedBackoff(time.Second), &cm.MetakvMaxRetries, metakvRecDelCallback, dirpath)
 }
 
 //WriteAppContent fragments the payload and store it to metakv
-func WriteAppContent(appsPath, checksumPath, appName string, payload []byte) error {
+func WriteAppContent(appsPath, checksumPath, appName string, payload []byte, compressPayload bool) error {
 	logPrefix := "util::WriteAppContent"
+
+	payload2, err := StripCurlCredentials(appsPath, appName, payload)
+	if err != nil {
+		return err
+	}
+
+	payload3, err := MaybeCompress(payload2, compressPayload)
+	if err != nil {
+		return err
+	}
+
 	appsPath += appName
 	appsPath += "/"
-	length := len(payload)
+	length := len(payload3)
 
 	checksumPath += appName
-	fragmentCount := length / metakvMaxDocSize
-	if length%metakvMaxDocSize != 0 {
+	fragmentCount := length / MetaKvMaxDocSize()
+	if length%MetaKvMaxDocSize() != 0 {
 		fragmentCount++
 	}
-	logging.Infof("%s Number of fragments: %d payload size: %d appName: %s", logPrefix, fragmentCount, length, appName)
+
+	logging.Infof("%s Function: %s number of fragments: %d payload size: %d app path: %s checksum path: %s",
+		logPrefix, appName, fragmentCount, length, appsPath, checksumPath)
+
 	for idx := 0; idx < fragmentCount; idx++ {
 		currpath := appsPath + strconv.Itoa(int(idx))
-		curridx := idx * metakvMaxDocSize
-		lastidx := (idx + 1) * metakvMaxDocSize
+		curridx := idx * MetaKvMaxDocSize()
+		lastidx := (idx + 1) * MetaKvMaxDocSize()
 		if lastidx > length {
 			lastidx = length
 		}
-		fragment := payload[curridx:lastidx]
+
+		fragment := payload3[curridx:lastidx]
+
 		err := MetakvSet(currpath, fragment, nil)
 		if err != nil {
 			//Delete existing entry from appspath
-			logging.Errorf("%s MetakvSet failed for fragments, fragment number: %d appName: %s err: %v", logPrefix, idx, appName, err)
+			logging.Errorf("%s Function: %s metakv set failed for fragments, fragment number: %d, err: %v", logPrefix, appName, idx, err)
 			if errd := MetakvRecursiveDelete(appsPath); errd != nil {
-				logging.Errorf("%s MetakvSet::MetakvRecursiveDelete failed, fragment number: %d appName: %s err: %v", logPrefix, idx, appName, errd)
+				logging.Errorf("%s Function: %s metakv recursive delete failed, fragment number: %d, err: %v", logPrefix, appName, idx, errd)
 				return errd
 			}
 			return err
 		}
 	}
 
-	//Compute MD5 hash and Update it to metakv
+	//Compute MD5 hash and update it in metakv
 	payloadhash := PayloadHash{}
-	if err := payloadhash.Update(payload, metakvMaxDocSize); err != nil {
-		logging.Errorf("%s Updating payload hash failed, appName: %s err: %v", logPrefix, appName, err)
+	if err := payloadhash.Update(payload3, MetaKvMaxDocSize()); err != nil {
+		logging.Errorf("%s Function: %s updating payload hash failed err: %v", logPrefix, appName, err)
 		//Delete existing entry from appspath
 		if errd := MetakvRecursiveDelete(appsPath); errd != nil {
-			logging.Errorf("%s Payloadhash::MetakvRecursiveDelete failed, appName: %s err: %v", logPrefix, appName, errd)
+			logging.Errorf("%s Function: %s payload hash metakv recursive delete failed, err: %v", logPrefix, appName, errd)
 			return errd
 		}
 		return err
 	}
 
-	//Marshal payloadhash and update it to metakv
+	//Marshal payload hash and update it in metakv
 	hashdata, err := json.Marshal(&payloadhash)
 	if err != nil {
-		//Delete existing entry from appspath
-		logging.Errorf("%s Json Marshal failed appName: %s err: %v", logPrefix, appName, err)
+		//Delete existing entry from apps path
+		logging.Errorf("%s Function: %s marshal failed, err: %v", logPrefix, appName, err)
 		if errd := MetakvRecursiveDelete(appsPath); errd != nil {
-			logging.Errorf("%s : JsonMarshal::MetaRecursiveDelete appName: %s err: %v", logPrefix, appName, errd)
+			logging.Errorf("%s Function: %s unmarshal failed, err: %v", logPrefix, appName, errd)
 			return errd
 		}
 		return err
 	}
 
 	if err = MetakvSet(checksumPath, hashdata, nil); err != nil {
-		//Delete existing entry from appspath
-		logging.Errorf("%s MetakvSet failed for checksum appName: %s err: %v", logPrefix, appName, err)
+		//Delete existing entry from apps path
+		logging.Errorf("%s Function: %s metakv set failed for checksum, err: %v", logPrefix, appName, err)
 		if errd := MetakvRecursiveDelete(appsPath); errd != nil {
-			logging.Errorf("%s Checksum::MetakvRecursiveDelete appName: %s err: %v", logPrefix, appName, errd)
+			logging.Errorf("%s Function: %s checksum metakv recursive delete, err: %v", logPrefix, appName, errd)
 			return errd
 		}
 		return err
@@ -600,18 +696,23 @@ func WriteAppContent(appsPath, checksumPath, appName string, payload []byte) err
 	return nil
 }
 
-//ReadAppContent reads Handler Code
+// ReadAppContent reads function code
 func ReadAppContent(appsPath, checksumPath, appName string) ([]byte, error) {
-	//Fetch Checksum data from metakv and unmarshal it
 	logPrefix := "util::ReadAppContent"
+
 	checksumPath += appName
 	var payloadhash PayloadHash
 	if hashdata, err := MetakvGet(checksumPath); err != nil {
-		logging.Errorf("%s MetakvGet failed for checksum appName: %s err: %v", logPrefix, appName, err)
+		logging.Errorf("%s Function: %s metakv get failed for checksum, err: %v", logPrefix, appName, err)
 		return nil, err
 	} else {
+		if len(hashdata) == 0 {
+			logging.Errorf("%s Function: %s app content doesn't exist or is empty", logPrefix, appName)
+			return nil, nil
+		}
+
 		if err := json.Unmarshal(hashdata, &payloadhash); err != nil {
-			logging.Errorf("%s Json Unmarshal failed for checksum appName: %s", logPrefix, appName)
+			logging.Errorf("%s Function: %s unmarshal failed for checksum", logPrefix, appName)
 			return nil, err
 		}
 	}
@@ -623,27 +724,46 @@ func ReadAppContent(appsPath, checksumPath, appName string) ([]byte, error) {
 		path := appsPath + "/" + strconv.Itoa(int(idx))
 		data, err := MetakvGet(path)
 		if err != nil {
-			logging.Errorf("%s MetakvGet failed for fragments, fragment number: %d fragment count: %d appName: %s err: %v", logPrefix, idx, payloadhash.Fragmentcnt, appName, err)
+			logging.Errorf("%s Function: %s metakv get failed for fragments, fragment number: %d fragment count: %d, err: %v",
+				logPrefix, appName, idx, payloadhash.Fragmentcnt, err)
 			return nil, err
 		}
 
 		if data == nil {
-			logging.Errorf("%s MetakvGet data is empty,  fragment number: %d fragment count: %d appName: %s", logPrefix, idx, payloadhash.Fragmentcnt, appName)
+			logging.Errorf("%s Function: %s metakv get data is empty, fragment number: %d fragment count: %d",
+				logPrefix, appName, idx, payloadhash.Fragmentcnt)
 			return nil, errors.New("Reading stale data")
 		}
 
 		if fragmenthash, err := ComputeMD5(data); err != nil {
-			logging.Errorf("%s MetakvGet MD5 computation failed, fragment number: %d fragment count: %d appName: %s err: %v", logPrefix, idx, payloadhash.Fragmentcnt, appName, err)
+			logging.Errorf("%s Function: %s metakv get MD5 computation failed, fragment number: %d fragment count: %d, err: %v",
+				logPrefix, appName, idx, payloadhash.Fragmentcnt, err)
 			return nil, err
 		} else {
 			if bytes.Equal(fragmenthash, payloadhash.Fragmenthash[idx]) != true {
-				logging.Errorf("%s MetakvGet Checksum Mismatch, fragment number: %d fragment count: %d appName: %s", logPrefix, idx, payloadhash.Fragmentcnt, appName)
-				return nil, errors.New("Checksum mismatch for payload fragments")
+				logging.Errorf("%s Function: %s metakv get checksum mismatch, fragment number: %d fragment count: %d",
+					logPrefix, appName, idx, payloadhash.Fragmentcnt)
+				return nil, errors.New("checksum mismatch for payload fragments")
 			}
 			payload = append(payload, data...)
 		}
 	}
-	return payload, nil
+
+	payload2, err := MaybeDecompress(payload)
+	if err != nil {
+		return nil, err
+	}
+
+	payload3, mErr := AppendCredentials(appsPath, appName, payload2)
+	if mErr != nil {
+		return nil, mErr
+	}
+
+	payload4, lErr := AppendLangCompat(appsPath, appName, payload3)
+	if lErr != nil {
+		return nil, lErr
+	}
+	return payload4, nil
 }
 
 //DeleteAppContent delete handler code
@@ -652,7 +772,7 @@ func DeleteAppContent(appPath, checksumPath, appName string) error {
 	logPrefix := "util::DeleteAppContent"
 	checksumPath += appName
 	if err := MetaKvDelete(checksumPath, nil); err != nil {
-		logging.Errorf("%s MetakvDelete failed for checksum appName: %s err: %v", logPrefix, appName, err)
+		logging.Errorf("%s Function: %s metakv delete failed for checksum, err: %v", logPrefix, appName, err)
 		return err
 	}
 
@@ -660,9 +780,16 @@ func DeleteAppContent(appPath, checksumPath, appName string) error {
 	appPath += appName
 	appPath += "/"
 	if err := MetakvRecursiveDelete(appPath); err != nil {
-		logging.Errorf("%s MetakvRecursiveDelete failed for Apps appName: %s err: %v", logPrefix, appName, err)
+		logging.Errorf("%s Function: %s metakv recursive delete failed, err: %v", logPrefix, appName, err)
 		return err
 	}
+
+	//Delete Credentials path
+	if err := MetaKvDelete(cm.MetakvCredentialsPath+appName, nil); err != nil {
+		logging.Infof("%s Function: %s failed to delete credentials, err: %v", logPrefix, appName, err)
+		return err
+	}
+
 	return nil
 }
 
@@ -673,7 +800,7 @@ func DeleteStaleAppContent(appPath, appName string) error {
 	appPath += appName
 	appPath += "/"
 	if err := MetakvRecursiveDelete(appPath); err != nil {
-		logging.Errorf("%s MetakvRecursiveDelete failed for Apps appName: %s err: %v", logPrefix, appName, err)
+		logging.Errorf("%s Function: %s metakv recursive delete failed, err: %v", logPrefix, appName, err)
 		return err
 	}
 	return nil
@@ -693,7 +820,30 @@ func MemcachedErrCode(err error) gomemcached.Status {
 	return status
 }
 
-func CompareSlices(s1, s2 []string) bool {
+func CompareSlices(s1, s2 []uint16) bool {
+
+	if s1 == nil && s2 == nil {
+		return true
+	}
+
+	if s1 == nil || s2 == nil {
+		return false
+	}
+
+	if len(s1) != len(s2) {
+		return false
+	}
+
+	for i := range s1 {
+		if s1[i] != s2[i] {
+			return false
+		}
+	}
+
+	return true
+}
+
+func CompareStringSlices(s1, s2 []string) bool {
 
 	if s1 == nil && s2 == nil {
 		return true
@@ -947,7 +1097,7 @@ func (dynAuth *DynamicAuthenticator) Credentials(req gocb.AuthCredsRequest) ([]g
 	strippedEndpoint := StripScheme(req.Endpoint)
 	username, password, err := cbauth.GetMemcachedServiceAuth(strippedEndpoint)
 	if err != nil {
-		logging.Errorf("%s invoked by %s, failed to get auth from cbauth", logPrefix, dynAuth.Caller)
+		logging.Errorf("%s invoked by %s, failed to get auth from cbauth, err: %v", logPrefix, dynAuth.Caller, err)
 		return []gocb.UserPassPair{{}}, err
 	}
 
@@ -995,6 +1145,115 @@ func CheckIfRebalanceOngoing(urlSuffix string, nodeAddrs []string) (bool, error)
 	return false, nil
 }
 
+func CheckIfBootstrapOngoing(urlSuffix string, nodeAddrs []string) (bool, error) {
+	logPrefix := "util::CheckIfBootstrapOngoing"
+
+	netClient := NewClient(HTTPRequestTimeout)
+
+	for _, nodeAddr := range nodeAddrs {
+		endpointURL := fmt.Sprintf("http://%s%s", nodeAddr, urlSuffix)
+
+		res, err := netClient.Get(endpointURL)
+		if err != nil {
+			logging.Errorf("%s Failed to gather bootstrap status from url: %rs, err: %v", logPrefix, endpointURL, err)
+			return true, err
+		}
+		defer res.Body.Close()
+
+		buf, err := ioutil.ReadAll(res.Body)
+		if err != nil {
+			logging.Errorf("%s Failed to read response body from url: %rs, err: %v", logPrefix, endpointURL, err)
+			return true, err
+		}
+
+		status, err := strconv.ParseBool(string(buf))
+		if err != nil {
+			logging.Errorf("%s Failed to interpret bootstrap status from url: %rs, err: %v", logPrefix, endpointURL, err)
+			return true, err
+		}
+
+		logging.Infof("%s Bootstrap status from url: %rs status: %v", logPrefix, endpointURL, status)
+
+		if status {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+func CheckIfAppBootstrapOngoing(urlSuffix string, nodeAddrs []string, appName string) (bool, error) {
+	logPrefix := "util::CheckIfAppBootstrapOngoing"
+
+	netClient := NewClient(HTTPRequestTimeout)
+
+	for _, nodeAddr := range nodeAddrs {
+		endpointURL := fmt.Sprintf("http://%s%s?appName=%s", nodeAddr, urlSuffix, appName)
+
+		res, err := netClient.Get(endpointURL)
+		if err != nil {
+			logging.Errorf("%s Failed to gather bootstrap status from url: %rs, err: %v", logPrefix, endpointURL, err)
+			return true, err
+		}
+		defer res.Body.Close()
+
+		buf, err := ioutil.ReadAll(res.Body)
+		if err != nil {
+			logging.Errorf("%s Failed to read response body from url: %rs, err: %v", logPrefix, endpointURL, err)
+			return true, err
+		}
+
+		status, err := strconv.ParseBool(string(buf))
+		if err != nil {
+			logging.Errorf("%s Failed to interpret bootstrap status from url: %rs, err: %v", logPrefix, endpointURL, err)
+			return true, err
+		}
+
+		if status {
+			logging.Infof("%s Bootstrap status form url: %rs status: %v", logPrefix, endpointURL, status)
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+func GetAggPausingApps(urlSuffix string, nodeAddrs []string) (bool, error) {
+	logPrefix := "util::GetAggPausingApps"
+
+	netClient := NewClient(HTTPRequestTimeout)
+
+	for _, nodeAddr := range nodeAddrs {
+		endpointURL := fmt.Sprintf("http://%s%s", nodeAddr, urlSuffix)
+
+		res, err := netClient.Get(endpointURL)
+		if err != nil {
+			logging.Errorf("%s Failed to gather pausing app list from url: %rs, err: %v", logPrefix, endpointURL, err)
+			return false, err
+		}
+		defer res.Body.Close()
+
+		buf, err := ioutil.ReadAll(res.Body)
+		if err != nil {
+			logging.Errorf("%s Failed to read response body from url: %rs, err: %v", logPrefix, endpointURL, err)
+			return false, err
+		}
+
+		pausingApps := make(map[string]string)
+		err = json.Unmarshal(buf, &pausingApps)
+		if err != nil {
+			logging.Errorf("%s Failed to marshal pausing app list from url: %rs, err: %v", logPrefix, endpointURL, err)
+			return false, err
+		}
+
+		if len(pausingApps) > 0 {
+			return true, fmt.Errorf("Some apps are being paused, node: %s", nodeAddr)
+		}
+	}
+
+	return false, nil
+}
+
 func GetAggBootstrappingApps(urlSuffix string, nodeAddrs []string) (bool, error) {
 	logPrefix := "util::GetAggBootstrappingApps"
 
@@ -1006,29 +1265,112 @@ func GetAggBootstrappingApps(urlSuffix string, nodeAddrs []string) (bool, error)
 		res, err := netClient.Get(endpointURL)
 		if err != nil {
 			logging.Errorf("%s Failed to gather bootstrapping app list from url: %rs, err: %v", logPrefix, endpointURL, err)
-			return true, err
+			return false, err
 		}
 		defer res.Body.Close()
 
 		buf, err := ioutil.ReadAll(res.Body)
 		if err != nil {
 			logging.Errorf("%s Failed to read response body from url: %rs, err: %v", logPrefix, endpointURL, err)
-			return true, err
+			return false, err
 		}
 
 		bootstrappingApps := make(map[string]string)
 		err = json.Unmarshal(buf, &bootstrappingApps)
 		if err != nil {
 			logging.Errorf("%s Failed to marshal bootstrapping app list from url: %rs, err: %v", logPrefix, endpointURL, err)
-			return true, err
+			return false, err
 		}
 
 		if len(bootstrappingApps) > 0 {
-			return true, fmt.Errorf("Some apps are undergoing bootstrap")
+			return true, fmt.Errorf("Some apps are deploying or resuming, node: %s", nodeAddr)
 		}
 	}
 
 	return false, nil
+}
+
+func GetAggBootstrapStatus(nodeAddr string) (bool, error) {
+	logPrefix := "util::GetAggBootstrapStatus"
+
+	netClient := NewClient(HTTPRequestTimeout)
+	url := fmt.Sprintf("http://%s/getAggBootstrapStatus", nodeAddr)
+	res, err := netClient.Get(url)
+	if err != nil {
+		logging.Errorf("%s Failed to gather bootstrap status from url: %rs, err: %v", logPrefix, url, err)
+		return false, err
+	}
+	defer res.Body.Close()
+
+	buf, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		logging.Errorf("%s Failed to read response body from url: %rs, err: %v", logPrefix, url, err)
+		return false, err
+	}
+
+	status, err := strconv.ParseBool(string(buf))
+	if err != nil {
+		logging.Errorf("%s Failed to interpret bootstrap status from url: %rs, err: %v", logPrefix, url, err)
+		return false, err
+	}
+
+	return status, nil
+}
+
+func GetAggBootstrapAppStatus(nodeAddr string, appName string) (bool, error) {
+	logPrefix := "util::GetAggBootstrapAppStatus"
+
+	netClient := NewClient(HTTPRequestTimeout)
+	url := fmt.Sprintf("http://%s/getAggBootstrapAppStatus?appName=%s", nodeAddr, appName)
+	res, err := netClient.Get(url)
+	if err != nil {
+		logging.Errorf("%s Failed to gather bootstrap status from url: %rs, err: %v", logPrefix, url, err)
+		return false, err
+	}
+	defer res.Body.Close()
+
+	buf, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		logging.Errorf("%s Failed to read response body from url: %rs, err: %v", logPrefix, url, err)
+		return false, err
+	}
+
+	status, err := strconv.ParseBool(string(buf))
+	if err != nil {
+		logging.Errorf("%s Failed to interpret bootstrap status from url: %rs, err: %v", logPrefix, url, err)
+		return false, err
+	}
+
+	return status, nil
+}
+
+func GetEventingVersion(urlSuffix string, nodeAddrs []string) ([]string, error) {
+	logPrefix := "util::GetEventingVersion"
+
+	netClient := NewClient(HTTPRequestTimeout)
+
+	versions := make([]string, 0)
+
+	for _, nodeAddr := range nodeAddrs {
+		endpointURL := fmt.Sprintf("http://%s%s", nodeAddr, urlSuffix)
+
+		res, err := netClient.Get(endpointURL)
+		if err != nil {
+			logging.Errorf("%s Failed to gather eventing version from url: %rs, err: %v", logPrefix, endpointURL, err)
+			return versions, err
+		}
+		defer res.Body.Close()
+
+		version, err := ioutil.ReadAll(res.Body)
+		if err != nil {
+			logging.Errorf("%s Failed to read response body from url: %rs, err: %v", logPrefix, endpointURL, err)
+			return versions, err
+		}
+
+		versions = append(versions, string(version))
+	}
+
+	return versions, nil
 }
 
 func Contains(needle interface{}, haystack interface{}) bool {
@@ -1099,13 +1441,32 @@ func GetAppNameFromPath(path string) string {
 	return split[len(split)-1]
 }
 
-func GenerateHandlerUUID() (uint32, error) {
+func GenerateFunctionID() (uint32, error) {
 	uuid := make([]byte, 16)
 	_, err := rand.Read(uuid)
 	if err != nil {
 		return 0, err
 	}
 	return crc32.ChecksumIEEE(uuid), nil
+}
+
+func GenerateFunctionInstanceID() (string, error) {
+	uuid := make([]byte, 16)
+	_, err := rand.Read(uuid)
+	if err != nil {
+		return "", err
+	}
+	instanceId := crc32.ChecksumIEEE(uuid)
+	instanceIdStr := make([]byte, 0, 8)
+	if instanceId == 0 {
+		return "0", nil
+	}
+	for instanceId > 0 {
+		ch := dict[instanceId%64]
+		instanceIdStr = append(instanceIdStr, byte(ch))
+		instanceId /= 64
+	}
+	return string(instanceIdStr), nil
 }
 
 type GocbLogger struct{}
@@ -1131,4 +1492,433 @@ func (r *GocbLogger) Log(level gocb.LogLevel, offset int, format string, v ...in
 		logging.Tracef(format, v...)
 	}
 	return nil
+}
+
+func KillProcess(pid int) error {
+	if pid < 1 {
+		return errors.New(fmt.Sprintf("Can not kill %d", pid))
+	}
+
+	process, err := os.FindProcess(pid)
+	if err != nil {
+		return err
+	}
+
+	return process.Kill()
+}
+
+func SuperImpose(source, on map[string]interface{}) map[string]interface{} {
+	m := make(map[string]interface{})
+	for key := range on {
+		m[key] = on[key]
+	}
+
+	for key := range source {
+		m[key] = source[key]
+	}
+
+	return m
+}
+
+func CPUCount(log bool) int {
+	logPrefix := "util::GetCPUCount"
+
+	cpuCount := runtime.NumCPU()
+	if cpuCount == 0 {
+		if log {
+			logging.Errorf("%s CPU count reported as 0", logPrefix)
+		}
+		return 3
+	}
+
+	return cpuCount
+}
+
+func ParseXattrData(xattrPrefix string, data []byte) (body, xattr []byte, err error) {
+	length := len(data)
+	if length < 4 {
+		return nil, nil, fmt.Errorf("empty xattr metadata")
+	}
+	xattrLen := binary.BigEndian.Uint32(data[0:4])
+	body = data[xattrLen+4:]
+	if xattrLen == 0 {
+		return body, nil, nil
+	}
+	index := uint32(4)
+	delimeter := []byte("\x00")
+	for index < xattrLen {
+		keyValPairLen := binary.BigEndian.Uint32(data[index : index+4])
+		if keyValPairLen == 0 || int(index+keyValPairLen) > length {
+			return body, nil, fmt.Errorf("xattr parse error, unexpected xattr data")
+		}
+		index += 4
+		keyValPairData := data[index : index+keyValPairLen]
+		keyValPair := bytes.Split(keyValPairData, delimeter)
+		if len(keyValPair) != 3 {
+			return body, nil, fmt.Errorf("xattr parse error, unexpected number of components")
+		}
+		xattrKey := string(keyValPair[0])
+		if xattrKey == xattrPrefix {
+			return body, keyValPair[1], nil
+		}
+		index += keyValPairLen
+	}
+	return body, nil, nil
+}
+
+func MaybeCompress(payload []byte, compressPayload bool) ([]byte, error) {
+	if compressPayload {
+		var buf bytes.Buffer
+		compressor, err := flate.NewWriter(&buf, flate.BestCompression)
+		if err != nil {
+			logging.Errorf("%s error in selecting level for flate: err %v", err)
+			return nil, err
+		}
+		if _, err = compressor.Write(payload); err != nil {
+			logging.Errorf("%s error in compressing: err %v", err)
+			compressor.Close()
+			return nil, err
+		}
+		if err = compressor.Close(); err != nil {
+			logging.Errorf("%s error in Flushing to Writer err: %v", err)
+			return nil, err
+		}
+
+		payload2 := buf.Bytes()
+		if len(payload2) < len(payload) {
+			return append([]byte{0, 0}, payload2...), nil
+		}
+		return payload, nil
+	} else {
+		return payload, nil
+	}
+}
+
+func MaybeDecompress(payload []byte) ([]byte, error) {
+	if payload[0] == byte(0) {
+		r := flate.NewReader(bytes.NewReader(payload[2:]))
+		defer r.Close()
+		payload2, err := ioutil.ReadAll(r)
+		if err != nil {
+			return nil, err
+		}
+		return payload2, nil
+	}
+	return payload, nil
+}
+
+func EncodeAppPayload(app *cm.Application) []byte {
+	builder := flatbuffers.NewBuilder(0)
+
+	var curlBindings []flatbuffers.UOffsetT
+	for i := 0; i < len(app.DeploymentConfig.Curl); i++ {
+		authTypeEncoded := builder.CreateString(app.DeploymentConfig.Curl[i].AuthType)
+		hostnameEncoded := builder.CreateString(app.DeploymentConfig.Curl[i].Hostname)
+		valueEncoded := builder.CreateString(app.DeploymentConfig.Curl[i].Value)
+		passwordEncoded := builder.CreateString(app.DeploymentConfig.Curl[i].Password)
+		usernameEncoded := builder.CreateString(app.DeploymentConfig.Curl[i].Username)
+		bearerKeyEncoded := builder.CreateString(app.DeploymentConfig.Curl[i].BearerKey)
+		cookiesEncoded := byte(0x0)
+		if app.DeploymentConfig.Curl[i].AllowCookies {
+			cookiesEncoded = byte(0x1)
+		}
+		validateSSLCertificateEncoded := byte(0x0)
+		if app.DeploymentConfig.Curl[i].ValidateSSLCertificate {
+			validateSSLCertificateEncoded = byte(0x1)
+		}
+
+		cfg.CurlStart(builder)
+		cfg.CurlAddAuthType(builder, authTypeEncoded)
+		cfg.CurlAddHostname(builder, hostnameEncoded)
+		cfg.CurlAddValue(builder, valueEncoded)
+		cfg.CurlAddPassword(builder, passwordEncoded)
+		cfg.CurlAddUsername(builder, usernameEncoded)
+		cfg.CurlAddBearerKey(builder, bearerKeyEncoded)
+		cfg.CurlAddAllowCookies(builder, cookiesEncoded)
+		cfg.CurlAddValidateSSLCertificate(builder, validateSSLCertificateEncoded)
+		curlBindingsEnd := cfg.CurlEnd(builder)
+
+		curlBindings = append(curlBindings, curlBindingsEnd)
+	}
+
+	cfg.ConfigStartCurlVector(builder, len(curlBindings))
+	for i := 0; i < len(curlBindings); i++ {
+		builder.PrependUOffsetT(curlBindings[i])
+	}
+	curlBindingsVector := builder.EndVector(len(curlBindings))
+
+	var bNames []flatbuffers.UOffsetT
+	var bucketAccess []flatbuffers.UOffsetT
+	for i := 0; i < len(app.DeploymentConfig.Buckets); i++ {
+		alias := builder.CreateString(app.DeploymentConfig.Buckets[i].Alias)
+		bName := builder.CreateString(app.DeploymentConfig.Buckets[i].BucketName)
+		bAccess := builder.CreateString(app.DeploymentConfig.Buckets[i].Access)
+
+		cfg.BucketStart(builder)
+		cfg.BucketAddAlias(builder, alias)
+		cfg.BucketAddBucketName(builder, bName)
+		csBucket := cfg.BucketEnd(builder)
+
+		bNames = append(bNames, csBucket)
+		bucketAccess = append(bucketAccess, bAccess)
+	}
+
+	cfg.ConfigStartAccessVector(builder, len(bucketAccess))
+	for i := 0; i < len(bucketAccess); i++ {
+		builder.PrependUOffsetT(bucketAccess[i])
+	}
+	access := builder.EndVector(len(bucketAccess))
+
+	cfg.DepCfgStartBucketsVector(builder, len(bNames))
+	for i := 0; i < len(bNames); i++ {
+		builder.PrependUOffsetT(bNames[i])
+	}
+	buckets := builder.EndVector(len(bNames))
+
+	metaBucket := builder.CreateString(app.DeploymentConfig.MetadataBucket)
+	sourceBucket := builder.CreateString(app.DeploymentConfig.SourceBucket)
+
+	cfg.DepCfgStart(builder)
+	cfg.DepCfgAddBuckets(builder, buckets)
+	cfg.DepCfgAddMetadataBucket(builder, metaBucket)
+	cfg.DepCfgAddSourceBucket(builder, sourceBucket)
+	depcfg := cfg.DepCfgEnd(builder)
+
+	appCode := builder.CreateString(app.AppHandlers)
+	aName := builder.CreateString(app.Name)
+	fiid := builder.CreateString(app.FunctionInstanceID)
+
+	cfg.ConfigStart(builder)
+	cfg.ConfigAddAppCode(builder, appCode)
+	cfg.ConfigAddAppName(builder, aName)
+	cfg.ConfigAddDepCfg(builder, depcfg)
+	cfg.ConfigAddHandlerUUID(builder, app.FunctionID)
+	cfg.ConfigAddCurl(builder, curlBindingsVector)
+	cfg.ConfigAddAccess(builder, access)
+	cfg.ConfigAddFunctionInstanceID(builder, fiid)
+
+	config := cfg.ConfigEnd(builder)
+
+	builder.Finish(config)
+
+	return builder.FinishedBytes()
+}
+
+func ParseFunctionPayload(data []byte, fnName string) cm.Application {
+
+	config := cfg.GetRootAsConfig(data, 0)
+
+	var app cm.Application
+	app.AppHandlers = string(config.AppCode())
+	app.Name = string(config.AppName())
+	app.FunctionID = uint32(config.HandlerUUID())
+	app.FunctionInstanceID = string(config.FunctionInstanceID())
+
+	d := new(cfg.DepCfg)
+	depcfg := new(cm.DepCfg)
+	dcfg := config.DepCfg(d)
+
+	depcfg.MetadataBucket = string(dcfg.MetadataBucket())
+	depcfg.SourceBucket = string(dcfg.SourceBucket())
+
+	var buckets []cm.Bucket
+	b := new(cfg.Bucket)
+	for i := 0; i < dcfg.BucketsLength(); i++ {
+
+		if dcfg.Buckets(b, i) {
+			newBucket := cm.Bucket{
+				Alias:      string(b.Alias()),
+				BucketName: string(b.BucketName()),
+				Access:     string(config.Access(i)),
+			}
+			buckets = append(buckets, newBucket)
+		}
+	}
+
+	var curl []cm.Curl
+	c := new(cfg.Curl)
+	for i := 0; i < config.CurlLength(); i++ {
+		if config.Curl(c, i) {
+			allowCookies := false
+			if c.AllowCookies() == (0x1) {
+				allowCookies = true
+			}
+			validateSSL := false
+			if c.ValidateSSLCertificate() == (0x1) {
+				validateSSL = true
+			}
+			newCurl := cm.Curl{
+				Hostname:               string(c.Hostname()),
+				Value:                  string(c.Value()),
+				AuthType:               string(c.AuthType()),
+				Username:               string(c.Username()),
+				Password:               string(c.Password()),
+				BearerKey:              string(c.BearerKey()),
+				AllowCookies:           allowCookies,
+				ValidateSSLCertificate: validateSSL,
+			}
+			curl = append(curl, newCurl)
+		}
+	}
+
+	depcfg.Buckets = buckets
+	depcfg.Curl = curl
+	app.DeploymentConfig = *depcfg
+
+	return app
+}
+
+func StripCurlCredentials(path, appName string, payload []byte) ([]byte, error) {
+	logPrefix := "Util::StripCurlCredentials"
+
+	if path == cm.MetakvTempAppsPath {
+		var app cm.Application
+		if err := json.Unmarshal(payload, &app); err != nil {
+			logging.Errorf("%s Function: %s unmarshal failed for data from metakv", logPrefix, appName)
+			return nil, err
+		}
+
+		var creds []cm.Credential
+		for i, binding := range app.DeploymentConfig.Curl {
+			creds = append(creds, cm.Credential{Username: binding.Username,
+				Password: binding.Password, BearerKey: binding.BearerKey})
+			app.DeploymentConfig.Curl[i].Username = ""
+			app.DeploymentConfig.Curl[i].Password = ""
+			app.DeploymentConfig.Curl[i].BearerKey = ""
+		}
+
+		data, err := json.MarshalIndent(creds, "", " ")
+		if err != nil {
+			logging.Errorf("%s Function %s marshal failed for credentials", logPrefix, appName)
+			return nil, err
+		}
+
+		err = MetakvSetSensitive(cm.MetakvCredentialsPath+app.Name, data, nil)
+		if err != nil {
+			logging.Errorf("%s Function: %s failed to store credentials in credentials path", logPrefix, app.Name)
+			return nil, err
+		}
+
+		data, err = json.MarshalIndent(app, "", " ")
+		if err != nil {
+			logging.Errorf("%s Function: %s failed to marshal data", logPrefix, app.Name)
+			return nil, err
+		}
+		return data, nil
+	}
+	app := ParseFunctionPayload(payload, appName)
+
+	var creds []cm.Credential
+	for i, binding := range app.DeploymentConfig.Curl {
+		creds = append(creds, cm.Credential{Username: binding.Username,
+			Password: binding.Password, BearerKey: binding.BearerKey})
+		app.DeploymentConfig.Curl[i].Username = ""
+		app.DeploymentConfig.Curl[i].Password = ""
+		app.DeploymentConfig.Curl[i].BearerKey = ""
+	}
+
+	data, err := json.MarshalIndent(creds, "", " ")
+	if err != nil {
+		logging.Errorf("%s Function %s marshal failed for credentials", logPrefix, appName)
+		return nil, err
+	}
+
+	err = MetakvSetSensitive(cm.MetakvCredentialsPath+app.Name, data, nil)
+	if err != nil {
+		logging.Errorf("%s Function: %s failed to store credentials in credentials path", logPrefix, app.Name)
+		return nil, err
+	}
+
+	appContent := EncodeAppPayload(&app)
+	return appContent, nil
+
+}
+
+func AppendCredentials(path, appName string, payload []byte) ([]byte, error) {
+	logPrefix := "Util::AppendCredentials"
+
+	data, err := MetakvGet(cm.MetakvCredentialsPath + appName)
+	if err != nil {
+		logging.Errorf("%s Function: %s metakv get failed for credentials, err: %v",
+			logPrefix, appName, err)
+		return nil, err
+	}
+
+	if data == nil {
+		return payload, nil
+	}
+
+	var creds []cm.Credential
+	if err = json.Unmarshal(data, &creds); err != nil {
+		logging.Errorf("%s Function: %s unmarshal failed for credentials", logPrefix, appName)
+		return nil, err
+	}
+
+	if path == cm.MetakvTempAppsPath+appName {
+		var app cm.Application
+		if err = json.Unmarshal(payload, &app); err != nil {
+			logging.Errorf("%s Function: %s unmarshal failed for data from metakv", logPrefix, appName)
+			return nil, err
+		}
+
+		if len(creds) < len(app.DeploymentConfig.Curl) {
+			app.DeploymentConfig.Curl = app.DeploymentConfig.Curl[:len(creds)]
+		}
+
+		for i, _ := range app.DeploymentConfig.Curl {
+			app.DeploymentConfig.Curl[i].Username = creds[i].Username
+			app.DeploymentConfig.Curl[i].Password = creds[i].Password
+			app.DeploymentConfig.Curl[i].BearerKey = creds[i].BearerKey
+		}
+
+		data, err = json.MarshalIndent(app, "", " ")
+		if err != nil {
+			logging.Errorf("%s Function: %s failed to marshal data", logPrefix, appName)
+			return nil, err
+		}
+
+		return data, nil
+	}
+
+	app := ParseFunctionPayload(payload, appName)
+
+	if len(creds) < len(app.DeploymentConfig.Curl) {
+		app.DeploymentConfig.Curl = app.DeploymentConfig.Curl[:len(creds)]
+	}
+
+	for i, _ := range app.DeploymentConfig.Curl {
+		app.DeploymentConfig.Curl[i].Username = creds[i].Username
+		app.DeploymentConfig.Curl[i].Password = creds[i].Password
+		app.DeploymentConfig.Curl[i].BearerKey = creds[i].BearerKey
+	}
+
+	appContent := EncodeAppPayload(&app)
+	return appContent, nil
+
+}
+
+func AppendLangCompat(path, appName string, payload []byte) ([]byte, error) {
+	logPrefix := "Util::AppendLangCompat"
+
+	if path == cm.MetakvTempAppsPath+appName {
+		var app cm.Application
+		if err := json.Unmarshal(payload, &app); err != nil {
+			logging.Errorf("%s Function: %s unmarshal failed for data from metakv", logPrefix, appName)
+			return nil, err
+		}
+
+		if _, ok := app.Settings["language_compatibility"]; !ok {
+			app.Settings["language_compatibility"] = cm.LanguageCompatibility[0]
+		}
+
+		data, mErr := json.MarshalIndent(app, "", " ")
+		if mErr != nil {
+			logging.Errorf("%s Function: %s failed to marshal data", logPrefix, appName)
+			return nil, mErr
+		}
+
+		return data, nil
+	}
+
+	return payload, nil
 }

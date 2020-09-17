@@ -4,13 +4,14 @@ import (
 	"encoding/json"
 	"strconv"
 	"strings"
+	"time"
 
+	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/gen/flatbuf/header"
 	"github.com/couchbase/eventing/gen/flatbuf/payload"
 	"github.com/couchbase/eventing/gen/flatbuf/response"
 	"github.com/couchbase/eventing/logging"
-	"github.com/couchbase/eventing/util"
-	"github.com/google/flatbuffers/go"
+	flatbuffers "github.com/google/flatbuffers/go"
 )
 
 const (
@@ -20,6 +21,9 @@ const (
 	appWorkerSetting
 	timerEvent
 	debuggerEvent
+	filterEvent
+	reservedEvent
+	pauseConsumer
 )
 
 const (
@@ -30,8 +34,13 @@ const (
 
 const (
 	timerOpcode int8 = iota
-	docTimer
-	cronTimer
+	timer
+)
+
+const (
+	filterOpcode int8 = iota
+	vbFilter
+	processedSeqNo
 )
 
 const (
@@ -40,13 +49,15 @@ const (
 	v8WorkerInit
 	v8WorkerLoad
 	v8WorkerTerminate
-	v8WorkerSourceMap
-	v8WorkerHandlerCode
+	v8WorkerUnused1
+	v8WorkerUnused2
 	v8WorkerLatencyStats
 	v8WorkerFailureStats
 	v8WorkerExecutionStats
 	v8WorkerCompile
 	v8WorkerLcbExceptions
+	v8WorkerCurlLatencyStats
+	v8WorkerInsight
 )
 
 const (
@@ -60,6 +71,9 @@ const (
 	logLevel
 	workerThreadCount
 	workerThreadPartitionMap
+	timerContextSize
+	vbMap
+	workerThreadMemQuota
 )
 
 // message and opcode types for interpreting messages from C++ To Go
@@ -68,12 +82,14 @@ const (
 	respV8WorkerConfig
 	docTimerResponse
 	bucketOpsResponse
+	bucketOpsFilterAck
+	pauseAck
 )
 
 const (
 	respV8WorkerConfigOpcode int8 = iota
-	sourceMap
-	handlerCode
+	Unused3
+	Unused4
 	appLogMessage
 	sysLogMessage
 	latencyStats
@@ -82,6 +98,8 @@ const (
 	compileInfo
 	queueSize
 	lcbExceptions
+	curlLatencyStats
+	insight
 )
 
 const (
@@ -92,17 +110,17 @@ const (
 	bucketOpsResponseOpcode int8 = iota
 )
 
+const (
+	bucketOpsFilterAckOpCode int8 = iota
+)
+
 type message struct {
 	Header  []byte
 	Payload []byte
 }
 
-func (c *Consumer) makeDocTimerEventHeader(partition int16) ([]byte, *flatbuffers.Builder) {
-	return c.makeHeader(timerEvent, docTimer, partition, "")
-}
-
-func (c *Consumer) makeCronTimerEventHeader(partition int16) ([]byte, *flatbuffers.Builder) {
-	return c.makeHeader(timerEvent, cronTimer, partition, "")
+func (c *Consumer) makeTimerEventHeader(partition int16) ([]byte, *flatbuffers.Builder) {
+	return c.makeHeader(timerEvent, timer, partition, "")
 }
 
 func (c *Consumer) makeDcpMutationHeader(partition int16, mutationMeta string) ([]byte, *flatbuffers.Builder) {
@@ -115,6 +133,21 @@ func (c *Consumer) makeDcpDeletionHeader(partition int16, deletionMeta string) (
 
 func (c *Consumer) makeDcpHeader(opcode int8, partition int16, meta string) ([]byte, *flatbuffers.Builder) {
 	return c.makeHeader(dcpEvent, opcode, partition, meta)
+}
+
+func (c *Consumer) filterEventHeader(opcode int8, partition int16, meta string) ([]byte, *flatbuffers.Builder) {
+	return c.makeHeader(filterEvent, opcode, partition, meta)
+}
+
+func (c *Consumer) makeVbFilterHeader(partition int16, meta string) ([]byte, *flatbuffers.Builder) {
+	return c.filterEventHeader(vbFilter, partition, meta)
+}
+
+func (c *Consumer) makePauseConsumerHeader() ([]byte, *flatbuffers.Builder) {
+	return c.makeHeader(pauseConsumer, 0, 0, "")
+}
+func (c *Consumer) makeProcessedSeqNoHeader(partition int16, meta string) ([]byte, *flatbuffers.Builder) {
+	return c.filterEventHeader(processedSeqNo, partition, meta)
 }
 
 func (c *Consumer) makeV8DebuggerStartHeader() ([]byte, *flatbuffers.Builder) {
@@ -149,12 +182,20 @@ func (c *Consumer) makeLogLevelHeader(meta string) ([]byte, *flatbuffers.Builder
 	return c.makeHeader(appWorkerSetting, logLevel, 0, meta)
 }
 
+func (c *Consumer) makeTimerContextSizeHeader(meta string) ([]byte, *flatbuffers.Builder) {
+	return c.makeHeader(appWorkerSetting, timerContextSize, 0, meta)
+}
+
 func (c *Consumer) makeThrCountHeader(meta string) ([]byte, *flatbuffers.Builder) {
 	return c.makeHeader(appWorkerSetting, workerThreadCount, 0, meta)
 }
 
 func (c *Consumer) makeThrMapHeader() ([]byte, *flatbuffers.Builder) {
 	return c.makeHeader(appWorkerSetting, workerThreadPartitionMap, 0, "")
+}
+
+func (c *Consumer) makeVbMapHeader() ([]byte, *flatbuffers.Builder) {
+	return c.makeHeader(appWorkerSetting, vbMap, 0, "")
 }
 
 func (c *Consumer) makeHeader(event int8, opcode int8, partition int16, meta string) (encodedHeader []byte, builder *flatbuffers.Builder) {
@@ -231,42 +272,17 @@ func (c *Consumer) makeThrMapPayload(thrMap map[int][]uint16, partitionCount int
 	return
 }
 
-func (c *Consumer) makeDocTimerPayload(e *byTimer) (encodedPayload []byte, builder *flatbuffers.Builder) {
+func (c *Consumer) makeVbMapPayload(assgnedVbs []uint16) (encodedPayload []byte, builder *flatbuffers.Builder) {
 	builder = c.getBuilder()
-
-	callbackFnPos := builder.CreateString(e.entry.CallbackFn)
-	docIDPos := builder.CreateString(e.entry.DocID)
-	docIDTsPos := builder.CreateString(e.meta.timestamp)
-
+	payload.PayloadStartVbMapVector(builder, len(assgnedVbs))
+	for i := len(assgnedVbs) - 1; i >= 0; i-- {
+		builder.PrependUint16(assgnedVbs[i])
+	}
+	pos := builder.EndVector(len(assgnedVbs))
 	payload.PayloadStart(builder)
-
-	payload.PayloadAddCallbackFn(builder, callbackFnPos)
-	payload.PayloadAddDocId(builder, docIDPos)
-	payload.PayloadAddTimerTs(builder, docIDTsPos)
-	payload.PayloadAddTimerPartition(builder, e.meta.partition)
-
+	payload.PayloadAddVbMap(builder, pos)
 	payloadPos := payload.PayloadEnd(builder)
 	builder.Finish(payloadPos)
-
-	encodedPayload = builder.FinishedBytes()
-	return
-}
-
-func (c *Consumer) makeCronTimerPayload(e *timerMsg) (encodedPayload []byte, builder *flatbuffers.Builder) {
-	builder = c.getBuilder()
-
-	pPos := builder.CreateString(e.payload)
-	tPos := builder.CreateString(e.timestamp)
-
-	payload.PayloadStart(builder)
-
-	payload.PayloadAddDocIdsCallbackFns(builder, pPos)
-	payload.PayloadAddTimerTs(builder, tPos)
-	payload.PayloadAddTimerPartition(builder, e.partition)
-
-	payloadPos := payload.PayloadEnd(builder)
-	builder.Finish(payloadPos)
-
 	encodedPayload = builder.FinishedBytes()
 	return
 }
@@ -289,46 +305,60 @@ func (c *Consumer) makeDcpPayload(key, value []byte) (encodedPayload []byte, bui
 	return
 }
 
-func (c *Consumer) makeV8InitPayload(appName, currHost, eventingDir, eventingPort, eventingSSLPort, kvHostPort, depCfg string,
-	capacity, cronTimerPerDoc, executionTimeout, fuzzOffset, checkpointInterval int, enableRecursiveMutation, skipLcbBootstrap bool,
-	curlTimeout int64) (encodedPayload []byte, builder *flatbuffers.Builder) {
+func (c *Consumer) makeV8InitPayload(appName, debuggerPort, currHost, eventingDir, eventingPort,
+	eventingSSLPort, depCfg string, capacity, executionTimeout, checkpointInterval int,
+	skipLcbBootstrap bool, timerContextSize int64,
+	usingTimer, srcMutation bool) (encodedPayload []byte, builder *flatbuffers.Builder) {
 	builder = c.getBuilder()
 
 	app := builder.CreateString(appName)
+	dp := builder.CreateString(debuggerPort)
 	ch := builder.CreateString(currHost)
 	ed := builder.CreateString(eventingDir)
 	ep := builder.CreateString(eventingPort)
 	esp := builder.CreateString(eventingSSLPort)
 	dcfg := builder.CreateString(depCfg)
-	khp := builder.CreateString(kvHostPort)
+	fiid := builder.CreateString(c.app.FunctionInstanceID)
 	handlerHeaders := c.createHandlerHeaders(builder)
 	handlerFooters := c.createHandlerFooters(builder)
-
-	rec := make([]byte, 1)
-	flatbuffers.WriteBool(rec, enableRecursiveMutation)
+	n1qlConsistency := builder.CreateString(c.n1qlConsistency)
+	languageCompatibility := builder.CreateString(c.languageCompatibility)
 
 	lcb := make([]byte, 1)
 	flatbuffers.WriteBool(lcb, skipLcbBootstrap)
 
+	utm := make([]byte, 1)
+	flatbuffers.WriteBool(utm, usingTimer)
+
+	smu := make([]byte, 1)
+	flatbuffers.WriteBool(smu, srcMutation)
+
 	payload.PayloadStart(builder)
 
 	payload.PayloadAddAppName(builder, app)
+	payload.PayloadAddDebuggerPort(builder, dp)
 	payload.PayloadAddCurrHost(builder, ch)
 	payload.PayloadAddEventingDir(builder, ed)
 	payload.PayloadAddCurrEventingPort(builder, ep)
 	payload.PayloadAddCurrEventingSslport(builder, esp)
 	payload.PayloadAddDepcfg(builder, dcfg)
-	payload.PayloadAddKvHostPort(builder, khp)
 	payload.PayloadAddLcbInstCapacity(builder, int32(capacity))
-	payload.PayloadAddCronTimersPerDoc(builder, int32(cronTimerPerDoc))
+	payload.PayloadAddLanguageCompatibility(builder, languageCompatibility)
 	payload.PayloadAddExecutionTimeout(builder, int32(executionTimeout))
-	payload.PayloadAddFuzzOffset(builder, int32(fuzzOffset))
 	payload.PayloadAddCheckpointInterval(builder, int32(checkpointInterval))
-	payload.PayloadAddCurlTimeout(builder, curlTimeout)
-	payload.PayloadAddEnableRecursiveMutation(builder, rec[0])
+	payload.PayloadAddTimerContextSize(builder, timerContextSize)
+	payload.PayloadAddFunctionInstanceId(builder, fiid)
 	payload.PayloadAddSkipLcbBootstrap(builder, lcb[0])
+	payload.PayloadAddUsingTimer(builder, utm[0])
 	payload.PayloadAddHandlerHeaders(builder, handlerHeaders)
 	payload.PayloadAddHandlerFooters(builder, handlerFooters)
+	payload.PayloadAddN1qlConsistency(builder, n1qlConsistency)
+	payload.PayloadAddLcbRetryCount(builder, int32(c.lcbRetryCount))
+	payload.PayloadAddSrcMutation(builder, smu[0])
+
+	if c.n1qlPrepareAll {
+		payload.PayloadAddN1qlPrepareAll(builder, 0x1)
+	}
 
 	msgPos := payload.PayloadEnd(builder)
 	builder.Finish(msgPos)
@@ -374,19 +404,43 @@ func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {
 	switch msgType {
 	case respV8WorkerConfig:
 		switch opcode {
-		case sourceMap:
-			c.sourceMap = msg
-		case handlerCode:
-			c.handlerCode = msg
+
 		case latencyStats:
-			c.statsRWMutex.Lock()
-			defer c.statsRWMutex.Unlock()
-			err := json.Unmarshal([]byte(msg), &c.latencyStats)
+			c.workerRespMainLoopTs.Store(time.Now())
+
+			deltas := make(common.StatsData)
+			err := json.Unmarshal([]byte(msg), &deltas)
 			if err != nil {
 				logging.Errorf("%s [%s:%s:%d] Failed to unmarshal latency stats, msg: %v err: %v",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), msg, err)
 			}
+			c.producer.AppendLatencyStats(deltas)
+
+		case curlLatencyStats:
+			c.workerRespMainLoopTs.Store(time.Now())
+
+			deltas := make(common.StatsData)
+			err := json.Unmarshal([]byte(msg), &deltas)
+			if err != nil {
+				logging.Errorf("%s [%s:%s:%d] Failed to unmarshal curl latency stats, msg: %v err: %v",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), msg, err)
+			}
+			c.producer.AppendCurlLatencyStats(deltas)
+
+		case insight:
+			c.workerRespMainLoopTs.Store(time.Now())
+			logging.Debugf("%s [%s:%s:%d] Received insight: %v", logPrefix, c.workerName, c.tcpPort, c.Pid(), msg)
+			insight := common.NewInsight()
+			err := json.Unmarshal([]byte(msg), insight)
+			if err != nil {
+				logging.Errorf("%s [%s:%s:%d] Failed to unmarshal insight data, msg: %v err: %v",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), msg, err)
+			}
+			c.insight <- insight
+
 		case failureStats:
+			c.workerRespMainLoopTs.Store(time.Now())
+
 			c.statsRWMutex.Lock()
 			defer c.statsRWMutex.Unlock()
 			err := json.Unmarshal([]byte(msg), &c.failureStats)
@@ -395,12 +449,21 @@ func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), msg, err)
 			}
 		case executionStats:
+			c.workerRespMainLoopTs.Store(time.Now())
+
 			c.statsRWMutex.Lock()
 			defer c.statsRWMutex.Unlock()
 			err := json.Unmarshal([]byte(msg), &c.executionStats)
 			if err != nil {
 				logging.Errorf("%s [%s:%s:%d] Failed to unmarshal execution stats, msg: %v err: %v",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), msg, err)
+			} else {
+				if val, ok := c.executionStats["timer_create_counter"]; ok {
+					c.timerResponsesRecieved = uint64(val.(float64))
+				}
+				if val, ok := c.executionStats["timer_msg_counter"]; ok {
+					c.timerMessagesProcessed = uint64(val.(float64))
+				}
 			}
 		case compileInfo:
 			err := json.Unmarshal([]byte(msg), &c.compileInfo)
@@ -409,12 +472,16 @@ func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), msg, err)
 			}
 		case queueSize:
+			c.workerRespMainLoopTs.Store(time.Now())
+
 			err := json.Unmarshal([]byte(msg), &c.cppQueueSizes)
 			if err != nil {
 				logging.Errorf("%s [%s:%s:%d] Failed to unmarshal cpp queue sizes, msg: %v err: %v",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), msg, err)
 			}
 		case lcbExceptions:
+			c.workerRespMainLoopTs.Store(time.Now())
+
 			c.statsRWMutex.Lock()
 			defer c.statsRWMutex.Unlock()
 			err := json.Unmarshal([]byte(msg), &c.lcbExceptionStats)
@@ -423,63 +490,63 @@ func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), msg, err)
 			}
 		}
-	case docTimerResponse:
-		data := strings.Split(msg, "::")
-		if len(data) == 5 {
-			timerTs, callbackFn, docID, seqStr := data[0], data[1], data[2], data[4]
 
-			seqNo, err := strconv.ParseUint(seqStr, 10, 64)
-			if err != nil {
-				logging.Errorf("%s [%s:%s:%d] Failed to convert seqNo %v to uint64, timerEntry: %v err: %v",
-					logPrefix, c.workerName, c.tcpPort, c.Pid(), seqStr, msg, err)
-				return
-			}
-
-			pEntry := &plasmaStoreEntry{
-				callbackFn: callbackFn,
-				key:        docID,
-				timerTs:    timerTs,
-				vb:         util.VbucketByKey([]byte(docID), c.numVbuckets),
-			}
-			prevSeqNo := c.vbProcessingStats.getVbStat(pEntry.vb, "last_doc_timer_feedback_seqno").(uint64)
-			if seqNo > prevSeqNo {
-				c.vbProcessingStats.updateVbStat(pEntry.vb, "last_doc_timer_feedback_seqno", seqNo)
-				logging.Tracef("%s [%s:%s:%d] vb: %v Updating last_doc_timer_feedback_seqno to seqNo: %v",
-					logPrefix, c.workerName, c.tcpPort, c.Pid(), pEntry.vb, seqNo)
-			}
-			c.doctimerResponsesRecieved++
-			c.plasmaStoreCh <- pEntry
-		} else {
-			logging.Errorf("%s [%s:%s:%d] Invalid doc timer message received: %v",
-				logPrefix, c.workerName, c.tcpPort, c.Pid(), msg)
-			c.errorParsingDocTimerResponses++
-		}
 	case bucketOpsResponse:
 		data := strings.Split(msg, "::")
 		if len(data) != 2 {
-			logging.Errorf("%s [%s:%s:%d] Invalid bucket ops message received: %v",
+			logging.Errorf("%s [%s:%s:%d] Invalid bucket ops message received: %s",
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), msg)
 			return
 		}
 
-		vbNoStr, seqNoStr := data[0], data[1]
-		vbNo, err := strconv.ParseUint(vbNoStr, 10, 16)
+		vbStr, seqNoStr := data[0], data[1]
+		vb, err := strconv.ParseUint(vbStr, 10, 16)
 		if err != nil {
-			logging.Errorf("%s [%s:%s:%d] Failed to convert vbNoStr %s to uint64, msg: %v err: %v",
-				logPrefix, c.workerName, c.tcpPort, c.Pid(), vbNoStr, msg, err)
+			logging.Errorf("%s [%s:%s:%d] Failed to convert vbStr: %s to uint64, msg: %s err: %v",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), vbStr, msg, err)
 			return
 		}
 		seqNo, err := strconv.ParseUint(seqNoStr, 10, 64)
 		if err != nil {
-			logging.Errorf("%s [%s:%s:%d] Failed to convert seqNoStr %s to int64, msg: %v err: %v",
+			logging.Errorf("%s [%s:%s:%d] Failed to convert seqNoStr: %s to int64, msg: %s err: %v",
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), seqNoStr, msg, err)
 			return
 		}
-		prevSeqNo := c.vbProcessingStats.getVbStat(uint16(vbNo), "last_processed_seq_no").(uint64)
+		prevSeqNo := c.vbProcessingStats.getVbStat(uint16(vb), "last_processed_seq_no").(uint64)
 		if seqNo > prevSeqNo {
-			c.vbProcessingStats.updateVbStat(uint16(vbNo), "last_processed_seq_no", seqNo)
-			logging.Tracef("%s [%s:%s:%d] vb: %v Updating last_processed_seq_no to seqNo: %v",
-				logPrefix, c.workerName, c.tcpPort, c.Pid(), vbNo, seqNo)
+			c.vbProcessingStats.updateVbStat(uint16(vb), "last_processed_seq_no", seqNo)
+			logging.Tracef("%s [%s:%s:%d] vb: %d Updating last_processed_seq_no to seqNo: %d",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, seqNo)
 		}
+	case bucketOpsFilterAck:
+		var ack vbSeqNo
+		err := json.Unmarshal([]byte(msg), &ack)
+		if err != nil {
+			logging.Errorf("%s [%s:%s:%d] Failed to unmarshal filter ack, msg: %v err: %v",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), msg, err)
+			return
+		}
+
+		logging.Infof("%s [%s:%s:%d] vb: %d seqNo: %d skip_ack: %d received filter ack from C++",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), ack.Vbucket, ack.SeqNo, ack.SkipAck)
+
+		if ack.SkipAck == 0 {
+			c.filterDataCh <- &ack
+		}
+
+	case pauseAck:
+		var acks []vbSeqNo
+		if err := json.Unmarshal([]byte(msg), &acks); err != nil {
+			logging.Errorf("%s [%s:%s:%d] Failed to unmarshal pause ack, msg: %v err: %v",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), msg, err)
+			return
+		}
+
+		for _, ack := range acks {
+			c.filterDataCh <- &ack
+		}
+	default:
+		logging.Infof("%s [%s:%s:%d] Unknown message %s",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), msg)
 	}
 }

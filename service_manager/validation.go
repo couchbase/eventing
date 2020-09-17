@@ -5,18 +5,96 @@ import (
 	"math"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"regexp"
 	"strings"
 
 	"github.com/couchbase/cbauth"
+	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/logging"
+	"github.com/couchbase/eventing/parser"
 	"github.com/couchbase/eventing/util"
 )
+
+func (m *ServiceMgr) sanitiseApplication(app *application) (info *runtimeInfo) {
+	info = &runtimeInfo{}
+
+	for idx := 0; idx < len(app.DeploymentConfig.Buckets); idx++ {
+		if app.DeploymentConfig.Buckets[idx].Access == "" {
+			if app.DeploymentConfig.SourceBucket == app.DeploymentConfig.Buckets[idx].BucketName {
+				app.DeploymentConfig.Buckets[idx].Access = "r"
+			} else {
+				app.DeploymentConfig.Buckets[idx].Access = "rw"
+			}
+		}
+	}
+	return info
+}
+
+func (m *ServiceMgr) validateAppRecursion(app *application) (info *runtimeInfo) {
+	info = &runtimeInfo{}
+	info.Code = m.statusCodes.errInvalidConfig.Code
+	logPrefix := "ServiceMgr::validateAppRecursion"
+
+	var config common.Config
+	if config, info = m.getConfig(); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
+	var allowInterBucketRecursion bool
+	if flag, ok := config["allow_interbucket_recursion"]; ok {
+		allowInterBucketRecursion = flag.(bool)
+	}
+
+	if allowInterBucketRecursion == false && m.isAppDeployable(app) == false {
+		info.Code = m.statusCodes.errInterFunctionRecursion.Code
+		info.Info = fmt.Sprintf("Inter handler recursion error")
+		return
+	}
+
+	source, destinations := m.getSourceAndDestinationsFromDepCfg(&app.DeploymentConfig)
+	_, pinfos := parser.TranspileQueries(app.AppHandlers, "")
+	// Prevent deployment of handler with N1QL writing to source bucket
+	for _, pinfo := range pinfos {
+		if pinfo.PInfo.KeyspaceName == app.DeploymentConfig.SourceBucket {
+			info.Code = m.statusCodes.errInterBucketRecursion.Code
+			info.Info = fmt.Sprintf("Function: %s N1QL dml to source bucket %s", app.Name, pinfo.PInfo.KeyspaceName)
+			logging.Errorf("%s %s", logPrefix, info.Info)
+			return
+		}
+		destinations[pinfo.PInfo.KeyspaceName] = struct{}{}
+	}
+	if !allowInterBucketRecursion && len(destinations) != 0 {
+		if possible, path := m.graph.isAcyclicInsertPossible(app.Name, source, destinations); !possible {
+			info.Code = m.statusCodes.errInterBucketRecursion.Code
+			info.Info = fmt.Sprintf("Inter bucket recursion error; function: %s causes a cycle "+
+				"involving functions: %v, hence deployment is disallowed", app.Name, path)
+			return
+		}
+
+		functions := m.graph.getAcyclicInsertSideEffects(destinations)
+		if len(functions) > 0 {
+			info.Code = m.statusCodes.ok.Code
+			var wInfo warningsInfo
+			wInfo.Status = "Validated function config"
+			wInfo.Warnings = append(wInfo.Warnings, fmt.Sprintf("Function %s will modify source buckets of following functions %v", app.Name, functions))
+			info.Info = wInfo
+		}
+	}
+
+	info.Code = m.statusCodes.ok.Code
+	return
+}
 
 func (m *ServiceMgr) validateApplication(app *application) (info *runtimeInfo) {
 	info = &runtimeInfo{}
 	info.Code = m.statusCodes.errInvalidConfig.Code
+	logPrefix := "ServiceMgr::validateApplication"
+
+	if info = m.sanitiseApplication(app); info.Code != m.statusCodes.ok.Code {
+		return
+	}
 
 	if info = m.validateApplicationName(app.Name); info.Code != m.statusCodes.ok.Code {
 		return
@@ -30,8 +108,15 @@ func (m *ServiceMgr) validateApplication(app *application) (info *runtimeInfo) {
 		return
 	}
 
-	if info = m.validateSettings(util.DeepCopy(app.Settings)); info.Code != m.statusCodes.ok.Code {
+	if info = m.validateSettings(app.Name, util.DeepCopy(app.Settings)); info.Code != m.statusCodes.ok.Code {
 		return
+	}
+
+	if val, ok := app.Settings["processing_status"].(bool); ok && val {
+		if info = m.validateAppRecursion(app); info.Code != m.statusCodes.ok.Code {
+			logging.Errorf("%s Function: %s recursion error %d: %s", logPrefix, app.Name, info.Code, info.Info)
+			return
+		}
 	}
 
 	info.Code = m.statusCodes.ok.Code
@@ -65,7 +150,8 @@ func (m *ServiceMgr) validateAliasName(aliasName string) (info *runtimeInfo) {
 		return
 	}
 
-	identifier := regexp.MustCompile("^[a-zA-Z_$][a-zA-Z0-9_]*$")
+	// Obtained from Variables - https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Grammar_and_types
+	identifier := regexp.MustCompile("^[a-zA-Z_$][a-zA-Z0-9_$]*$")
 	if !identifier.MatchString(aliasName) {
 		info.Code = m.statusCodes.errInvalidConfig.Code
 		info.Info = "Alias must be a valid JavaScript variable"
@@ -184,7 +270,7 @@ func (m *ServiceMgr) validateApplicationName(applicationName string) (info *runt
 	appNameRegex := regexp.MustCompile("^[a-zA-Z0-9][a-zA-Z0-9_-]*$")
 	if !appNameRegex.MatchString(applicationName) {
 		info.Code = m.statusCodes.errInvalidConfig.Code
-		info.Info = "Function name can only contain characters in range A-Z, a-z, 0-9 and underscore, hyphen"
+		info.Info = "Function name can only start with characters in range A-Z, a-z, 0-9 and can only contain characters in range A-Z, a-z, 0-9, underscore and hyphen"
 		return
 	}
 
@@ -192,7 +278,7 @@ func (m *ServiceMgr) validateApplicationName(applicationName string) (info *runt
 	return
 }
 
-func (m *ServiceMgr) validateBoolean(field string, settings map[string]interface{}) (info *runtimeInfo) {
+func (m *ServiceMgr) validateBoolean(field string, isOptional bool, settings map[string]interface{}) (info *runtimeInfo) {
 	info = &runtimeInfo{}
 	info.Code = m.statusCodes.errInvalidConfig.Code
 
@@ -201,6 +287,9 @@ func (m *ServiceMgr) validateBoolean(field string, settings map[string]interface
 			info.Info = fmt.Sprintf("%s must be a boolean", field)
 			return
 		}
+	} else if !isOptional {
+		info.Info = fmt.Sprintf("%s is required", field)
+		return
 	}
 
 	info.Code = m.statusCodes.ok.Code
@@ -211,12 +300,15 @@ func (m *ServiceMgr) validateBucketExists(bucketName string) (info *runtimeInfo)
 	info = &runtimeInfo{}
 
 	nsServerEndpoint := net.JoinHostPort(util.Localhost(), m.restPort)
-	clusterInfo, err := util.FetchNewClusterInfoCache(nsServerEndpoint)
+	cic, err := util.FetchClusterInfoClient(nsServerEndpoint)
 	if err != nil {
 		info.Code = m.statusCodes.errConnectNsServer.Code
 		info.Info = fmt.Sprintf("Failed to get cluster info cache, err: %v", err)
 		return
 	}
+	clusterInfo := cic.GetClusterInfoCache()
+	clusterInfo.RLock()
+	defer clusterInfo.RUnlock()
 
 	if clusterInfo.GetBucketUUID(bucketName) == "" {
 		info.Code = m.statusCodes.errBucketMissing.Code
@@ -228,16 +320,67 @@ func (m *ServiceMgr) validateBucketExists(bucketName string) (info *runtimeInfo)
 	return
 }
 
+func (m *ServiceMgr) validateConfig(c map[string]interface{}) (info *runtimeInfo) {
+	info = &runtimeInfo{}
+	info.Code = m.statusCodes.errInvalidConfig.Code
+
+	if info = m.validateBoolean("enable_debugger", true, c); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
+	if info = m.validatePositiveInteger("ram_quota", c); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
+	if info = m.validatePositiveInteger("function_size", c); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
+	if info = m.validatePositiveInteger("metakv_max_doc_size", c); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
+	if info = m.validatePositiveInteger("http_request_timeout", c); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
+	if info = m.validateBoolean("enable_lifecycle_ops_during_rebalance", true, c); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
+	if info = m.validateBoolean("force_compress", true, c); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
+	if info = m.validateBoolean("allow_interbucket_recursion", true, c); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
+	if info = m.validatePositiveInteger("service_notifier_timeout", c); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
+	if info = m.validateBoolean("auto_redistribute_vbs_on_failover", true, c); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
+	info.Code = m.statusCodes.ok.Code
+	return
+}
+
 func (m *ServiceMgr) validateNonMemcached(bucketName string) (info *runtimeInfo) {
 	info = &runtimeInfo{}
 
 	nsServerEndpoint := net.JoinHostPort(util.Localhost(), m.restPort)
-	clusterInfo, err := util.FetchNewClusterInfoCache(nsServerEndpoint)
+	cic, err := util.FetchClusterInfoClient(nsServerEndpoint)
 	if err != nil {
 		info.Code = m.statusCodes.errConnectNsServer.Code
 		info.Info = fmt.Sprintf("Failed to get cluster info cache, err: %v", err)
 		return
 	}
+	clusterInfo := cic.GetClusterInfoCache()
+	clusterInfo.RLock()
+	defer clusterInfo.RUnlock()
 
 	isMemcached, err := clusterInfo.IsMemcached(bucketName)
 	if err != nil {
@@ -253,6 +396,17 @@ func (m *ServiceMgr) validateNonMemcached(bucketName string) (info *runtimeInfo)
 	}
 
 	info.Code = m.statusCodes.ok.Code
+	return
+}
+
+func (m *ServiceMgr) validateBucketAccess(access string) (info *runtimeInfo) {
+	info = &runtimeInfo{}
+	if access == "r" || access == "rw" {
+		info.Code = m.statusCodes.ok.Code
+		return
+	}
+	info.Code = m.statusCodes.errBucketAccess.Code
+	info.Info = fmt.Sprintf("Invalid bucket access, should be either \"r\" or \"rw\"")
 	return
 }
 
@@ -280,14 +434,100 @@ func (m *ServiceMgr) validateDeploymentConfig(deploymentConfig *depCfg) (info *r
 		return
 	}
 
-	for _, bucket := range deploymentConfig.Buckets {
-		if info = m.validateNonEmpty(bucket.BucketName, "Alias bucket name"); info.Code != m.statusCodes.ok.Code {
+	aliasSet := make(map[string]struct{})
+	if info = m.validateBucketBindings(deploymentConfig.Buckets, aliasSet); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
+	if info = m.validateCurlBindings(deploymentConfig.Curl, aliasSet); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+	info.Code = m.statusCodes.ok.Code
+	return
+}
+
+func (m *ServiceMgr) validateBucketBindings(bindings []bucket, existingAliases map[string]struct{}) (info *runtimeInfo) {
+	info = &runtimeInfo{}
+	info.Code = m.statusCodes.errInvalidConfig.Code
+
+	for _, binding := range bindings {
+		if info = m.validateNonEmpty(binding.BucketName, "Bucket alias name"); info.Code != m.statusCodes.ok.Code {
+			return
+		}
+		if info = m.validateAliasName(binding.Alias); info.Code != m.statusCodes.ok.Code {
 			return
 		}
 
-		if info = m.validateAliasName(bucket.Alias); info.Code != m.statusCodes.ok.Code {
+		//Check for the uniqueness of alias name
+		if _, exists := existingAliases[binding.Alias]; exists {
+			info.Info = fmt.Sprintf("Bucket alias %s is not unique", binding.Alias)
+			info.Code = m.statusCodes.errInvalidConfig.Code
 			return
 		}
+
+		//Update AliasSet
+		existingAliases[binding.Alias] = struct{}{}
+
+		if info = m.validateBucketAccess(binding.Access); info.Code != m.statusCodes.ok.Code {
+			return
+		}
+	}
+
+	info.Code = m.statusCodes.ok.Code
+	return
+}
+
+func (m *ServiceMgr) validateCurlBindings(bindings []common.Curl, existingAliases map[string]struct{}) (info *runtimeInfo) {
+	info = &runtimeInfo{}
+	info.Code = m.statusCodes.errInvalidConfig.Code
+
+	for _, binding := range bindings {
+		if info = m.validateNonEmpty(binding.Value, "URL alias name"); info.Code != m.statusCodes.ok.Code {
+			return
+		}
+		if info = m.validateNonEmpty(binding.Hostname, fmt.Sprintf("URL alias %s hostname", binding.Value)); info.Code != m.statusCodes.ok.Code {
+			return
+		}
+		if info = m.validateNonEmpty(binding.AuthType, fmt.Sprintf(`URL alias %s "auth type"`, binding.Value)); info.Code != m.statusCodes.ok.Code {
+			return
+		}
+		if info = m.validateUrl(binding.Hostname); info.Code != m.statusCodes.ok.Code {
+			info.Info = fmt.Sprintf("Invalid URL for URL alias %s : %s", binding.Value, info.Info)
+			return
+		}
+		if !util.Contains(binding.AuthType, []string{"no-auth", "basic", "bearer", "digest"}) {
+			info.Info = fmt.Sprintf(`URL alias %s has invalid value for "auth type"`, binding.Value)
+			info.Code = m.statusCodes.errInvalidConfig.Code
+			return
+		}
+		if info = m.validateAliasName(binding.Value); info.Code != m.statusCodes.ok.Code {
+			return
+		}
+
+		if _, exists := existingAliases[binding.Value]; exists {
+			info.Info = fmt.Sprintf("URL alias %s is not unique", binding.Value)
+			info.Code = m.statusCodes.errInvalidConfig.Code
+			return
+		}
+		existingAliases[binding.Value] = struct{}{}
+	}
+	info.Code = m.statusCodes.ok.Code
+	return
+}
+
+func (m *ServiceMgr) validateUrl(u string) (info *runtimeInfo) {
+	info = &runtimeInfo{}
+	info.Code = m.statusCodes.errInvalidConfig.Code
+
+	if !(strings.HasPrefix(u, "http://") || strings.HasPrefix(u, "https://")) {
+		info.Info = fmt.Sprintf("URL starts with invalid scheme type. Please ensure URL starts with http:// or https://")
+		return
+	}
+
+	_, err := url.ParseRequestURI(u)
+	if err != nil {
+		info.Info = fmt.Sprintf("%v", err)
+		return
 	}
 
 	info.Code = m.statusCodes.ok.Code
@@ -320,7 +560,7 @@ func (m *ServiceMgr) validateDirPath(field string, settings map[string]interface
 	return
 }
 
-func (m *ServiceMgr) validateLessThan(field1, field2 string, settings map[string]interface{}) (info *runtimeInfo) {
+func (m *ServiceMgr) validateLessThan(field1, field2 string, multiplier int, settings map[string]interface{}) (info *runtimeInfo) {
 	info = &runtimeInfo{}
 	info.Code = m.statusCodes.errInvalidConfig.Code
 
@@ -334,7 +574,7 @@ func (m *ServiceMgr) validateLessThan(field1, field2 string, settings map[string
 		return
 	}
 
-	if settings[field1].(float64) >= settings[field2].(float64) {
+	if int(settings[field1].(float64)) >= int(settings[field2].(float64))*multiplier {
 		info.Info = fmt.Sprintf("%s must be less than %s", field1, field2)
 		return
 	}
@@ -423,6 +663,32 @@ func (m *ServiceMgr) validateNumber(field string, settings map[string]interface{
 	return
 }
 
+func (m *ServiceMgr) validateStringMustExist(field string, maxLength int, settings map[string]interface{}) (info *runtimeInfo) {
+	info = &runtimeInfo{}
+	info.Code = m.statusCodes.errInvalidConfig.Code
+
+	if val, ok := settings[field]; ok {
+		var valStr string
+		if valStr, ok = val.(string); !ok {
+			info.Info = fmt.Sprintf("%s must be a string", field)
+			return
+		}
+
+		if len(valStr) == 0 {
+			info.Info = fmt.Sprintf("%s must not be empty", field)
+			return
+		}
+
+		if len(valStr) > maxLength {
+			info.Info = fmt.Sprintf("%s must have no more than %d characters", field, maxLength)
+			return
+		}
+	}
+
+	info.Code = m.statusCodes.ok.Code
+	return
+}
+
 func (m *ServiceMgr) validatePositiveInteger(field string, settings map[string]interface{}) (info *runtimeInfo) {
 	info = &runtimeInfo{}
 	info.Code = m.statusCodes.errInvalidConfig.Code
@@ -448,6 +714,51 @@ func (m *ServiceMgr) validatePositiveInteger(field string, settings map[string]i
 	return
 }
 
+func (m *ServiceMgr) validateNonNegativeInteger(field string, settings map[string]interface{}) (info *runtimeInfo) {
+	info = &runtimeInfo{}
+	info.Code = m.statusCodes.errInvalidConfig.Code
+
+	if val, ok := settings[field]; ok {
+		if info = m.validateNumber(field, settings); info.Code != m.statusCodes.ok.Code {
+			return
+		}
+
+		info.Code = m.statusCodes.errInvalidConfig.Code
+		if val.(float64) < 0 {
+			info.Info = fmt.Sprintf("%s can not be negative", field)
+			return
+		}
+
+		if math.Trunc(val.(float64)) != val.(float64) {
+			info.Info = fmt.Sprintf("%s must be a non negative integer", field)
+			return
+		}
+	}
+
+	info.Code = m.statusCodes.ok.Code
+	return
+}
+
+func (m *ServiceMgr) validateTimerContextSize(field string, settings map[string]interface{}) (info *runtimeInfo) {
+	info = &runtimeInfo{}
+	info.Code = m.statusCodes.errInvalidConfig.Code
+
+	if val, ok := settings[field]; ok {
+		if val.(float64) > 19*1024*1024 {
+			info.Info = fmt.Sprintf("%s value can not be more than 19MB", field)
+			return
+		}
+
+		if val.(float64) < 20 {
+			info.Info = fmt.Sprintf("%s value can not be less than 20 bytes", field)
+			return
+		}
+	}
+
+	info.Code = m.statusCodes.ok.Code
+	return
+}
+
 func (m *ServiceMgr) validatePossibleValues(field string, settings map[string]interface{}, possibleValues []string) (info *runtimeInfo) {
 	info = &runtimeInfo{}
 	info.Code = m.statusCodes.errInvalidConfig.Code
@@ -461,18 +772,29 @@ func (m *ServiceMgr) validatePossibleValues(field string, settings map[string]in
 	return
 }
 
-func (m *ServiceMgr) validateSettings(settings map[string]interface{}) (info *runtimeInfo) {
+func (m *ServiceMgr) validateSettings(appName string, settings map[string]interface{}) (info *runtimeInfo) {
 	info = &runtimeInfo{}
 	info.Code = m.statusCodes.errInvalidConfig.Code
 
-	fillMissingWithDefaults(settings)
+	m.fillMissingWithDefaults(appName, settings)
 
 	// Handler related configurations
-	if info = m.validateBoolean("processing_status", settings); info.Code != m.statusCodes.ok.Code {
+	if info = m.validateBoolean("n1ql_prepare_all", false, settings); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+	if info = m.validatePossibleValues("language_compatibility", settings, common.LanguageCompatibility); info.Code != m.statusCodes.ok.Code {
 		return
 	}
 
-	if info = m.validateBoolean("deployment_status", settings); info.Code != m.statusCodes.ok.Code {
+	if info = m.validateStringMustExist("user_prefix", maxPrefixLength, settings); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
+	if info = m.validateBoolean("processing_status", false, settings); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
+	if info = m.validateBoolean("deployment_status", false, settings); info.Code != m.statusCodes.ok.Code {
 		return
 	}
 
@@ -480,27 +802,11 @@ func (m *ServiceMgr) validateSettings(settings map[string]interface{}) (info *ru
 		return
 	}
 
-	if info = m.validatePositiveInteger("idle_checkpoint_interval", settings); info.Code != m.statusCodes.ok.Code {
-		return
-	}
-
-	if info = m.validateBoolean("cleanup_timers", settings); info.Code != m.statusCodes.ok.Code {
-		return
-	}
-
 	if info = m.validatePositiveInteger("cpp_worker_thread_count", settings); info.Code != m.statusCodes.ok.Code {
 		return
 	}
 
-	if info = m.validatePositiveInteger("cron_timers_per_doc", settings); info.Code != m.statusCodes.ok.Code {
-		return
-	}
-
-	if info = m.validatePositiveInteger("curl_timeout", settings); info.Code != m.statusCodes.ok.Code {
-		return
-	}
-
-	dcpStreamBoundaryValues := []string{"everything", "from_now"}
+	dcpStreamBoundaryValues := []string{"everything", "from_now", "from_prior"}
 	if info = m.validatePossibleValues("dcp_stream_boundary", settings, dcpStreamBoundaryValues); info.Code != m.statusCodes.ok.Code {
 		return
 	}
@@ -509,15 +815,11 @@ func (m *ServiceMgr) validateSettings(settings map[string]interface{}) (info *ru
 		return
 	}
 
-	if info = m.validateBoolean("enable_recursive_mutation", settings); info.Code != m.statusCodes.ok.Code {
-		return
-	}
-
 	if info = m.validatePositiveInteger("execution_timeout", settings); info.Code != m.statusCodes.ok.Code {
 		return
 	}
 
-	if info = m.validateLessThan("execution_timeout", "deadline_timeout", settings); info.Code != m.statusCodes.ok.Code {
+	if info = m.validateLessThan("execution_timeout", "deadline_timeout", 1, settings); info.Code != m.statusCodes.ok.Code {
 		return
 	}
 
@@ -529,10 +831,6 @@ func (m *ServiceMgr) validateSettings(settings map[string]interface{}) (info *ru
 		return
 	}
 
-	if info = m.validateZeroOrPositiveInteger("fuzz_offset", settings); info.Code != m.statusCodes.ok.Code {
-		return
-	}
-
 	if info = m.validateStringArray("handler_headers", settings); info.Code != m.statusCodes.ok.Code {
 		return
 	}
@@ -541,7 +839,7 @@ func (m *ServiceMgr) validateSettings(settings map[string]interface{}) (info *ru
 		return
 	}
 
-	if info = m.validatePositiveInteger("lcb_inst_capacity", settings); info.Code != m.statusCodes.ok.Code {
+	if info = m.validatePositiveInteger("idle_checkpoint_interval", settings); info.Code != m.statusCodes.ok.Code {
 		return
 	}
 
@@ -550,7 +848,7 @@ func (m *ServiceMgr) validateSettings(settings map[string]interface{}) (info *ru
 		return
 	}
 
-	if info = m.validatePositiveInteger("skip_timer_threshold", settings); info.Code != m.statusCodes.ok.Code {
+	if info = m.validatePositiveInteger("poll_bucket_interval", settings); info.Code != m.statusCodes.ok.Code {
 		return
 	}
 
@@ -558,11 +856,15 @@ func (m *ServiceMgr) validateSettings(settings map[string]interface{}) (info *ru
 		return
 	}
 
-	if info = m.validatePositiveInteger("tick_duration", settings); info.Code != m.statusCodes.ok.Code {
+	if info = m.validatePositiveInteger("timer_context_size", settings); info.Code != m.statusCodes.ok.Code {
 		return
 	}
 
-	if info = m.validatePositiveInteger("timer_processing_tick_interval", settings); info.Code != m.statusCodes.ok.Code {
+	if info = m.validateTimerContextSize("timer_context_size", settings); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
+	if info = m.validatePositiveInteger("tick_duration", settings); info.Code != m.statusCodes.ok.Code {
 		return
 	}
 
@@ -582,12 +884,19 @@ func (m *ServiceMgr) validateSettings(settings map[string]interface{}) (info *ru
 		return
 	}
 
-	if info = m.validatePositiveInteger("xattr_doc_timer_entry_prune_threshold", settings); info.Code != m.statusCodes.ok.Code {
+	if info = m.validatePositiveInteger("worker_response_timeout", settings); info.Code != m.statusCodes.ok.Code {
 		return
 	}
 
-	// Process related configuration
-	if info = m.validateBoolean("breakpad_on", settings); info.Code != m.statusCodes.ok.Code {
+	if info = m.validatePositiveInteger("timer_queue_mem_cap", settings); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
+	if info = m.validatePositiveInteger("timer_queue_size", settings); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
+	if info = m.validatePositiveInteger("undeploy_routine_count", settings); info.Code != m.statusCodes.ok.Code {
 		return
 	}
 
@@ -613,52 +922,7 @@ func (m *ServiceMgr) validateSettings(settings map[string]interface{}) (info *ru
 		return
 	}
 
-	if info = m.validateBoolean("enable_applog_rotation", settings); info.Code != m.statusCodes.ok.Code {
-		return
-	}
-
-	// Doc timer configurations for plasma
-	if info = m.validateBoolean("auto_swapper", settings); info.Code != m.statusCodes.ok.Code {
-		return
-	}
-
-	if info = m.validateBoolean("enable_snapshot_smr", settings); info.Code != m.statusCodes.ok.Code {
-		return
-	}
-
-	if info = m.validatePositiveInteger("iterator_refresh_counter", settings); info.Code != m.statusCodes.ok.Code {
-		return
-	}
-
-	if info = m.validatePositiveInteger("lss_cleaner_max_threshold", settings); info.Code != m.statusCodes.ok.Code {
-		return
-	}
-
-	if info = m.validatePositiveInteger("lss_cleaner_threshold", settings); info.Code != m.statusCodes.ok.Code {
-		return
-	}
-
-	if info = m.validatePositiveInteger("lss_read_ahead_size", settings); info.Code != m.statusCodes.ok.Code {
-		return
-	}
-
-	if info = m.validatePositiveInteger("max_delta_chain_len", settings); info.Code != m.statusCodes.ok.Code {
-		return
-	}
-
-	if info = m.validatePositiveInteger("max_page_items", settings); info.Code != m.statusCodes.ok.Code {
-		return
-	}
-
-	if info = m.validatePositiveInteger("min_page_items", settings); info.Code != m.statusCodes.ok.Code {
-		return
-	}
-
-	if info = m.validatePositiveInteger("persist_interval", settings); info.Code != m.statusCodes.ok.Code {
-		return
-	}
-
-	if info = m.validateBoolean("use_memory_manager", settings); info.Code != m.statusCodes.ok.Code {
+	if info = m.validateBoolean("enable_applog_rotation", true, settings); info.Code != m.statusCodes.ok.Code {
 		return
 	}
 
@@ -676,6 +940,19 @@ func (m *ServiceMgr) validateSettings(settings map[string]interface{}) (info *ru
 	}
 
 	if info = m.validatePositiveInteger("dcp_num_connections", settings); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
+	// N1QL related configuration
+	if info = m.validatePossibleValues("n1ql_consistency", settings, m.consistencyValues); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
+	if info = m.validatePositiveInteger("lcb_inst_capacity", settings); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
+	if info = m.validateNonNegativeInteger("lcb_retry_count", settings); info.Code != m.statusCodes.ok.Code {
 		return
 	}
 

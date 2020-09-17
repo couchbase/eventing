@@ -80,10 +80,11 @@ var stopRebalanceCallback = func(args ...interface{}) error {
 	logPrefix := "rebalancer::stopRebalanceCallback"
 
 	r := args[0].(*rebalancer)
+	taskID := args[1].(string)
 
 	logging.Infof("%s Updating metakv to signify rebalance cancellation", logPrefix)
 
-	path := metakvRebalanceTokenPath + r.change.ID
+	path := metakvRebalanceTokenPath + taskID
 	err := util.MetakvSet(path, []byte(stopRebalance), nil)
 	if err != nil {
 		logging.Errorf("%s Failed to update rebalance token: %v in metakv as part of cancelling rebalance, err: %v",
@@ -99,7 +100,7 @@ var cleanupEventingMetaKvPath = func(args ...interface{}) error {
 
 	path := args[0].(string)
 
-	err := util.RecursiveDelete(path)
+	err := util.MetakvRecursiveDelete(path)
 	if err != nil {
 		logging.Errorf("%s Failed to purge eventing artifacts from path: %v, err: %v", logPrefix, path, err)
 	}
@@ -132,6 +133,51 @@ var metaKVSetCallback = func(args ...interface{}) error {
 	err := util.MetakvSet(path, []byte(changeID), nil)
 	if err != nil {
 		logging.Errorf("%s Failed to store into metakv path: %v, err: %v", logPrefix, path, err)
+	}
+
+	return err
+}
+
+var getDeployedAppsCallback = func(args ...interface{}) error {
+	logPrefix := "ServiceMgr::getDeployedAppsCallback"
+
+	aggDeployedApps := args[0].(*map[string]map[string]string)
+	nodeAddrs := args[1].([]string)
+
+	var err error
+	*aggDeployedApps, err = util.GetAppStatus("/getLocallyDeployedApps", nodeAddrs)
+	if err != nil {
+		logging.Errorf("%s Failed to get deployed apps, err: %v", logPrefix, err)
+	}
+
+	return err
+}
+
+var getPausingAppsCallback = func(args ...interface{}) error {
+	logPrefix := "ServiceMgr::getPausingAppsCallback"
+
+	aggPausingApps := args[0].(*map[string]map[string]string)
+	nodeAddrs := args[1].([]string)
+
+	var err error
+	*aggPausingApps, err = util.GetAppStatus("/getPausingApps", nodeAddrs)
+	if err != nil {
+		logging.Errorf("%s Failed to get apps which are being paused, err: %v", logPrefix, err)
+	}
+
+	return err
+}
+
+var getBootstrappingAppsCallback = func(args ...interface{}) error {
+	logPrefix := "ServiceMgr::getBootstrappingAppsCallback"
+
+	aggBootstrappingApps := args[0].(*map[string]map[string]string)
+	nodeAddrs := args[1].([]string)
+
+	var err error
+	*aggBootstrappingApps, err = util.GetAppStatus("/getBootstrappingApps", nodeAddrs)
+	if err != nil {
+		logging.Errorf("%s Failed to get bootstrapping apps, err: %v", logPrefix, err)
 	}
 
 	return err

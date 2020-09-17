@@ -2,14 +2,24 @@ package util
 
 import (
 	"crypto/rand"
+	"hash/crc32"
+	"time"
+
 	"github.com/couchbase/eventing/gen/version"
 	"github.com/couchbase/eventing/logging"
 )
 
-var ipv4 bool = true
-var vbcount int = 1024
-var localusr string
-var localkey string
+var (
+	localusr string
+	localkey string
+	CrcTable *crc32.Table
+
+	ipv4               = true
+	maxFunctionSize    = 128 * 1024
+	metakvMaxDocSize   = 128 * 1024
+	HTTPRequestTimeout = 10 * time.Second
+	breakpadOn         = true
+)
 
 func init() {
 	dict := []byte("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ01234567890")
@@ -25,6 +35,7 @@ func init() {
 	mid := len(buf) / 2
 	localusr = string(buf[:mid])
 	localkey = string(buf[mid:])
+	CrcTable = crc32.MakeTable(crc32.Castagnoli)
 }
 
 func SetIPv6(is6 bool) {
@@ -37,6 +48,14 @@ func GetIPMode() string {
 		return "ipv4"
 	} else {
 		return "ipv6"
+	}
+}
+
+func GetNetworkProtocol() string {
+	if ipv4 {
+		return "tcp4"
+	} else {
+		return "tcp6"
 	}
 }
 
@@ -56,15 +75,41 @@ func LocalKey() (usr, key string) {
 	return localusr, localkey
 }
 
-func SetMaxVbuckets(sz int) {
-	vbcount = sz
-	logging.Infof("Setting vbucket count to %v", sz)
-}
-
-func GetMaxVbuckets() int {
-	return vbcount
-}
-
 func EventingVer() string {
 	return version.EventingVer()
+}
+
+func SetMaxFunctionSize(size int) {
+	logPrefix := "util::SetMaxHandlerSize"
+
+	if size > 0 {
+		maxFunctionSize = size
+		logging.Infof("%s Setting max function size to %d", logPrefix, size)
+
+	}
+}
+
+func MaxFunctionSize() int {
+	return maxFunctionSize
+}
+
+func SetMetaKvMaxDocSize(size int) {
+	logPrefix := "util::SetMetaKvMaxDocSize"
+
+	if size > 0 {
+		metakvMaxDocSize = size
+		logging.Infof("%s Setting metakv max doc size to %d", logPrefix, size)
+	}
+}
+
+func MetaKvMaxDocSize() int {
+	return metakvMaxDocSize
+}
+
+func SetBreakpad(val bool) {
+	breakpadOn = val
+}
+
+func BreakpadOn() bool {
+	return breakpadOn
 }

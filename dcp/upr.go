@@ -1,14 +1,14 @@
 package couchbase
 
 import (
+	"crypto/rand"
 	"errors"
 	"fmt"
-	"math/rand"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/couchbase/eventing/dcp/transport/client"
+	memcached "github.com/couchbase/eventing/dcp/transport/client"
 	"github.com/couchbase/eventing/logging"
 )
 
@@ -147,11 +147,14 @@ type DcpFeed struct {
 	output    chan *memcached.DcpEvent // Same as C but writeably-typed
 	name      DcpFeedName              // name of this DCP feed
 	sequence  uint32                   // sequence number for this feed
+	opaque    uint16
+	flags     uint32
 	// gen-server
 	reqch     chan []interface{}
 	finch     chan bool
 	logPrefix string
 	// config
+	config         map[string]interface{}
 	numConnections int
 	activeVbOnly   bool
 }
@@ -193,15 +196,20 @@ func (b *Bucket) StartDcpFeedOver(
 		output:    make(chan *memcached.DcpEvent, dataChanSize),
 		name:      name,
 		sequence:  sequence,
+		opaque:    opaque,
+		flags:     flags,
 		reqch:     make(chan []interface{}, genChanSize),
 		finch:     make(chan bool),
+		config:    copyconfig(config),
 		logPrefix: fmt.Sprintf("DCP[%v]", name),
 	}
 	feed.numConnections = config["numConnections"].(int)
 	feed.activeVbOnly = config["activeVbOnly"].(bool)
 
 	feed.C = feed.output
-	if feed.connectToNodes(kvaddrs, opaque, flags, config) != nil {
+	if err := feed.connectToNodes(kvaddrs, opaque, flags, config); err != nil {
+		logging.Errorf("%v ##%x Bucket::StartDcpFeedOver : error %v in connectToNodes",
+			feed.logPrefix, opaque, err)
 		return nil, ErrorInvalidBucket
 	}
 	go feed.genServer(feed.reqch, opaque)
@@ -275,7 +283,9 @@ func (feed *DcpFeed) genServer(reqch chan []interface{}, opaque uint16) {
 	closeNodeFeeds := func() {
 		for _, nodeFeeds := range feed.nodeFeeds {
 			for _, singleFeed := range nodeFeeds {
-				singleFeed.dcpFeed.Close()
+				if singleFeed != nil {
+					singleFeed.dcpFeed.Close()
+				}
 			}
 		}
 		feed.nodeFeeds = nil
@@ -337,7 +347,7 @@ func (feed *DcpFeed) connectToNodes(
 	m, err := feed.bucket.GetVBmap(kvaddrs)
 	if err != nil {
 		fmsg := "%v ##%x GetVBmap(%v) failed: %v\n"
-		logging.Fatalf(fmsg, prefix, opaque, kvaddrs, err)
+		logging.Errorf(fmsg, prefix, opaque, kvaddrs, err)
 		return memcached.ErrorInvalidFeed
 	}
 	for kvaddr := range m {
@@ -385,6 +395,46 @@ func (feed *DcpFeed) connectToNodes(
 	return nil
 }
 
+func (feed *DcpFeed) reConnectToNodes(
+	opaque uint16, flags uint32, config map[string]interface{}) {
+
+	for _, serverConn := range feed.bucket.getConnPools() {
+		nodeFeeds, ok := feed.nodeFeeds[serverConn.host]
+		if !ok {
+			continue
+		}
+
+		for i, nodeFeed := range nodeFeeds {
+			if nodeFeed != nil {
+				continue
+			}
+
+			var name DcpFeedName
+			if feed.name.Raw() == "" {
+				name = NewDcpFeedName("DefaultDcpClient")
+			} else {
+				name = feed.name
+			}
+
+			feedname := NewDcpFeedName(fmt.Sprintf("%v/%d", name, i))
+			singleFeed, err := serverConn.StartDcpFeed(
+				feedname, feed.sequence, flags, feed.output, opaque, config)
+			if err != nil {
+				fmsg := "%v ##%x DcpFeed::reConnectToNodes StartDcpFeed failed for %v with err %v\n"
+				logging.Errorf(fmsg, feed.logPrefix, opaque, feedname, err)
+				continue
+			}
+			// add the node to the connection map
+			feedInfo := &FeedInfo{
+				vbnos:   make([]uint16, 0),
+				dcpFeed: singleFeed,
+				host:    serverConn.host,
+			}
+			nodeFeeds[i] = feedInfo
+		}
+	}
+}
+
 func (feed *DcpFeed) dcpRequestStream(
 	vb uint16, opaque uint16, flags uint32,
 	vbuuid, startSequence, endSequence, snapStart, snapEnd uint64) error {
@@ -407,9 +457,11 @@ func (feed *DcpFeed) dcpRequestStream(
 		return ErrorInvalidVbucket
 	}
 
+	feed.reConnectToNodes(feed.opaque, feed.flags, feed.config)
+
 	var err error
 
-	for len(feed.nodeFeeds[master]) > 0 {
+	for i := 0; i < len(feed.nodeFeeds[master]); i++ {
 		singleFeed, ok := addtofeed(feed.nodeFeeds[master])
 		if !ok {
 			fmsg := "%v ##%x notFound DcpFeed host: %q vb:%d\n"
@@ -464,6 +516,9 @@ func (feed *DcpFeed) dcpGetSeqnos() (map[uint16]uint64, error) {
 	ch := make(chan []interface{}, count)
 	for _, nodeFeeds := range feed.nodeFeeds {
 		for _, singleFeed := range nodeFeeds {
+			if singleFeed == nil {
+				continue
+			}
 			go func() {
 				nodeTs, err := singleFeed.dcpFeed.DcpGetSeqnos()
 				ch <- []interface{}{nodeTs, err}
@@ -501,9 +556,13 @@ func addtofeed(nodeFeeds []*FeedInfo) (*FeedInfo, bool) {
 	if len(nodeFeeds) == 0 {
 		return nil, false
 	}
-	feedinfo := nodeFeeds[0]
-	for _, fi := range nodeFeeds[1:] {
-		if len(fi.vbnos) < len(feedinfo.vbnos) {
+	var feedinfo *FeedInfo
+	for _, fi := range nodeFeeds {
+		if fi == nil {
+			continue
+		} else if feedinfo == nil {
+			feedinfo = fi
+		} else if len(fi.vbnos) < len(feedinfo.vbnos) {
 			feedinfo = fi
 		}
 	}
@@ -515,6 +574,9 @@ func removefromfeed(nodeFeeds []*FeedInfo, forvb uint16) (*FeedInfo, bool) {
 		return nil, false
 	}
 	for _, singleFeed := range nodeFeeds {
+		if singleFeed == nil {
+			continue
+		}
 		for i, vbno := range singleFeed.vbnos {
 			if vbno == forvb {
 				copy(singleFeed.vbnos[i:], singleFeed.vbnos[i+1:])
@@ -530,10 +592,10 @@ func removefromfeed(nodeFeeds []*FeedInfo, forvb uint16) (*FeedInfo, bool) {
 func purgeFeed(nodeFeeds []*FeedInfo, singleFeed *FeedInfo) []*FeedInfo {
 	name := singleFeed.dcpFeed.Name()
 	for i, nodeFeed := range nodeFeeds {
-		if nodeFeed.dcpFeed.Name() == name {
+		if nodeFeed != nil && nodeFeed.dcpFeed.Name() == name {
 			nodeFeed.dcpFeed.Close()
-			copy(nodeFeeds[i:], nodeFeeds[i+1:])
-			return nodeFeeds[:len(nodeFeeds)-1]
+			nodeFeeds[i] = nil
+			return nodeFeeds
 		}
 	}
 	return nodeFeeds
@@ -578,4 +640,12 @@ type FeedInfo struct {
 	dcpFeed *memcached.DcpFeed // DCP feed handle
 	host    string             // hostname
 	mu      sync.Mutex         // protects the following field.
+}
+
+func copyconfig(config map[string]interface{}) map[string]interface{} {
+	nconfig := make(map[string]interface{})
+	for k, v := range config {
+		nconfig[k] = v
+	}
+	return nconfig
 }

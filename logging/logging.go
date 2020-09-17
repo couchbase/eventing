@@ -105,16 +105,24 @@ func init() {
 
 func printf(at LogLevel, format string, v ...interface{}) {
 	if baselevel >= at {
-		if noredact {
-			format = strings.Replace(format, "%ru", "%v", -1)
-		} else {
-			format = strings.Replace(format, "%ru", "<ud>%v</ud>", -1)
-		}
-		format = strings.Replace(format, "%rm", "%v", -1) // not implemented
-		format = strings.Replace(format, "%rs", "%v", -1) // not implemented
+		format := RedactFormat(format)
 		ts := time.Now().Format("2006-01-02T15:04:05.000-07:00")
-		target.Printf(ts+" ["+at.String()+"] "+format, v...)
+		msg := fmt.Sprintf(ts+" ["+at.String()+"] "+format, v...)
+		if !strings.Contains(msg, "[gocb] Threshold Log:") { // sigh
+			target.Print(msg)
+		}
 	}
+}
+
+func RedactFormat(format string) string {
+	if noredact {
+		format = strings.Replace(format, "%ru", "%v", -1)
+	} else {
+		format = strings.Replace(format, "%ru", "<ud>%v</ud>", -1)
+	}
+	format = strings.Replace(format, "%rm", "%v", -1) // not implemented
+	format = strings.Replace(format, "%rs", "%v", -1) // not implemented
+	return format
 }
 
 func Warnf(format string, v ...interface{}) {
@@ -160,4 +168,11 @@ func StackTrace() string {
 		buf.WriteString(fmt.Sprintf("%s\n", call))
 	}
 	return buf.String()
+}
+
+// log redaction related
+func TagUD(arg interface{}) interface{} {
+	var udtag_begin = "<ud>"
+	var udtag_end = "</ud>"
+	return fmt.Sprintf("%s(%v)%s", udtag_begin, arg, udtag_end)
 }

@@ -42,10 +42,10 @@ func main() {
 	settings["checkpoint_interval"] = 20000
 	settings["worker_count"] = 3
 	settings["timer_worker_pool_size"] = 1
-	settings["cleanup_timers"] = true
 	settings["timer_processing_tick_interval"] = 500
 	settings["skip_timer_threshold"] = 600
 	settings["lcb_inst_capacity"] = 5
+	settings["n1ql_consistency"] = "request"
 	settings["enable_recursive_mutation"] = false
 	settings["deadline_timeout"] = 2
 	settings["execution_timeout"] = 1

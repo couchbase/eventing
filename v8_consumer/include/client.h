@@ -15,6 +15,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string>
 #include <uv.h>
 #include <vector>
 
@@ -25,6 +26,9 @@ const size_t MAX_BUF_SIZE = 65536;
 const int HEADER_FRAGMENT_SIZE = 4;  // uint32
 const int PAYLOAD_FRAGMENT_SIZE = 4; // uint32
 const int SIZEOF_UINT32 = 4;
+const size_t MAX_V8_HEAP_SIZE = 1.4 * 1024 * 1024 * 1024;
+
+int64_t timer_context_size;
 
 typedef struct resp_msg_s {
   std::string msg;
@@ -46,14 +50,14 @@ public:
 
   void FlushToConn(uv_stream_t *stream, char *buffer, int length);
 
-  void InitTcpSock(const std::string &handler_name,
-                   const std::string &handler_uuid,
+  void InitTcpSock(const std::string &function_name,
+                   const std::string &function_id,
                    const std::string &user_prefix, const std::string &appname,
                    const std::string &addr, const std::string &worker_id,
                    int batch_size, int feedback_batch_size, int feedback_port,
                    int port);
 
-  void InitUDS(const std::string &handler_name, const std::string &handler_uuid,
+  void InitUDS(const std::string &function_name, const std::string &function_id,
                const std::string &user_prefix, const std::string &appname,
                const std::string &addr, const std::string &worker_id,
                int batch_size, int feedback_batch_size,
@@ -64,10 +68,12 @@ public:
 
   void OnRead(uv_stream_t *stream, ssize_t nread, const uv_buf_t *buf);
 
+  static std::pair<bool, std::unique_ptr<WorkerMessage>>
+  GetWorkerMessage(int encoded_header_size, int encoded_payload_size,
+                   const std::string &msg);
   void ParseValidChunk(uv_stream_t *stream, int nread, const char *buf);
 
-  void RouteMessageWithResponse(header_t *parsed_header,
-                                message_t *parsed_message);
+  void RouteMessageWithResponse(std::unique_ptr<WorkerMessage> worker_msg);
 
   void StartFeedbackUVLoop();
   void StartMainUVLoop();
@@ -76,23 +82,45 @@ public:
 
   void ReadStdinLoop();
 
+  void EventGenLoop();
+
   static void StopUvLoop(uv_async_t *);
+
+  void SendFilterAck(int opcode, int msgtype, int vb_no, int64_t seq_no,
+                     bool skip_ack);
+
+  void SetNsServerPort(const std::string &port) { ns_server_port_ = port; }
+  void SetNumVbuckets(const int32_t &num_vbuckets) { num_vbuckets_ = num_vbuckets; }
 
   std::thread main_uv_loop_thr_;
   std::thread feedback_uv_loop_thr_;
   std::thread stdin_read_thr_;
+  std::thread event_gen_thr_;
+
+  size_t memory_quota_;
 
 protected:
   void WriteResponseWithRetry(uv_stream_t *handle,
                               std::vector<uv_buf_t> messages,
                               size_t batch_size);
 
+  std::string GetInsight();
+
 private:
   AppWorker();
   ~AppWorker();
+
+  std::vector<std::unordered_set<int64_t>>
+  PartitionVbuckets(const std::vector<int64_t> &vbuckets) const;
+
+  void SendPauseAck(const std::unordered_map<int64_t, uint64_t> &lps_map);
+
   std::thread write_responses_thr_;
   std::map<int16_t, V8Worker *> workers_;
   std::chrono::milliseconds checkpoint_interval_;
+
+  Histogram latency_stats_;
+  Histogram curl_latency_stats_;
 
   // Socket  handles for out of band data channel to pipeline data to parent
   // eventing-producer
@@ -120,13 +148,17 @@ private:
 
   std::string app_name_;
 
-  std::string handler_name_;
+  std::string function_name_;
 
-  std::string handler_uuid_;
+  std::string function_id_;
 
   std::string user_prefix_;
 
   std::string next_message_;
+
+  std::string ns_server_port_;
+
+  int32_t num_vbuckets_{1024};
 
   std::map<int16_t, int16_t> partition_thr_map_;
 
@@ -144,11 +176,16 @@ private:
 
   bool msg_priority_;
 
+  bool using_timer_{false};
+
   std::vector<char> read_buffer_main_;
 
   std::vector<char> read_buffer_feedback_;
 
   std::atomic<bool> thread_exit_cond_;
+  std::atomic<bool> pause_consumer_;
+  bool v8worker_init_done_{false};
+  std::mutex workers_map_mutex_;
 };
 
 #endif

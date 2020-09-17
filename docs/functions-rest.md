@@ -5,7 +5,7 @@ with the request, 5xx indicating internal errors. The last two digits are inform
 
 ## Create a function
 >
->POST /api/v1/functions/<name>
+> `POST /api/v1/functions/<name>`
 >
 
 Creates a function using the definition (which includes function settings) sent in the body of the request.
@@ -15,7 +15,7 @@ and deploy a function in a single step. It is not recommended to do so however.
 
 ## Create several functions
 >
-> POST /api/v1/functions
+> `POST /api/v1/functions`
 >
 
 This creates serveral functions as specified in the body of the request. Function names must be unique.
@@ -24,7 +24,7 @@ and deploy functions in a single step. It is not recommended to do so however.
 
 ## Get a function
 >
-> GET /api/v1/functions/<name>
+> `GET /api/v1/functions/<name>`
 >
 
 Fetch a function definition. This includes the settings specific to the function. The entire returned
@@ -32,7 +32,7 @@ artifact should be treated as an opaque object and should not be edited outside 
 
 ## Get all functions
 >
-> GET /api/v1/functions
+> `GET /api/v1/functions`
 >
 
 Fetch all function definitions. This includes the settings specific to each function. The entire returned
@@ -40,14 +40,14 @@ artifact should be treated as an opaque object and should not be edited outside 
 
 ## Delete a function
 >
-> DELETE /api/v1/functions/<name>
+> `DELETE /api/v1/functions/<name>`
 >
 
 Delete a function. Only functions that are in undeployed state can be deleted. Call expects no body.
 
 ## Delete all functions
 >
-> DELETE /api/v1/functions
+> `DELETE /api/v1/functions`
 >
 
 Delete all defined functions. Use with caution. Only functions that are in undeployed state can be deleted.
@@ -55,7 +55,7 @@ Call expects no body.
 
 ## Get a deployed function's settings
 >
-> GET /api/v1/functions/<name>/settings
+> `GET /api/v1/functions/<name>/settings`
 > 
 
 Fetch only the settings portion of a **deployed** function. This includes the current deployment status,
@@ -65,7 +65,7 @@ definition editor, and not this endpoint).
 
 ## Modify a deployed function's settings
 >
-> POST /api/v1/functions/<name>/settings
+> `POST /api/v1/functions/<name>/settings`
 >
 
 Edit the settings portion of a **deployed** function. Currently, only the deployment status, pause/resume status
@@ -80,7 +80,8 @@ the future to provide an explicit endpoint to accomplish the same. Note that dep
 status must always be equal in 5.5 release as we do not yet support pause/resume functionality.
 
 >
-> POST /api/v1/functions/<name>/settings
+> `POST /api/v1/functions/<name>/settings`
+>
 > {"deployment_status": true, "processing_status": true}
 >
 
@@ -90,13 +91,14 @@ the future to provide an explicit endpoint to accomplish the same. Note that dep
 status must always be equal in 5.5 release as we do not yet support pause/resume functionality.
 
 >
-> POST /api/v1/functions/<name>/settings
+> `POST /api/v1/functions/<name>/settings`
+>
 > {"deployment_status": false, "processing_status": false}
 >
 
 ## Get eventing global config
 > 
-> GET /api/v1/config
+> `GET /api/v1/config`
 >
 
 Config is distinct from settings in the sense of config being global to entire eventing service, while setting is
@@ -105,7 +107,7 @@ that can be fetched using this endpoint. Additional debugging settings may be in
 
 ## Manipulate eventing global config
 >
-> POST /api/v1/config
+> `POST /api/v1/config`
 >
 
 Currently, memory quota and metadata bucket are settable parts of the config using this endpoint. Additional debugging
@@ -115,7 +117,7 @@ the config change to take effect. RAM quota is specified in megabytes.
 
 ## Import a list of functions
 >
-> POST /api/v1/import
+> `POST /api/v1/import`
 >
 
 This is a convenience method to import function definitions. Imported functions are always start off in undeployed state
@@ -124,10 +126,17 @@ that were obtained using the `/api/v1/export` call.
 
 ## Export a list of functions
 >
-> GET /api/v1/export
+> `GET /api/v1/export`
 > 
 
 This is a convenience method to export all function definitions. Exported functions are always set to undeployed state
 at the time of export, regardless of the state in the cluster at time of export. The returned artifact should be treated as an
 opaque artifact and must not be edited outside the Couchbase Console UI.
 
+## Get the status of functions
+>
+> `GET /api/v1/status`
+>
+
+This API returns a list of functions and its corresponding `composite_status`. It can have one of the following values - `undeployed`,
+`deploying`, `deployed`, `undeploying`.

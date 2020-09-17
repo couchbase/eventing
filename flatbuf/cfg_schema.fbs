@@ -5,8 +5,12 @@ table Config {
   appName:string;
   depCfg:DepCfg;
   handlerUUID:uint;
-  id:uint;
-  usingDocTimer:bool;
+  reserved1:uint; // was id
+  reserved2:bool; // was usingTimer
+  functionInstanceID:string;
+  reserved3:bool; // was srcMutationEnabled
+  access:[string];
+  curl:[Curl];
 }
 
 table DepCfg {
@@ -18,6 +22,17 @@ table DepCfg {
 table Bucket {
   bucketName:string;
   alias:string;
+}
+
+table Curl {
+  hostname:string;
+  value:string;
+  authType:string;
+  username:string;
+  password:string;
+  bearerKey:string;
+  allowCookies:bool;
+  validateSSLCertificate:bool;
 }
 
 root_type Config;

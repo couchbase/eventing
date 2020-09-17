@@ -1,0 +1,149 @@
+{
+  "$schema": "http://json-schema.org/schema#",
+  "type": "object",
+  "dependencies" : {
+    "deployment_status":   ["processing_status", "dcp_stream_boundary"],
+    "processing_status":   ["deployment_status", "dcp_stream_boundary"],
+    "dcp_stream_boundary": ["deployment_status", "processing_status"]
+  },
+  "properties": {
+    "cpp_worker_thread_count": {
+      "type": "integer",
+      "description": "number of threads each worker utilizes",
+      "minimum": 1,
+      "default": 2
+    },
+    "dcp_stream_boundary": {
+      "type": "string",
+      "description": "indicates where to start dcp stream from (beginning of time, present point, or point where paused)",
+      "enum": ["everything", "from_now", "from_prior"],
+      "default": "from_now"
+    },
+    "deployment_status": {
+      "type": "boolean",
+      "description": "indicates if the function is deployed. true=deployed, false=undeployed",
+      "default": false
+    },
+    "description": {
+      "type": "string",
+      "description": "free form text for user to describe the handler. no functional role"
+    },
+    "execution_timeout": {
+      "type": "integer",
+      "description": "maximum time the handler can run before it is forcefully terminated (in seconds)",
+      "minimum": 1,
+      "default": 60
+    },
+    "language_compatibility": {
+      "type": "string",
+      "description": "eventing language version this handler assumes in terms of syntax and behavior",
+      "enum": ["6.0.0", "6.5.0"],
+      "default": "6.5.0"
+    },
+    "lcb_inst_capacity": {
+      "type": "integer",
+      "description": "maximum number of libcouchbase connections that may be opened and pooled",
+      "minimum": 1,
+      "default": 10
+    },
+    "lcb_retry_count": {
+      "type": "integer",
+      "description": "number of retries of retriable libcouchbase failures. 0 keeps trying till execution_timeout",
+      "minimum": 0,
+      "default": 0
+    },
+    "log_level": {
+      "type": "string",
+      "description": "level of detail in system logging",
+      "enum": ["INFO", "ERROR", "WARNING", "DEBUG", "TRACE"],
+      "default": "INFO"
+    },
+    "n1ql_consistency": {
+      "type": "string",
+      "description": "consistency level used by n1ql statements in the handler",
+      "enum": ["none", "request"],
+      "default": "none"
+    },
+    "processing_status": {
+      "type": "boolean",
+      "description": "indicates if the function is running (i.e., not paused). true=running, false=paused",
+      "default": false
+    },
+    "sock_batch_size": {
+      "type": "integer",
+      "description": "batch size for messages from eventing-producer to eventing-consumer",
+      "minimum": 1,
+      "default": 10
+    },
+    "tick_duration": {
+      "type": "integer",
+      "description": "duration to log stats from this handler, in milliseconds",
+      "default": "60000"
+    },
+    "timer_context_size": {
+      "type": "integer",
+      "description": "size limit of timer context object",
+      "minimum": 20,
+      "maximum": 19922944,
+      "default": 1024
+    },
+    "user_prefix": {
+      "type": "string",
+      "description": "key prefix for all data stored in metadata by this handler",
+      "minLength": 1,
+      "default": "eventing"
+    },
+    "worker_count": {
+      "type": "integer",
+      "description": "number of worker processes handler utilizes on each eventing node",
+      "minimum": 1,
+      "default": 3
+    },
+    "n1ql_prepare_all": {
+      "type": "boolean",
+      "description": "automatically prepare all n1ql statements in the handler",
+      "default": "false"
+    },
+    "handler_headers": {
+      "type": "array",
+      "description": "code to automatically prepend to top of handler code",
+      "items": {
+        "type": "string"
+      }
+    },
+    "handler_footers": {
+      "type": "array",
+      "description": "code to automatically append to bottom of handler code",
+      "items": {
+        "type": "string"
+      }
+    },
+    "enable_applog_rotation": {
+      "type": "boolean",
+      "description": "enable rotating this handlers log() message files",
+      "default": true
+    },
+    "app_log_dir": {
+      "type": "string",
+      "description": "directory to write content of log() message files"
+    },
+    "app_log_max_size": {
+      "type": "integer",
+      "description": "rotate logs when file grows to this size in bytes approximately",
+      "minimum": 1024,
+      "default": 41943040
+    },
+    "app_log_max_files": {
+      "type": "integer",
+      "description": "number of log() message files to retain when rotating",
+      "minimum": 1,
+      "default": 10
+    },
+    "checkpoint_interval": {
+      "type": "integer",
+      "description": "number of seconds before writing a progress checkpoint",
+      "minimum": 1,
+      "default": 60
+    }
+  }
+}

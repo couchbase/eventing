@@ -8,10 +8,6 @@ import (
 	"github.com/couchbase/eventing/logging"
 )
 
-// The maximum reasonable body length to expect.
-// Anything larger than this will result in an error.
-var MaxBodyLen = int(20 * 1024 * 1024) // 20MB
-
 // MCRequest is memcached Request
 type MCRequest struct {
 	// The command being issued
@@ -149,9 +145,6 @@ func (req *MCRequest) Receive(r io.Reader, hdrBytes []byte) (int, error) {
 	req.VBucket = binary.BigEndian.Uint16(hdrBytes[6:])
 	bodyLen := int(binary.BigEndian.Uint32(hdrBytes[8:]) -
 		uint32(klen) - uint32(elen))
-	if bodyLen > MaxBodyLen {
-		return n, fmt.Errorf("%d is too big (max %d)", bodyLen, MaxBodyLen)
-	}
 	req.Opaque = binary.BigEndian.Uint32(hdrBytes[12:])
 	req.Cas = binary.BigEndian.Uint64(hdrBytes[16:])
 
@@ -172,7 +165,9 @@ func (req *MCRequest) Receive(r io.Reader, hdrBytes []byte) (int, error) {
 		req.Body = buf[klen+elen:]
 		if isSnapEndOpen(req) {
 			fmsg := "open snapshot %rm hdrBytes:%v buf:%ru"
-			logging.Errorf(fmsg, fmt.Sprintf("%#v", req), hdrBytes, buf)
+			arg1 := logging.TagUD(hdrBytes)
+			arg2 := logging.TagUD(buf)
+			logging.Errorf(fmsg, fmt.Sprintf("%#v", req), arg1, arg2)
 		}
 	}
 

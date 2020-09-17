@@ -1,10 +1,16 @@
 package consumer
 
 import (
+	"errors"
+	"math/rand"
+	"sync/atomic"
+
 	cm "github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
 )
+
+var errTimerQueueNotDrained = errors.New("timer queues are not drained")
 
 // RebalanceTaskProgress reports progress to producer
 func (c *Consumer) RebalanceTaskProgress() *cm.RebalanceProgress {
@@ -12,22 +18,85 @@ func (c *Consumer) RebalanceTaskProgress() *cm.RebalanceProgress {
 
 	progress := &cm.RebalanceProgress{}
 
-	vbsRemainingToGiveUp := c.getVbRemainingToGiveUp()
-	vbsRemainingToOwn := c.getVbRemainingToOwn()
+	vbsRemainingToCloseStream := c.getVbRemainingToCloseStream()
+	vbsRemainingToStreamReq := c.getVbRemainingToStreamReq()
 
-	logging.Infof("%s [%s:%s:%d] vbsRemainingToGiveUp len: %d dump: %v vbsRemainingToOwn len: %d dump: %v",
-		logPrefix, c.workerName, c.tcpPort, c.Pid(), len(vbsRemainingToGiveUp),
-		util.Condense(vbsRemainingToGiveUp), len(vbsRemainingToOwn),
-		util.Condense(vbsRemainingToOwn))
+	logging.Infof("%s [%s:%s:%d] isBootstrapping: %t isRebalanceOngoing: %t vbsRemainingToCloseStream len: %d dump: %v vbsRemainingToStreamReq len: %d dump: %v",
+		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.isBootstrapping, c.isRebalanceOngoing, len(vbsRemainingToCloseStream),
+		util.Condense(vbsRemainingToCloseStream), len(vbsRemainingToStreamReq),
+		util.Condense(vbsRemainingToStreamReq))
 
-	if len(vbsRemainingToGiveUp) > 0 || len(vbsRemainingToOwn) > 0 {
+	if len(vbsRemainingToCloseStream) > 0 || len(vbsRemainingToStreamReq) > 0 {
 		vbsOwnedPerPlan := c.getVbsOwned()
 
+		progress.CloseStreamVbsLen = len(vbsRemainingToCloseStream)
+		progress.StreamReqVbsLen = len(vbsRemainingToStreamReq)
+
 		progress.VbsOwnedPerPlan = len(vbsOwnedPerPlan)
-		progress.VbsRemainingToShuffle = len(vbsRemainingToOwn) + len(vbsRemainingToGiveUp)
+		progress.VbsRemainingToShuffle = len(vbsRemainingToCloseStream) + len(vbsRemainingToStreamReq)
+	}
+
+	logging.Infof("%s [%s:%s:%d] uuid: %s eject node UUIDs: %+v",
+		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.NodeUUID(), c.ejectNodesUUIDs)
+
+	if util.Contains(c.NodeUUID(), c.ejectNodesUUIDs) {
+		err := c.CheckIfQueuesAreDrained()
+		if err != nil {
+			// Faking rebalance progress while timer queues are getting drained
+			vbsToMove := rand.Intn(5) + 1
+			progress.VbsRemainingToShuffle = vbsToMove
+			progress.CloseStreamVbsLen = vbsToMove
+			return progress
+		}
+	}
+
+	if (c.isBootstrapping || c.vbsStateUpdateRunning) && progress.VbsRemainingToShuffle == 0 {
+		// Wait till vbStateUpdate routine exits/returns. This should remain the last 'if' block
+		// Not faking any progress here because, vbStateUpdate routine may be stuck due to kv issues.
+		// A fixed increment will ensure rebalance is failed after a fixed time if there is no progress
+		progress.VbsRemainingToShuffle++
+	}
+
+	if progress.VbsRemainingToShuffle == 0 {
+		// this case is to handle a kv rebalance where we do not trigger vbsStateUpdate and let control_routine
+		// take care of restreaming the closed VBs
+		if c.isRebalanceOngoing {
+			c.isRebalanceOngoing = false
+			logging.Infof("%s [%s:%s:%d] Updated isRebalanceOngoing to %t",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), c.isRebalanceOngoing)
+		}
 	}
 
 	return progress
+}
+
+// CheckIfQueuesAreDrained looks at all queues to make sure no events are left,
+// to avoid potential loss of events - especially during rebalance out and
+// pausing of execution of a function
+func (c *Consumer) CheckIfQueuesAreDrained() error {
+	logPrefix := "Consumer::CheckIfQueuesAreDrained"
+
+	defer func() {
+		// This recover is put with a defensive intention. See MB-36326
+		if r := recover(); r != nil {
+			logging.Infof("%s [%s:%s:%d] Recovered from panic", logPrefix, c.workerName, c.tcpPort, c.Pid())
+		}
+	}()
+
+	vbsFilterAckYetToCome := c.getVbsFilterAckYetToCome()
+	if len(vbsFilterAckYetToCome) > 0 {
+		logging.Infof("%s [%s:%s:%d] vbsFilterAckYetToCome dump: %s len: %d",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), util.Condense(vbsFilterAckYetToCome), len(vbsFilterAckYetToCome))
+		return errTimerQueueNotDrained
+	}
+
+	if c.cppQueueSizes.AggQueueSize > 0 {
+		c.GetExecutionStats()
+		logging.Infof("%s [%s:%s:%d] AggQueueSize: %d",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), c.cppQueueSizes.AggQueueSize)
+		return errTimerQueueNotDrained
+	}
+	return nil
 }
 
 // EventsProcessedPSec reports dcp + timer events triggered per sec
@@ -43,40 +112,51 @@ func (c *Consumer) EventsProcessedPSec() *cm.EventProcessingStats {
 func (c *Consumer) dcpEventsRemainingToProcess() error {
 	logPrefix := "Consumer::dcpEventsRemainingToProcess"
 
+	defer func() {
+		// enable the next fetch of dcpEventsRemaining
+		atomic.StoreUint32(&c.fetchingdcpEventsRemaining, 0)
+	}()
+
+	// return if one go routine to fetch dcpEventsRemaining is already in-progress
+	if !atomic.CompareAndSwapUint32(&c.fetchingdcpEventsRemaining, 0, 1) {
+		return nil
+	}
+
 	vbsTohandle := c.vbsToHandle()
 	if len(vbsTohandle) <= 0 {
 		return nil
 	}
 
 	c.statsRWMutex.Lock()
-	c.statsRWMutex.Unlock()
 	c.vbDcpEventsRemaining = make(map[int]int64)
+	c.statsRWMutex.Unlock()
 
 	seqNos, err := util.BucketSeqnos(c.producer.NsServerHostPort(), "default", c.bucket)
 	if err != nil {
 		logging.Errorf("%s [%s:%s:%d] Failed to fetch get_all_vb_seqnos, err: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
 		c.dcpEventsRemaining = 0
-		return nil
+		return err
 	}
 
 	var eventsProcessed, totalEvents uint64
 
-	for _, vbno := range vbsTohandle {
-		seqNo := c.vbProcessingStats.getVbStat(uint16(vbno), "last_read_seq_no").(uint64)
+	for _, vb := range vbsTohandle {
+		seqNo := c.vbProcessingStats.getVbStat(vb, "last_read_seq_no").(uint64)
 
-		if seqNos[int(vbno)] > seqNo {
+		if seqNo != 0 && seqNos[int(vb)] > seqNo {
 			c.statsRWMutex.Lock()
-			c.vbDcpEventsRemaining[int(vbno)] = int64(seqNos[int(vbno)] - seqNo)
+			c.vbDcpEventsRemaining[int(vb)] = int64(seqNos[int(vb)] - seqNo)
 			c.statsRWMutex.Unlock()
-		}
 
-		eventsProcessed += seqNo
-		totalEvents += seqNos[int(vbno)]
+			eventsProcessed += seqNo
+			totalEvents += seqNos[int(vb)]
+		}
 	}
 
 	if eventsProcessed > totalEvents {
 		c.dcpEventsRemaining = 0
+		return nil
 	}
 
 	c.dcpEventsRemaining = totalEvents - eventsProcessed

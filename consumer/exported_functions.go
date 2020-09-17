@@ -6,6 +6,8 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -14,6 +16,7 @@ import (
 	"github.com/couchbase/eventing/common"
 	mcd "github.com/couchbase/eventing/dcp/transport"
 	"github.com/couchbase/eventing/logging"
+	"github.com/couchbase/eventing/parser"
 	"github.com/couchbase/eventing/util"
 	"github.com/google/flatbuffers/go"
 )
@@ -21,15 +24,13 @@ import (
 // ClearEventStats flushes event processing stats
 func (c *Consumer) ClearEventStats() {
 	c.msgProcessedRWMutex.Lock()
+	defer c.msgProcessedRWMutex.Unlock()
+
 	c.dcpMessagesProcessed = make(map[mcd.CommandCode]uint64)
 	c.v8WorkerMessagesProcessed = make(map[string]uint64)
-	c.doctimerMessagesProcessed = 0
-	c.crontimerMessagesProcessed = 0
-	c.plasmaDeleteCounter = 0
-	c.plasmaInsertCounter = 0
-	c.plasmaLookupCounter = 0
-	c.timersInPastCounter = 0
-	c.msgProcessedRWMutex.Unlock()
+
+	c.adhocTimerResponsesRecieved = 0
+	c.aggMessagesSentCounter = 0
 }
 
 // ConsumerName returns consumer name e.q <event_handler_name>_worker_1
@@ -50,209 +51,211 @@ func (c *Consumer) GetEventProcessingStats() map[string]uint64 {
 	stats := make(map[string]uint64)
 
 	for opcode, value := range c.dcpMessagesProcessed {
-		stats[mcd.CommandNames[opcode]] = value
+		stats[strings.ToLower(mcd.CommandNames[opcode])] = value
 	}
 
-	if c.adhocDoctimerResponsesRecieved > 0 {
-		stats["ADHOC_DOC_TIMER_RESPONSES_RECEIVED"] = c.adhocDoctimerResponsesRecieved
+	if c.adhocTimerResponsesRecieved > 0 {
+		stats["adhoc_timer_response_received"] = c.adhocTimerResponsesRecieved
 	}
 
 	if c.cppQueueSizes != nil {
-		stats["AGG_DOC_TIMER_FEEDBACK_QUEUE_SIZE"] = uint64(c.cppQueueSizes.DocTimerQueueSize)
-		stats["AGG_QUEUE_MEMORY"] = uint64(c.cppQueueSizes.AggQueueMemory)
-		stats["AGG_QUEUE_SIZE"] = uint64(c.cppQueueSizes.AggQueueSize)
+		stats["agg_queue_memory"] = uint64(c.cppQueueSizes.AggQueueMemory)
+		stats["agg_queue_size"] = uint64(c.cppQueueSizes.AggQueueSize)
+		stats["processed_events_size"] = uint64(c.cppQueueSizes.ProcessedEventsSize)
+		stats["num_processed_events"] = uint64(c.cppQueueSizes.NumProcessedEvents)
 	}
 
-	stats["AGG_DOC_TIMER_FEEDBACK_QUEUE_CAP"] = uint64(c.feedbackQueueCap)
-	stats["AGG_QUEUE_MEMORY_CAP"] = uint64(c.workerQueueMemCap)
-	stats["AGG_QUEUE_SIZE_CAP"] = uint64(c.workerQueueCap)
+	stats["agg_timer_feedback_queue_cap"] = uint64(c.feedbackQueueCap)
+	stats["agg_queue_memory_cap"] = uint64(c.workerQueueMemCap)
+	stats["agg_queue_size_cap"] = uint64(c.workerQueueCap)
 
 	if c.aggMessagesSentCounter > 0 {
-		stats["AGG_MESSAGES_SENT_TO_WORKER"] = c.aggMessagesSentCounter
-	}
-
-	if c.crontimerMessagesProcessed > 0 {
-		stats["CRON_TIMER_EVENTS"] = c.crontimerMessagesProcessed
+		stats["agg_messages_sent_to_worker"] = c.aggMessagesSentCounter
 	}
 
 	if c.dcpDeletionCounter > 0 {
-		stats["DCP_DELETION_SENT_TO_WORKER"] = c.dcpDeletionCounter
+		stats["dcp_deletion_sent_to_worker"] = c.dcpDeletionCounter
 	}
 
 	if c.dcpMutationCounter > 0 {
-		stats["DCP_MUTATION_SENT_TO_WORKER"] = c.dcpMutationCounter
+		stats["dcp_mutation_sent_to_worker"] = c.dcpMutationCounter
+	}
+
+	if c.dcpExpiryCounter > 0 {
+		stats["dcp_expiry_sent_to_worker"] = c.dcpExpiryCounter
+	}
+
+	if c.dcpXattrParseError > 0 {
+		stats["dcp_xattr_parse_error_counter"] = c.dcpXattrParseError
+	}
+
+	if c.suppressedDCPDeletionCounter > 0 {
+		stats["dcp_deletion_suppressed_counter"] = c.suppressedDCPDeletionCounter
+	}
+
+	if c.suppressedDCPMutationCounter > 0 {
+		stats["dcp_mutation_suppressed_counter"] = c.suppressedDCPMutationCounter
 	}
 
 	if c.dcpCloseStreamCounter > 0 {
-		stats["DCP_STREAM_CLOSE_COUNTER"] = c.dcpCloseStreamCounter
+		stats["dcp_stream_close_counter"] = c.dcpCloseStreamCounter
 	}
 
 	if c.dcpCloseStreamErrCounter > 0 {
-		stats["DCP_STREAM_CLOSE_ERR_COUNTER"] = c.dcpCloseStreamErrCounter
+		stats["dcp_stream_close_err_counter"] = c.dcpCloseStreamErrCounter
 	}
 
 	if c.dcpStreamReqCounter > 0 {
-		stats["DCP_STREAM_REQ_COUNTER"] = c.dcpStreamReqCounter
+		stats["dcp_stream_req_counter"] = c.dcpStreamReqCounter
 	}
 
 	if c.dcpStreamReqErrCounter > 0 {
-		stats["DCP_STREAM_REQ_ERR_COUNTER"] = c.dcpStreamReqErrCounter
+		stats["dcp_stream_req_err_counter"] = c.dcpStreamReqErrCounter
 	}
 
-	if c.doctimerResponsesRecieved > 0 {
-		stats["DOC_TIMER_RESPONSES_RECEIVED"] = c.doctimerResponsesRecieved
+	if c.timerResponsesRecieved > 0 {
+		stats["timer_responses_received"] = c.timerResponsesRecieved
 	}
 
-	if c.doctimerMessagesProcessed > 0 {
-		stats["DOC_TIMER_EVENTS"] = c.doctimerMessagesProcessed
+	if c.timerMessagesProcessed > 0 {
+		stats["timer_events"] = c.timerMessagesProcessed
 	}
 
-	if c.errorParsingDocTimerResponses > 0 {
-		stats["ERROR_PARSING_DOC_TIMER_RESPONSES"] = c.errorParsingDocTimerResponses
+	if c.errorParsingTimerResponses > 0 {
+		stats["error_parsing_timer_response"] = c.errorParsingTimerResponses
 	}
 
 	if c.isBootstrapping {
-		stats["IS_BOOTSTRAPPING"] = 1
+		stats["is_bootstrapping"] = 1
 	}
 
 	if c.isRebalanceOngoing {
-		stats["IS_REBALANCE_ONGOING"] = 1
+		stats["is_rebalance_ongoing"] = 1
 	}
 
-	if c.plasmaDeleteCounter > 0 {
-		stats["PLASMA_DELETE_COUNTER"] = c.plasmaDeleteCounter
-	}
-
-	if c.plasmaInsertCounter > 0 {
-		stats["PLASMA_INSERT_COUNTER"] = c.plasmaInsertCounter
-	}
-
-	if c.plasmaLookupCounter > 0 {
-		stats["PLASMA_LOOKUP_COUNTER"] = c.plasmaLookupCounter
+	vbsRemainingToCloseStream := c.getVbRemainingToCloseStream()
+	if len(vbsRemainingToCloseStream) > 0 {
+		stats["reb_vb_remaining_to_close_stream"] = uint64(len(vbsRemainingToCloseStream))
 	}
 
 	vbsRemainingToGiveUp := c.getVbRemainingToGiveUp()
 	if len(vbsRemainingToGiveUp) > 0 {
-		stats["REB_VB_REMAINING_TO_GIVE_UP"] = uint64(len(vbsRemainingToGiveUp))
+		stats["reb_vb_remaining_to_give_up"] = uint64(len(vbsRemainingToGiveUp))
 	}
 
 	vbsRemainingToOwn := c.getVbRemainingToOwn()
 	if len(vbsRemainingToOwn) > 0 {
-		stats["REB_VB_REMAINING_TO_OWN"] = uint64(len(vbsRemainingToOwn))
+		stats["reb_vb_remaining_to_own"] = uint64(len(vbsRemainingToOwn))
 	}
 
-	if c.timersInPastCounter > 0 {
-		stats["TIMERS_IN_PAST"] = c.timersInPastCounter
-	}
-
-	if c.timersInPastFromBackfill > 0 {
-		stats["TIMERS_IN_PAST_FROM_BACKFILL"] = c.timersInPastFromBackfill
-	}
-
-	if c.timersRecreatedFromDCPBackfill > 0 {
-		stats["TIMERS_RECREATED_FROM_DCP_BACKFILL"] = c.timersRecreatedFromDCPBackfill
+	vbsRemainingToStreamReq := c.getVbRemainingToStreamReq()
+	if len(vbsRemainingToStreamReq) > 0 {
+		stats["reb_vb_remaining_to_stream_req"] = uint64(len(vbsRemainingToStreamReq))
 	}
 
 	if c.vbsStateUpdateRunning {
-		stats["VBS_STATE_UPDATE_RUNNING"] = 1
+		stats["vbs_state_update_running"] = 1
 	}
 
-	if _, ok := c.v8WorkerMessagesProcessed["DEBUG_START"]; ok {
-		if c.v8WorkerMessagesProcessed["DEBUG_START"] > 0 {
-			stats["DEBUG_START"] = c.v8WorkerMessagesProcessed["DEBUG_START"]
+	if _, ok := c.v8WorkerMessagesProcessed["debug_start"]; ok {
+		if c.v8WorkerMessagesProcessed["debug_start"] > 0 {
+			stats["debug_start"] = c.v8WorkerMessagesProcessed["debug_start"]
 		}
 	}
 
-	if _, ok := c.v8WorkerMessagesProcessed["DEBUG_STOP"]; ok {
-		if c.v8WorkerMessagesProcessed["DEBUG_STOP"] > 0 {
-			stats["DEBUG_STOP"] = c.v8WorkerMessagesProcessed["DEBUG_STOP"]
+	if _, ok := c.v8WorkerMessagesProcessed["debug_stop"]; ok {
+		if c.v8WorkerMessagesProcessed["debug_stop"] > 0 {
+			stats["debug_stop"] = c.v8WorkerMessagesProcessed["debug_stop"]
 		}
 	}
 
-	if _, ok := c.v8WorkerMessagesProcessed["EXECUTION_STATS"]; ok {
-		if c.v8WorkerMessagesProcessed["EXECUTION_STATS"] > 0 {
-			stats["EXECUTION_STATS"] = c.v8WorkerMessagesProcessed["EXECUTION_STATS"]
+	if _, ok := c.v8WorkerMessagesProcessed["execution_stats"]; ok {
+		if c.v8WorkerMessagesProcessed["execution_stats"] > 0 {
+			stats["execution_stats"] = c.v8WorkerMessagesProcessed["execution_stats"]
 		}
 	}
 
-	if _, ok := c.v8WorkerMessagesProcessed["FAILURE_STATS"]; ok {
-		if c.v8WorkerMessagesProcessed["FAILURE_STATS"] > 0 {
-			stats["FAILURE_STATS"] = c.v8WorkerMessagesProcessed["FAILURE_STATS"]
+	if _, ok := c.v8WorkerMessagesProcessed["failure_stats"]; ok {
+		if c.v8WorkerMessagesProcessed["failure_stats"] > 0 {
+			stats["failure_stats"] = c.v8WorkerMessagesProcessed["failure_stats"]
 		}
 	}
 
-	if _, ok := c.v8WorkerMessagesProcessed["HANDLER_CODE"]; ok {
-		if c.v8WorkerMessagesProcessed["HANDLER_CODE"] > 0 {
-			stats["HANDLER_CODE"] = c.v8WorkerMessagesProcessed["HANDLER_CODE"]
-
+	if _, ok := c.v8WorkerMessagesProcessed["latency_stats"]; ok {
+		if c.v8WorkerMessagesProcessed["latency_stats"] > 0 {
+			stats["latency_stats"] = c.v8WorkerMessagesProcessed["latency_stats"]
 		}
 	}
 
-	if _, ok := c.v8WorkerMessagesProcessed["LATENCY_STATS"]; ok {
-		if c.v8WorkerMessagesProcessed["LATENCY_STATS"] > 0 {
-			stats["LATENCY_STATS"] = c.v8WorkerMessagesProcessed["LATENCY_STATS"]
+	if _, ok := c.v8WorkerMessagesProcessed["lcb_exception_stats"]; ok {
+		if c.v8WorkerMessagesProcessed["lcb_exception_stats"] > 0 {
+			stats["lcb_exception_stats"] = c.v8WorkerMessagesProcessed["lcb_exception_stats"]
 		}
 	}
 
-	if _, ok := c.v8WorkerMessagesProcessed["LCB_EXCEPTION_STATS"]; ok {
-		if c.v8WorkerMessagesProcessed["LCB_EXCEPTION_STATS"] > 0 {
-			stats["LCB_EXCEPTION_STATS"] = c.v8WorkerMessagesProcessed["LCB_EXCEPTION_STATS"]
+	if _, ok := c.v8WorkerMessagesProcessed["log_level"]; ok {
+		if c.v8WorkerMessagesProcessed["log_level"] > 0 {
+			stats["log_level"] = c.v8WorkerMessagesProcessed["log_level"]
 		}
 	}
 
-	if _, ok := c.v8WorkerMessagesProcessed["LOG_LEVEL"]; ok {
-		if c.v8WorkerMessagesProcessed["LOG_LEVEL"] > 0 {
-			stats["LOG_LEVEL"] = c.v8WorkerMessagesProcessed["LOG_LEVEL"]
+	if _, ok := c.v8WorkerMessagesProcessed["timer_context_size"]; ok {
+		if c.v8WorkerMessagesProcessed["timer_context_size"] > 0 {
+			stats["timer_context_size"] = c.v8WorkerMessagesProcessed["timer_context_size"]
 		}
 	}
 
-	if _, ok := c.v8WorkerMessagesProcessed["SOURCE_MAP"]; ok {
-		if c.v8WorkerMessagesProcessed["SOURCE_MAP"] > 0 {
-			stats["SOURCE_MAP"] = c.v8WorkerMessagesProcessed["SOURCE_MAP"]
+	if _, ok := c.v8WorkerMessagesProcessed["thr_count"]; ok {
+		if c.v8WorkerMessagesProcessed["thr_count"] > 0 {
+			stats["thr_count"] = c.v8WorkerMessagesProcessed["thr_count"]
 		}
 	}
 
-	if _, ok := c.v8WorkerMessagesProcessed["THR_COUNT"]; ok {
-		if c.v8WorkerMessagesProcessed["THR_COUNT"] > 0 {
-			stats["THR_COUNT"] = c.v8WorkerMessagesProcessed["THR_COUNT"]
+	if _, ok := c.v8WorkerMessagesProcessed["thr_map"]; ok {
+		if c.v8WorkerMessagesProcessed["thr_map"] > 0 {
+			stats["thr_map"] = c.v8WorkerMessagesProcessed["thr_map"]
 		}
 	}
 
-	if _, ok := c.v8WorkerMessagesProcessed["THR_MAP"]; ok {
-		if c.v8WorkerMessagesProcessed["THR_MAP"] > 0 {
-			stats["THR_MAP"] = c.v8WorkerMessagesProcessed["THR_MAP"]
+	if _, ok := c.v8WorkerMessagesProcessed["v8_compile"]; ok {
+		if c.v8WorkerMessagesProcessed["v8_compile"] > 0 {
+			stats["v8_compile"] = c.v8WorkerMessagesProcessed["v8_compile"]
 		}
 	}
 
-	if _, ok := c.v8WorkerMessagesProcessed["V8_COMPILE"]; ok {
-		if c.v8WorkerMessagesProcessed["V8_COMPILE"] > 0 {
-			stats["V8_COMPILE"] = c.v8WorkerMessagesProcessed["V8_COMPILE"]
+	if _, ok := c.v8WorkerMessagesProcessed["v8_init"]; ok {
+		if c.v8WorkerMessagesProcessed["v8_init"] > 0 {
+			stats["v8_init"] = c.v8WorkerMessagesProcessed["v8_init"]
 		}
 	}
 
-	if _, ok := c.v8WorkerMessagesProcessed["V8_INIT"]; ok {
-		if c.v8WorkerMessagesProcessed["V8_INIT"] > 0 {
-			stats["V8_INIT"] = c.v8WorkerMessagesProcessed["V8_INIT"]
-		}
-	}
-
-	if _, ok := c.v8WorkerMessagesProcessed["V8_LOAD"]; ok {
-		if c.v8WorkerMessagesProcessed["V8_LOAD"] > 0 {
-			stats["V8_LOAD"] = c.v8WorkerMessagesProcessed["V8_LOAD"]
+	if _, ok := c.v8WorkerMessagesProcessed["v8_load"]; ok {
+		if c.v8WorkerMessagesProcessed["v8_load"] > 0 {
+			stats["v8_load"] = c.v8WorkerMessagesProcessed["v8_load"]
 		}
 	}
 
 	return stats
 }
 
-// GetHandlerCode returns handler code to assist V8 debugger
-func (c *Consumer) GetHandlerCode() string {
-	return c.handlerCode
-}
+// GetMetaStoreStats exposes timer store related stat counters
+func (c *Consumer) GetMetaStoreStats() map[string]uint64 {
+	stats := make(map[string]uint64)
 
-// GetSourceMap returns source map to assist V8 debugger
-func (c *Consumer) GetSourceMap() string {
-	return c.sourceMap
+	if !c.producer.UsingTimer() {
+		return nil
+	}
+
+	stats["metastore_deletes"] = atomic.LoadUint64(&c.metastoreDeleteCounter)
+	stats["metastore_delete_err"] = atomic.LoadUint64(&c.metastoreDeleteErrCounter)
+	stats["metastore_not_found"] = atomic.LoadUint64(&c.metastoreNotFoundErrCounter)
+	stats["metastore_scan"] = atomic.LoadUint64(&c.metastoreScanCounter)
+	stats["metastore_scan_due"] = atomic.LoadUint64(&c.metastoreScanDueCounter)
+	stats["metastore_scan_err"] = atomic.LoadUint64(&c.metastoreScanErrCounter)
+	stats["metastore_set"] = atomic.LoadUint64(&c.metastoreSetCounter)
+	stats["metastore_set_err"] = atomic.LoadUint64(&c.metastoreSetErrCounter)
+
+	return stats
 }
 
 // HostPortAddr returns the HostPortAddr combination of current eventing node
@@ -328,24 +331,11 @@ func (c *Consumer) SignalFeedbackConnected() {
 	c.signalFeedbackConnectedCh <- struct{}{}
 }
 
-// UpdateEventingNodesUUIDs is called by producer instance to notify about
+// NotifyPrepareTopologyChange is called by producer instance to notify about
 // updated list of node uuids
-func (c *Consumer) UpdateEventingNodesUUIDs(uuids []string) {
-	c.eventingNodeUUIDs = uuids
-}
-
-// GetLatencyStats returns latency stats for event handlers from from cpp world
-func (c *Consumer) GetLatencyStats() map[string]uint64 {
-	c.statsRWMutex.RLock()
-	defer c.statsRWMutex.RUnlock()
-
-	latencyStats := make(map[string]uint64)
-
-	for k, v := range c.latencyStats {
-		latencyStats[k] = v
-	}
-
-	return latencyStats
+func (c *Consumer) NotifyPrepareTopologyChange(keepNodes, ejectNodes []string) {
+	c.ejectNodesUUIDs = ejectNodes
+	c.eventingNodeUUIDs = keepNodes
 }
 
 // GetExecutionStats returns OnUpdate/OnDelete success/failure stats for event handlers from cpp world
@@ -401,6 +391,21 @@ func (c *Consumer) GetLcbExceptionsStats() map[string]uint64 {
 func (c *Consumer) SpawnCompilationWorker(appCode, appContent, appName, eventingPort string, handlerHeaders, handlerFooters []string) (*common.CompileStatus, error) {
 	logPrefix := "Consumer::SpawnCompilationWorker"
 
+	parsed := parser.GetStatements(appCode)
+	if validated, err := parsed.ValidateGlobals(); !validated {
+		logging.Errorf("%s [%s:%s:%d] Compilation worker: Only function definition is allowed in global scope %v",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
+		return &common.CompileStatus{CompileSuccess: false,
+			Description: fmt.Sprintf("%v", err)}, nil
+	}
+
+	if validated, err := parsed.ValidateExports(); !validated {
+		logging.Errorf("%s [%s:%s:%d] Compilation worker: Handler code missing OnUpdate and OnDelete %v",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
+		return &common.CompileStatus{CompileSuccess: false,
+			Description: fmt.Sprintf("%v", err)}, nil
+	}
+
 	listener, err := net.Listen("tcp", net.JoinHostPort(util.Localhost(), "0"))
 	if err != nil {
 		logging.Errorf("%s [%s:%s:%d] Compilation worker: Failed to listen on tcp port, err: %v",
@@ -448,6 +453,10 @@ func (c *Consumer) SpawnCompilationWorker(appCode, appContent, appName, eventing
 			os.TempDir(),
 			util.GetIPMode(),
 			"true",
+			"function_id",
+			"user_prefix",
+			c.nsServerPort,
+			strconv.Itoa(c.numVbuckets),
 			"validate") // this parameter is not read, for tagging
 
 		cmd.Env = append(os.Environ(),
@@ -532,9 +541,10 @@ func (c *Consumer) SpawnCompilationWorker(appCode, appContent, appName, eventing
 
 	c.handlerHeaders = handlerHeaders
 	c.handlerFooters = handlerFooters
+
 	// Framing bare minimum V8 worker init payload
-	payload, pBuilder := c.makeV8InitPayload(appName, util.Localhost(), "", eventingPort, "",
-		"", appContent, 5, 10, 1, 30, 10*1000, true, true, 500)
+	payload, pBuilder := c.makeV8InitPayload(appName, c.debuggerPort, util.Localhost(), "", eventingPort, "",
+		appContent, 5, 10, 10*1000, true, 1024, false, false)
 
 	c.sendInitV8Worker(payload, false, pBuilder)
 
@@ -549,14 +559,14 @@ func (c *Consumer) SpawnCompilationWorker(appCode, appContent, appName, eventing
 	c.conn.Close()
 	listener.Close()
 
-	if pid > 1 {
-		ps, err := os.FindProcess(pid)
-		if err == nil {
-			ps.Kill()
-		}
+	err = util.KillProcess(pid)
+	if err != nil {
+		logging.Errorf("%s [%s:%s:%d] Unable to kill C++ worker spawned for compilation, err: %v",
+			logPrefix, c.workerName, c.tcpPort, pid, err)
 	}
 
-	logging.Infof("%s [%s:%s:%d] compilation status %#v", logPrefix, c.workerName, c.tcpPort, pid, c.compileInfo)
+	logging.Infof("%s [%s:%s:%d] compilation status %#v",
+		logPrefix, c.workerName, c.tcpPort, pid, c.compileInfo)
 
 	return c.compileInfo, nil
 }
@@ -566,7 +576,6 @@ func (c *Consumer) initConsumer(appName string) {
 	c.lcbInstCapacity = 1
 	c.socketWriteBatchSize = 1
 	c.cppWorkerThrCount = 1
-	c.curlTimeout = 1000
 	c.ipcType = "af_inet"
 
 	c.connMutex = &sync.RWMutex{}
@@ -629,6 +638,31 @@ func (c *Consumer) RebalanceStatus() bool {
 	return c.isRebalanceOngoing
 }
 
+// BootstrapStatus returns state of bootstrap for consumer instance
+func (c *Consumer) BootstrapStatus() bool {
+	return c.isBootstrapping
+}
+
+// SetRebalanceStatus update rebalance status for consumer instance
+func (c *Consumer) SetRebalanceStatus(status bool) {
+	logPrefix := "Consumer::SetRebalanceStatus"
+
+	c.isRebalanceOngoing = status
+	logging.Infof("%s [%s:%s:%d] Updated isRebalanceOngoing to %t",
+		logPrefix, c.workerName, c.tcpPort, c.Pid(), status)
+}
+
+// GetRebalanceStatus returns rebalance status for consumer instance
+func (c *Consumer) GetRebalanceStatus() bool {
+	return c.isRebalanceOngoing
+}
+
+// GetPrevRebalanceInCompleteStatus returns rebalance status for consumer instance
+func (c *Consumer) GetPrevRebalanceInCompleteStatus() bool {
+	return c.prevRebalanceInComplete
+}
+
+// VbSeqnoStats returns seq no stats, which can be useful in figuring out missed events during rebalance
 // VbSeqnoStats returns seq no stats, which can be useful in figuring out missed events during rebalance
 func (c *Consumer) VbSeqnoStats() map[int]map[string]interface{} {
 	seqnoStats := make(map[int]map[string]interface{})
@@ -684,4 +718,88 @@ func (c *Consumer) WorkerVbMapUpdate(workerVbucketMap map[string][]uint16) {
 	for workerName, assignedVbs := range workerVbucketMap {
 		c.workerVbucketMap[workerName] = assignedVbs
 	}
+}
+
+func (c *Consumer) GetAssignedVbs(workerName string) ([]uint16, error) {
+	c.workerVbucketMapRWMutex.RLock()
+	defer c.workerVbucketMapRWMutex.RUnlock()
+
+	if _, ok := c.workerVbucketMap[workerName]; ok {
+		return c.workerVbucketMap[workerName], nil
+	}
+
+	return nil, fmt.Errorf("worker not found")
+}
+
+// UpdateWorkerQueueMemCap revises the memory cap for cpp worker, dcp and timer queues
+func (c *Consumer) UpdateWorkerQueueMemCap(quota int64) {
+	logPrefix := "Consumer::updateWorkerQueueMemCap"
+	prevWorkerMemCap := c.workerQueueMemCap
+	prevDCPFeedMemCap := c.aggDCPFeedMemCap
+
+	divisor := int64(2)
+	maxCap := int64(61 * 1024 * 1024) // to allow for a max of 3 20MB doc mutations
+
+	c.workerQueueMemCap = (quota / divisor) * 1024 * 1024
+	c.aggDCPFeedMemCap = (quota / divisor) * 1024 * 1024
+
+	if c.workerQueueMemCap >= maxCap {
+		c.workerQueueMemCap = maxCap
+		c.aggDCPFeedMemCap = maxCap
+	}
+
+	c.sendWorkerMemQuota(quota * 1024 * 1024)
+
+	logging.Infof("%s [%s:%s:%d] Updated memory quota: %d MB previous worker quota: %d MB dcp feed quota: %d MB",
+		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.workerQueueMemCap/(1024*1024),
+		prevWorkerMemCap/(1024*1024), prevDCPFeedMemCap/(1024*1024))
+}
+
+// SetBootstrapStatus updates bootstrapping status for consumer instance
+func (c *Consumer) SetBootstrapStatus(status bool) {
+	logPrefix := "Consumer::SetBootstrapStatus"
+
+	c.isBootstrapping = status
+	logging.Infof("%s [%s:%s:%d] Updated isBootstrapping to %t",
+		logPrefix, c.workerName, c.tcpPort, c.Pid(), status)
+}
+
+// ResetBootstrapDone to unset bootstrap flag
+func (c *Consumer) ResetBootstrapDone() {
+	logPrefix := "Consumer::ResetBootstrapDone"
+
+	logging.Infof("%s [%s:%s:%d] Current ResetBootstrapDone flag: %t", logPrefix, c.workerName, c.tcpPort, c.Pid(), c.resetBootstrapDone)
+	c.resetBootstrapDone = true
+	logging.Infof("%s [%s:%s:%d] Updated ResetBootstrapDone flag to: %t", logPrefix, c.workerName, c.tcpPort, c.Pid(), c.resetBootstrapDone)
+}
+
+func (c *Consumer) RemoveSupervisorToken() error {
+	logPrefix := "Consumer::RemoveSupervisorToken"
+	logging.Infof("%s [%s:%s:%d] Removing supervisor token",
+		logPrefix, c.workerName, c.tcpPort, c.Pid())
+	if c.consumerSup == nil {
+		return fmt.Errorf("%s [%s:%s:%d] Unable to remove Supervisor token as it is nil",
+			logPrefix, c.workerName, c.tcpPort, c.Pid())
+	}
+	return c.consumerSup.Remove(c.clientSupToken)
+}
+
+func (c *Consumer) GetInsight() *common.Insight {
+	c.refreshInsight()
+	select {
+	case insight := <-c.insight:
+		return insight
+	case <-time.After(15 * time.Second):
+		return nil
+	}
+}
+
+func (c *Consumer) PauseConsumer() {
+	c.isPausing = true
+	c.sendPauseConsumer()
+	c.WorkerVbMapUpdate(nil)
+}
+
+func (c *Consumer) NotifyWorker() {
+	atomic.StoreUint32(&c.notifyWorker, 1)
 }

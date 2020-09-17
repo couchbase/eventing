@@ -59,10 +59,18 @@ stop_cluster() {
 
 collect_logs() {
   if [ "$phase" = "" ]; then phase=unknown; fi
+  cat $WORKSPACE/test.log >> $WORKSPACE/test-full.log
   tar -C $WORKSPACE --transform "s/^/logs-$phase-/" -uf $WORKSPACE/logs.tar ns_server/logs 1>/dev/null 2>&1
   tar -C $WORKSPACE --transform "s/^/logs-$phase-/" -uf $WORKSPACE/logs.tar testrunner/logs 1>/dev/null 2>&1
   tar -C $WORKSPACE --transform "s/^/logs-$phase-/" -uf $WORKSPACE/logs.tar test.log 1>/dev/null 2>&1
+  tar -C $WORKSPACE --transform "s/^/logs-$phase-/" -uf $WORKSPACE/logs.tar stats.log 1>/dev/null 2>&1
   tar -C $WORKSPACE --transform "s/^/logs-$phase-/" -uf $WORKSPACE/logs.tar run.log 1>/dev/null 2>&1
+  find $WORKSPACE/ns_server/logs \
+       $WORKSPACE/testrunner/logs \
+       $WORKSPACE/test.log \
+       $WORKSPACE/stats.log \
+       $WORKSPACE/run.log \
+    -type f -exec sh -c '> {}' \;
 }
 
 error_email() {
@@ -72,13 +80,16 @@ error_email() {
   if test "`find ~ -maxdepth 1 -name .cinotify -mmin -1440`"; then return; fi
   touch ~/.cinotify
 
-  if [ "$WATCHERS" = "" ]; then return; fi
-  cat /var/www/eventing-current.html | \
+  if [ "$WATCHERS" = "" -o ! -f ~/.cicred ]; then return; fi
+  echo "$1" | \
      sendemail -q \
-       -s west.smtp.mx.exch029.serverdata.net:25 \
-       -f 'Eventing CI <community_admin@couchbase.com>' \
+       -s smtp.gmail.com \
+       -o tls=yes \
+       -xu cb.ci.bot@gmail.com \
+       -xp "`cat ~/.cicred`" \
+       -f "$CINAME <cb.ci.bot@gmail.com>" \
        -t $WATCHERS \
-       -u "Eventing CI $CINAME broke"
+       -u "$CINAME broke"
 }
 
 error_exit() {
@@ -86,7 +97,7 @@ error_exit() {
   echo "$2"
   collect_logs
   stop_cluster
-  error_email
+  error_email "Testing Failed: $1\n$2"
   exit 2
 }
 
@@ -94,8 +105,9 @@ error_exit() {
 echo "Started testing at `date +'%Y/%m/%d %H:%M:%S'`"
 echo "Testing mode: $MODE"
 stop_cluster
-rm -f $WORKSPACE/logs.tar.* $WORKSPACE/test.log $WORKSPACE/run.log /tmp/core-*
+rm -f $WORKSPACE/logs.tar.* $WORKSPACE/test.log $WORKSPACE/test-full.log $WORKSPACE/stats.log $WORKSPACE/run.log /tmp/core-*
 > $WORKSPACE/test.log
+> $WORKSPACE/stats.log
 
 # Below tests need a cluster running
 start_cluster
@@ -105,11 +117,15 @@ ulimit -c 2097152
 sudo bash -c "echo /tmp/core-%e.$TS.%p > /proc/sys/kernel/core_pattern"
 perl -pi -e 's/num_files, 10/num_files, 50/' $WORKSPACE/install/etc/couchbase/static_config
 cd $WORKSPACE/goproj/src/github.com/couchbase/eventing/
-gover="`grep -A20 'SET(GOVERSION ' CMakeLists.txt  | grep GOVERSION | head -1 | sed 's/^.*\([0-9]\.[0-9].[0-9]\).*$/\1/'`"
+gover="`grep -A20 'SET(GOVERSION ' CMakeLists.txt  | grep GOVERSION | head -1 | sed 's/^.*\([0-9]\.[0-9]*.[0-9]\).*$/\1/'`"
 mkdir -p "$WORKSPACE/go"
-export GOROOT=$HOME/.cbdepscache/exploded/x86_64/go-$gover/go
-export GOPATH=$WORKSPACE/go:$WORKSPACE/godeps:$WORKSPACE/goproj
-export PATH=$PATH:$GOROOT/bin
+export GOROOT="$HOME/.cbdepscache/exploded/x86_64/go-$gover/go"
+export GOPATH="$WORKSPACE/go:$WORKSPACE/godeps:$WORKSPACE/goproj"
+export PATH="$PATH:$GOROOT/bin"
+export LD_LIBRARY_PATH="$WORKSPACE/install/lib"
+export C_INCLUDE_PATH="$WORKSPACE/build/platform/include:$WORKSPACE/forestdb/include:$WORKSPACE/build/tlm/deps/curl.exploded/include:$WORKSPACE/sigar/include"
+export CGO_LDFLAGS="-L $WORKSPACE/install/lib"
+
 cd $WORKSPACE/goproj/src/github.com/couchbase/eventing/tests/functional_tests
 $GOROOT/bin/go get -t ./... 1>/dev/null 2>&1
 
@@ -119,9 +135,33 @@ if [[ "$MODE" == *"$phase"* ]]; then
   echo "</pre><h4>${phase^} tests</h4><pre>"
   echo "`date +'%Y/%m/%d %H:%M:%S'` Started $phase"
   cd $WORKSPACE/goproj/src/github.com/couchbase/eventing/tests/functional_tests
-  GOMAXPROCS=16 $GOROOT/bin/go test -timeout 2h -tags handler -v 2>&1 | tee -a $WORKSPACE/test.log
+  GOMAXPROCS=16 STATSFILE=$WORKSPACE/stats.log $GOROOT/bin/go test -timeout 4h -tags handler -v 2>&1 | tee -a $WORKSPACE/test.log
   collect_logs
 fi
+
+# N1QL tests
+export phase=n1ql
+if [[ "$MODE" == *"$phase"* ]]; then
+  echo "</pre><h4>${phase^} tests</h4><pre>"
+  echo "`date +'%Y/%m/%d %H:%M:%S'` Started $phase"
+  cd $WORKSPACE/goproj/src/github.com/couchbase/eventing/tests/functional_tests
+  GOMAXPROCS=16 STATSFILE=$WORKSPACE/stats.log $GOROOT/bin/go test -timeout 2h -tags n1ql -v 2>&1 | tee -a $WORKSPACE/test.log
+  collect_logs
+fi
+
+# cURL tests
+export phase=curl
+if [[ "$MODE" == *"$phase"* ]]; then
+  echo "</pre><h4>${phase^} tests</h4><pre>"
+  echo "`date +'%Y/%m/%d %H:%M:%S'` Started $phase"
+  cd $WORKSPACE/goproj/src/github.com/couchbase/eventing/tests/functional_tests
+  GOMAXPROCS=16 STATSFILE=$WORKSPACE/stats.log $GOROOT/bin/go test -timeout 4h -tags curl -v 2>&1 | tee -a $WORKSPACE/test.log
+  collect_logs
+fi
+
+stop_cluster
+
+start_cluster
 
 # Rebalance tests
 export phase=rebalance
@@ -129,7 +169,7 @@ if [[ "$MODE" == *"$phase"* ]]; then
   echo "</pre><h4>${phase^} tests</h4><pre>"
   echo "`date +'%Y/%m/%d %H:%M:%S'` Started $phase"
   cd $WORKSPACE/goproj/src/github.com/couchbase/eventing/tests/functional_tests
-  GOMAXPROCS=16 $GOROOT/bin/go test -timeout 24h -tags "eventing_reb eventing_reb_wh kv_reb testrunner_topology" -v 2>&1 | tee -a $WORKSPACE/test.log
+  GOMAXPROCS=16 STATSFILE=$WORKSPACE/stats.log $GOROOT/bin/go test -timeout 24h -tags "eventing_reb testrunner_reb kv_reb duplicate_events" -v 2>&1 | tee -a $WORKSPACE/test.log
   collect_logs
 fi
 
@@ -146,45 +186,35 @@ if [[ "$MODE" == *"$phase"* ]]; then
   collect_logs
 fi
 
+# Check to make sure N1QL grammer did not change recently
+cd $WORKSPACE/goproj/src/github.com/couchbase/query/parser/n1ql
+git ls-files -s n1ql.nex n1ql.y > ~/n1ql_parser.maybe
+test -f ~/n1ql_parser.good || cp ~/n1ql_parser.maybe ~/n1ql_parser.good
+msg="--- FAIL: N1QL grammer appears to have changed recently. Review and if OK, run: cp ~/n1ql_parser.maybe ~/n1ql_parser.good"
+diff ~/n1ql_parser.good ~/n1ql_parser.maybe || echo "$msg" >> /tmp/fail.log
+
 # Verify results
 > /tmp/fail.log
 cd $WORKSPACE/goproj/src/github.com/couchbase/eventing
-grep 'make:\s\*\*\*\s\[eventing-integration-tests\]\s' $WORKSPACE/test.log >> /tmp/fail.log
-grep '\sfail\s*$' $WORKSPACE/test.log >> /tmp/fail.log
-grep 'FAIL\s*github.com/couchbase' $WORKSPACE/test.log >> /tmp/fail.log
-grep -- '--- FAIL:' $WORKSPACE/test.log >> /tmp/fail.log
-grep '^\s*2i' $WORKSPACE/test.log | grep 'fail\s*$' >> /tmp/fail.log
-skiplist="`cat tests/ci/skip.txt`"
-for tst in $skiplist; do
-  echo "$tst" | grep -qs '^\s*#' && continue
-  echo "$tst" | grep -qs '^\s*$' && continue
-  grep -v "$tst" /tmp/fail.log > /tmp/fail-out.log
-  mv /tmp/fail-out.log /tmp/fail.log
-done
+grep 'make:\s\*\*\*\s\[eventing-integration-tests\]\s' $WORKSPACE/test-full.log >> /tmp/fail.log
+grep '\sfail\s*$' $WORKSPACE/test-full.log >> /tmp/fail.log
+grep 'FAIL\s*github.com/couchbase' $WORKSPACE/test-full.log >> /tmp/fail.log
+grep -- '--- FAIL:' $WORKSPACE/test-full.log >> /tmp/fail.log
+grep '^\s*2i' $WORKSPACE/test-full.log | grep 'fail\s*$' >> /tmp/fail.log
+egrep 'pass [0-9]+.*fail [1-9]+' $WORKSPACE/test-full.log >> /tmp/fail.log
 faillog="`cat /tmp/fail.log`"
 if [ "$faillog" != "" ]; then error_exit "Required test failed" "$faillog"; fi
 echo "</pre><h4>Testing Succeeded</h4><pre>"
-if [ "$skiplist" != "" ]; then
-  echo "But we ignored these tests:"
-  echo "$skiplist"
-fi
 echo
 
-cd $WORKSPACE
-cat ~/repos.list | while read line ; do
-   repo=`echo $line | awk '{print $1}'`
-   loc=`echo $line | awk '{print $2}'`
-   cd $loc
-   git rev-parse HEAD > ~/$repo.good
+cd ~
+for file in *.maybe; do
+    mv "$file" "$(basename "$file" .maybe).good"
 done
 
-if [ "$CIBOT" = "true" ]; then
-  cd $WORKSPACE/goproj/src/github.com/couchbase/eventing
-  git rev-parse couchbase/$BRANCH > ~/eventing.good
-  for patch_id in `cat ~/gerrit.list`; do
-    ssh review.couchbase.org gerrit review --code-review 1 -m "http://$CINAME.northscale.in/eventing-$TS.pass.html" $patch_id
-  done
-fi
+for patch_id in `cat ~/gerrit.list`; do
+  ssh review.couchbase.org gerrit review --code-review 1 -m "'PASS $MODE. See https://$CINAME.northscale.in/eventing-$TS.pass.html'" $patch_id
+done
 
 touch ~/.cigreen
 exit 0

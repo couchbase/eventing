@@ -8,14 +8,38 @@ import (
 	"log"
 	"math/rand"
 	"net/http"
-	"os/exec"
-	"strings"
+	"os"
 	"time"
+
+	"github.com/mitchellh/go-ps"
 )
 
 const (
 	lettersAndDigits = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 )
+
+func checkIfProcessRunning(processName string) error {
+	res, err := ps.Processes()
+	if err != nil {
+		log.Printf("Failed to list all processes, err: %v\n", err)
+		return err
+	}
+
+	runningPids := make([]int, 0)
+	for _, r := range res {
+		if r.Executable() == processName {
+			runningPids = append(runningPids, r.Pid())
+		}
+	}
+
+	if len(runningPids) > 0 {
+		log.Printf("Found %d running processes, pids: %v\n", len(runningPids), runningPids)
+		return fmt.Errorf("found running pids")
+	}
+
+	log.Printf("No %s process running", processName)
+	return nil
+}
 
 func getHandlerCode(filename string) (string, error) {
 	content, err := ioutil.ReadFile(handlerCodeDir + filename + ".js")
@@ -27,12 +51,18 @@ func getHandlerCode(filename string) (string, error) {
 	return string(content), nil
 }
 
-func postToTempStore(appName string, payload []byte) *restResponse {
-	return postToEventingEndpoint("Post to temp store", tempStoreURL+appName, payload)
-}
+func setRetryCounter(handler string) {
+	retryURL := fmt.Sprintf("%s/%s/retry", functionsURL, handler)
+	payload := make(map[string]interface{})
+	payload["count"] = 1
+	data, err := json.Marshal(&payload)
+	if err != nil {
+		log.Println("failed to marshal payload for retry counter, err", err)
+		return
+	}
 
-func postToMainStore(appName string, payload []byte) *restResponse {
-	return postToEventingEndpoint("Post to main store", deployURL+appName, payload)
+	resp := postToEventingEndpoint("Post to set retry counter", retryURL, data)
+	log.Println("set retry counter, response", resp)
 }
 
 func postToEventingEndpoint(context, url string, payload []byte) (response *restResponse) {
@@ -71,11 +101,15 @@ func createPadding(paddingCount int) string {
 	return "/*" + string(pad) + "*/"
 }
 
-func createAndDeployLargeFunction(appName, hFileName string, settings *commonSettings, paddingCount int) (tempStoreResponse, mainStoreResponse *restResponse) {
-	tempStoreResponse = &restResponse{}
-	mainStoreResponse = &restResponse{}
+func createAndDeployLargeFunction(appName, hFileName string, settings *commonSettings, paddingCount int) (storeResponse *restResponse) {
+	waitForIndexes()
 
-	log.Printf("Deploying app: %s", appName)
+	sCount, _ := getBucketItemCount(srcBucket)
+	dCount, _ := getBucketItemCount(dstBucket)
+
+	storeResponse = &restResponse{}
+
+	log.Printf("Deploying app: %s. Item count src bucket: %d dst bucket: %d", appName, sCount, dCount)
 	pad := createPadding(paddingCount)
 	content, err := getHandlerCode(hFileName)
 	content = pad + content
@@ -89,10 +123,13 @@ func createAndDeployLargeFunction(appName, hFileName string, settings *commonSet
 	if len(settings.aliasSources) == 0 {
 		aliases = append(aliases, "dst_bucket")
 
-		// Source bucket bindings disallowed
-		// aliases = append(aliases, "src_bucket")
-
 		bnames = append(bnames, "hello-world")
+
+		//Source bucket bindings
+		if settings.srcMutationEnabled == true {
+			aliases = append(aliases, "src_bucket")
+			bnames = append(bnames, "default")
+		}
 	} else {
 		for index, val := range settings.aliasSources {
 			bnames = append(bnames, val)
@@ -110,25 +147,37 @@ func createAndDeployLargeFunction(appName, hFileName string, settings *commonSet
 	if settings.metaBucket == "" {
 		metaBucket = "eventing"
 	} else {
-		metaBucket = settings.sourceBucket
+		metaBucket = settings.metaBucket
 	}
 
 	// Source bucket bindings disallowed
 	// bnames = append(bnames, "default")
 
-	data, err := createFunction(true, true, 0, settings, aliases,
-		bnames, appName, content, metaBucket, srcBucket)
+	var data []byte
+
+	if settings.undeployedState {
+		data, err = createFunction(false, false, 0, settings, aliases,
+			bnames, appName, content, metaBucket, srcBucket)
+	} else {
+		data, err = createFunction(true, true, 0, settings, aliases,
+			bnames, appName, content, metaBucket, srcBucket)
+	}
+
 	if err != nil {
 		log.Println("Create function, err:", err)
 		return
 	}
 
-	tempStoreResponse = postToTempStore(appName, data)
-	mainStoreResponse = postToMainStore(appName, data)
+	err = ValidateHandlerSchema(data)
+	if err != nil {
+		panic(fmt.Sprintf("handler failed schema: %v, data: %s", err, data))
+	}
+
+	storeResponse = postToEventingEndpoint("Post to main store", functionsURL+"/"+appName, data)
 	return
 }
 
-func createAndDeployFunction(appName, hFileName string, settings *commonSettings) (*restResponse, *restResponse) {
+func createAndDeployFunction(appName, hFileName string, settings *commonSettings) *restResponse {
 	return createAndDeployLargeFunction(appName, hFileName, settings, 0)
 }
 
@@ -140,25 +189,30 @@ func createFunction(deploymentStatus, processingStatus bool, id int, s *commonSe
 		var alias bucket
 		alias.BucketName = b
 		alias.Alias = bucketAliases[i]
-
+		if s.srcMutationEnabled && alias.BucketName == sourceBucket {
+			alias.Access = "rw"
+		}
 		aliases = append(aliases, alias)
 	}
 
 	var dcfg depCfg
+	dcfg.Curl = s.curlBindings
 	dcfg.Buckets = aliases
 	dcfg.MetadataBucket = metadataBucket
 	dcfg.SourceBucket = sourceBucket
 
 	var app application
-	app.ID = id
 	app.Name = appName
+	app.Version = "evt-6.5.0-0000-ee"
 	app.AppHandlers = handlerCode
 	app.DeploymentConfig = dcfg
 
+	if s.version != "" {
+		app.Version = s.version
+	}
+
 	// default settings
 	settings := make(map[string]interface{})
-
-	settings["checkpoint_interval"] = 10000
 
 	if s.thrCount == 0 {
 		settings["cpp_worker_thread_count"] = cppthrCount
@@ -190,12 +244,6 @@ func createFunction(deploymentStatus, processingStatus bool, id int, s *commonSe
 		settings["dcp_stream_boundary"] = s.streamBoundary
 	}
 
-	if s.recursiveBehavior == "disable" || s.recursiveBehavior == "" {
-		settings["enable_recursive_mutation"] = false
-	} else {
-		settings["enable_recursive_mutation"] = true
-	}
-
 	if s.deadlineTimeout == 0 {
 		settings["deadline_timeout"] = deadlineTimeout
 	} else {
@@ -208,16 +256,30 @@ func createFunction(deploymentStatus, processingStatus bool, id int, s *commonSe
 		settings["execution_timeout"] = s.executionTimeout
 	}
 
+	settings["timer_context_size"] = 15 * 1024 * 1024
+
+	if s.n1qlConsistency == "" {
+		settings["n1ql_consistency"] = n1qlConsistency
+	} else {
+		settings["n1ql_consistency"] = s.n1qlConsistency
+	}
+
 	if s.logLevel == "" {
 		settings["log_level"] = "INFO"
 	} else {
 		settings["log_level"] = s.logLevel
 	}
 
+	if s.languageCompatibility != "" {
+		settings["language_compatibility"] = s.languageCompatibility
+	} else {
+		settings["language_compatibility"] = "6.5.0"
+	}
+
 	settings["processing_status"] = processingStatus
 	settings["deployment_status"] = deploymentStatus
 	settings["description"] = "Sample app"
-	settings["breakpad_on"] = false
+	settings["user_prefix"] = "eventing"
 
 	app.Settings = settings
 
@@ -230,16 +292,20 @@ func createFunction(deploymentStatus, processingStatus bool, id int, s *commonSe
 	return encodedData, nil
 }
 
-func setSettings(appName string, deploymentStatus, processingStatus bool, s *commonSettings) {
+func setSettings(fnName string, deploymentStatus, processingStatus bool, s *commonSettings) (*responseSchema, error) {
+	res := &responseSchema{}
 	settings := make(map[string]interface{})
 
 	settings["processing_status"] = processingStatus
 	settings["deployment_status"] = deploymentStatus
 
-	settings["cleanup_timers"] = false
-	settings["dcp_stream_boundary"] = "everything"
-	settings["log_level"] = "INFO"
 	settings["tick_duration"] = 5000
+
+	if s.streamBoundary == "" {
+		settings["dcp_stream_boundary"] = "everything"
+	} else {
+		settings["dcp_stream_boundary"] = s.streamBoundary
+	}
 
 	if s.thrCount == 0 {
 		settings["cpp_worker_thread_count"] = cppthrCount
@@ -265,19 +331,27 @@ func setSettings(appName string, deploymentStatus, processingStatus bool, s *com
 		settings["lcb_inst_capacity"] = s.lcbInstCap
 	}
 
-	settings["timer_worker_pool_size"] = 1
-	settings["skip_timer_threshold"] = 86400
+	if s.n1qlConsistency == "" {
+		settings["n1ql_consistency"] = n1qlConsistency
+	} else {
+		settings["n1ql_consistency"] = s.n1qlConsistency
+	}
 
 	data, err := json.Marshal(&settings)
 	if err != nil {
 		log.Println("Undeploy json marshal:", err)
-		return
+		return res, err
 	}
 
-	req, err := http.NewRequest("POST", settingsURL+appName, bytes.NewBuffer(data))
+	err = ValidateSettingsSchema(data)
+	if err != nil {
+		panic(fmt.Sprintf("settings failed schema: %v, data: %s", err, data))
+	}
+
+	req, err := http.NewRequest("POST", functionsURL+"/"+fnName+"/settings", bytes.NewBuffer(data))
 	if err != nil {
 		log.Println("Undeploy request framing::", err)
-		return
+		return res, err
 	}
 
 	req.SetBasicAuth(username, password)
@@ -285,7 +359,7 @@ func setSettings(appName string, deploymentStatus, processingStatus bool, s *com
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		log.Println("Undeploy response:", err)
-		return
+		return res, err
 	}
 
 	defer resp.Body.Close()
@@ -293,28 +367,22 @@ func setSettings(appName string, deploymentStatus, processingStatus bool, s *com
 	data, err = ioutil.ReadAll(resp.Body)
 	if err != nil {
 		log.Println("Post to eventing, response read:", err)
-		return
+		return res, err
 	}
 
-	log.Printf("Update settings, response code: %d dump: %s\n", resp.StatusCode, string(data))
-	return
+	err = json.Unmarshal(data, res)
+	log.Printf("Function: %s update settings: %+v requested, response code: %d dump: %s\n",
+		fnName, settings, resp.StatusCode, string(data))
+	return res, nil
 }
 
-func deleteFunction(appName string) {
-	deleteFromTempStore(appName)
-	deleteFromPrimaryStore(appName)
+func deleteFunction(fnName string) (*responseSchema, error) {
+	return makeDeleteReq(fmt.Sprintf("Function: %s delete from main store", fnName), functionsURL+"/"+fnName)
 }
 
-func deleteFromTempStore(appName string) {
-	makeDeleteReq("Delete from temp store", deleteTempStoreURL+appName)
-}
-
-func deleteFromPrimaryStore(appName string) {
-	makeDeleteReq("Delete from primary store", deletePrimStoreURL+appName)
-}
-
-func makeDeleteReq(context, url string) {
-	req, err := http.NewRequest("GET", url, nil)
+func makeDeleteReq(context, url string) (response *responseSchema, err error) {
+	response = &responseSchema{}
+	req, err := http.NewRequest("DELETE", url, nil)
 	if err != nil {
 		log.Println("Delete req:", err)
 		return
@@ -336,10 +404,13 @@ func makeDeleteReq(context, url string) {
 	}
 
 	log.Printf("%s request response code: %d dump: %s", context, resp.StatusCode, string(data))
+
+	err = json.Unmarshal(data, &response)
+	response.httpResponseCode = resp.StatusCode
 	return
 }
 
-func verifyBucketOps(count, retryCount int) int {
+func verifyBucketCount(count, retryCount int, bucket string) int {
 	rCount := 1
 	var itemCount int
 
@@ -348,14 +419,19 @@ retryVerifyBucketOp:
 		return itemCount
 	}
 
-	itemCount, _ = getBucketItemCount(dstBucket)
+	itemCount, _ = getBucketItemCount(bucket)
 	if itemCount == count {
 		log.Printf("src & dst bucket item count matched up. src bucket count: %d dst bucket count: %d\n", count, itemCount)
 		return itemCount
 	}
 	rCount++
 	time.Sleep(time.Second * 5)
+	log.Printf("Waiting for dst bucket item count to get to: %d curr count: %d\n", count, itemCount)
 	goto retryVerifyBucketOp
+}
+
+func verifyBucketOps(count, retryCount int) int {
+	return verifyBucketCount(count, retryCount, dstBucket)
 }
 
 func verifySourceBucketOps(count, retryCount int) int {
@@ -407,40 +483,6 @@ retrySrcItemCount:
 	}
 }
 
-func compareSrcAndDstItemCount(retryCount int) bool {
-	rCount := 1
-
-	log.SetFlags(log.LstdFlags)
-
-retrySrcItemCount:
-	if rCount >= retryCount {
-		return false
-	}
-
-	srcCount, err := getBucketItemCount(srcBucket)
-	if err != nil {
-		time.Sleep(3 * time.Second)
-		goto retrySrcItemCount
-	}
-
-retryDstItemCount:
-	dstCount, err := getBucketItemCount(dstBucket)
-	if err != nil {
-		time.Sleep(3 * time.Second)
-		goto retryDstItemCount
-	}
-
-	if dstCount != srcCount {
-		log.Printf("src bucket count: %d dst bucket count: %d\n", srcCount, dstCount)
-		rCount++
-		time.Sleep(5 * time.Second)
-	}
-
-	log.Printf("src & dst bucket item count matched up. src bucket count: %d dst bucket count: %d\n", srcCount, dstCount)
-
-	return true
-}
-
 func getBucketItemCount(bucketName string) (int, error) {
 	bStatsURL := bucketStatsURL + bucketName + "/"
 	req, err := http.NewRequest("GET", bStatsURL, nil)
@@ -485,32 +527,37 @@ func getBucketItemCount(bucketName string) (int, error) {
 func bucketFlush(bucketName string) {
 	flushEndpoint := fmt.Sprintf("http://127.0.0.1:9000/pools/default/buckets/%s/controller/doFlush", bucketName)
 	postToEventingEndpoint("Bucket flush", flushEndpoint, nil)
+	time.Sleep(5 * time.Second)
+	waitForIndexes()
 }
 
 func flushFunction(handler string) {
 	setSettings(handler, false, false, &commonSettings{})
-	time.Sleep(5 * time.Second)
+	waitForUndeployToFinish(handler)
+	checkIfProcessRunning("eventing-con")
 	deleteFunction(handler)
 }
 
 func flushFunctionAndBucket(handler string) {
 	flushFunction(handler)
-	bucketFlush("default")
-	bucketFlush("hello-world")
+	bucketFlush(srcBucket)
+	verifyBucketCount(0, statsLookupRetryCounter, srcBucket)
+	bucketFlush(dstBucket)
+	verifyBucketCount(0, statsLookupRetryCounter, dstBucket)
 }
 
 func dumpStats() {
-	makeStatsRequest("Node0: Eventing stats", statsEndpointURL0)
-	makeStatsRequest("Node1: Eventing stats", statsEndpointURL1)
-	makeStatsRequest("Node2: Eventing stats", statsEndpointURL2)
-	makeStatsRequest("Node3: Eventing stats", statsEndpointURL3)
+	makeStatsRequest("Node0: Eventing stats", statsEndpointURL0, true)
+	makeStatsRequest("Node1: Eventing stats", statsEndpointURL1, true)
+	makeStatsRequest("Node2: Eventing stats", statsEndpointURL2, true)
+	makeStatsRequest("Node3: Eventing stats", statsEndpointURL3, true)
 }
 
-func makeStatsRequest(context, url string) {
+func makeStatsRequest(context, url string, printStats bool) (interface{}, error) {
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		log.Printf("Made request to url: %v err: %v\n", url, err)
-		return
+		return nil, err
 	}
 
 	req.SetBasicAuth(username, password)
@@ -518,43 +565,234 @@ func makeStatsRequest(context, url string) {
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		log.Println("http call resp:", err)
-		return
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	data, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		log.Println("Read response: ", err)
-		return
+		return nil, err
 	}
 
 	var response interface{}
 	err = json.Unmarshal(data, &response)
 	if err != nil {
 		log.Println("Unmarshal stats response:", err)
-		return
+		return nil, err
 	}
 
-	// Pretty print json
-	body, err := json.MarshalIndent(&response, "", "  ")
-	if err != nil {
-		log.Println("Pretty print json:", err)
-		return
+	if printStats {
+		// Pretty print json
+		body, err := json.MarshalIndent(&response, "", "  ")
+		if err != nil {
+			log.Println("Pretty print json:", err)
+			return nil, err
+		}
+		if statsFile.file != nil {
+			ts := time.Now().Format("2006-01-02T15:04:05.000-07:00")
+			statsFile.lock.Lock()
+			fmt.Fprintf(statsFile.file, "%v %v::%s\n", ts, context, string(body))
+			statsFile.lock.Unlock()
+		} else {
+			log.Printf("%v::%s\n", context, string(body))
+		}
 	}
-
-	log.Printf("%v::%s\n", context, string(body))
+	return response, nil
 }
 
-func eventingConsumerPidsAlive() (bool, int) {
-	ps := exec.Command("pgrep", "eventing-consumer")
+func eventingConsumerPids(port int, fnName string) ([]int, error) {
+	pids := make([]int, 0)
+	statsURL := fmt.Sprintf("http://127.0.0.1:%d/api/v1/stats", port)
 
-	output, _ := ps.Output()
-	ps.Output()
-	res := strings.Split(string(output), "\n")
-
-	if len(res) > 1 {
-		return true, len(res) - 1
+	statsDump, err := makeStatsRequest("Node0: Eventing stats", statsURL, false)
+	if err != nil {
+		return pids, err
 	}
 
-	return false, 0
+	stats, ok := statsDump.([]interface{})
+	if !ok {
+		return pids, fmt.Errorf("failed type assertion")
+	}
+
+	for _, v := range stats {
+		fnStats, ok := v.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		if _, ok := fnStats["function_name"]; ok && fnStats["function_name"] == fnName {
+			consumerPids := fnStats["worker_pids"].(map[string]interface{})
+			for _, pid := range consumerPids {
+				pids = append(pids, int(pid.(float64)))
+			}
+		}
+	}
+
+	return pids, nil
+}
+
+func killPid(pid int) error {
+	if pid < 1 {
+		return fmt.Errorf("Can not kill %d", pid)
+	}
+
+	process, err := os.FindProcess(pid)
+	if err != nil {
+		return err
+	}
+
+	return process.Kill()
+}
+
+func getFnStatus(appName string) string {
+	res, err := makeStatsRequest("", statusURL, false)
+	if err != nil {
+		return "invalid"
+	}
+
+	s := res.(map[string]interface{})
+	appStatuses, ok := s["apps"].([]interface{})
+	if !ok {
+		return "invalid"
+	}
+
+	for _, entry := range appStatuses {
+		status := entry.(map[string]interface{})
+
+		app := status["name"].(string)
+		if app == appName {
+			compositeStatus := status["composite_status"].(string)
+			return compositeStatus
+		}
+	}
+
+	return "invalid"
+}
+
+func waitForStatusChange(appName, expectedStatus string, retryCounter int) {
+	for {
+		time.Sleep(5 * time.Second)
+		log.Printf("Waiting for function: %s status to change to %s\n", appName, expectedStatus)
+
+		status := getFnStatus(appName)
+		if status != expectedStatus {
+			continue
+		}
+
+		if status == expectedStatus {
+			log.Printf("Function: %s status changed to %s\n", appName, expectedStatus)
+			return
+		}
+	}
+}
+
+func getFailureStatCounter(statName, fnName string) int {
+	responses := make([]interface{}, 0)
+
+	res0, err := makeStatsRequest("", statsEndpointURL0, false)
+	if err == nil {
+		responses = append(responses, res0)
+	}
+
+	res1, err := makeStatsRequest("", statsEndpointURL1, false)
+	if err == nil {
+		responses = append(responses, res1)
+	}
+
+	res2, err := makeStatsRequest("", statsEndpointURL2, false)
+	if err == nil {
+		responses = append(responses, res2)
+	}
+
+	res3, err := makeStatsRequest("", statsEndpointURL3, false)
+	if err == nil {
+		responses = append(responses, res3)
+	}
+
+	var result int
+
+	for _, res := range responses {
+		stats, ok := res.([]interface{})
+		if !ok {
+			continue
+		}
+
+		for _, stat := range stats {
+			s, ok := stat.(map[string]interface{})
+			if !ok {
+				continue
+			}
+
+			sFName, ok := s["function_name"].(string)
+			if !ok {
+				continue
+			}
+
+			if sFName == fnName {
+				failureStats, ok := s["failure_stats"].(map[string]interface{})
+				if !ok {
+					continue
+				}
+				if val, ok := failureStats[statName].(float64); !ok {
+					continue
+				} else {
+					result += int(val)
+				}
+			}
+		}
+	}
+
+	return result
+}
+
+func waitForFailureStatCounterSync(fnName, statName string, expectedCount int) {
+	for {
+		time.Sleep(5 * time.Second)
+		log.Printf("Waiting for function: %s stat: %s to get to %d\n", fnName, statName, expectedCount)
+
+		count := getFailureStatCounter(statName, fnName)
+		if count != expectedCount {
+			log.Printf("Function: %s stat: %s got to %d expected %d\n", fnName, statName, count, expectedCount)
+			continue
+		}
+
+		if count == expectedCount {
+			log.Printf("Function: %s stat: %s got to %d\n", fnName, statName, expectedCount)
+			return
+		}
+	}
+}
+
+func goroutineDumpAllNodes() {
+	urls := []string{goroutineURL0, goroutineURL1, goroutineURL2, goroutineURL3}
+	for _, url := range urls {
+		log.Printf("Collecting goroutine dump from url: %v\n", url)
+		goroutineDump(url)
+	}
+}
+
+func goroutineDump(url string) error {
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		log.Printf("HTTP request creation failed, url: %v err: %v\n", url, err)
+		return err
+	}
+
+	req.SetBasicAuth(username, password)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		log.Println("http request failed with the response :", err)
+		return err
+	}
+	defer resp.Body.Close()
+
+	data, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Println("Response body read failed: ", err)
+		return err
+	}
+
+	log.Printf("%s\n", string(data))
+	return nil
 }

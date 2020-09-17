@@ -21,6 +21,9 @@ enum event_type {
   eApp_Worker_Setting,
   eTimer,
   eDebugger,
+  eFilter,
+  eInternal,
+  ePauseConsumer,
   Event_Unknown
 };
 
@@ -29,27 +32,41 @@ enum v8_worker_opcode {
   oInit,
   oLoad,
   oTerminate,
-  oGetSourceMap,
-  oGetHandlerCode,
+  oUnused1,
+  oUnused2,
   oGetLatencyStats,
   oGetFailureStats,
   oGetExecutionStats,
   oGetCompileInfo,
   oGetLcbExceptions,
+  oGetCurlLatencyStats,
   oVersion,
+  oInsight,
   V8_Worker_Opcode_Unknown
 };
 
 enum dcp_opcode { oDelete, oMutation, DCP_Opcode_Unknown };
 
+enum filter_opcode { oVbFilter, oProcessedSeqNo, Filter_Opcode_Unknown };
+
+enum internal_opcode {
+  oScanTimer,
+  oUpdateV8HeapSize,
+  oRunGc,
+  Internal_Opcode_Unknown
+};
+
 enum app_worker_setting_opcode {
   oLogLevel,
   oWorkerThreadCount,
   oWorkerThreadMap,
+  oTimerContextSize,
+  oVbMap,
+  oWorkerMemQuota,
   App_Worker_Setting_Opcode_Unknown
 };
 
-enum timer_opcode { oDocTimer, oCronTimer, Timer_Opcode_Unknown };
+enum timer_opcode { oTimer, oCronTimer, Timer_Opcode_Unknown };
 
 enum debugger_opcode { oDebuggerStart, oDebuggerStop, Debugger_Opcode_Unknown };
 
@@ -57,6 +74,7 @@ event_type getEvent(int8_t event);
 v8_worker_opcode getV8WorkerOpcode(int8_t opcode);
 dcp_opcode getDCPOpcode(int8_t opcode);
 app_worker_setting_opcode getAppWorkerSettingOpcode(int8_t opcode);
+filter_opcode getFilterOpcode(int8_t opcode);
 timer_opcode getTimerOpcode(int8_t opcode);
 debugger_opcode getDebuggerOpcode(int8_t opcode);
 
@@ -64,15 +82,17 @@ debugger_opcode getDebuggerOpcode(int8_t opcode);
 enum msg_type {
   mType,
   mV8_Worker_Config,
-  mDoc_Timer_Response,
+  mTimer_Response,
   mBucket_Ops_Response,
+  mFilterAck,
+  mPauseAck,
   Msg_Unknown
 };
 
 enum v8_worker_config_opcode {
   oConfigOpcode,
-  oSourceMap,
-  oHandlerCode,
+  oUnused3,
+  oUnused4,
   oAppLogMessage,
   oSysLogMessage,
   oLatencyStats,
@@ -81,6 +101,8 @@ enum v8_worker_config_opcode {
   oCompileInfo,
   oQueueSize,
   oLcbExceptions,
+  oCurlLatencyStats,
+  oCodeInsights,
   V8_Worker_Config_Opcode_Unknown
 };
 

@@ -5,7 +5,10 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
+	"sync/atomic"
+	"syscall"
 
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
@@ -32,8 +35,10 @@ func (c *client) Serve() {
 		return
 	}
 
+	executable_img := filepath.Join(filepath.Dir(os.Args[0]), "eventing-consumer")
+
 	c.cmd = exec.Command(
-		"eventing-consumer",
+		executable_img,
 		c.appName,
 		c.consumerHandle.ipcType,
 		c.tcpPort,
@@ -44,8 +49,10 @@ func (c *client) Serve() {
 		c.consumerHandle.diagDir,
 		util.GetIPMode(),
 		strconv.FormatBool(c.consumerHandle.breakpadOn),
-		strconv.Itoa(int(c.consumerHandle.app.HandlerUUID)),
+		strconv.Itoa(int(c.consumerHandle.app.FunctionID)),
 		c.consumerHandle.app.UserPrefix,
+		c.consumerHandle.nsServerPort,
+		strconv.Itoa(c.consumerHandle.numVbuckets),
 		c.eventingPort) // Not read, for tagging
 
 	user, key := util.LocalKey()
@@ -145,7 +152,7 @@ func (c *client) Serve() {
 	}
 }
 
-func (c *client) Stop() {
+func (c *client) Stop(context string) {
 	logPrefix := "client::Stop"
 
 	c.stopCalled = true
@@ -153,11 +160,15 @@ func (c *client) Stop() {
 	logging.Infof("%s [%s:%s:%d] Exiting c++ worker", logPrefix, c.workerName, c.tcpPort, c.osPid)
 
 	c.consumerHandle.workerExited = true
-
-	if c.osPid > 1 {
-		ps, err := os.FindProcess(c.osPid)
-		if err == nil {
-			ps.Kill()
+	if atomic.LoadUint32(&c.consumerHandle.notifyWorker) == 1 {
+		if err := c.cmd.Process.Signal(syscall.SIGABRT); err != nil {
+			logging.Errorf("%s [%s:%s:%d] Unable to notify  c++ worker, err: %v",
+				logPrefix, c.workerName, c.tcpPort, c.osPid, err)
+		}
+	} else {
+		if err := util.KillProcess(c.osPid); err != nil {
+			logging.Errorf("%s [%s:%s:%d] Unable to kill c++ worker, err: %v",
+				logPrefix, c.workerName, c.tcpPort, c.osPid, err)
 		}
 	}
 }

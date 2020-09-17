@@ -14,6 +14,10 @@ var getEventingNodeAddrOpCallback = func(args ...interface{}) error {
 
 	c := args[0].(*Consumer)
 
+	if atomic.LoadUint32(&c.isTerminateRunning) == 1 {
+		return nil
+	}
+
 	hostAddress := net.JoinHostPort(util.Localhost(), c.producer.GetNsServerPort())
 
 	hostPortAddr, err := util.CurrentEventingNodeAddress(c.producer.Auth(), hostAddress)
@@ -50,6 +54,10 @@ var getKvNodesFromVbMap = func(args ...interface{}) error {
 	logPrefix := "Consumer::getKvNodesFromVbMap"
 
 	c := args[0].(*Consumer)
+
+	if atomic.LoadUint32(&c.isTerminateRunning) == 1 {
+		return nil
+	}
 
 	hostAddress := net.JoinHostPort(util.Localhost(), c.producer.GetNsServerPort())
 

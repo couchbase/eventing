@@ -6,13 +6,14 @@ import (
 	"runtime/debug"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/dcp"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
-	"github.com/couchbase/gocb"
+	"gopkg.in/couchbase/gocb.v1"
 )
 
 var vbTakeoverCallback = func(args ...interface{}) error {
@@ -24,7 +25,7 @@ var vbTakeoverCallback = func(args ...interface{}) error {
 	err := c.doVbTakeover(vb)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-		return common.ErrRetryTimeout
+		return err
 	}
 
 	if err == errDcpFeedsClosed {
@@ -37,50 +38,10 @@ var vbTakeoverCallback = func(args ...interface{}) error {
 		logging.Infof("%s [%s:%s:%d] vb: %d vbTakeover request, msg: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, err)
 
-		c.vbsStreamRRWMutex.Lock()
-		if _, ok := c.vbStreamRequested[vb]; ok {
-			logging.Infof("%s [%s:%s:%d] vb: %d Purging entry from vbStreamRequested",
-				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
-
-			delete(c.vbStreamRequested, vb)
-		}
-		c.vbsStreamRRWMutex.Unlock()
+		c.purgeVbStreamRequested(logPrefix, vb)
 	}
 
 	return err
-}
-
-var gocbConnectBucketCallback = func(args ...interface{}) error {
-	logPrefix := "Consumer::gocbConnectBucketCallback"
-
-	c := args[0].(*Consumer)
-
-	connStr := fmt.Sprintf("couchbase://%s", c.getKvNodes()[0])
-	if util.IsIPv6() {
-		connStr += "?ipv6=allow"
-	}
-	cluster, err := gocb.Connect(connStr)
-	if err != nil {
-		logging.Errorf("%s [%s:%d] GOCB Connect to cluster %rm failed, err: %v",
-			logPrefix, c.workerName, c.producer.LenRunningConsumers(), connStr, err)
-		return err
-	}
-
-	err = cluster.Authenticate(&util.DynamicAuthenticator{Caller: logPrefix})
-	if err != nil {
-		logging.Errorf("%s [%s:%d] GOCB Failed to authenticate to the cluster %rm, err: %v",
-			logPrefix, c.workerName, c.producer.LenRunningConsumers(), connStr, err)
-		return err
-	}
-
-	c.gocbBucket, err = cluster.OpenBucket(c.bucket, "")
-	if err != nil {
-		logging.Errorf("%s [%s:%d] GOCB Failed to connect to bucket %s, err: %v",
-			logPrefix, c.workerName, c.producer.LenRunningConsumers(), c.bucket, err)
-		return err
-	}
-
-	return nil
 }
 
 var gocbConnectMetaBucketCallback = func(args ...interface{}) error {
@@ -88,30 +49,54 @@ var gocbConnectMetaBucketCallback = func(args ...interface{}) error {
 
 	c := args[0].(*Consumer)
 
-	connStr := fmt.Sprintf("couchbase://%s", c.getKvNodes()[0])
+	if atomic.LoadUint32(&c.isTerminateRunning) == 1 {
+		logging.Tracef("%s [%s:%s:%d] Exiting as worker is terminating",
+			logPrefix, c.workerName, c.tcpPort, c.Pid())
+		return nil
+	}
+
+	kvNodes := c.getKvNodes()
+
+	connStr := "couchbase://"
+	for index, kvNode := range kvNodes {
+		if index != 0 {
+			connStr = connStr + ","
+		}
+		connStr = connStr + kvNode
+	}
+
 	if util.IsIPv6() {
 		connStr += "?ipv6=allow"
 	}
 	cluster, err := gocb.Connect(connStr)
 	if err != nil {
-		logging.Errorf("%s [%s:%d] GOCB Connect to cluster %rm failed, err: %v",
+		logging.Errorf("%s [%s:%d] Connect to cluster %rm failed, err: %v",
 			logPrefix, c.workerName, c.producer.LenRunningConsumers(), connStr, err)
 		return err
 	}
 
 	err = cluster.Authenticate(&util.DynamicAuthenticator{Caller: logPrefix})
 	if err != nil {
-		logging.Errorf("%s [%s:%d] GOCB Failed to authenticate to the cluster %rm, err: %v",
+		logging.Errorf("%s [%s:%d] Failed to authenticate to the cluster %rm, err: %v",
 			logPrefix, c.workerName, c.producer.LenRunningConsumers(), connStr, err)
 		return err
 	}
 
 	c.gocbMetaBucket, err = cluster.OpenBucket(c.producer.MetadataBucket(), "")
-	if err != nil {
-		logging.Errorf("%s [%s:%d] GOCB Failed to connect to metadata bucket %s, err: %v",
+	if err == gocb.ErrBadHosts {
+		logging.Errorf("%s [%s:%d] Failed to connect to metadata bucket %s (bucket got deleted?) , err: %v",
 			logPrefix, c.workerName, c.producer.LenRunningConsumers(), c.producer.MetadataBucket(), err)
 		return err
 	}
+
+	if err != nil {
+		logging.Errorf("%s [%s:%d] Failed to connect to metadata bucket %s, err: %v",
+			logPrefix, c.workerName, c.producer.LenRunningConsumers(), c.producer.MetadataBucket(), err)
+		return err
+	}
+
+	logging.Infof("%s [%s:%d] Successfully connected to metadata bucket %s connStr: %rs",
+		logPrefix, c.workerName, c.producer.LenRunningConsumers(), c.producer.MetadataBucket(), connStr)
 
 	return nil
 }
@@ -122,6 +107,12 @@ var commonConnectBucketOpCallback = func(args ...interface{}) error {
 	c := args[0].(*Consumer)
 	b := args[1].(**couchbase.Bucket)
 
+	if atomic.LoadUint32(&c.isTerminateRunning) == 1 {
+		logging.Tracef("%s [%s:%s:%d] Exiting as worker is terminating",
+			logPrefix, c.workerName, c.tcpPort, c.Pid())
+		return nil
+	}
+
 	hostPortAddr := net.JoinHostPort(util.Localhost(), c.producer.GetNsServerPort())
 
 	c.cbBucketRWMutex.Lock()
@@ -130,11 +121,13 @@ var commonConnectBucketOpCallback = func(args ...interface{}) error {
 	var err error
 	*b, err = util.ConnectBucket(hostPortAddr, "default", c.bucket)
 	if err != nil {
-		logging.Errorf("%s [%s:%d] Connect to bucket: %s failed, err: %v",
-			logPrefix, c.workerName, c.producer.LenRunningConsumers(), c.bucket, err)
+		logging.Errorf("%s [%s:%d] Connect to bucket: %s failed isTerminateRunning: %d , err: %v",
+			logPrefix, c.workerName, c.producer.LenRunningConsumers(), c.bucket,
+			atomic.LoadUint32(&c.isTerminateRunning), err)
 	} else {
-		logging.Infof("%s [%s:%d] Connected to bucket: %s",
-			logPrefix, c.workerName, c.producer.LenRunningConsumers(), c.bucket)
+		logging.Infof("%s [%s:%d] Connected to bucket: %s isTerminateRunning: %d",
+			logPrefix, c.workerName, c.producer.LenRunningConsumers(), c.bucket,
+			atomic.LoadUint32(&c.isTerminateRunning))
 	}
 
 	return err
@@ -160,44 +153,6 @@ var setOpCallback = func(args ...interface{}) error {
 	return err
 }
 
-var getCronTimerCallback = func(args ...interface{}) error {
-	logPrefix := "Consumer::getCronTimerCallback"
-
-	c := args[0].(*Consumer)
-	key := args[1].(common.Key)
-	val := args[2].(*cronTimers)
-	checkEnoEnt := args[3].(bool)
-
-	var isNoEnt *bool
-	if checkEnoEnt {
-		isNoEnt = args[4].(*bool)
-	}
-
-	_, err := c.gocbMetaBucket.Get(key.Raw(), val)
-
-	if checkEnoEnt {
-		if gocb.IsKeyNotFoundError(err) {
-			*isNoEnt = true
-			return nil
-		} else if err == nil {
-			*isNoEnt = false
-			return nil
-		}
-	}
-
-	if err == gocb.ErrShutdown {
-		*isNoEnt = true
-		return nil
-	}
-
-	if err != nil {
-		logging.Errorf("%s [%s:%s:%d] Bucket fetch failed for cron timer key: %ru val: %ru, err: %v",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), key.Raw(), val, err)
-	}
-
-	return err
-}
-
 var getOpCallback = func(args ...interface{}) error {
 	logPrefix := "Consumer::getOpCallback"
 
@@ -215,6 +170,16 @@ var getOpCallback = func(args ...interface{}) error {
 	var createIfMissing bool
 	if len(args) == 7 {
 		createIfMissing = args[6].(bool)
+	}
+
+	if atomic.LoadUint32(&c.isTerminateRunning) == 1 {
+		logging.Tracef("%s [%s:%s:%d] Exiting as worker is terminating",
+			logPrefix, c.workerName, c.tcpPort, c.Pid())
+		return nil
+	}
+
+	if c.gocbMetaBucket == nil {
+		return nil
 	}
 
 	var err error
@@ -310,7 +275,7 @@ var recreateCheckpointBlobsFromVbStatsCallback = func(args ...interface{}) error
 	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, setOpCallback, c, vbKey, &vbBlobVer)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-		return common.ErrRetryTimeout
+		return err
 	}
 
 	logging.Infof("%s [%s:%s:%d] vb: %d Recreated missing checkpoint blob", logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
@@ -376,7 +341,7 @@ var recreateCheckpointBlobCallback = func(args ...interface{}) error {
 		err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, setOpCallback, c, vbKey, &vbBlobVer)
 		if err == common.ErrRetryTimeout {
 			logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-			return common.ErrRetryTimeout
+			return err
 		}
 	}
 
@@ -448,6 +413,7 @@ retryUpdateCheckpoint:
 
 	_, err := c.gocbMetaBucket.MutateIn(vbKey.Raw(), 0, uint32(0)).
 		UpsertEx("assigned_worker", vbBlob.AssignedWorker, gocb.SubdocFlagCreatePath).
+		UpsertEx("bootstrap_stream_req_done", vbBlob.BootstrapStreamReqDone, gocb.SubdocFlagCreatePath).
 		UpsertEx("current_vb_owner", vbBlob.CurrentVBOwner, gocb.SubdocFlagCreatePath).
 		UpsertEx("dcp_stream_requested", false, gocb.SubdocFlagCreatePath).
 		UpsertEx("dcp_stream_status", vbBlob.DCPStreamStatus, gocb.SubdocFlagCreatePath).
@@ -459,6 +425,7 @@ retryUpdateCheckpoint:
 		UpsertEx("previous_node_uuid", vbBlob.PreviousNodeUUID, gocb.SubdocFlagCreatePath).
 		UpsertEx("previous_vb_owner", vbBlob.PreviousVBOwner, gocb.SubdocFlagCreatePath).
 		UpsertEx("worker_requested_vb_stream", "", gocb.SubdocFlagCreatePath).
+		UpsertEx("last_processed_seq_no", vbBlob.LastSeqNoProcessed, gocb.SubdocFlagCreatePath).
 		Execute()
 
 	if err == gocb.ErrKeyNotFound {
@@ -527,16 +494,22 @@ retryMetadataCorrection:
 	return err
 }
 
-var metadataCorrectionAfterRollbackCallback = func(args ...interface{}) error {
-	logPrefix := "Consumer::metadataCorrectionAfterRollbackCallback"
+var undoMetadataCorrectionCallback = func(args ...interface{}) error {
+	logPrefix := "Consumer::undoMetadataCorrectionCallback"
 
 	c := args[0].(*Consumer)
 	vbKey := args[1].(common.Key)
 	ownershipEntry := args[2].(*OwnershipEntry)
 
-retryMetadataCorrection:
+retryUndoMetadataCorrection:
 	_, err := c.gocbMetaBucket.MutateIn(vbKey.Raw(), 0, uint32(0)).
 		ArrayAppend("ownership_history", ownershipEntry, true).
+		UpsertEx("assigned_worker", "", gocb.SubdocFlagCreatePath).
+		UpsertEx("current_vb_owner", "", gocb.SubdocFlagCreatePath).
+		UpsertEx("dcp_stream_requested", false, gocb.SubdocFlagCreatePath).
+		UpsertEx("dcp_stream_status", dcpStreamStopped, gocb.SubdocFlagCreatePath).
+		UpsertEx("last_checkpoint_time", time.Now().String(), gocb.SubdocFlagCreatePath).
+		UpsertEx("node_uuid", "", gocb.SubdocFlagCreatePath).
 		Execute()
 
 	if err == gocb.ErrShutdown {
@@ -552,11 +525,11 @@ retryMetadataCorrection:
 			return err
 		}
 
-		goto retryMetadataCorrection
+		goto retryUndoMetadataCorrection
 	}
 
 	if err != nil {
-		logging.Errorf("%s [%s:%s:%d] Key: %rm, subdoc operation failed while trying to correct metadata, err: %v",
+		logging.Errorf("%s [%s:%s:%d] Key: %rm, subdoc operation failed while trying to update metadata, err: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbKey.Raw(), err)
 	}
 
@@ -668,6 +641,7 @@ retrySRSUpdate:
 	_, err := c.gocbMetaBucket.MutateIn(vbKey.Raw(), 0, uint32(0)).
 		ArrayAppend("ownership_history", ownershipEntry, true).
 		UpsertEx("assigned_worker", vbBlob.AssignedWorker, gocb.SubdocFlagCreatePath).
+		UpsertEx("bootstrap_stream_req_done", vbBlob.BootstrapStreamReqDone, gocb.SubdocFlagCreatePath).
 		UpsertEx("current_vb_owner", vbBlob.CurrentVBOwner, gocb.SubdocFlagCreatePath).
 		UpsertEx("dcp_stream_requested", false, gocb.SubdocFlagCreatePath).
 		UpsertEx("dcp_stream_status", vbBlob.DCPStreamStatus, gocb.SubdocFlagCreatePath).
@@ -697,47 +671,6 @@ retrySRSUpdate:
 
 	if err != nil {
 		logging.Errorf("%s [%s:%s:%d] Key: %rm, subdoc operation failed post STREAMREQ SUCCESS from Producer, err: %v",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbKey.Raw(), err)
-	}
-
-	return err
-}
-
-var addOwnershipHistoryCSCallback = func(args ...interface{}) error {
-	logPrefix := "Consumer::addOwnershipHistoryCSCallback"
-
-	c := args[0].(*Consumer)
-	vbKey := args[1].(common.Key)
-	ownershipEntry := args[2].(*OwnershipEntry)
-
-retryCSUpdate:
-	_, err := c.gocbMetaBucket.MutateIn(vbKey.Raw(), 0, uint32(0)).
-		ArrayAppend("ownership_history", ownershipEntry, true).
-		UpsertEx("dcp_stream_requested", false, gocb.SubdocFlagCreatePath).
-		UpsertEx("last_checkpoint_time", time.Now().String(), gocb.SubdocFlagCreatePath).
-		UpsertEx("node_requested_vb_stream", "", gocb.SubdocFlagCreatePath).
-		UpsertEx("node_uuid_requested_vb_stream", "", gocb.SubdocFlagCreatePath).
-		UpsertEx("worker_requested_vb_stream", "", gocb.SubdocFlagCreatePath).
-		Execute()
-
-	if err == gocb.ErrShutdown || err == gocb.ErrKeyNotFound {
-		return nil
-	}
-
-	if err == gocb.ErrKeyNotFound {
-		var vbBlob vbucketKVBlob
-
-		err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, recreateCheckpointBlobsFromVbStatsCallback, c, vbKey, &vbBlob)
-		if err == common.ErrRetryTimeout {
-			logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-			return err
-		}
-
-		goto retryCSUpdate
-	}
-
-	if err != nil {
-		logging.Errorf("%s [%s:%s:%d] Key: %rm, subdoc operation failed while performing ownership entry app post close stream, err: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbKey.Raw(), err)
 	}
 
@@ -791,10 +724,17 @@ var getFailoverLogOpCallback = func(args ...interface{}) error {
 	c := args[0].(*Consumer)
 	flogs := args[1].(*couchbase.FailoverLog)
 
+	if atomic.LoadUint32(&c.isTerminateRunning) == 1 {
+		logging.Tracef("%s [%s:%s:%d] Exiting as worker is terminating",
+			logPrefix, c.workerName, c.tcpPort, c.Pid())
+		return nil
+	}
+
 	c.cbBucketRWMutex.Lock()
 	defer c.cbBucketRWMutex.Unlock()
 
-	err := c.cbBucket.Refresh()
+	var err error
+	c.cbBucket, err = c.superSup.GetBucket(c.cbBucket.Name)
 	if err != nil {
 		logging.Errorf("%s [%s:%s:%d] Failed to refresh bucket handle, err: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
@@ -826,7 +766,8 @@ var getEFFailoverLogOpAllVbucketsCallback = func(args ...interface{}) error {
 	c.cbBucketRWMutex.Lock()
 	defer c.cbBucketRWMutex.Unlock()
 
-	err := c.cbBucket.Refresh()
+	var err error
+	c.cbBucket, err = c.superSup.GetBucket(c.cbBucket.Name)
 	if err != nil {
 		logging.Errorf("%s [%s:%s:%d] vb: %d failed to refresh vbmap, err: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, err)
@@ -842,36 +783,6 @@ var getEFFailoverLogOpAllVbucketsCallback = func(args ...interface{}) error {
 	return err
 }
 
-// Fetches failover log from feed created during rebalance
-var getFailoverLogOpAllVbucketsCallback = func(args ...interface{}) error {
-	logPrefix := "Consumer::getFailoverLogOpAllVbucketsCallback"
-
-	c := args[0].(*Consumer)
-	b := args[1].(*couchbase.Bucket)
-	flogs := args[2].(*couchbase.FailoverLog)
-	vb := args[3].(uint16)
-
-	vbs := make([]uint16, 0)
-	for vb := 0; vb < c.numVbuckets; vb++ {
-		vbs = append(vbs, uint16(vb))
-	}
-
-	err := b.Refresh()
-	if err != nil {
-		logging.Errorf("%s [%s:%s:%d] vb: %d failed to refresh vbmap, err: %v",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, err)
-		return err
-	}
-
-	*flogs, err = b.GetFailoverLogs(0xABCD, vbs, c.dcpConfig)
-	if err != nil {
-		logging.Errorf("%s [%s:%s:%d] vb: %d Failed to get failover logs, err: %v",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, err)
-	}
-
-	return err
-}
-
 var startDCPFeedOpCallback = func(args ...interface{}) error {
 	logPrefix := "Consumer::startDCPFeedOpCallback"
 
@@ -879,10 +790,17 @@ var startDCPFeedOpCallback = func(args ...interface{}) error {
 	feedName := args[1].(couchbase.DcpFeedName)
 	kvHostPort := args[2].(string)
 
+	if atomic.LoadUint32(&c.isTerminateRunning) == 1 {
+		logging.Tracef("%s [%s:%s:%d] Exiting as worker is terminating",
+			logPrefix, c.workerName, c.tcpPort, c.Pid())
+		return nil
+	}
+
 	c.cbBucketRWMutex.Lock()
 	defer c.cbBucketRWMutex.Unlock()
 
-	err := c.cbBucket.Refresh()
+	var err error
+	c.cbBucket, err = c.superSup.GetBucket(c.cbBucket.Name)
 	if err != nil {
 		logging.Errorf("%s [%s:%s:%d] Bucket: %s kv node: %rs failed to refresh vbmap, err: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), c.cbBucket.Name, kvHostPort, err)
@@ -900,36 +818,10 @@ var startDCPFeedOpCallback = func(args ...interface{}) error {
 	logging.Infof("%s [%s:%s:%d] Started up dcp feed for bucket: %v from kv node: %rs",
 		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.cbBucket.Name, kvHostPort)
 
+	// Lock not needed as caller already has grabbed write lock
 	c.kvHostDcpFeedMap[kvHostPort] = dcpFeed
 
 	return nil
-}
-
-var startFeedFromKVNodesCallback = func(args ...interface{}) error {
-	logPrefix := "Consumer::startFeedFromKVNodesCallback"
-
-	c := args[0].(*Consumer)
-	b := args[1].(**couchbase.Bucket)
-	vb := args[2].(uint16)
-	dcpFeed := args[3].(**couchbase.DcpFeed)
-	kvNodeAddrs := args[4].([]string)
-
-	feedName := couchbase.NewDcpFeedName(fmt.Sprintf("%s_%s_vb_%v_docTimer", c.HostPortAddr(), c.workerName, vb))
-
-	err := (*b).Refresh()
-	if err != nil {
-		logging.Errorf("%s [%s:%s:%d] vb: %d failed to refresh vbmap, err: %v",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, err)
-		return err
-	}
-
-	*dcpFeed, err = (*b).StartDcpFeedOver(feedName, uint32(0), includeXATTRs, kvNodeAddrs, 0xABCD, c.dcpConfig)
-	if err != nil {
-		logging.Errorf("%s [%s:%s:%d] Failed to start dcp feed for bucket: %v kv nodes: %rs, err: %v",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), c.cbBucket.Name, kvNodeAddrs, err)
-	}
-
-	return err
 }
 
 var populateDcpFeedVbEntriesCallback = func(args ...interface{}) error {
@@ -970,10 +862,11 @@ var populateDcpFeedVbEntriesCallback = func(args ...interface{}) error {
 			c.cbBucketRWMutex.Lock()
 			defer c.cbBucketRWMutex.Unlock()
 
-			err := c.cbBucket.Refresh()
+			var err error
+			c.cbBucket, err = c.superSup.GetBucket(c.cbBucket.Name)
 			if err != nil {
 				logging.Errorf("%s [%s:%s:%d] feed: %s failed to refresh vbmap, err: %v",
-					logPrefix, feedName.Raw(), c.workerName, c.tcpPort, c.Pid(), err)
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), feedName.Raw(), err)
 				return err
 			}
 			return nil
@@ -1026,147 +919,84 @@ var populateDcpFeedVbEntriesCallback = func(args ...interface{}) error {
 	return nil
 }
 
-var appendCronTimerCleanupCallback = func(args ...interface{}) error {
-	logPrefix := "Consumer::appendCronTimerCleanupCallback"
+var acquireDebuggerTokenCallback = func(args ...interface{}) error {
+	logPrefix := "Consumer::acquireDebuggerTokenCallback"
 
 	c := args[0].(*Consumer)
-	docID := args[1].(common.Key)
-	cronTimerDocID := args[2].(string)
+	token := args[1].(string)
+	success := args[2].(*bool)
+	instance := args[3].(*common.DebuggerInstance)
 
-	_, err := c.gocbMetaBucket.MutateIn(docID.Raw(), 0, uint32(0)).
-		ArrayAppend("", cronTimerDocID, true).
-		Execute()
+	key := c.producer.AddMetadataPrefix(c.app.AppName).Raw() + "::" + common.DebuggerTokenKey
 
-	if gocb.IsKeyNotFoundError(err) {
-		var data []interface{}
-		data = append(data, cronTimerDocID)
-		c.gocbMetaBucket.Insert(docID.Raw(), data, 0)
-		return nil
-	}
-
-	if err == gocb.ErrShutdown {
+	cas, err := c.gocbMetaBucket.Get(key, instance)
+	if err == gocb.ErrKeyNotFound || err == gocb.ErrShutdown {
+		logging.Errorf("%s [%s:%s:%d] Key: %s, debugger token not found or bucket is closed, err: %v",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), key, err)
+		*success = false
 		return nil
 	}
 
 	if err != nil {
-		logging.Errorf("%s [%s:%s:%d] Key: %ru, subdoc operation failed while appending cron timers to cleanup, err: %v",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), docID.Raw(), err)
+		logging.Errorf("%s [%s:%s:%d] Key: %s, failed to get doc from metadata bucket, err: %v",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), key, err)
+		return err
 	}
 
-	return err
-}
-
-var removeDocIDCallback = func(args ...interface{}) error {
-	logPrefix := "Consumer::removeDocIDCallback"
-
-	c := args[0].(*Consumer)
-	key := args[1].(common.Key)
-
-	_, err := c.gocbMetaBucket.Remove(key.Raw(), 0)
-	if gocb.IsKeyNotFoundError(err) {
+	// Some other consumer has acquired the token
+	if instance.Status == common.MutationTrapped || instance.Token != token {
+		logging.Debugf("%s [%s:%s:%d] Some other consumer acquired the debugger token or token is stale",
+			logPrefix, c.workerName, c.tcpPort, c.Pid())
+		*success = false
 		return nil
 	}
 
-	if err == gocb.ErrShutdown {
-		return nil
-	}
-
-	if err != nil {
-		logging.Errorf("%s [%s:%s:%d] Key: %ru, failed to remove from metadata bucket, err: %v",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), key.Raw(), err)
-	}
-
-	return err
-}
-
-var removeIndexCallback = func(args ...interface{}) error {
-	logPrefix := "Consumer::removeIndexCallback"
-
-	c := args[0].(*Consumer)
-	key := args[1].(common.Key)
-	index := args[2].(int)
-
-	_, err := c.gocbMetaBucket.MutateIn(key.Raw(), 0, 0).
-		Remove(fmt.Sprintf("[%d]", index)).
-		Execute()
-	if err == gocb.ErrShutdown {
-		return nil
-	}
-
-	if err != nil {
-		logging.Errorf("%s [%s:%s:%d] Key: %ru, failed to remove from metadata bucket, err: %v",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), key.Raw(), err)
-	}
-
-	return err
-}
-
-var checkKeyExistsCallback = func(args ...interface{}) error {
-	logPrefix := "Consumer::checkKeyExistsCallback"
-
-	c := args[0].(*Consumer)
-	docID := args[1].(string)
-	exists := args[2].(*bool)
-	connShutdown := args[3].(*bool)
-	var value interface{}
-
-	_, err := c.gocbBucket.Get(docID, &value)
-	if err == gocb.ErrShutdown {
-		*exists = false
-		*connShutdown = true
-		return nil
-	}
-
-	*connShutdown = false
-	if err == gocb.ErrKeyNotFound {
-		*exists = false
-		return nil
-	}
-
+	instance.Host = c.HostPortAddr()
+	instance.Status = common.MutationTrapped
+	_, err = c.gocbMetaBucket.Replace(key, instance, cas, 0)
 	if err == nil {
-		*exists = true
+		logging.Infof("%s [%s:%s:%d] Debugger token acquired", logPrefix, c.workerName, c.tcpPort, c.Pid())
+		*success = true
 		return nil
 	}
 
-	logging.Errorf("%s [%s:%s:%d] Key: %ru, err : %v", logPrefix, c.workerName, c.tcpPort, c.Pid(), docID, err)
+	// Check for CAS mismatch
+	if gocb.IsKeyExistsError(err) {
+		*success = false
+		logging.Infof("%s [%s:%s:%d] Some other consumer acquired the debugger token",
+			logPrefix, c.workerName, c.tcpPort, c.Pid())
+		return nil
+	}
+
+	logging.Errorf("%s [%s:%s:%d] Failed to acquire token, err: %v",
+		logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
+
 	return err
 }
 
 var checkIfVbStreamsOpenedCallback = func(args ...interface{}) error {
+	logPrefix := "Consumer::checkIfVbStreamsOpenedCallback"
+
 	c := args[0].(*Consumer)
 	vbs := args[1].([]uint16)
 
+	if atomic.LoadUint32(&c.isTerminateRunning) == 1 {
+		logging.Tracef("%s [%s:%s:%d] Exiting as worker is terminating",
+			logPrefix, c.workerName, c.tcpPort, c.Pid())
+		return nil
+	}
+
 	for _, vb := range vbs {
-		if !c.checkIfVbAlreadyOwnedByCurrConsumer(vb) {
+		if !c.checkIfVbAlreadyRequestedByCurrConsumer(vb) {
+			if !c.checkIfCurrentConsumerShouldOwnVb(vb) {
+				return nil
+			}
+			// TODO: Added for debugging, can be retired before release
+			logging.Warnf("%s [%s:%s:%d] vb: %d not owned by consumer yet",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
 			return fmt.Errorf("vb: %d not owned by consumer yet", vb)
 		}
 	}
 
-	return nil
-}
-
-var checkIfReceivedTillEndSeqNoCallback = func(args ...interface{}) error {
-	logPrefix := "Consumer::checkIfRecievedTillEndSeqNoCallback"
-
-	c := args[0].(*Consumer)
-	vb := args[1].(uint16)
-	receivedTillEndSeqNo := args[2].(*bool)
-	dcpFeed := args[3].(*couchbase.DcpFeed)
-
-	if !c.isRebalanceOngoing {
-		logging.Infof("%s [%s:%s:%d] vb: %d closing feed: %s as rebalance has been stopped",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, dcpFeed.GetName())
-
-		dcpFeed.Close()
-		return nil
-	}
-
-	if !*receivedTillEndSeqNo {
-		return fmt.Errorf("Not recieved till supplied end seq no")
-	}
-	logging.Infof("%s [%s:%s:%d] vb: %d closing feed: %s, received events till end seq no",
-		logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, dcpFeed.GetName())
-
-	dcpFeed.Close()
 	return nil
 }

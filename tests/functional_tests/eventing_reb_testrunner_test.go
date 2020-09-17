@@ -3,332 +3,36 @@
 package eventing
 
 import (
-	"log"
 	"testing"
-	"time"
 )
 
-// Tests mimicking testrunner functional tests
-func TestEventingRebInWhenExistingEventingNodeProcessingMutations(t *testing.T) {
-	time.Sleep(5 * time.Second)
-	handler := "timers_rebalance"
+const (
+	rOpsPSec     = 3000
+	rItemCount   = 200 * 1000
+	rHandlerName = "on_delete_bucket_op_uncomment"
+	rRetryCount  = 60
+)
 
-	flushFunctionAndBucket(handler)
-	time.Sleep(5 * time.Second)
-	createAndDeployFunction(handler, handler, &commonSettings{})
-	waitForDeployToFinish(handler)
-
-	rl := &rateLimit{
-		limit:   true,
-		opsPSec: rlOpsPSec * 10,
-		count:   rlItemCount,
-		stopCh:  make(chan struct{}, 1),
-		loop:    false,
-	}
-
-	go pumpBucketOps(opsType{count: rlItemCount}, rl)
-
-	addNodeFromRest("127.0.0.1:9001", "eventing")
-	rebalanceFromRest([]string{""})
-	waitForRebalanceFinish()
-	metaStateDump()
-
-	rebalanceFromRest([]string{"127.0.0.1:9001"})
-	waitForRebalanceFinish()
-	metaStateDump()
-
-	verifyBucketItemCount(rl, statsLookupRetryCounter)
-
-	log.Println("Comparing item count post create/update operations")
-	eventCount := verifyBucketOps(rl.count, statsLookupRetryCounter)
-	if rl.count != eventCount {
-		t.Error("For", "TestEventingRebInWhenExistingEventingNodeProcessingMutations",
-			"expected", rl.count,
-			"got", eventCount,
-			"UpdateOp")
-	}
-
-	pumpBucketOps(opsType{count: rlItemCount, delete: true}, &rateLimit{})
-
-	log.Println("Comparing item count post delete operations")
-
-	eventCount = verifyBucketOps(0, statsLookupRetryCounter)
-	if eventCount != 0 {
-		t.Error("For", "TestEventingRebInWhenExistingEventingNodeProcessingMutations",
-			"expected", 0,
-			"got", eventCount,
-			"DeleteOp")
-	}
-
-	flushFunctionAndBucket(handler)
+func TestEventingRebInWithOps(t *testing.T) {
+	eventingRebIn(t, rHandlerName, "TestEventingRebInWithOps", rItemCount, rOpsPSec, rRetryCount, true, false)
 }
 
-func TestEventingRebOutWhenExistingEventingNodeProcessingMutations(t *testing.T) {
-	time.Sleep(5 * time.Second)
-	handler := "timers_rebalance"
-
-	addNodeFromRest("127.0.0.1:9001", "eventing")
-	rebalanceFromRest([]string{""})
-	waitForRebalanceFinish()
-
-	flushFunctionAndBucket(handler)
-	time.Sleep(5 * time.Second)
-	createAndDeployFunction(handler, handler, &commonSettings{})
-	waitForDeployToFinish(handler)
-
-	rl := &rateLimit{
-		limit:   true,
-		opsPSec: rlOpsPSec * 10,
-		count:   rlItemCount,
-		stopCh:  make(chan struct{}, 1),
-		loop:    false,
-	}
-
-	go pumpBucketOps(opsType{count: rlItemCount}, rl)
-
-	rebalanceFromRest([]string{"127.0.0.1:9001"})
-	waitForRebalanceFinish()
-	metaStateDump()
-
-	verifyBucketItemCount(rl, statsLookupRetryCounter)
-
-	log.Println("Comparing item count post create/update operations")
-	eventCount := verifyBucketOps(rl.count, statsLookupRetryCounter)
-	if rl.count != eventCount {
-		t.Error("For", "TestEventingRebOutWhenExistingEventingNodeProcessingMutations",
-			"expected", rl.count,
-			"got", eventCount,
-			"UpdateOp")
-	}
-
-	pumpBucketOps(opsType{count: rlItemCount, delete: true}, &rateLimit{})
-
-	log.Println("Comparing item count post delete operations")
-	eventCount = verifyBucketOps(0, statsLookupRetryCounter)
-	if eventCount != 0 {
-		t.Error("For", "TestEventingRebOutWhenExistingEventingNodeProcessingMutations",
-			"expected", 0,
-			"got", eventCount,
-			"DeleteOp")
-	}
-
-	flushFunctionAndBucket(handler)
+func TestEventingRebOutWithOps(t *testing.T) {
+	eventingRebOut(t, rHandlerName, "TestEventingRebOutWithOps", rItemCount, rOpsPSec, rRetryCount, true, false)
 }
 
-func TestEventingSwapRebWhenExistingEventingNodeProcessingMutations(t *testing.T) {
-	time.Sleep(5 * time.Second)
-	handler := "timers_rebalance"
-
-	flushFunctionAndBucket(handler)
-	time.Sleep(5 * time.Second)
-	createAndDeployFunction(handler, handler, &commonSettings{})
-	waitForDeployToFinish(handler)
-
-	rl := &rateLimit{
-		limit:   true,
-		opsPSec: rlOpsPSec * 10,
-		count:   rlItemCount,
-		stopCh:  make(chan struct{}, 1),
-		loop:    false,
-	}
-
-	go pumpBucketOps(opsType{count: rlItemCount}, rl)
-
-	addNodeFromRest("127.0.0.1:9001", "eventing")
-	rebalanceFromRest([]string{""})
-	waitForRebalanceFinish()
-	metaStateDump()
-
-	addNodeFromRest("127.0.0.1:9002", "eventing")
-	rebalanceFromRest([]string{"127.0.0.1:9001"})
-	waitForRebalanceFinish()
-	metaStateDump()
-
-	rebalanceFromRest([]string{"127.0.0.1:9002"})
-	waitForRebalanceFinish()
-	metaStateDump()
-
-	verifyBucketItemCount(rl, statsLookupRetryCounter)
-
-	log.Println("Comparing item count post create/update operations")
-	eventCount := verifyBucketOps(rl.count, statsLookupRetryCounter)
-	if rl.count != eventCount {
-		t.Error("For", "TestEventingSwapRebWhenExistingEventingNodeProcessingMutations",
-			"expected", rl.count,
-			"got", eventCount,
-			"UpdateOp")
-	}
-
-	pumpBucketOps(opsType{count: rlItemCount, delete: true}, &rateLimit{})
-
-	log.Println("Comparing item count post delete operations")
-	eventCount = verifyBucketOps(0, statsLookupRetryCounter)
-	if eventCount != 0 {
-		t.Error("For", "TestEventingSwapRebWhenExistingEventingNodeProcessingMutations",
-			"expected", 0,
-			"got", eventCount,
-			"DeleteOp")
-	}
-
-	flushFunctionAndBucket(handler)
+func TestEventingSwapRebWithOps(t *testing.T) {
+	eventingSwapReb(t, rHandlerName, "TestEventingSwapRebWithOps", rItemCount, rOpsPSec, rRetryCount, true, false)
 }
 
-func TestKVRebInWhenExistingEventingNodeProcessingMutations(t *testing.T) {
-	time.Sleep(5 * time.Second)
-	handler := "timers_rebalance"
-
-	flushFunctionAndBucket(handler)
-	time.Sleep(5 * time.Second)
-	createAndDeployFunction(handler, handler, &commonSettings{})
-	waitForDeployToFinish(handler)
-
-	rl := &rateLimit{
-		limit:   true,
-		opsPSec: rlOpsPSec * 10,
-		count:   rlItemCount,
-		stopCh:  make(chan struct{}, 1),
-		loop:    false,
-	}
-
-	go pumpBucketOps(opsType{count: rlItemCount}, rl)
-
-	addNodeFromRest("127.0.0.1:9001", "kv")
-	rebalanceFromRest([]string{""})
-	waitForRebalanceFinish()
-	metaStateDump()
-
-	rebalanceFromRest([]string{"127.0.0.1:9001"})
-	waitForRebalanceFinish()
-	metaStateDump()
-	verifyBucketItemCount(rl, statsLookupRetryCounter)
-
-	log.Println("Comparing item count post create/update operations")
-	eventCount := verifyBucketOps(rl.count, statsLookupRetryCounter)
-	if rl.count != eventCount {
-		t.Error("For", "TestEventingSwapRebWhenExistingEventingNodeProcessingMutations",
-			"expected", rl.count,
-			"got", eventCount,
-			"UpdateOp")
-	}
-
-	pumpBucketOps(opsType{count: rlItemCount, delete: true}, &rateLimit{})
-
-	eventCount = verifyBucketOps(0, statsLookupRetryCounter)
-	if eventCount != 0 {
-		t.Error("For", "TestKVRebInWhenExistingEventingNodeProcessingMutations",
-			"expected", 0,
-			"got", eventCount,
-			"DeleteOp")
-	}
-
-	flushFunctionAndBucket(handler)
+func TestKVRebInWithOps(t *testing.T) {
+	kvRebIn(t, rHandlerName, "TestKVRebInWithOps", rItemCount, rOpsPSec, rRetryCount, true, false)
 }
 
-func TestKVRebOutWhenExistingEventingNodeProcessingMutations(t *testing.T) {
-	time.Sleep(5 * time.Second)
-	handler := "timers_rebalance"
-
-	addNodeFromRest("127.0.0.1:9001", "kv")
-	rebalanceFromRest([]string{""})
-	waitForRebalanceFinish()
-
-	flushFunctionAndBucket(handler)
-	time.Sleep(5 * time.Second)
-	createAndDeployFunction(handler, handler, &commonSettings{})
-	waitForDeployToFinish(handler)
-
-	rl := &rateLimit{
-		limit:   true,
-		opsPSec: rlOpsPSec * 10,
-		count:   rlItemCount,
-		stopCh:  make(chan struct{}, 1),
-		loop:    false,
-	}
-
-	go pumpBucketOps(opsType{count: rlItemCount}, rl)
-
-	rebalanceFromRest([]string{"127.0.0.1:9001"})
-	waitForRebalanceFinish()
-	metaStateDump()
-
-	verifyBucketItemCount(rl, statsLookupRetryCounter)
-
-	log.Println("Comparing item count post create/update operations")
-	eventCount := verifyBucketOps(rl.count, statsLookupRetryCounter)
-	if rl.count != eventCount {
-		t.Error("For", "TestKVRebOutWhenExistingEventingNodeProcessingMutations",
-			"expected", rl.count,
-			"got", eventCount,
-			"UpdateOp")
-	}
-
-	pumpBucketOps(opsType{count: rlItemCount, delete: true}, &rateLimit{})
-
-	eventCount = verifyBucketOps(0, statsLookupRetryCounter)
-	if eventCount != 0 {
-		t.Error("For", "TestKVRebOutWhenExistingEventingNodeProcessingMutations",
-			"expected", 0,
-			"got", eventCount,
-			"DeleteOp")
-	}
-
-	flushFunctionAndBucket(handler)
+func TestKVRebOutWithOps(t *testing.T) {
+	kvRebOut(t, rHandlerName, "TestKVRebOutWithOps", rItemCount, rOpsPSec, rRetryCount, true, false)
 }
 
-func TestKVSwapRebWhenExistingEventingNodeProcessingMutations(t *testing.T) {
-	time.Sleep(5 * time.Second)
-	handler := "timers_rebalance"
-
-	flushFunctionAndBucket(handler)
-	time.Sleep(5 * time.Second)
-	createAndDeployFunction(handler, handler, &commonSettings{})
-	waitForDeployToFinish(handler)
-
-	rl := &rateLimit{
-		limit:   true,
-		opsPSec: rlOpsPSec * 10,
-		count:   rlItemCount,
-		stopCh:  make(chan struct{}, 1),
-		loop:    false,
-	}
-
-	go pumpBucketOps(opsType{count: rlItemCount}, rl)
-
-	addNodeFromRest("127.0.0.1:9001", "kv")
-	rebalanceFromRest([]string{""})
-	waitForRebalanceFinish()
-	metaStateDump()
-
-	addNodeFromRest("127.0.0.1:9002", "kv")
-	rebalanceFromRest([]string{"127.0.0.1:9001"})
-	waitForRebalanceFinish()
-	metaStateDump()
-
-	rebalanceFromRest([]string{"127.0.0.1:9002"})
-	waitForRebalanceFinish()
-	metaStateDump()
-
-	verifyBucketItemCount(rl, statsLookupRetryCounter)
-
-	log.Println("Comparing item count post create/update operations")
-	eventCount := verifyBucketOps(rl.count, statsLookupRetryCounter)
-	if rl.count != eventCount {
-		t.Error("For", "TestKVSwapRebWhenExistingEventingNodeProcessingMutations",
-			"expected", rl.count,
-			"got", eventCount,
-			"UpdateOp")
-	}
-
-	pumpBucketOps(opsType{count: rlItemCount, delete: true}, &rateLimit{})
-
-	log.Println("Comparing item count post delete operations")
-	eventCount = verifyBucketOps(0, statsLookupRetryCounter)
-	if eventCount != 0 {
-		t.Error("For", "TestKVSwapRebWhenExistingEventingNodeProcessingMutations",
-			"expected", 0,
-			"got", eventCount,
-			"DeleteOp")
-	}
-
-	flushFunctionAndBucket(handler)
+func TestKVSwapRebWithOps(t *testing.T) {
+	kvSwapReb(t, rHandlerName, "TestKVSwapRebWithOps", rItemCount, rOpsPSec, rRetryCount, true, false)
 }

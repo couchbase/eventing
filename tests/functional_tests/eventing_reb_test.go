@@ -7,130 +7,15 @@ import (
 	"time"
 )
 
-/** NOOP cases start **/
-func TestEventingRebNoKVOpsNoopOneByOne(t *testing.T) {
-	time.Sleep(5 * time.Second)
-	handler := "noop"
-
-	flushFunctionAndBucket(handler)
-	time.Sleep(5 * time.Second)
-	createAndDeployFunction(handler, handler, &commonSettings{})
-
-	waitForDeployToFinish(handler)
-	metaStateDump()
-
-	addAllNodesOneByOne("eventing")
-	removeAllNodesOneByOne()
-
-	flushFunctionAndBucket(handler)
-}
-
-func TestEventingRebNoKVOpsNoopNonDefaultOneByOne(t *testing.T) {
-	time.Sleep(5 * time.Second)
-	handler := "noop"
-
-	flushFunctionAndBucket(handler)
-	time.Sleep(5 * time.Second)
-	createAndDeployFunction(handler, handler, &commonSettings{})
-
-	waitForDeployToFinish(handler)
-	metaStateDump()
-
-	addAllNodesOneByOne("eventing")
-	removeAllNodesOneByOne()
-
-	flushFunctionAndBucket(handler)
-}
-
-func TestEventingRebNoKVOpsNoopAllAtOnce(t *testing.T) {
-	time.Sleep(5 * time.Second)
-	handler := "noop"
-
-	flushFunctionAndBucket(handler)
-	time.Sleep(5 * time.Second)
-	createAndDeployFunction(handler, handler, &commonSettings{})
-
-	waitForDeployToFinish(handler)
-	metaStateDump()
-
-	addAllNodesAtOnce("eventing")
-	removeAllNodesAtOnce()
-
-	flushFunctionAndBucket(handler)
-}
-
-func TestEventingRebKVOpsNoopOneByOne(t *testing.T) {
-	time.Sleep(5 * time.Second)
-	handler := "noop"
-
-	flushFunctionAndBucket(handler)
-	time.Sleep(5 * time.Second)
-	createAndDeployFunction(handler, handler, &commonSettings{})
-
-	time.Sleep(5 * time.Second)
-
-	rl := &rateLimit{
-		limit:   true,
-		opsPSec: rlOpsPSec,
-		count:   rlItemCount,
-		stopCh:  make(chan struct{}, 1),
-		loop:    true,
-	}
-
-	go pumpBucketOps(opsType{count: rlItemCount}, rl)
-
-	waitForDeployToFinish(handler)
-	metaStateDump()
-
-	addAllNodesOneByOne("eventing")
-	removeAllNodesOneByOne()
-
-	rl.stopCh <- struct{}{}
-
-	flushFunctionAndBucket(handler)
-}
-
-func TestEventingRebKVOpsNoopAllAtOnce(t *testing.T) {
-	time.Sleep(5 * time.Second)
-	handler := "noop"
-
-	flushFunctionAndBucket(handler)
-	time.Sleep(5 * time.Second)
-	createAndDeployFunction(handler, handler, &commonSettings{})
-
-	time.Sleep(5 * time.Second)
-
-	rl := &rateLimit{
-		limit:   true,
-		opsPSec: rlOpsPSec,
-		count:   rlItemCount,
-		stopCh:  make(chan struct{}, 1),
-		loop:    true,
-	}
-
-	go pumpBucketOps(opsType{count: rlItemCount}, rl)
-
-	waitForDeployToFinish(handler)
-	metaStateDump()
-
-	addAllNodesAtOnce("eventing")
-	removeAllNodesAtOnce()
-
-	rl.stopCh <- struct{}{}
-
-	flushFunctionAndBucket(handler)
-}
-
-/** NOOP cases end **/
-
 /** OnUpdate Bucket op cases start **/
 func TestEventingRebKVOpsOnUpdateBucketOpOneByOne(t *testing.T) {
+	functionName := t.Name()
 	time.Sleep(5 * time.Second)
 	handler := "bucket_op_on_update"
 
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 	time.Sleep(5 * time.Second)
-	createAndDeployFunction(handler, handler, &commonSettings{})
+	createAndDeployFunction(functionName, handler, &commonSettings{})
 
 	time.Sleep(5 * time.Second)
 
@@ -144,7 +29,7 @@ func TestEventingRebKVOpsOnUpdateBucketOpOneByOne(t *testing.T) {
 
 	go pumpBucketOps(opsType{count: rlItemCount}, rl)
 
-	waitForDeployToFinish(handler)
+	waitForDeployToFinish(functionName)
 	metaStateDump()
 
 	addAllNodesOneByOne("eventing")
@@ -152,16 +37,17 @@ func TestEventingRebKVOpsOnUpdateBucketOpOneByOne(t *testing.T) {
 
 	rl.stopCh <- struct{}{}
 
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 }
 
 func TestEventingRebKVOpsOnUpdateBucketOpAllAtOnce(t *testing.T) {
+	functionName := t.Name()
 	time.Sleep(5 * time.Second)
 	handler := "bucket_op_on_update"
 
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 	time.Sleep(5 * time.Second)
-	createAndDeployFunction(handler, handler, &commonSettings{})
+	createAndDeployFunction(functionName, handler, &commonSettings{})
 
 	time.Sleep(5 * time.Second)
 
@@ -175,7 +61,7 @@ func TestEventingRebKVOpsOnUpdateBucketOpAllAtOnce(t *testing.T) {
 
 	go pumpBucketOps(opsType{count: rlItemCount}, rl)
 
-	waitForDeployToFinish(handler)
+	waitForDeployToFinish(functionName)
 	metaStateDump()
 
 	addAllNodesAtOnce("eventing")
@@ -183,16 +69,17 @@ func TestEventingRebKVOpsOnUpdateBucketOpAllAtOnce(t *testing.T) {
 
 	rl.stopCh <- struct{}{}
 
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 }
 
 func TestEventingRebKVOpsOnUpdateBucketOpNonDefaultSettings(t *testing.T) {
+	functionName := t.Name()
 	time.Sleep(5 * time.Second)
 	handler := "bucket_op_on_update"
 
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 	time.Sleep(5 * time.Second)
-	createAndDeployFunction(handler, handler, &commonSettings{batchSize: 77, thrCount: 4, workerCount: 4})
+	createAndDeployFunction(functionName, handler, &commonSettings{batchSize: 77, thrCount: 4, workerCount: 4})
 
 	time.Sleep(5 * time.Second)
 
@@ -206,7 +93,7 @@ func TestEventingRebKVOpsOnUpdateBucketOpNonDefaultSettings(t *testing.T) {
 
 	go pumpBucketOps(opsType{count: rlItemCount}, rl)
 
-	waitForDeployToFinish(handler)
+	waitForDeployToFinish(functionName)
 	metaStateDump()
 
 	addAllNodesOneByOne("eventing")
@@ -214,15 +101,16 @@ func TestEventingRebKVOpsOnUpdateBucketOpNonDefaultSettings(t *testing.T) {
 
 	rl.stopCh <- struct{}{}
 
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 }
 
 func TestEventingSwapRebOnUpdateBucketOp(t *testing.T) {
+	functionName := t.Name()
 	time.Sleep(5 * time.Second)
 	handler := "bucket_op_on_update"
 
-	flushFunctionAndBucket(handler)
-	createAndDeployFunction(handler, handler, &commonSettings{})
+	flushFunctionAndBucket(functionName)
+	createAndDeployFunction(functionName, handler, &commonSettings{})
 
 	time.Sleep(5 * time.Second)
 	rl := &rateLimit{
@@ -235,15 +123,15 @@ func TestEventingSwapRebOnUpdateBucketOp(t *testing.T) {
 
 	go pumpBucketOps(opsType{count: rlItemCount}, rl)
 
-	waitForDeployToFinish(handler)
+	waitForDeployToFinish(functionName)
 	metaStateDump()
 
-	addNodeFromRest("127.0.0.1:9001", "eventing")
+	addNodeFromRest("http://127.0.0.1:9001", "eventing")
 	rebalanceFromRest([]string{""})
 	waitForRebalanceFinish()
 	metaStateDump()
 
-	addNodeFromRest("127.0.0.1:9002", "eventing")
+	addNodeFromRest("http://127.0.0.1:9002", "eventing")
 	rebalanceFromRest([]string{"127.0.0.1:9001"})
 	waitForRebalanceFinish()
 	metaStateDump()
@@ -254,19 +142,20 @@ func TestEventingSwapRebOnUpdateBucketOp(t *testing.T) {
 
 	rl.stopCh <- struct{}{}
 
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 }
 
 func TestMetaRollbackWithEventingReb(t *testing.T) {
+	functionName := t.Name()
 	time.Sleep(5 * time.Second)
 	handler := "bucket_op_on_update"
 
-	addNodeFromRest("127.0.0.1:9001", "eventing")
+	addNodeFromRest("http://127.0.0.1:9001", "eventing")
 	rebalanceFromRest([]string{""})
 	waitForRebalanceFinish()
 
-	flushFunctionAndBucket(handler)
-	createAndDeployFunction(handler, handler, &commonSettings{})
+	flushFunctionAndBucket(functionName)
+	createAndDeployFunction(functionName, handler, &commonSettings{})
 
 	time.Sleep(5 * time.Second)
 	rl := &rateLimit{
@@ -279,30 +168,35 @@ func TestMetaRollbackWithEventingReb(t *testing.T) {
 
 	go pumpBucketOps(opsType{count: rlItemCount}, rl)
 
-	waitForDeployToFinish(handler)
+	waitForDeployToFinish(functionName)
 	metaStateDump()
 
-	addNodeFromRest("127.0.0.1:9002", "eventing")
+	addNodeFromRest("http://127.0.0.1:9002", "eventing")
 	rebalanceFromRest([]string{""})
-	go purgeCheckpointBlobs(handler, "eventing", 0, 1023)
+	go purgeCheckpointBlobs(functionName, "eventing", 0, 1023)
+	waitForRebalanceFinish()
+	metaStateDump()
+
+	rebalanceFromRest([]string{"127.0.0.1:9001", "127.0.0.1:9002"})
 	waitForRebalanceFinish()
 	metaStateDump()
 
 	rl.stopCh <- struct{}{}
 
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 }
 
 func TestMetaPartialRollbackWithEventingReb(t *testing.T) {
+	functionName := t.Name()
 	time.Sleep(5 * time.Second)
 	handler := "bucket_op_on_update"
 
-	addNodeFromRest("127.0.0.1:9001", "eventing")
+	addNodeFromRest("http://127.0.0.1:9001", "eventing")
 	rebalanceFromRest([]string{""})
 	waitForRebalanceFinish()
 
-	flushFunctionAndBucket(handler)
-	createAndDeployFunction(handler, handler, &commonSettings{})
+	flushFunctionAndBucket(functionName)
+	createAndDeployFunction(functionName, handler, &commonSettings{})
 
 	time.Sleep(5 * time.Second)
 	rl := &rateLimit{
@@ -315,32 +209,38 @@ func TestMetaPartialRollbackWithEventingReb(t *testing.T) {
 
 	go pumpBucketOps(opsType{count: rlItemCount}, rl)
 
-	waitForDeployToFinish(handler)
+	waitForDeployToFinish(functionName)
 	metaStateDump()
 
-	addNodeFromRest("127.0.0.1:9002", "eventing")
+	addNodeFromRest("http://127.0.0.1:9002", "eventing")
 	rebalanceFromRest([]string{""})
-	go mangleCheckpointBlobs(handler, "eventing", 0, 1023)
+	go mangleCheckpointBlobs(functionName, "eventing", 0, 1023)
+	waitForRebalanceFinish()
+	metaStateDump()
+
+	rebalanceFromRest([]string{"127.0.0.1:9001", "127.0.0.1:9002"})
+	go mangleCheckpointBlobs(functionName, "eventing", 0, 1023)
 	waitForRebalanceFinish()
 	metaStateDump()
 
 	rl.stopCh <- struct{}{}
 
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 }
 
 /** OnUpdate Bucket op cases end **/
 
-/** OnUpdate doc/cron timer cases start - Disabled for now as in vulcan they are going as Beta**/
+/** OnUpdate doc/cron timer cases start - Disabled for now as signatures have changed**/
 /*func TestEventingRebKVOpsOnUpdateDocTimerOnyByOne(t *testing.T) {
+functionName := t.Name()
 	time.Sleep(5 * time.Second)
 	handler := "bucket_op_with_doc_timer"
 
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 	time.Sleep(5 * time.Second)
-	createAndDeployFunction(handler, handler, &commonSettings{})
+	createAndDeployFunction(functionName, handler, &commonSettings{})
 
-	waitForDeployToFinish(handler)
+	waitForDeployToFinish(functionName)
 	metaStateDump()
 
 	pumpBucketOps(opsType{count: rlItemCount}, &rateLimit{})
@@ -348,16 +248,17 @@ func TestMetaPartialRollbackWithEventingReb(t *testing.T) {
 	addAllNodesOneByOne("eventing")
 	removeAllNodesOneByOne()
 
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 }
 
 func TestEventingRebContinousKVOpsOnUpdateDocTimerOnyByOne(t *testing.T) {
+functionName := t.Name()
 	time.Sleep(5 * time.Second)
 	handler := "bucket_op_with_doc_timer"
 
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 	time.Sleep(5 * time.Second)
-	createAndDeployFunction(handler, handler, &commonSettings{})
+	createAndDeployFunction(functionName, handler, &commonSettings{})
 
 	time.Sleep(5 * time.Second)
 
@@ -371,7 +272,7 @@ func TestEventingRebContinousKVOpsOnUpdateDocTimerOnyByOne(t *testing.T) {
 
 	go pumpBucketOps(opsType{count: rlItemCount}, rl)
 
-	waitForDeployToFinish(handler)
+	waitForDeployToFinish(functionName)
 	metaStateDump()
 
 	addAllNodesOneByOne("eventing")
@@ -379,17 +280,18 @@ func TestEventingRebContinousKVOpsOnUpdateDocTimerOnyByOne(t *testing.T) {
 
 	rl.stopCh <- struct{}{}
 
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 }
 
 func TestEventingRebKVOpsOnUpdateDocTimerNonDefaultSettings(t *testing.T) {
+functionName := t.Name()
 	time.Sleep(5 * time.Second)
 	handler := "bucket_op_with_doc_timer"
 
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 	time.Sleep(5 * time.Second)
-	createAndDeployFunction(handler, handler, &commonSettings{})
-	createAndDeployFunction(handler, handler, &commonSettings{workerCount: 4, thrCount: 4, batchSize: 77})
+	createAndDeployFunction(functionName, handler, &commonSettings{})
+	createAndDeployFunction(functionName, handler, &commonSettings{workerCount: 4, thrCount: 4, batchSize: 77})
 
 	time.Sleep(5 * time.Second)
 
@@ -403,7 +305,7 @@ func TestEventingRebKVOpsOnUpdateDocTimerNonDefaultSettings(t *testing.T) {
 
 	go pumpBucketOps(opsType{count: rlItemCount}, rl)
 
-	waitForDeployToFinish(handler)
+	waitForDeployToFinish(functionName)
 	metaStateDump()
 
 	addAllNodesOneByOne("eventing")
@@ -411,16 +313,17 @@ func TestEventingRebKVOpsOnUpdateDocTimerNonDefaultSettings(t *testing.T) {
 
 	rl.stopCh <- struct{}{}
 
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 }
 
 func TestEventingRebContinousKVOpsOnUpdateCronTimerOnyByOne(t *testing.T) {
+functionName := t.Name()
 	time.Sleep(5 * time.Second)
 	handler := "bucket_op_with_cron_timer"
 
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 	time.Sleep(5 * time.Second)
-	createAndDeployFunction(handler, handler, &commonSettings{})
+	createAndDeployFunction(functionName, handler, &commonSettings{})
 
 	time.Sleep(5 * time.Second)
 
@@ -434,7 +337,7 @@ func TestEventingRebContinousKVOpsOnUpdateCronTimerOnyByOne(t *testing.T) {
 
 	go pumpBucketOps(opsType{count: rlItemCount}, rl)
 
-	waitForDeployToFinish(handler)
+	waitForDeployToFinish(functionName)
 	metaStateDump()
 
 	addAllNodesAtOnce("eventing")
@@ -442,16 +345,17 @@ func TestEventingRebContinousKVOpsOnUpdateCronTimerOnyByOne(t *testing.T) {
 
 	rl.stopCh <- struct{}{}
 
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 }
 
 func TestEventingRebContinousKVOpsOnUpdateCronTimerAllAtOnce(t *testing.T) {
+functionName := t.Name()
 	time.Sleep(5 * time.Second)
 	handler := "bucket_op_with_cron_timer"
 
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 	time.Sleep(5 * time.Second)
-	createAndDeployFunction(handler, handler, &commonSettings{})
+	createAndDeployFunction(functionName, handler, &commonSettings{})
 
 	time.Sleep(5 * time.Second)
 
@@ -465,7 +369,7 @@ func TestEventingRebContinousKVOpsOnUpdateCronTimerAllAtOnce(t *testing.T) {
 
 	go pumpBucketOps(opsType{count: rlItemCount}, rl)
 
-	waitForDeployToFinish(handler)
+	waitForDeployToFinish(functionName)
 	metaStateDump()
 
 	addAllNodesOneByOne("eventing")
@@ -473,15 +377,16 @@ func TestEventingRebContinousKVOpsOnUpdateCronTimerAllAtOnce(t *testing.T) {
 
 	rl.stopCh <- struct{}{}
 
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 }
 
 func TestEventingSwapRebOnUpdateDocTimer(t *testing.T) {
+functionName := t.Name()
 	time.Sleep(5 * time.Second)
 	handler := "bucket_op_with_doc_timer"
 
-	flushFunctionAndBucket(handler)
-	createAndDeployFunction(handler, handler, &commonSettings{})
+	flushFunctionAndBucket(functionName)
+	createAndDeployFunction(functionName, handler, &commonSettings{})
 
 	time.Sleep(5 * time.Second)
 	rl := &rateLimit{
@@ -494,7 +399,7 @@ func TestEventingSwapRebOnUpdateDocTimer(t *testing.T) {
 
 	go pumpBucketOps(opsType{count: rlItemCount}, rl)
 
-	waitForDeployToFinish(handler)
+	waitForDeployToFinish(functionName)
 	metaStateDump()
 
 	addNodeFromRest("127.0.0.1:9001", "eventing")
@@ -513,21 +418,24 @@ func TestEventingSwapRebOnUpdateDocTimer(t *testing.T) {
 
 	rl.stopCh <- struct{}{}
 
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 }*/
 
 /** OnUpdate doc/cron timer cases end **/
 
 /** Multiple handlers cases start **/
-func TestEventingRebBucketOpAndDocTimerHandlersOneByOne(t *testing.T) {
+func TestEventingRebMultipleHandlersOneByOne(t *testing.T) {
+	functionName := t.Name()
 	time.Sleep(5 * time.Second)
 	handler1 := "sys_test_bucket_op"
+	functionName1 := functionName + handler1
 	handler2 := "bucket_op_on_update"
+	functionName2 := functionName + handler2
 
-	flushFunctionAndBucket(handler1)
+	flushFunctionAndBucket(functionName1)
 	time.Sleep(5 * time.Second)
-	createAndDeployFunction(handler1, handler1, &commonSettings{})
-	createAndDeployFunction(handler2, handler2, &commonSettings{})
+	createAndDeployFunction(functionName1, handler1, &commonSettings{})
+	createAndDeployFunction(functionName2, handler2, &commonSettings{})
 
 	time.Sleep(5 * time.Second)
 
@@ -541,17 +449,8 @@ func TestEventingRebBucketOpAndDocTimerHandlersOneByOne(t *testing.T) {
 
 	go pumpBucketOps(opsType{count: rlItemCount}, rl)
 
-	waitForDeployToFinish(handler1)
-	waitForDeployToFinish(handler2)
-	metaStateDump()
-
-	addNodeFromRest("127.0.0.1:9001", "eventing")
-	rebalanceFromRest([]string{""})
-	waitForRebalanceFinish()
-	metaStateDump()
-
-	rebalanceFromRest([]string{"127.0.0.1:9001"})
-	waitForRebalanceFinish()
+	waitForDeployToFinish(functionName1)
+	waitForDeployToFinish(functionName2)
 	metaStateDump()
 
 	addAllNodesOneByOne("eventing")
@@ -559,19 +458,22 @@ func TestEventingRebBucketOpAndDocTimerHandlersOneByOne(t *testing.T) {
 
 	rl.stopCh <- struct{}{}
 
-	flushFunctionAndBucket(handler1)
-	flushFunctionAndBucket(handler2)
+	flushFunctionAndBucket(functionName1)
+	flushFunctionAndBucket(functionName2)
 }
 
-func TestEventingRebBucketOpAndDocTimerHandlersAllAtOnce(t *testing.T) {
+func TestEventingRebMultipleHandlersAllAtOnce(t *testing.T) {
+	functionName := t.Name()
 	time.Sleep(5 * time.Second)
 	handler1 := "sys_test_bucket_op"
+	functionName1 := functionName + handler1
 	handler2 := "bucket_op_on_update"
+	functionName2 := functionName + handler2
 
-	flushFunctionAndBucket(handler1)
+	flushFunctionAndBucket(functionName1)
 	time.Sleep(5 * time.Second)
-	createAndDeployFunction(handler1, handler1, &commonSettings{})
-	createAndDeployFunction(handler2, handler2, &commonSettings{})
+	createAndDeployFunction(functionName1, handler1, &commonSettings{})
+	createAndDeployFunction(functionName2, handler2, &commonSettings{})
 
 	time.Sleep(5 * time.Second)
 
@@ -585,8 +487,8 @@ func TestEventingRebBucketOpAndDocTimerHandlersAllAtOnce(t *testing.T) {
 
 	go pumpBucketOps(opsType{count: rlItemCount}, rl)
 
-	waitForDeployToFinish(handler1)
-	waitForDeployToFinish(handler2)
+	waitForDeployToFinish(functionName1)
+	waitForDeployToFinish(functionName2)
 	metaStateDump()
 
 	addAllNodesAtOnce("eventing")
@@ -594,21 +496,24 @@ func TestEventingRebBucketOpAndDocTimerHandlersAllAtOnce(t *testing.T) {
 
 	rl.stopCh <- struct{}{}
 
-	flushFunctionAndBucket(handler1)
-	flushFunctionAndBucket(handler2)
+	flushFunctionAndBucket(functionName1)
+	flushFunctionAndBucket(functionName2)
 }
 
 // Swap rebalance operations for eventing role
 
 func TestEventingSwapRebMultipleHandlers(t *testing.T) {
+	functionName := t.Name()
 	time.Sleep(5 * time.Second)
 	handler1 := "bucket_op_on_update"
+	functionName1 := functionName + handler1
 	handler2 := "sys_test_bucket_op"
+	functionName2 := functionName + handler2
 
-	flushFunctionAndBucket(handler1)
-	flushFunctionAndBucket(handler2)
-	createAndDeployFunction(handler1, handler1, &commonSettings{})
-	createAndDeployFunction(handler2, handler2, &commonSettings{})
+	flushFunctionAndBucket(functionName1)
+	flushFunctionAndBucket(functionName2)
+	createAndDeployFunction(functionName1, handler1, &commonSettings{})
+	createAndDeployFunction(functionName2, handler2, &commonSettings{})
 
 	time.Sleep(5 * time.Second)
 	rl := &rateLimit{
@@ -621,16 +526,16 @@ func TestEventingSwapRebMultipleHandlers(t *testing.T) {
 
 	go pumpBucketOps(opsType{count: rlItemCount}, rl)
 
-	waitForDeployToFinish(handler1)
-	waitForDeployToFinish(handler2)
+	waitForDeployToFinish(functionName1)
+	waitForDeployToFinish(functionName2)
 	metaStateDump()
 
-	addNodeFromRest("127.0.0.1:9001", "eventing")
+	addNodeFromRest("http://127.0.0.1:9001", "eventing")
 	rebalanceFromRest([]string{""})
 	waitForRebalanceFinish()
 	metaStateDump()
 
-	addNodeFromRest("127.0.0.1:9002", "eventing")
+	addNodeFromRest("http://127.0.0.1:9002", "eventing")
 	rebalanceFromRest([]string{"127.0.0.1:9001"})
 	waitForRebalanceFinish()
 	metaStateDump()
@@ -641,20 +546,21 @@ func TestEventingSwapRebMultipleHandlers(t *testing.T) {
 
 	rl.stopCh <- struct{}{}
 
-	flushFunctionAndBucket(handler1)
-	flushFunctionAndBucket(handler2)
+	flushFunctionAndBucket(functionName1)
+	flushFunctionAndBucket(functionName2)
 }
 
 /** Multiple handlers cases end **/
 
 /** Eventing Rebalance stop and start **/
 func TestEventingRebStopStartKVOpsOnUpdateBucketOpOneByOne(t *testing.T) {
+	functionName := t.Name()
 	time.Sleep(5 * time.Second)
 	handler := "bucket_op_on_update"
 
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 	time.Sleep(5 * time.Second)
-	createAndDeployFunction(handler, handler, &commonSettings{})
+	createAndDeployFunction(functionName, handler, &commonSettings{})
 
 	time.Sleep(5 * time.Second)
 
@@ -668,10 +574,10 @@ func TestEventingRebStopStartKVOpsOnUpdateBucketOpOneByOne(t *testing.T) {
 
 	go pumpBucketOps(opsType{count: rlItemCount}, rl)
 
-	waitForDeployToFinish(handler)
+	waitForDeployToFinish(functionName)
 	metaStateDump()
 
-	addNodeFromRest("127.0.0.1:9001", "eventing")
+	addNodeFromRest("http://127.0.0.1:9001", "eventing")
 	rebalanceFromRest([]string{""})
 	time.Sleep(20 * time.Second)
 	rebalanceStop()
@@ -684,7 +590,7 @@ func TestEventingRebStopStartKVOpsOnUpdateBucketOpOneByOne(t *testing.T) {
 	waitForRebalanceFinish()
 	metaStateDump()
 
-	addNodeFromRest("127.0.0.1:9002", "eventing")
+	addNodeFromRest("http://127.0.0.1:9002", "eventing")
 	rebalanceFromRest([]string{"127.0.0.1:9001"})
 	waitForRebalanceFinish()
 	metaStateDump()
@@ -695,16 +601,17 @@ func TestEventingRebStopStartKVOpsOnUpdateBucketOpOneByOne(t *testing.T) {
 
 	rl.stopCh <- struct{}{}
 
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 }
 
 func TestEventingRebMultiStopStartKVOpsOnUpdateBucketOpOneByOne(t *testing.T) {
+	functionName := t.Name()
 	time.Sleep(5 * time.Second)
 	handler := "bucket_op_on_update"
 
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 	time.Sleep(5 * time.Second)
-	createAndDeployFunction(handler, handler, &commonSettings{})
+	createAndDeployFunction(functionName, handler, &commonSettings{})
 
 	time.Sleep(5 * time.Second)
 
@@ -718,11 +625,11 @@ func TestEventingRebMultiStopStartKVOpsOnUpdateBucketOpOneByOne(t *testing.T) {
 
 	go pumpBucketOps(opsType{count: rlItemCount}, rl)
 
-	waitForDeployToFinish(handler)
+	waitForDeployToFinish(functionName)
 	metaStateDump()
 
 	for i := 0; i < 5; i++ {
-		addNodeFromRest("127.0.0.1:9001", "eventing")
+		addNodeFromRest("http://127.0.0.1:9001", "eventing")
 		rebalanceFromRest([]string{""})
 		time.Sleep(20 * time.Second)
 		rebalanceStop()
@@ -737,7 +644,7 @@ func TestEventingRebMultiStopStartKVOpsOnUpdateBucketOpOneByOne(t *testing.T) {
 	waitForRebalanceFinish()
 	metaStateDump()
 
-	addNodeFromRest("127.0.0.1:9002", "eventing")
+	addNodeFromRest("http://127.0.0.1:9002", "eventing")
 	rebalanceFromRest([]string{"127.0.0.1:9001"})
 	waitForRebalanceFinish()
 	metaStateDump()
@@ -748,16 +655,17 @@ func TestEventingRebMultiStopStartKVOpsOnUpdateBucketOpOneByOne(t *testing.T) {
 
 	rl.stopCh <- struct{}{}
 
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 }
 
 func TestEventingFailoverOnUpdateBucketOp(t *testing.T) {
+	functionName := t.Name()
 	time.Sleep(5 * time.Second)
 	handler := "bucket_op_on_update"
 
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 	time.Sleep(5 * time.Second)
-	createAndDeployFunction(handler, handler, &commonSettings{})
+	createAndDeployFunction(functionName, handler, &commonSettings{})
 
 	time.Sleep(5 * time.Second)
 
@@ -771,10 +679,10 @@ func TestEventingFailoverOnUpdateBucketOp(t *testing.T) {
 
 	go pumpBucketOps(opsType{count: rlItemCount}, rl)
 
-	waitForDeployToFinish(handler)
+	waitForDeployToFinish(functionName)
 	metaStateDump()
 
-	addNodeFromRest("127.0.0.1:9001", "eventing")
+	addNodeFromRest("http://127.0.0.1:9001", "eventing")
 	rebalanceFromRest([]string{""})
 	waitForRebalanceFinish()
 	metaStateDump()
@@ -787,7 +695,7 @@ func TestEventingFailoverOnUpdateBucketOp(t *testing.T) {
 	waitForRebalanceFinish()
 	metaStateDump()
 
-	addNodeFromRest("127.0.0.1:9002", "eventing")
+	addNodeFromRest("http://127.0.0.1:9002", "eventing")
 	rebalanceFromRest([]string{"127.0.0.1:9001"})
 	waitForRebalanceFinish()
 	metaStateDump()
@@ -798,16 +706,17 @@ func TestEventingFailoverOnUpdateBucketOp(t *testing.T) {
 
 	rl.stopCh <- struct{}{}
 
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 }
 
 func TestEventingKVRebalanceOnUpdateBucketOp(t *testing.T) {
+	functionName := t.Name()
 	time.Sleep(5 * time.Second)
 	handler := "bucket_op_on_update"
 
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 	time.Sleep(5 * time.Second)
-	createAndDeployFunction(handler, handler, &commonSettings{})
+	createAndDeployFunction(functionName, handler, &commonSettings{})
 
 	time.Sleep(5 * time.Second)
 
@@ -821,15 +730,15 @@ func TestEventingKVRebalanceOnUpdateBucketOp(t *testing.T) {
 
 	go pumpBucketOps(opsType{count: rlItemCount}, rl)
 
-	waitForDeployToFinish(handler)
+	waitForDeployToFinish(functionName)
 	metaStateDump()
 
-	addNodeFromRest("127.0.0.1:9001", "eventing,kv")
+	addNodeFromRest("http://127.0.0.1:9001", "eventing,kv")
 	rebalanceFromRest([]string{""})
 	waitForRebalanceFinish()
 	metaStateDump()
 
-	addNodeFromRest("127.0.0.1:9002", "eventing,kv")
+	addNodeFromRest("http://127.0.0.1:9002", "eventing,kv")
 	rebalanceFromRest([]string{"127.0.0.1:9001"})
 	waitForRebalanceFinish()
 	metaStateDump()
@@ -840,5 +749,5 @@ func TestEventingKVRebalanceOnUpdateBucketOp(t *testing.T) {
 
 	rl.stopCh <- struct{}{}
 
-	flushFunctionAndBucket(handler)
+	flushFunctionAndBucket(functionName)
 }

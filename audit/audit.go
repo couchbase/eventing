@@ -43,7 +43,6 @@ func Init(restPort string) error {
 }
 
 func Log(event auditevent.AuditEvent, req *http.Request, context interface{}) error {
-	logging.Tracef("Audit event %rm with context %ru on request %ru", event, context, req)
 	entry := AuditEntry{
 		GenericFields: goadt.GetAuditBasicFields(req),
 		Context:       fmt.Sprintf("%v", context),

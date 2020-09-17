@@ -50,29 +50,31 @@ func newConnectionPool(host string, ah AuthHandler, poolSize, poolOverflow int) 
 // ConnPoolTimeout is notified whenever connections are acquired from a pool.
 var ConnPoolCallback func(host string, source string, start time.Time, err error)
 
-func defaultMkConn(host string, ah AuthHandler) (*memcached.Client, error) {
-	conn, err := memcached.Connect("tcp", host)
+func defaultMkConn(
+	host string, ah AuthHandler) (conn *memcached.Client, err error) {
+
+	conn, err = memcached.Connect("tcp", host)
 	if err != nil {
 		return nil, err
 	}
 
-	if gah, ok := ah.(GenericMcdAuthHandler); ok {
-		err = gah.AuthenticateMemcachedConn(host, conn)
+	defer func() {
 		if err != nil {
 			conn.Close()
-			return nil, err
+			conn = nil
+			return
 		}
-		return conn, nil
+	}()
+
+	if gah, ok := ah.(GenericMcdAuthHandler); ok {
+		err = gah.AuthenticateMemcachedConn(host, conn)
+		return
 	}
 	name, pass := ah.GetCredentials()
 	if name != "default" {
 		_, err = conn.Auth(name, pass)
-		if err != nil {
-			conn.Close()
-			return nil, err
-		}
 	}
-	return conn, nil
+	return
 }
 
 func (cp *connectionPool) Close() (err error) {
@@ -248,6 +250,10 @@ func (cp *connectionPool) GetDcpConn(name DcpFeedName) (*memcached.Client, error
 	rq.Extras = make([]byte, 8)
 	binary.BigEndian.PutUint32(rq.Extras[:4], 0)
 	binary.BigEndian.PutUint32(rq.Extras[4:], 1) // we are consumer
+
+	mc.SetMcdConnectionDeadline()
+	defer mc.ResetMcdConnectionDeadline()
+
 	if err := mc.Transmit(rq); err != nil {
 		return nil, err
 	}
@@ -269,6 +275,9 @@ func GetSeqs(mc *memcached.Client, seqnos []uint64, buf []byte) error {
 
 	rq.Extras = make([]byte, 4)
 	binary.BigEndian.PutUint32(rq.Extras, 1) // Only active vbuckets
+
+	mc.SetMcdConnectionDeadline()
+	defer mc.ResetMcdConnectionDeadline()
 
 	if err := mc.Transmit(rq); err != nil {
 		return err

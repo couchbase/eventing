@@ -24,19 +24,26 @@
     </div>
   </form>
   <div class="panel-footer spaced">
-    <div class="flex-left">
+    <div>
       <button
         ng-click="handlerCtrl.debugApp()"
-        ng-disabled="handlerCtrl.debugDisabled">
+        ng-disabled="$root.debugDisable">
         Debug
       </button>
-      <span class="fa-stack icon-info"
-            uib-tooltip="{{handlerCtrl.debugToolTip}}" tooltip-placement="top">
+      <span
+         class="fa-stack icon-info"
+         uib-tooltip="{{handlerCtrl.debugToolTip}}"
+         tooltip-placement="auto top"
+         tooltip-append-to-body="true">
       <span class="icon fa-circle-thin fa-stack-2x"></span>
       <span class="icon fa-info fa-stack-1x"></span>
       </span>
     </div>
-
+    <div>
+      <a ui-sref="app.admin.eventing.summary">
+        &lt; back to Eventing
+      </a>
+    </div>
     <div>
       <a ng-click="handlerCtrl.cancelEdit()"
          ng-disabled="formHandler.handlerEditor.$pristine || handlerCtrl.disableCancelButton">

@@ -1,3 +1,11 @@
+import _ from "/ui/web_modules/lodash.js";
+import getVersion from "./gen/version.js";
+export {Application,
+        ApplicationManager,
+        ApplicationModel,
+        determineUIStatus,
+        getWarnings};
+
 function Application(data) {
     for (var key of Object.keys(data)) {
         this[key] = data[key];
@@ -21,19 +29,19 @@ Application.prototype.enforceSchema = function() {
 Application.prototype.getProcessingStatus = function(inverted) {
     // Inverted case is used for the button.
     if (inverted) {
-        return this.settings.processing_status ? 'Pause' : 'Run';
+        return this.status === 'paused' ? 'Resume' : 'Pause';
     }
 
-    return this.settings.processing_status ? 'running' : 'paused';
+    return this.status === 'paused' ? 'paused' : 'running';
 };
 
 Application.prototype.getDeploymentStatus = function(inverted) {
     // Inverted case is used for the button.
     if (inverted) {
-        return this.settings.deployment_status ? 'Undeploy' : 'Deploy';
+        return this.status === 'deployed' || this.status === 'paused' ? 'Undeploy' : 'Deploy';
     }
 
-    return this.settings.deployment_status ? 'deployed' : 'undeployed';
+    return this.status === 'deployed' || this.status === 'paused' ? 'deployed' : 'undeployed';
 };
 
 Application.prototype.clone = function() {
@@ -47,11 +55,28 @@ function ApplicationManager() {
     this.getApplications = function() {
         return applications;
     };
+
+    // Alpha sort the UI
+    this.sortApplications = function() {
+        // sort the object by appname by rebuilding
+        function objectWithKeySorted(object) {
+            var result = {};
+            _.forEach(Object.keys(object).sort(), function(key) {
+                result[key] = object[key];
+            });
+            return result;
+        }
+        var tempList = objectWithKeySorted(applications);
+        for (var appname of Object.keys(tempList)) {
+            delete applications[appname];
+            applications[appname] = tempList[appname];
+        }
+    }
 }
 
 // Creates a new app in the front-end.
 ApplicationManager.prototype.createApp = function(appModel) {
-    if (!appModel instanceof ApplicationModel) {
+    if (!(appModel instanceof ApplicationModel)) {
         throw 'parameter must be an instance of ApplicationModel';
     }
 
@@ -63,10 +88,13 @@ ApplicationManager.prototype.createApp = function(appModel) {
 
     // Store the app - appname is the key for the application.
     appList[app.appname] = app;
+
+    // Alpha sort the UI
+    this.sortApplications();
 };
 
 ApplicationManager.prototype.pushApp = function(app) {
-    if (!app instanceof Application) {
+    if (!(app instanceof Application)) {
         throw 'Parameter must be an instance of Application';
     }
 
@@ -104,15 +132,24 @@ function ApplicationModel(app) {
 }
 
 ApplicationModel.prototype.getDefaultModel = function() {
-    var code = 'function OnUpdate(doc, meta){log(\'document\', doc);} function OnDelete(meta){}';
+    var code = [
+        'function OnUpdate(doc, meta) {',
+        '    log("Doc created/updated", meta.id);',
+        '}',
+        '',
+        'function OnDelete(meta, options) {',
+        '    log("Doc deleted/expired", meta.id);',
+        '}'
+    ].join('\n');
     return {
         appname: 'Application name',
-        appcode: formatCode(code),
+        appcode: code,
         depcfg: {
             buckets: [],
             metadata_bucket: 'eventing',
             source_bucket: 'default'
         },
+        version: getVersion(),
         settings: {
             log_level: 'INFO',
             dcp_stream_boundary: 'everything',
@@ -121,7 +158,9 @@ ApplicationModel.prototype.getDefaultModel = function() {
             description: '',
             worker_count: 3,
             execution_timeout: 60,
-            user_prefix: 'eventing'
+            user_prefix: 'eventing',
+            n1ql_consistency: 'none',
+            language_compatibility: '6.5.0'
         }
     };
 };
@@ -154,13 +193,32 @@ ApplicationModel.prototype.initializeDefaults = function() {
     this.settings.worker_count = 3;
     this.settings.execution_timeout = 60;
     this.settings.user_prefix = 'eventing';
+    this.settings.n1ql_consistency = 'none';
+    this.version = getVersion();
 };
 
-// Prettifies the JavaScript code.
-function formatCode(code) {
-    var ast = esprima.parse(code, {
-        sourceType: 'script'
-    });
-    var formattedCode = escodegen.generate(ast);
-    return formattedCode;
+function determineUIStatus(status) {
+    switch (status) {
+        case 'deployed':
+            return 'healthy';
+        case 'undeployed':
+        case 'paused':
+            return 'inactive';
+        case 'pausing':
+        case 'undeploying':
+        case 'deploying':
+            return 'warmup';
+        default:
+            console.error('Abnormal case - status can not be', status);
+            return '';
+    }
+}
+
+function getWarnings(app) {
+    if (app.settings.language_compatibility &&
+        app.version.startsWith('evt-6.0') &&
+        app.settings.language_compatibility === '6.0.0') {
+        return ['Running in compatibility mode. Please make the necessary changes and update the language compatibility to latest.']
+    }
+    return [];
 }

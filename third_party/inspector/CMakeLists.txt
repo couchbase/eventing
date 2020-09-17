@@ -23,11 +23,10 @@ INCLUDE_DIRECTORIES(AFTER  ${ICU_INCLUDE_DIR}
                            ${OPENSSL_INCLUDE_DIR}
                            ${V8_INCLUDE_DIR}/include
                            ${CMAKE_CURRENT_SOURCE_DIR}
-                           ${Platform_SOURCE_DIR}/include
                            ${CMAKE_INSTALL_PREFIX}/include
                            ${ZLIB_INCLUDE_DIR})
 
-SET(V8INSPECTOR_SOURCES assert.cc http_parser.cc inspector_agent.cc
+SET(V8INSPECTOR_SOURCES validate.cc http_parser.cc inspector_agent.cc
     inspector_io.cc inspector_socket.cc inspector_socket_server.cc)
 
 SET(V8INSPECTOR_LIBRARIES
@@ -35,14 +34,11 @@ SET(V8INSPECTOR_LIBRARIES
    ${ICU_LIBRARIES}
    ${LIBUV_LIBRARIES}
    ${OPENSSL_LIBRARIES}
-   ${ZLIB_LIBRARIES}
-   platform)
+   ${ZLIB_LIBRARIES})
 
 ADD_LIBRARY(eventing-inspector STATIC ${V8INSPECTOR_SOURCES})
 TARGET_LINK_LIBRARIES(eventing-inspector ${V8INSPECTOR_LIBRARIES})
 IF (NOT WIN32)
-  TARGET_COMPILE_OPTIONS(eventing-inspector PRIVATE -Wno-unused-variable -Wno-unused-function ${CB_CXX_FLAGS_NO_OPTIMIZE})
-ELSE ()
-  TARGET_COMPILE_OPTIONS(eventing-inspector PRIVATE ${CB_CXX_FLAGS_NO_OPTIMIZE})
+  TARGET_COMPILE_OPTIONS(eventing-inspector PRIVATE -Wno-unused-variable -Wno-unused-function)
 ENDIF ()
-ADD_DEPENDENCIES(eventing-inspector generated)
+ADD_DEPENDENCIES(eventing-inspector eventing-generated)

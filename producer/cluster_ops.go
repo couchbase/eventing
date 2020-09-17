@@ -8,6 +8,7 @@ import (
 	"unsafe"
 
 	"github.com/couchbase/cbauth"
+	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
 )
@@ -53,16 +54,24 @@ var getKVNodesAddressesOpCallback = func(args ...interface{}) error {
 	logPrefix := "Producer::getKVNodesAddressesOpCallback"
 
 	p := args[0].(*Producer)
+	bucket := args[1].(string)
 
 	hostAddress := net.JoinHostPort(util.Localhost(), p.nsServerPort)
 
-	kvNodeAddrs, err := util.KVNodesAddresses(p.auth, hostAddress)
+	kvNodeAddrs, err := util.KVNodesAddresses(p.auth, hostAddress, bucket)
 	if err != nil {
 		logging.Errorf("%s [%s:%d] Failed to get all KV nodes, err: %v", logPrefix, p.appName, p.LenRunningConsumers(), err)
 	} else {
 		atomic.StorePointer(
 			(*unsafe.Pointer)(unsafe.Pointer(&p.kvNodeAddrs)), unsafe.Pointer(&kvNodeAddrs))
 		logging.Infof("%s [%s:%d] Got KV nodes: %rs", logPrefix, p.appName, p.LenRunningConsumers(), kvNodeAddrs)
+	}
+
+	bucketNodeCount := util.CountActiveKVNodes(bucket, hostAddress)
+	if bucketNodeCount == 0 {
+		logging.Infof("%s [%s:%d] Bucket: %s bucketNodeCount: %d exiting",
+			logPrefix, p.appName, p.LenRunningConsumers(), bucket, bucketNodeCount)
+		return common.ErrRetryTimeout
 	}
 
 	return err

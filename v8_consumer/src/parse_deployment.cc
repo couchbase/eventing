@@ -22,16 +22,43 @@ deployment_config *ParseDeployment(const char *app_code) {
 
   auto buckets = dep_cfg->buckets();
 
-  std::map<std::string, std::vector<std::string>> buckets_info;
-  for (unsigned int i = 0; i < buckets->size(); i++) {
+  std::unordered_map<std::string, std::vector<std::string>> buckets_info;
+  std::vector<std::string> bucket_alias;
+  for (flatbuffers::uoffset_t i = 0; i < buckets->size(); i++) {
     std::vector<std::string> bucket_info;
     bucket_info.push_back(buckets->Get(i)->bucketName()->str());
     bucket_info.push_back(buckets->Get(i)->alias()->str());
+    bucket_alias.push_back(buckets->Get(i)->alias()->str());
 
     buckets_info[buckets->Get(i)->alias()->str()] = bucket_info;
   }
 
+  const auto buckets_access = app_cfg->access();
+  if (buckets_access != nullptr) {
+    auto alias = bucket_alias.begin();
+    for (flatbuffers::uoffset_t i = 0; i < buckets_access->size(); i++) {
+      if (alias != bucket_alias.end()) {
+        buckets_info[*alias].push_back(buckets_access->Get(i)->str());
+        alias++;
+      } else {
+        break;
+      }
+    }
+  } else {
+    for (auto alias = bucket_alias.begin(); alias != bucket_alias.end();
+         alias++) {
+      buckets_info[*alias].push_back("rw");
+    }
+  }
   config->component_configs["buckets"] = buckets_info;
+
+  const auto curl_cfg = app_cfg->curl();
+  if (curl_cfg != nullptr) {
+    config->curl_bindings.reserve(static_cast<std::size_t>(curl_cfg->size()));
+    for (flatbuffers::uoffset_t i = 0; i < curl_cfg->size(); ++i) {
+      config->curl_bindings.emplace_back(curl_cfg->Get(i));
+    }
+  }
 
   return config;
 }

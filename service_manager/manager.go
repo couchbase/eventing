@@ -1,21 +1,26 @@
 package servicemanager
 
 import (
+	"context"
 	"crypto/tls"
-	"crypto/x509"
 	"encoding/json"
+	_ "expvar" // For stat collection
 	"fmt"
-	"io/ioutil"
 	"net"
 	"net/http"
 	_ "net/http/pprof" // For debugging
+	"os"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/couchbase/cbauth"
+	"github.com/couchbase/cbauth/metakv"
 	"github.com/couchbase/cbauth/service"
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/logging"
+	"github.com/couchbase/eventing/parser"
 	"github.com/couchbase/eventing/util"
 )
 
@@ -27,8 +32,15 @@ func NewServiceMgr(config util.Config, rebalanceRunning bool, superSup common.Ev
 	mu := &sync.RWMutex{}
 
 	mgr := &ServiceMgr{
-		mu:      mu,
-		servers: make([]service.NodeID, 0),
+		consistencyValues: []string{"none", "request"},
+		graph:             newBucketMultiDiGraph(),
+		fnsInPrimaryStore: make(map[string]depCfg),
+		fnsInTempStore:    make(map[string]struct{}),
+		bucketFunctionMap: make(map[string]map[string]functionInfo),
+		fnMu:              &sync.RWMutex{},
+		failoverMu:        &sync.RWMutex{},
+		mu:                mu,
+		servers:           make([]service.NodeID, 0),
 		state: state{
 			rebalanceID:   "",
 			rebalanceTask: nil,
@@ -38,6 +50,7 @@ func NewServiceMgr(config util.Config, rebalanceRunning bool, superSup common.Ev
 		statsWritten: true,
 		stopTracerCh: make(chan struct{}, 1),
 		superSup:     superSup,
+		finch:        make(chan bool),
 	}
 
 	mgr.config.Store(config)
@@ -54,6 +67,8 @@ func NewServiceMgr(config util.Config, rebalanceRunning bool, superSup common.Ev
 }
 
 func (m *ServiceMgr) initService() {
+	logPrefix := "ServiceMgr::initService"
+
 	cfg := m.config.Load()
 	m.adminHTTPPort = cfg["eventing_admin_http_port"].(string)
 	m.adminSSLPort = cfg["eventing_admin_ssl_port"].(string)
@@ -63,10 +78,8 @@ func (m *ServiceMgr) initService() {
 	m.uuid = cfg["uuid"].(string)
 	m.initErrCodes()
 
-	logging.Infof("ServiceMgr::initService adminHTTPPort: %v", m.adminHTTPPort)
-	logging.Infof("ServiceMgr::initService adminSSLPort: %v", m.adminSSLPort)
-	logging.Infof("ServiceMgr::initService certFile: %v", m.certFile)
-	logging.Infof("ServiceMgr::initService keyFile: %v", m.keyFile)
+	logging.Infof("%s adminHTTPPort: %s adminSSLPort: %s", logPrefix, m.adminHTTPPort, m.adminSSLPort)
+	logging.Infof("%s certFile: %s keyFile: %s", logPrefix, m.certFile, m.keyFile)
 
 	util.Retry(util.NewFixedBackoff(time.Second), nil, getHTTPServiceAuth, m)
 
@@ -74,7 +87,7 @@ func (m *ServiceMgr) initService() {
 		for {
 			err := m.registerWithServer()
 			if err != nil {
-				logging.Infof("Retrying to register against cbauth_service")
+				logging.Infof("%s Retrying to register against cbauth_service", logPrefix)
 				time.Sleep(2 * time.Second)
 			} else {
 				break
@@ -82,74 +95,120 @@ func (m *ServiceMgr) initService() {
 		}
 	}(m)
 
+	m.disableDebugger()
+
+	mux := http.NewServeMux()
+
+	//pprof REST APIs
+	mux.HandleFunc("/debug/pprof/", m.indexHandler)
+	mux.HandleFunc("/debug/pprof/cmdline", m.cmdlineHandler)
+	mux.HandleFunc("/debug/pprof/profile", m.profileHandler)
+	mux.HandleFunc("/debug/pprof/symbol", m.symbolHandler)
+	mux.HandleFunc("/debug/pprof/trace", m.traceHandler)
+
+	//expvar REST APIs
+	mux.HandleFunc("/debug/vars", m.expvarHandler)
+
 	// Internal REST APIs
-	http.HandleFunc("/cleanupEventing", m.cleanupEventing)
-	http.HandleFunc("/clearEventStats", m.clearEventStats)
-	http.HandleFunc("/deleteApplication/", m.deletePrimaryStoreHandler)
-	http.HandleFunc("/deleteAppTempStore/", m.deleteTempStoreHandler)
-	http.HandleFunc("/debugging/", m.debugging)
-	http.HandleFunc("/getAggBootstrappingApps", m.getAggBootstrappingApps)
-	http.HandleFunc("/getAggEventProcessingStats", m.getAggEventProcessingStats)
-	http.HandleFunc("/getAggRebalanceProgress", m.getAggRebalanceProgress)
-	http.HandleFunc("/getAggRebalanceStatus", m.getAggRebalanceStatus)
-	http.HandleFunc("/getApplication/", m.getPrimaryStoreHandler)
-	http.HandleFunc("/getAppTempStore/", m.getTempStoreHandler)
-	http.HandleFunc("/getBootstrappingApps", m.getBootstrappingApps)
-	http.HandleFunc("/getConsumerPids", m.getEventingConsumerPids)
-	http.HandleFunc("/getCreds", m.getCreds)
-	http.HandleFunc("/getDcpEventsRemaining", m.getDcpEventsRemaining)
-	http.HandleFunc("/getDebuggerUrl/", m.getDebuggerURL)
-	http.HandleFunc("/getDeployedApps", m.getDeployedApps)
-	http.HandleFunc("/getErrorCodes", m.getErrCodes)
-	http.HandleFunc("/getEventProcessingStats", m.getEventProcessingStats)
-	http.HandleFunc("/getExecutionStats", m.getExecutionStats)
-	http.HandleFunc("/getFailureStats", m.getFailureStats)
-	http.HandleFunc("/getLatencyStats", m.getLatencyStats)
-	http.HandleFunc("/getLocallyDeployedApps", m.getLocallyDeployedApps)
-	http.HandleFunc("/getNamedParams", m.getNamedParamsHandler)
-	http.HandleFunc("/getRebalanceProgress", m.getRebalanceProgress)
-	http.HandleFunc("/getRebalanceStatus", m.getRebalanceStatus)
-	http.HandleFunc("/getSeqsProcessed", m.getSeqsProcessed)
-	http.HandleFunc("/getLocalDebugUrl/", m.getLocalDebugURL)
-	http.HandleFunc("/getWorkerCount", m.getWorkerCount)
-	http.HandleFunc("/parseQuery", m.parseQueryHandler)
-	http.HandleFunc("/saveAppTempStore/", m.saveTempStoreHandler)
-	http.HandleFunc("/setApplication/", m.savePrimaryStoreHandler)
-	http.HandleFunc("/setSettings/", m.setSettingsHandler)
-	http.HandleFunc("/startDebugger/", m.startDebugger)
-	http.HandleFunc("/startTracing", m.startTracing)
-	http.HandleFunc("/stopDebugger/", m.stopDebugger)
-	http.HandleFunc("/stopTracing", m.stopTracing)
-	http.HandleFunc("/uuid", m.getNodeUUID)
-	http.HandleFunc("/version", m.getNodeVersion)
+	mux.HandleFunc("/cleanupEventing", m.cleanupEventing)
+	mux.HandleFunc("/clearEventStats", m.clearEventStats)
+	mux.HandleFunc("/die", m.die)
+	mux.HandleFunc("/deleteApplication/", m.deletePrimaryStoreHandler)
+	mux.HandleFunc("/deleteAppTempStore/", m.deleteTempStoreHandler)
+	mux.HandleFunc("/freeOSMemory", m.freeOSMemory)
+	mux.HandleFunc("/getAggBootstrappingApps", m.getAggBootstrappingApps)
+	mux.HandleFunc("/getAggBootstrapStatus", m.getAggBootstrapStatus)
+	mux.HandleFunc("/getAggBootstrapAppStatus", m.getAggBootstrapAppStatus)
+	mux.HandleFunc("/getAggEventProcessingStats", m.getAggEventProcessingStats)
+	mux.HandleFunc("/getAggRebalanceProgress", m.getAggRebalanceProgress)
+	mux.HandleFunc("/getAggRebalanceStatus", m.getAggRebalanceStatus)
+	mux.HandleFunc("/getApplication/", m.getPrimaryStoreHandler)
+	mux.HandleFunc("/getAppTempStore/", m.getTempStoreHandler)
+	mux.HandleFunc("/getBootstrappingApps", m.getBootstrappingApps)
+	mux.HandleFunc("/getBootstrapStatus", m.getBootstrapStatus)
+	mux.HandleFunc("/getBootstrapAppStatus", m.getBootstrapAppStatus)
+	mux.HandleFunc("/getPausingApps", m.getPausingApps)
+	mux.HandleFunc("/getConsumerPids", m.getEventingConsumerPids)
+	mux.HandleFunc("/getCpuCount", m.getCPUCount)
+	mux.HandleFunc("/getCreds", m.getCreds)
+	mux.HandleFunc("/getDcpEventsRemaining", m.getDcpEventsRemaining)
+	mux.HandleFunc("/getDebuggerUrl/", m.getDebuggerURL)
+	mux.HandleFunc("/getDeployedApps", m.getDeployedApps)
+	mux.HandleFunc("/getErrorCodes", m.getErrCodes)
+	mux.HandleFunc("/getEventProcessingStats", m.getEventProcessingStats)
+	mux.HandleFunc("/getExecutionStats", m.getExecutionStats)
+	mux.HandleFunc("/getFailureStats", m.getFailureStats)
+	mux.HandleFunc("/getLatencyStats", m.getLatencyStats)
+	mux.HandleFunc("/getLocallyDeployedApps", m.getLocallyDeployedApps)
+	mux.HandleFunc("/getAppLog", m.getAppLog)
+	mux.HandleFunc("/getRebalanceProgress", m.getRebalanceProgress)
+	mux.HandleFunc("/getRebalanceStatus", m.getRebalanceStatus)
+	mux.HandleFunc("/getRunningApps", m.getRunningApps)
+	mux.HandleFunc("/getSeqsProcessed", m.getSeqsProcessed)
+	mux.HandleFunc("/getLocalDebugUrl/", m.getLocalDebugURL)
+	mux.HandleFunc("/getWorkerCount", m.getWorkerCount)
+	mux.HandleFunc("/getInsight", m.getInsight)
+	mux.HandleFunc("/logFileLocation", m.logFileLocation)
+	mux.HandleFunc("/saveAppTempStore/", m.saveTempStoreHandler)
+	mux.HandleFunc("/setApplication/", m.savePrimaryStoreHandler)
+	mux.HandleFunc("/setSettings/", m.setSettingsHandler)
+	mux.HandleFunc("/startDebugger/", m.startDebugger)
+	mux.HandleFunc("/startTracing", m.startTracing)
+	mux.HandleFunc("/triggerGC", m.triggerGC)
+	mux.HandleFunc("/stopDebugger/", m.stopDebugger)
+	mux.HandleFunc("/stopTracing", m.stopTracing)
+	mux.HandleFunc("/uuid", m.getNodeUUID)
+	mux.HandleFunc("/version", m.getNodeVersion)
+	mux.HandleFunc("/writeDebuggerURL/", m.writeDebuggerURLHandler)
+	mux.HandleFunc("/getKVNodesAddresses", m.getKVNodesAddresses)
+	mux.HandleFunc("/redistributeworkload", m.triggerInternalRebalance)
 
 	// Public REST APIs
-	http.HandleFunc("/api/v1/stats", m.statsHandler)
-	http.HandleFunc("/api/v1/config", m.configHandler)
-	http.HandleFunc("/api/v1/config/", m.configHandler)
-	http.HandleFunc("/api/v1/functions", m.functionsHandler)
-	http.HandleFunc("/api/v1/functions/", m.functionsHandler)
-	http.HandleFunc("/api/v1/export", m.exportHandler)
-	http.HandleFunc("/api/v1/export/", m.exportHandler)
-	http.HandleFunc("/api/v1/import", m.importHandler)
-	http.HandleFunc("/api/v1/import/", m.importHandler)
+	mux.HandleFunc("/api/v1/status", m.statusHandler)
+	mux.HandleFunc("/api/v1/stats", m.statsHandler)
+	mux.HandleFunc("/api/v1/config", m.configHandler)
+	mux.HandleFunc("/api/v1/config/", m.configHandler)
+	mux.HandleFunc("/api/v1/functions", m.functionsHandler)
+	mux.HandleFunc("/api/v1/functions/", m.functionsHandler)
+	mux.HandleFunc("/api/v1/export", m.exportHandler)
+	mux.HandleFunc("/api/v1/export/", m.exportHandler)
+	mux.HandleFunc("/api/v1/import", m.importHandler)
+	mux.HandleFunc("/api/v1/import/", m.importHandler)
+
+	mux.HandleFunc("/api/v1/list/functions", m.listFunctions)
+	mux.HandleFunc("/api/v1/list/functions/", m.listFunctions)
 
 	go func() {
 		addr := net.JoinHostPort("", m.adminHTTPPort)
-		logging.Infof("Admin HTTP server started: %v", addr)
-		err := http.ListenAndServe(addr, nil)
-		logging.Fatalf("Error in Admin HTTP Server: %v", err)
+
+		srv := &http.Server{
+			Addr:         addr,
+			ReadTimeout:  httpReadTimeOut,
+			WriteTimeout: httpWriteTimeOut,
+			Handler:      mux,
+		}
+		proto := util.GetNetworkProtocol()
+		listner, err := net.Listen(proto, addr)
+		if err != nil {
+			logging.Errorf("Failed to start http service ip family: %v address: %v error: %v", proto, addr, err)
+			time.Sleep(1 * time.Second)
+			os.Exit(1)
+		}
+
+		logging.Infof("%s Admin HTTP server started: %s", logPrefix, addr)
+		srv.Serve(listner)
+		logging.Fatalf("%s Error in Admin HTTP Server: %v", logPrefix, err)
 	}()
 
 	if m.adminSSLPort != "" {
+		var reload bool = false
+		var sslsrv *http.Server = nil
 		sslAddr := net.JoinHostPort("", m.adminSSLPort)
-		reload := false
-		var tlslsnr *net.Listener
 
 		refresh := func() error {
-			if tlslsnr != nil {
+			if sslsrv != nil {
 				reload = true
-				(*tlslsnr).Close()
+				sslsrv.Shutdown(context.Background())
 			}
 			return nil
 		}
@@ -160,66 +219,249 @@ func (m *ServiceMgr) initService() {
 				if err == nil {
 					break
 				}
-				logging.Errorf("Unable to register for cert refresh, will retry: %v", err)
+				logging.Errorf("%s Unable to register for cert refresh, will retry: %v", logPrefix, err)
 				time.Sleep(10 * time.Second)
 			}
 			for {
-				cert, err := tls.LoadX509KeyPair(m.certFile, m.keyFile)
+				tlscfg, err := m.getTLSConfig(logPrefix)
 				if err != nil {
-					logging.Errorf("Error in loading SSL certificate: %v", err)
+					logging.Errorf("%s Error configuring TLS: %v", logPrefix, err)
 					return
 				}
-
-				clientAuthType, err := cbauth.GetClientCertAuthType()
-				if err != nil {
-					logging.Errorf("Error in getting client cert auth type, %v", err)
-					return
-				}
-
-				config := &tls.Config{
-					Certificates:             []tls.Certificate{cert},
-					CipherSuites:             []uint16{tls.TLS_RSA_WITH_AES_256_CBC_SHA},
-					MinVersion:               tls.VersionTLS12,
-					PreferServerCipherSuites: true,
-					ClientAuth:               clientAuthType,
-				}
-
-				if clientAuthType != tls.NoClientCert {
-					caCert, err := ioutil.ReadFile(m.certFile)
-					if err != nil {
-						logging.Errorf("Error in reading cacert file, %v", err)
-						return
-					}
-					caCertPool := x509.NewCertPool()
-					caCertPool.AppendCertsFromPEM(caCert)
-					config.ClientCAs = caCertPool
-				}
-
-				// allow only strong ssl as this is an internal API and interop is not a concern
-				sslsrv := &http.Server{
+				sslsrv = &http.Server{
 					Addr:         sslAddr,
+					ReadTimeout:  httpReadTimeOut,
+					WriteTimeout: httpWriteTimeOut,
 					TLSNextProto: make(map[string]func(*http.Server, *tls.Conn, http.Handler), 0),
-					TLSConfig:    config,
+					TLSConfig:    tlscfg,
+					Handler:      mux,
 				}
-				// replace below with ListenAndServeTLS on moving to go1.8
-				lsnr, err := net.Listen("tcp", sslAddr)
+
+				proto := util.GetNetworkProtocol()
+				ln, err := net.Listen(proto, sslAddr)
 				if err != nil {
-					logging.Errorf("Error in listenting to SSL port: %v", err)
-					return
+					logging.Errorf("Failed to start ssl service ip family: %v address: %v error: %v", proto, sslAddr, err)
+					time.Sleep(1 * time.Second)
+					os.Exit(1)
 				}
-				val := tls.NewListener(lsnr, sslsrv.TLSConfig)
-				tlslsnr = &val
-				reload = false
-				logging.Infof("SSL server started: %v", sslAddr)
-				err = http.Serve(*tlslsnr, nil)
-				if reload {
-					logging.Warnf("SSL certificate change: %v", err)
-				} else {
-					logging.Errorf("Error in SSL Server: %v", err)
-					return
-				}
+
+				logging.Infof("%s SSL server started: %v", logPrefix, sslsrv)
+				tls_ln := tls.NewListener(ln, tlscfg)
+				sslsrv.Serve(tls_ln)
 			}
 		}()
+	}
+
+	go func(m *ServiceMgr) {
+		cancelCh := make(chan struct{})
+		for {
+			err := metakv.RunObserveChildren(metakvChecksumPath, m.primaryStoreChangeCallback, cancelCh)
+			if err != nil {
+				logging.Errorf("%s metakv observe error for primary store, err: %v. Retrying...", logPrefix, err)
+				time.Sleep(2 * time.Second)
+			}
+		}
+	}(m)
+
+	go func(m *ServiceMgr) {
+		cancelCh := make(chan struct{})
+		for {
+			err := metakv.RunObserveChildren(metakvTempAppsPath, m.tempStoreChangeCallback, cancelCh)
+			if err != nil {
+				logging.Errorf("%s metakv observe error for temp store, err: %v. Retrying...", logPrefix, err)
+				time.Sleep(2 * time.Second)
+			}
+		}
+	}(m)
+
+	go func(m *ServiceMgr) {
+		cancelCh := make(chan struct{})
+		for {
+			err := metakv.RunObserveChildren(metakvAppSettingsPath, m.settingChangeCallback, cancelCh)
+			if err != nil {
+				logging.Errorf("%s metakv observe error for setting store, err: %v. Retrying...", logPrefix, err)
+				time.Sleep(2 * time.Second)
+			}
+		}
+	}(m)
+	go m.watchFailoverEvents()
+}
+
+func (m *ServiceMgr) primaryStoreChangeCallback(path string, value []byte, rev interface{}) error {
+	logPrefix := "ServiceMgr::primaryStoreChangeCallback"
+
+	logging.Infof("%s path: %s encoded value size: %d", logPrefix, path, len(value))
+
+	splitRes := strings.Split(path, "/")
+	if len(splitRes) != 4 {
+		return nil
+	}
+
+	fnName := splitRes[len(splitRes)-1]
+	m.fnMu.Lock()
+	defer m.fnMu.Unlock()
+
+	if len(value) > 0 {
+		//Read application from metakv
+		data, err := util.ReadAppContent(metakvAppsPath, metakvChecksumPath, fnName)
+		if err != nil {
+			logging.Errorf("%s Reading function: %s from metakv failed, err: %v", logPrefix, fnName, err)
+			return nil
+		}
+		app := m.parseFunctionPayload(data, fnName)
+		m.fnsInPrimaryStore[fnName] = app.DeploymentConfig
+		logging.Infof("%s Added function: %s to fnsInPrimaryStore", logPrefix, fnName)
+
+		if val, ok := app.Settings["processing_status"].(bool); ok && val {
+			source, destinations := m.getSourceAndDestinationsFromDepCfg(&app.DeploymentConfig)
+
+			//Find keyspace names from N1QL statements in handler code and add edges
+			_, pinfos := parser.TranspileQueries(app.AppHandlers, "")
+			for _, pinfo := range pinfos {
+				logging.Infof("%s Adding allowed edge label %s, source %s to destination %s",
+					logPrefix, fnName, source, pinfo.PInfo.KeyspaceName)
+				destinations[pinfo.PInfo.KeyspaceName] = struct{}{}
+			}
+			if len(destinations) > 0 {
+				m.graph.insertEdges(fnName, source, destinations)
+			}
+		}
+
+		//Update BucketFunctionMap
+		functions, ok := m.bucketFunctionMap[app.DeploymentConfig.SourceBucket]
+		if !ok {
+			functions = make(map[string]functionInfo)
+			m.bucketFunctionMap[app.DeploymentConfig.SourceBucket] = functions
+		}
+		funtionType := "notsbm"
+		if m.isSrcMutationEnabled(&app.DeploymentConfig) {
+			funtionType = "sbm"
+		}
+
+		deployed := app.Settings["deployment_status"].(bool)
+		functions[app.Name] = functionInfo{fnName: app.Name, fnType: funtionType, fnDeployed: deployed}
+	} else {
+		cfg := m.fnsInPrimaryStore[fnName]
+		m.graph.removeEdges(fnName)
+		delete(m.fnsInPrimaryStore, fnName)
+		delete(m.bucketFunctionMap[cfg.SourceBucket], fnName)
+		if len(m.bucketFunctionMap[cfg.SourceBucket]) == 0 {
+			delete(m.bucketFunctionMap, cfg.SourceBucket)
+		}
+		logging.Infof("%s Deleted function: %s from fnsInPrimaryStore", logPrefix, fnName)
+	}
+
+	return nil
+}
+
+func (m *ServiceMgr) tempStoreChangeCallback(path string, value []byte, rev interface{}) error {
+	logPrefix := "ServiceMgr::tempStoreChangeCallback"
+
+	logging.Infof("%s path: %s encoded value size: %d", logPrefix, path, len(value))
+
+	splitRes := strings.Split(path, "/")
+	if len(splitRes) != 5 {
+		return nil
+	}
+
+	fnName := splitRes[len(splitRes)-2]
+	m.fnMu.Lock()
+	defer m.fnMu.Unlock()
+
+	if len(value) > 0 {
+		m.fnsInTempStore[fnName] = struct{}{}
+		logging.Infof("%s Added function: %s to fnsInTempStore", logPrefix, fnName)
+	} else {
+		delete(m.fnsInTempStore, fnName)
+		logging.Infof("%s Deleted function: %s from fnsInTempStore", logPrefix, fnName)
+	}
+
+	return nil
+}
+
+func (m *ServiceMgr) settingChangeCallback(path string, value []byte, rev interface{}) error {
+	logPrefix := "ServiceMgr::settingChangeCallback"
+
+	logging.Infof("%s path: %s encoded value size: %d", logPrefix, path, len(value))
+
+	pathTokens := strings.Split(path, "/")
+	if len(pathTokens) != 4 {
+		logging.Errorf("%s Invalid setting path, path: %s", logPrefix, path)
+		return nil
+	}
+
+	if value == nil {
+		return nil
+	}
+
+	functionName := pathTokens[len(pathTokens)-1]
+
+	settings := make(map[string]interface{})
+	err := json.Unmarshal(value, &settings)
+	if err != nil {
+		logging.Errorf("%s [%s] Failed to unmarshal settings received from metakv, err: %v",
+			logPrefix, functionName, err)
+		return nil
+	}
+
+	deploymentStatus, ok := settings["deployment_status"].(bool)
+	if !ok {
+		logging.Errorf("%s [%s] Failed to convert deployment status to boolean from setting",
+			logPrefix, functionName)
+		return nil
+	}
+
+	processingStatus, ok := settings["processing_status"].(bool)
+	if !ok {
+		logging.Errorf("%s [%s] Failed to convert processing status to boolean from setting",
+			logPrefix, functionName)
+		return nil
+	}
+
+	m.fnMu.Lock()
+	defer m.fnMu.Unlock()
+
+	cfg := m.fnsInPrimaryStore[functionName]
+
+	source, _ := m.getSourceAndDestinationsFromDepCfg(&cfg)
+	if processingStatus == false {
+		m.graph.removeEdges(functionName)
+	}
+
+	//Update BucketFunctionMap
+	functions, ok := m.bucketFunctionMap[source]
+	if !ok {
+		functions = make(map[string]functionInfo)
+		m.bucketFunctionMap[source] = functions
+	}
+	funtionType := "notsbm"
+	if m.isSrcMutationEnabled(&cfg) {
+		funtionType = "sbm"
+	}
+
+	functions[functionName] = functionInfo{fnName: functionName, fnType: funtionType, fnDeployed: deploymentStatus}
+
+	return nil
+}
+
+func (m *ServiceMgr) disableDebugger() {
+	logPrefix := "ServiceMgr::enableDebugger"
+
+	config, info := m.getConfig()
+	if info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
+	if _, exists := config["enable_debugger"]; exists {
+		logging.Tracef("%s enable_debugger field exists , not making any change", logPrefix)
+		return
+	}
+
+	logging.Tracef("%s enable_debugger field does not exist, enabling it", logPrefix)
+
+	config["enable_debugger"] = false
+	if info := m.saveConfig(config); info.Code != m.statusCodes.ok.Code {
+		logging.Errorf("Unable to enable debugger by default, err: %v", info.Info)
 	}
 }
 
@@ -251,11 +493,6 @@ func (m *ServiceMgr) prepareRebalance(change service.TopologyChange) error {
 
 func (m *ServiceMgr) startRebalance(change service.TopologyChange) error {
 	logPrefix := "ServiceMgr::startRebalance"
-
-	// Reset the failoverNotif flag, which got set to signify failover action on the cluster
-	if m.failoverNotif {
-		m.failoverNotif = false
-	}
 
 	m.rebalanceCtx = &rebalanceContext{
 		change: change,
@@ -395,16 +632,14 @@ func (m *ServiceMgr) cancelRebalanceTaskLocked(task *service.Task) error {
 }
 
 func (m *ServiceMgr) cancelRunningRebalanceTaskLocked(task *service.Task) error {
+	logPrefix := "ServiceMgr::cancelRunningRebalanceTaskLocked"
+
 	m.rebalancer.cancel()
 	m.onRebalanceDoneLocked(nil)
 
-	path := metakvRebalanceTokenPath + task.ID
-	err := util.MetakvSet(path, []byte(stopRebalance), nil)
-	if err != nil {
-		logging.Errorf("ServiceMgr::cancelRunningRebalanceTaskLocked Failed to update rebalance token: %v in metakv as part of stop running rebalance, err: %v",
-			task.ID, err)
-		return err
-	}
+	util.Retry(util.NewFixedBackoff(time.Second), nil, stopRebalanceCallback, m.rebalancer, task.ID)
+
+	logging.Infof("%s Updated rebalance token: %s in metakv as part of stopping ongoing rebalance", logPrefix, task.ID)
 
 	return nil
 }
@@ -535,11 +770,14 @@ func (m *ServiceMgr) getActiveNodeAddrs() ([]string, error) {
 	var data []byte
 	util.Retry(util.NewFixedBackoff(time.Second), nil, metakvGetCallback, metakvConfigKeepNodes, &data)
 
+	if len(data) == 0 {
+		return nodeAddrs, nil
+	}
+
 	var keepNodes []string
 	err = json.Unmarshal(data, &keepNodes)
 	if err != nil {
-		logging.Warnf("%s Failed to unmarshal keepNodes received from metakv, err: %v",
-			logPrefix, err)
+		logging.Warnf("%s Failed to unmarshal keepNodes received from metakv, err: %v", logPrefix, err)
 		return nodeAddrs, err
 	}
 
@@ -553,4 +791,85 @@ func (m *ServiceMgr) getActiveNodeAddrs() ([]string, error) {
 		logPrefix, keepNodes, addrUUIDMap, nodeAddrs)
 
 	return nodeAddrs, nil
+}
+
+func (m *ServiceMgr) compareEventingVersion(need eventingVer) bool {
+	logPrefix := "ServiceMgr::compareEventingVersion"
+
+	nodes, err := m.getActiveNodeAddrs()
+	if err != nil {
+		logging.Errorf("%s failed to get active eventing nodes, err: %v", logPrefix, err)
+		return false
+	}
+
+	versions, err := util.GetEventingVersion("/version", nodes)
+	if err != nil {
+		logging.Errorf("%s failed to gather eventing version, err: %v", logPrefix, err)
+		return false
+	}
+
+	for _, ver := range versions {
+		eVer, err := frameEventingVersion(ver)
+		if err != nil {
+			return false
+		}
+
+		if !eVer.compare(need) {
+			logging.Infof("%s eventing version for all nodes: %+v need version: %+v", logPrefix, versions, need)
+			return false
+		}
+	}
+
+	return true
+}
+
+func (e eventingVer) compare(need eventingVer) bool {
+	return (e.major > need.major ||
+		e.major == need.major && e.minor > need.minor ||
+		e.major == need.major && e.minor == need.minor && e.mpVersion >= need.mpVersion) &&
+		(e.isEnterprise == need.isEnterprise)
+}
+
+func frameEventingVersion(ver string) (eventingVer, error) {
+	var eVer eventingVer
+
+	segs := strings.Split(ver, "-")
+	if len(segs) < 4 {
+		return eVer, errInvalidVersion
+	}
+
+	verSegs := strings.Split(segs[1], ".")
+	if len(verSegs) != 3 {
+		return eVer, errInvalidVersion
+	}
+
+	val, err := strconv.Atoi(verSegs[0])
+	if err != nil {
+		return eVer, errInvalidVersion
+	}
+	eVer.major = val
+
+	val, err = strconv.Atoi(verSegs[1])
+	if err != nil {
+		return eVer, errInvalidVersion
+	}
+	eVer.minor = val
+
+	val, err = strconv.Atoi(verSegs[2])
+	if err != nil {
+		return eVer, errInvalidVersion
+	}
+	eVer.mpVersion = val
+
+	val, err = strconv.Atoi(segs[2])
+	if err != nil {
+		return eVer, errInvalidVersion
+	}
+	eVer.build = val
+
+	if segs[len(segs)-1] == "ee" {
+		eVer.isEnterprise = true
+	}
+
+	return eVer, nil
 }

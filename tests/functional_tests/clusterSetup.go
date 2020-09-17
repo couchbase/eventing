@@ -10,9 +10,12 @@ import (
 	"os"
 	"os/exec"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
+
+var errStatusParsingFailed = fmt.Errorf("status parsing failed")
 
 func initNodePaths() ([]byte, error) {
 	payload := strings.NewReader(fmt.Sprintf("data_path=%s&index_path=", dataDir))
@@ -40,8 +43,13 @@ func quotaSetup(indexQuota, memoryQuota int) ([]byte, error) {
 }
 
 func createBucket(name string, quota int) ([]byte, error) {
-	payload := strings.NewReader(fmt.Sprintf("ramQuotaMB=%d&name=%s&flushEnabled=1&replicaIndex=0&replicaNumber=0", quota, name))
+	payload := strings.NewReader(fmt.Sprintf("name=%s&bucketType=%s&evictionPolicy=noEviction&replicaNumber=%d&ramQuotaMB=%d&flushEnabled=1",
+		name, bucketType, replicas, quota))
 	return makeRequest("POST", payload, bucketSetupURL)
+}
+
+func deleteBucket(name string) ([]byte, error) {
+	return makeRequest("DELETE", strings.NewReader(""), bucketSetupURL+"/"+name)
 }
 
 func createRbacUser() ([]byte, error) {
@@ -55,8 +63,49 @@ func setIndexStorageMode() ([]byte, error) {
 }
 
 func fireQuery(query string) ([]byte, error) {
+	waitForIndexes()
 	payload := strings.NewReader(fmt.Sprintf("statement=%s", query))
 	return makeRequest("POST", payload, queryURL)
+}
+
+func configChange(configuration string) ([]byte, error) {
+	payload := strings.NewReader(configuration)
+	return makeRequest("POST", payload, configURL)
+}
+
+func waitForIndexes() {
+	timeout := 600 * time.Second
+	for start := time.Now(); time.Now().Sub(start) < timeout; time.Sleep(time.Second * 15) {
+		response, err := makeRequest("GET", strings.NewReader(""), indexStateURL)
+		if err != nil {
+			log.Printf("waitForIndexes giving up: err %v response %s\n", err, response)
+			return
+		}
+		var result struct {
+			Status  string `json:"code"`
+			Results []struct {
+				Name       string `json:"name"`
+				Bucket     string `json:"bucket"`
+				Completion int    `json:"completion"`
+			} `json:"status"`
+		}
+		err = json.Unmarshal(response, &result)
+		if err != nil || result.Status != "success" {
+			log.Printf("waitForIndexes giving up: err %v response %s\n", err, response)
+			return
+		}
+		ready := true
+		for _, index := range result.Results {
+			if index.Completion < 100 {
+				ready = false
+			}
+		}
+		if ready {
+			return
+		}
+		log.Printf("waitForIndexes waiting for indexes: %+v\n", result.Results)
+	}
+	panic(fmt.Sprintf("waitForIndexes failing even after %v", timeout))
 }
 
 func addNode(hostname, role string) {
@@ -69,7 +118,7 @@ func addNode(hostname, role string) {
 
 	log.Printf("Adding node: %s role: %s to the cluster\n", hostname, role)
 
-	cmd := exec.Command(cbCliPath, "server-add", "-c", "127.0.0.1:9000", "-u", username,
+	cmd := exec.Command(cbCliPath, "server-add", "-c", "http://127.0.0.1:9000", "-u", username,
 		"-p", password, "--server-add-username", username, "--server-add-password", password,
 		"--services", role, "--server-add", hostname)
 
@@ -96,7 +145,7 @@ func rebalance() {
 
 	log.Println("Starting up rebalance")
 
-	cmd := exec.Command(cbCliPath, "rebalance", "-c", "127.0.0.1:9000", "-u", username, "-p", password)
+	cmd := exec.Command(cbCliPath, "rebalance", "-c", "http://127.0.0.1:9000", "-u", username, "-p", password)
 
 	err := cmd.Start()
 	if err != nil {
@@ -115,7 +164,7 @@ func rebalanceStop() {
 
 	log.Println("Stopping rebalance")
 
-	cmd := exec.Command(cbCliPath, "rebalance-stop", "-c", "127.0.0.1:9000", "-u", username,
+	cmd := exec.Command(cbCliPath, "rebalance-stop", "-c", "http://127.0.0.1:9000", "-u", username,
 		"-p", password)
 
 	err := cmd.Start()
@@ -141,7 +190,7 @@ func removeNode(hostname string) {
 
 	log.Printf("Removing node: %s from the cluster\n", hostname)
 
-	cmd := exec.Command(cbCliPath, "rebalance", "-c", "127.0.0.1:9000", "-u", username,
+	cmd := exec.Command(cbCliPath, "rebalance", "-c", "http://127.0.0.1:9000", "-u", username,
 		"-p", password, "--server-remove", hostname)
 
 	err := cmd.Start()
@@ -167,7 +216,7 @@ func failover(hostname string) {
 
 	log.Println("Starting up failover")
 
-	cmd := exec.Command(cbCliPath, "failover", "-c", "127.0.0.1:9000", "-u", username, "-p", password, "--force", "--server-failover=", hostname)
+	cmd := exec.Command(cbCliPath, "failover", "-c", "http://127.0.0.1:9000", "-u", username, "-p", password, "--force", "--server-failover=", hostname)
 
 	err := cmd.Start()
 	if err != nil {
@@ -246,9 +295,8 @@ func otpNodes(removeNodes []string) (string, string) {
 	return knownNodes, ejectNodes
 }
 
-func waitForRebalanceFinish() {
+func waitForRebalanceFinish() error {
 	t := time.NewTicker(5 * time.Second)
-	var rebalanceRunning bool
 
 	log.SetFlags(log.LstdFlags)
 
@@ -262,19 +310,23 @@ func waitForRebalanceFinish() {
 			err = json.Unmarshal(r, &tasks)
 			if err != nil {
 				fmt.Println("tasks fetch, err:", err)
-				return
+				return err
 			}
+
 			for _, v := range tasks {
 				task := v.(map[string]interface{})
+				if task["errorMessage"] != nil {
+					log.Println(task["errorMessage"].(string))
+					return fmt.Errorf("rebalance failed")
+				}
 				if task["type"].(string) == "rebalance" && task["status"].(string) == "running" {
-					rebalanceRunning = true
 					log.Println("Rebalance progress:", task["progress"])
 				}
 
-				if rebalanceRunning && task["type"].(string) == "rebalance" && task["status"].(string) == "notRunning" {
+				if task["type"].(string) == "rebalance" && task["status"].(string) == "notRunning" {
 					t.Stop()
 					log.Println("Rebalance progress: 100")
-					return
+					return nil
 				}
 			}
 		}
@@ -282,39 +334,95 @@ func waitForRebalanceFinish() {
 }
 
 func waitForDeployToFinish(appName string) {
+	timer := time.NewTimer(time.Hour)
 	for {
-		time.Sleep(5 * time.Second)
-		log.Printf("Waiting for app: %v to get deployed\n", appName)
-
-		deployedApps, err := getDeployedApps()
-		if err != nil {
-			continue
-		}
-
-		if _, exists := deployedApps[appName]; exists {
-			log.Printf("App: %v got deployed\n", appName)
+		select {
+		case <-timer.C:
+			log.Printf("Deployment is stuck for app: %v", appName)
+			goroutineDumpAllNodes()
 			return
+		default:
+			time.Sleep(5 * time.Second)
+			log.Printf("Waiting for app: %v to get deployed\n", appName)
+
+			deployedApps, err := getDeployedApps()
+			if err != nil {
+				continue
+			}
+
+			if _, exists := deployedApps[appName]; exists {
+				log.Printf("App: %v got deployed\n", appName)
+				timer.Stop()
+				return
+			}
 		}
 	}
 }
 
-func waitForUndeployToFinish(appName string) {
+func bootstrapCheck(appName string, startCheck bool) {
 	for {
-		time.Sleep(5 * time.Second)
+		bStatus, err := getBootstrappingApps()
+		if !bStatus {
+			if !startCheck {
+				log.Println("No apps undergoing bootstrap")
+				return
+			}
 
-		log.Printf("Waiting for app: %v to get un-deployed\n", appName)
-
-		deployedApps, err := getDeployedApps()
-		if err != nil {
+			log.Printf("Error: %v encountered while fetching bootstrapping apps", err)
 			continue
 		}
 
-		if _, exists := deployedApps[appName]; !exists {
-			log.Printf("App: %v got un-deployed\n", appName)
+		log.Printf("Apps undergoing bootstrap: %t", bStatus)
+
+		if bStatus && startCheck {
+			log.Printf("App: %s started bootstrap\n", appName)
 			return
 		}
 
+		time.Sleep(5 * time.Second)
 	}
+}
+
+func waitForUndeployToFinish(appName string) {
+	timer := time.NewTimer(time.Hour)
+	for {
+		select {
+		case <-timer.C:
+			log.Printf("Undeploy is stuck for app: %v", appName)
+			goroutineDumpAllNodes()
+			return
+		default:
+			time.Sleep(5 * time.Second)
+
+			log.Printf("Waiting for app: %s to get un-deployed\n", appName)
+
+			runningApps, err := getRunningApps()
+			if err != nil {
+				continue
+			}
+
+			if _, exists := runningApps[appName]; !exists {
+				log.Printf("App: %v got un-deployed\n", appName)
+				timer.Stop()
+				return
+			}
+		}
+
+	}
+}
+
+func getBootstrappingApps() (bool, error) {
+	r, err := makeRequest("GET", strings.NewReader(""), aggBootstrappingApps)
+	if err != nil {
+		return false, err
+	}
+
+	status, err := strconv.ParseBool(string(r))
+	if err != nil {
+		return false, errStatusParsingFailed
+	}
+
+	return status, nil
 }
 
 func getDeployedApps() (map[string]string, error) {
@@ -330,8 +438,20 @@ func getDeployedApps() (map[string]string, error) {
 	return res, nil
 }
 
-func metaStateDump() {
+func getRunningApps() (map[string]string, error) {
+	r, err := makeRequest("GET", strings.NewReader(""), runningAppsURL)
 
+	var res map[string]string
+	err = json.Unmarshal(r, &res)
+	if err != nil {
+		fmt.Println("running apps fetch error", err)
+		return nil, err
+	}
+
+	return res, nil
+}
+
+func metaStateDump() {
 	fireQuery("CREATE PRIMARY INDEX on eventing;")
 
 	fmt.Println()
@@ -492,7 +612,7 @@ retryQuotaSetup:
 	// buckets = append(buckets, "other-2")
 
 	for _, bucket := range buckets {
-		_, err = createBucket(bucket, 500)
+		_, err = createBucket(bucket, bucketmemQuota)
 		if err != nil {
 			fmt.Println("Create bucket:", err)
 			return
@@ -546,9 +666,9 @@ func condense(vbs []int) string {
 }
 
 func addAllNodesAtOnce(role string) {
-	addNodeFromRest("127.0.0.1:9001", role)
-	// addNodeFromRest("127.0.0.1:9002", role)
-	// addNodeFromRest("127.0.0.1:9003", role)
+	addNodeFromRest("http://127.0.0.1:9001", role)
+	addNodeFromRest("http://127.0.0.1:9002", role)
+	addNodeFromRest("http://127.0.0.1:9003", role)
 
 	rebalanceFromRest([]string{""})
 	waitForRebalanceFinish()
@@ -556,20 +676,20 @@ func addAllNodesAtOnce(role string) {
 }
 
 func addAllNodesOneByOne(role string) {
-	addNodeFromRest("127.0.0.1:9001", role)
+	addNodeFromRest("http://127.0.0.1:9001", role)
 	rebalanceFromRest([]string{""})
 	waitForRebalanceFinish()
 	metaStateDump()
 
-	// addNodeFromRest("127.0.0.1:9002", role)
-	// rebalanceFromRest([]string{""})
-	// waitForRebalanceFinish()
-	// metaStateDump()
+	addNodeFromRest("http://127.0.0.1:9002", role)
+	rebalanceFromRest([]string{""})
+	waitForRebalanceFinish()
+	metaStateDump()
 
-	// addNodeFromRest("127.0.0.1:9003", role)
-	// rebalanceFromRest([]string{""})
-	// waitForRebalanceFinish()
-	// metaStateDump()
+	addNodeFromRest("http://127.0.0.1:9003", role)
+	rebalanceFromRest([]string{""})
+	waitForRebalanceFinish()
+	metaStateDump()
 }
 
 func removeAllNodesAtOnce() {

@@ -31,15 +31,6 @@ func TestKVRebOnUpdateBucketOpOneByOne(t *testing.T) {
 	waitForDeployToFinish(handler)
 	metaStateDump()
 
-	addNodeFromRest("127.0.0.1:9001", "kv")
-	rebalanceFromRest([]string{""})
-	waitForRebalanceFinish()
-	metaStateDump()
-
-	rebalanceFromRest([]string{"127.0.0.1:9001"})
-	waitForRebalanceFinish()
-	metaStateDump()
-
 	addAllNodesOneByOne("kv")
 	removeAllNodesOneByOne()
 
@@ -55,7 +46,7 @@ func TestKVForceFailover(t *testing.T) {
 	time.Sleep(5 * time.Second)
 	flushFunctionAndBucket(handler)
 
-	addNodeFromRest("127.0.0.1:9001", "kv")
+	addNodeFromRest("http://127.0.0.1:9001", "kv")
 	rebalanceFromRest([]string{""})
 	waitForRebalanceFinish()
 
@@ -78,9 +69,9 @@ func TestKVForceFailover(t *testing.T) {
 
 	time.Sleep(20 * time.Second)
 
-	recoveryFromRest("127.0.0.1:9001", "full")
+	recoveryFromRest("http://127.0.0.1:9001", "full")
 
-	addNodeFromRest("127.0.0.1:9002", "eventing")
+	addNodeFromRest("http://127.0.0.1:9002", "eventing")
 	rebalanceFromRest([]string{})
 	waitForRebalanceFinish()
 	metaStateDump()
@@ -117,7 +108,7 @@ func TestKVHardFailoverRecovery(t *testing.T) {
 	waitForDeployToFinish(handler)
 	metaStateDump()
 
-	addNodeFromRest("127.0.0.1:9001", "kv")
+	addNodeFromRest("http://127.0.0.1:9001", "kv")
 	rebalanceFromRest([]string{""})
 	waitForRebalanceFinish()
 	metaStateDump()
@@ -126,7 +117,7 @@ func TestKVHardFailoverRecovery(t *testing.T) {
 
 	time.Sleep(60 * time.Second)
 
-	recoveryFromRest("127.0.0.1:9001", "full")
+	recoveryFromRest("http://127.0.0.1:9001", "full")
 	rebalanceFromRest([]string{})
 	waitForRebalanceFinish()
 	metaStateDump()
@@ -192,12 +183,12 @@ func TestKVSwapRebOnUpdateBucketOp(t *testing.T) {
 	waitForDeployToFinish(handler)
 	metaStateDump()
 
-	addNodeFromRest("127.0.0.1:9001", "kv")
+	addNodeFromRest("http://127.0.0.1:9001", "kv")
 	rebalanceFromRest([]string{""})
 	waitForRebalanceFinish()
 	metaStateDump()
 
-	addNodeFromRest("127.0.0.1:9002", "kv")
+	addNodeFromRest("http://127.0.0.1:9002", "kv")
 	rebalanceFromRest([]string{"127.0.0.1:9001"})
 	waitForRebalanceFinish()
 	metaStateDump()
@@ -369,14 +360,8 @@ func TestKVRebalanceWithMultipleHandlers(t *testing.T) {
 	waitForDeployToFinish(handler2)
 	metaStateDump()
 
-	addNodeFromRest("127.0.0.1:9001", "kv")
-	rebalanceFromRest([]string{""})
-	waitForRebalanceFinish()
-	metaStateDump()
-
-	rebalanceFromRest([]string{"127.0.0.1:9001"})
-	waitForRebalanceFinish()
-	metaStateDump()
+	addAllNodesOneByOne("kv")
+	removeAllNodesOneByOne()
 
 	rl.stopCh <- struct{}{}
 
@@ -409,12 +394,12 @@ func TestKVSwapRebalanceWithMultipleHandlers(t *testing.T) {
 	waitForDeployToFinish(handler2)
 	metaStateDump()
 
-	addNodeFromRest("127.0.0.1:9001", "kv")
+	addNodeFromRest("http://127.0.0.1:9001", "kv")
 	rebalanceFromRest([]string{""})
 	waitForRebalanceFinish()
 	metaStateDump()
 
-	addNodeFromRest("127.0.0.1:9002", "kv")
+	addNodeFromRest("http://127.0.0.1:9002", "kv")
 	rebalanceFromRest([]string{"127.0.0.1:9001"})
 	waitForRebalanceFinish()
 	metaStateDump()
@@ -455,7 +440,7 @@ func TestKVRebStopStartKVOpsOnUpdateBucketOpOneByOne(t *testing.T) {
 	waitForDeployToFinish(handler)
 	metaStateDump()
 
-	addNodeFromRest("127.0.0.1:9001", "kv")
+	addNodeFromRest("http://127.0.0.1:9001", "kv")
 	rebalanceFromRest([]string{""})
 	time.Sleep(20 * time.Second)
 	rebalanceStop()
@@ -468,7 +453,7 @@ func TestKVRebStopStartKVOpsOnUpdateBucketOpOneByOne(t *testing.T) {
 	waitForRebalanceFinish()
 	metaStateDump()
 
-	addNodeFromRest("127.0.0.1:9002", "kv")
+	addNodeFromRest("http://127.0.0.1:9002", "kv")
 	rebalanceFromRest([]string{"127.0.0.1:9001"})
 	waitForRebalanceFinish()
 	metaStateDump()
@@ -505,7 +490,7 @@ func TestKVFailoverOnUpdateBucketOp(t *testing.T) {
 	waitForDeployToFinish(handler)
 	metaStateDump()
 
-	addNodeFromRest("127.0.0.1:9001", "kv")
+	addNodeFromRest("http://127.0.0.1:9001", "kv")
 	rebalanceFromRest([]string{""})
 	waitForRebalanceFinish()
 	metaStateDump()
@@ -518,13 +503,52 @@ func TestKVFailoverOnUpdateBucketOp(t *testing.T) {
 	waitForRebalanceFinish()
 	metaStateDump()
 
-	addNodeFromRest("127.0.0.1:9002", "kv")
+	addNodeFromRest("http://127.0.0.1:9002", "kv")
 	rebalanceFromRest([]string{"127.0.0.1:9001"})
 	waitForRebalanceFinish()
 	metaStateDump()
 
 	rebalanceFromRest([]string{"127.0.0.1:9002"})
 	waitForRebalanceFinish()
+	metaStateDump()
+
+	rl.stopCh <- struct{}{}
+
+	flushFunctionAndBucket(handler)
+}
+
+func TestBootstrapAfterKVHardFailover(t *testing.T) {
+	time.Sleep(5 * time.Second)
+	handler := "bucket_op_on_update"
+
+	addNodeFromRest("http://127.0.0.1:9001", "kv")
+	rebalanceFromRest([]string{""})
+	waitForRebalanceFinish()
+
+	failoverFromRest([]string{"127.0.0.1:9001"})
+	time.Sleep(30 * time.Second)
+
+	createAndDeployFunction(handler, handler, &commonSettings{})
+
+	time.Sleep(5 * time.Second)
+
+	rl := &rateLimit{
+		limit:   true,
+		opsPSec: rlOpsPSec,
+		count:   rlItemCount,
+		stopCh:  make(chan struct{}, 1),
+		loop:    true,
+	}
+
+	go pumpBucketOps(opsType{count: rlItemCount}, rl)
+
+	rebalanceFromRest([]string{""})
+	err := waitForRebalanceFinish()
+	if err == nil {
+		t.Errorf("Rebalance didn't fail when bootstrap was in progress")
+	}
+
+	waitForDeployToFinish(handler)
 	metaStateDump()
 
 	rl.stopCh <- struct{}{}

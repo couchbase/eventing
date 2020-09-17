@@ -2,6 +2,7 @@ package couchbase
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -185,7 +186,11 @@ func (b Bucket) Nodes() []Node {
 }
 
 func (b Bucket) getConnPools() []*connectionPool {
-	return *(*[]*connectionPool)(atomic.LoadPointer(&b.connPools))
+	ptr := atomic.LoadPointer(&b.connPools)
+	if ptr != nil {
+		return *(*[]*connectionPool)(ptr)
+	}
+	return nil
 }
 
 func (b *Bucket) replaceConnPools(with []*connectionPool) {
@@ -205,6 +210,10 @@ func (b *Bucket) replaceConnPools(with []*connectionPool) {
 }
 
 func (b Bucket) getConnPool(i int) *connectionPool {
+	if i < 0 {
+		return nil
+	}
+
 	p := b.getConnPools()
 	if len(p) > i {
 		return p[i]
@@ -212,12 +221,24 @@ func (b Bucket) getConnPool(i int) *connectionPool {
 	return nil
 }
 
-func (b Bucket) getMasterNode(i int) string {
-	p := b.getConnPools()
-	if len(p) > i {
-		return p[i].host
+func (b Bucket) getMasterNode(i int) (host string) {
+	if i < 0 {
+		return host
 	}
-	return ""
+
+	defer func() {
+		if r := recover(); r != nil {
+			logging.Errorf("bucket(%v) getMasterNode crashed: %v\n", b.Name, r)
+			logging.Errorf("%s", logging.StackTrace())
+			host = ""
+		}
+	}()
+
+	p := b.getConnPools()
+	if len(p) > i && p[i] != nil {
+		host = p[i].host
+	}
+	return host
 }
 
 func (b Bucket) authHandler() (ah AuthHandler) {
@@ -297,10 +318,14 @@ func queryRestAPI(
 			res.Status, u.String(), bod)
 	}
 
-	d := json.NewDecoder(res.Body)
+	bodyBytes, _ := ioutil.ReadAll(res.Body)
+	responseBody := ioutil.NopCloser(bytes.NewBuffer(bodyBytes))
+	d := json.NewDecoder(responseBody)
 	if err = d.Decode(&out); err != nil {
+		logging.Errorf("queryRestAPI: Error while decoding the response from path: %s, response body: %s, err: %v", path, string(bodyBytes), err)
 		return err
 	}
+	logging.Tracef("Query %v returns %+v", u.String(), out)
 	return nil
 }
 
@@ -310,7 +335,10 @@ func (c *Client) RunObservePool(pool string, callb func(interface{}) error, canc
 	path := "/poolsStreaming/" + pool
 	decoder := func(bs []byte) (interface{}, error) {
 		var pool Pool
-		err := json.Unmarshal(bs, &pool)
+		var err error
+		if err = json.Unmarshal(bs, &pool); err != nil {
+			logging.Errorf("RunObservePool: Error while decoding the response from path: %s, response body: %s, err: %v", path, string(bs), err)
+		}
 		return &pool, err
 	}
 
@@ -323,7 +351,10 @@ func (c *Client) RunObserveNodeServices(pool string, callb func(interface{}) err
 	path := "/pools/" + pool + "/nodeServicesStreaming"
 	decoder := func(bs []byte) (interface{}, error) {
 		var ps PoolServices
-		err := json.Unmarshal(bs, &ps)
+		var err error
+		if err = json.Unmarshal(bs, &ps); err != nil {
+			logging.Errorf("RunObserveNodeServices: Error while decoding the response from path: %s, response body: %s, err: %v", path, string(bs), err)
+		}
 		return &ps, err
 	}
 
@@ -393,8 +424,6 @@ func (c *Client) runObserveStreamingEndpoint(path string,
 			return err
 		}
 	}
-
-	return nil
 }
 
 func (c *Client) parseURLResponse(path string, out interface{}) error {
@@ -604,18 +633,20 @@ func (c *Client) GetPoolServices(name string) (ps PoolServices, err error) {
 // Close marks this bucket as no longer needed, closing connections it
 // may have open.
 func (b *Bucket) Close() {
-	if b.connPools != nil {
-		for _, c := range b.getConnPools() {
+	connPools := b.getConnPools()
+	if connPools != nil {
+		for _, c := range connPools {
 			if c != nil {
 				c.Close()
 			}
 		}
-		b.connPools = nil
+		atomic.StorePointer(&b.connPools, nil)
 	}
 }
 
 func bucketFinalizer(b *Bucket) {
-	if b.connPools != nil {
+	connPools := b.getConnPools()
+	if connPools != nil {
 		logging.Debugf("Warning: Finalizing a bucket with active connections.")
 	}
 }
