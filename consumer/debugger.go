@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"sync"
@@ -39,8 +40,10 @@ func (c *debugClient) Spawn(debuggerSpawned chan struct{}) {
 	logPrefix := "debugClient::Spawn"
 	defer c.consumerHandle.recoverDebugger()
 
+	executable_img := filepath.Join(filepath.Dir(os.Args[0]), "eventing-consumer")
+
 	c.cmd = exec.Command(
-		"eventing-consumer",
+		executable_img,
 		c.appName,
 		c.ipcType,
 		c.debugTCPPort,
