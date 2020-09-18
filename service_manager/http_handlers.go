@@ -3816,6 +3816,7 @@ func (m *ServiceMgr) highCardStats() []byte {
 			stats = populate(fmtStr, appName, "n1ql_op_exception_count", keyspace, stats, failureStats)
 			stats = populate(fmtStr, appName, "timer_context_size_exception_counter", keyspace, stats, failureStats)
 			stats = populate(fmtStr, appName, "timer_callback_missing_counter", keyspace, stats, failureStats)
+			stats = populate(fmtStr, appName, "bkt_ops_cas_mismatch_count", keyspace, stats, failureStats)
 		}
 
 	}
