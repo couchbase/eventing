@@ -9,11 +9,16 @@
 // or implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-#include <chrono>
+#include <algorithm>
+#include <memory>
 #include <mutex>
 #include <ostream>
+#include <sstream>
+#include <string>
+#include <utility>
 
 #include "bucket.h"
+#include "error.h"
 #include "js_exception.h"
 #include "lang_compat.h"
 #include "lcb_utils.h"
@@ -21,388 +26,195 @@
 #include "utils.h"
 #include "v8worker.h"
 
-#undef NDEBUG
-
 std::atomic<int64_t> bucket_op_exception_count = {0};
 std::atomic<int64_t> lcb_retry_failure = {0};
 
-Bucket::Bucket(v8::Isolate *isolate, const v8::Local<v8::Context> &context,
-               const std::string &bucket_name, const std::string &alias,
-               bool block_mutation, bool is_source_bucket)
-    : isolate_(isolate), block_mutation_(block_mutation),
-      is_source_bucket_(is_source_bucket), bucket_name_(bucket_name),
-      bucket_alias_(alias) {
+BucketFactory::BucketFactory(v8::Isolate *isolate,
+                             const v8::Local<v8::Context> &context)
+    : isolate_(isolate) {
+  v8::HandleScope handle_scope(isolate_);
   context_.Reset(isolate_, context);
 
-  auto init_success = true;
+  auto bucket_template = v8::ObjectTemplate::New(isolate_);
+  bucket_template->SetInternalFieldCount(BucketBinding::kInternalFieldsCount);
 
-  auto utils = UnwrapData(isolate_)->utils;
-  auto conn_str_info = utils->GetConnectionString(bucket_name_);
-  if (!conn_str_info.is_valid) {
-    init_success = false;
-    LOG(logError) << "Bucket: Unable to get connection string, error : "
-                  << RS(conn_str_info.msg) << std::endl;
-    return;
+  // Register corresponding callbacks for alphanumeric accesses on bucket
+  // object
+  bucket_template->SetHandler(v8::NamedPropertyHandlerConfiguration(
+      BucketBinding::BucketGetDelegate, BucketBinding::BucketSetDelegate,
+      nullptr, BucketBinding::BucketDeleteDelegate));
+
+  // Register corresponding callbacks for numeric accesses on bucket object
+  bucket_template->SetIndexedPropertyHandler(
+      v8::IndexedPropertyGetterCallback(BucketBinding::BucketGetDelegate),
+      v8::IndexedPropertySetterCallback(BucketBinding::BucketSetDelegate),
+      nullptr,
+      v8::IndexedPropertyDeleterCallback(BucketBinding::BucketDeleteDelegate));
+  bucket_template_.Reset(isolate_, bucket_template);
+}
+
+BucketFactory::~BucketFactory() {
+  context_.Reset();
+  bucket_template_.Reset();
+}
+
+std::pair<Error, std::unique_ptr<v8::Local<v8::Object>>>
+BucketFactory::NewBucketObj() const {
+  v8::EscapableHandleScope handle_scope(isolate_);
+
+  const auto context = context_.Get(isolate_);
+  auto bucket_template = bucket_template_.Get(isolate_);
+
+  v8::Local<v8::Object> bucket_obj;
+  if (!TO_LOCAL(bucket_template->NewInstance(context), &bucket_obj)) {
+    return {std::make_unique<std::string>(
+                "Unable to create an instance of bucket template"),
+            nullptr};
   }
-
-  LOG(logInfo) << "Bucket: connstr " << RS(conn_str_info.conn_str) << std::endl;
-
-  // lcb related setup
-  lcb_create_st crst;
-  memset(&crst, 0, sizeof crst);
-
-  crst.version = 3;
-  crst.v.v3.connstr = conn_str_info.conn_str.c_str();
-  crst.v.v3.type = LCB_TYPE_BUCKET;
-
-  lcb_create(&bucket_lcb_obj_, &crst);
-
-  auto err =
-      RetryWithFixedBackoff(5, 200, IsRetriable, lcb_cntl, bucket_lcb_obj_,
-                            LCB_CNTL_SET, LCB_CNTL_LOGGER, &evt_logger);
-  if (err != LCB_SUCCESS) {
-    init_success = false;
-    LOG(logError) << "Bucket: Unable to set logger hooks, err: " << err
-                  << std::endl;
-  }
-
-  auto auth = lcbauth_new();
-  err = RetryWithFixedBackoff(5, 200, IsRetriable, lcbauth_set_callbacks, auth,
-                              isolate_, GetUsername, GetPassword);
-  if (err != LCB_SUCCESS) {
-    LOG(logError) << "Bucket: Unable to set auth callbacks, err: " << err
-                  << std::endl;
-    init_success = false;
-  }
-
-  err = RetryWithFixedBackoff(5, 200, IsRetriable, lcbauth_set_mode, auth,
-                              LCBAUTH_MODE_DYNAMIC);
-  if (err != LCB_SUCCESS) {
-    LOG(logError) << "Bucket: Unable to set auth mode to dynamic, err: " << err
-                  << std::endl;
-    init_success = false;
-  }
-
-  lcb_set_auth(bucket_lcb_obj_, auth);
-
-  err =
-      RetryWithFixedBackoff(5, 200, IsRetriable, lcb_connect, bucket_lcb_obj_);
-  if (err != LCB_SUCCESS) {
-    LOG(logError) << "Bucket: Unable to connect to bucket, err: " << err
-                  << std::endl;
-    init_success = false;
-  }
-
-  err = RetryWithFixedBackoff(5, 200, IsRetriable, lcb_wait, bucket_lcb_obj_);
-  if (err != LCB_SUCCESS) {
-    LOG(logError) << "Bucket: Unable to schedule call for connect, err: " << err
-                  << std::endl;
-    init_success = false;
-  }
-
-  lcb_install_callback3(bucket_lcb_obj_, LCB_CALLBACK_GET, get_callback);
-  lcb_install_callback3(bucket_lcb_obj_, LCB_CALLBACK_STORE, set_callback);
-  lcb_install_callback3(bucket_lcb_obj_, LCB_CALLBACK_SDMUTATE,
-                        sdmutate_callback);
-  lcb_install_callback3(bucket_lcb_obj_, LCB_CALLBACK_REMOVE, del_callback);
-
-  lcb_U32 lcb_timeout = 2500000; // 2.5s
-  err = RetryWithFixedBackoff(5, 200, IsRetriable, lcb_cntl, bucket_lcb_obj_,
-                              LCB_CNTL_SET, LCB_CNTL_OP_TIMEOUT, &lcb_timeout);
-  if (err != LCB_SUCCESS) {
-    init_success = false;
-    LOG(logError) << "Bucket: Unable to set timeout for bucket ops, err: "
-                  << err << std::endl;
-  }
-
-  bool enableDetailedErrCodes = true;
-  err = RetryWithFixedBackoff(5, 200, IsRetriable, lcb_cntl, bucket_lcb_obj_,
-                              LCB_CNTL_SET, LCB_CNTL_DETAILED_ERRCODES,
-                              &enableDetailedErrCodes);
-  if (err != LCB_SUCCESS) {
-    LOG(logWarning) << "Bucket: Unable to set detailed error codes. Defaulting "
-                       "to normal error codes, err: "
-                    << err << std::endl;
-  }
-
-  if (init_success) {
-    LOG(logInfo) << "Bucket: lcb instance instantiated successfully with "
-                    "connection string : "
-                 << RS(conn_str_info.conn_str) << std::endl;
-  } else {
-    LOG(logError)
-        << "Bucket: Unable to initialize lcb instance with connection string : "
-        << RS(conn_str_info.conn_str) << std::endl;
-  }
+  return {nullptr, std::make_unique<v8::Local<v8::Object>>(
+                       handle_scope.Escape(bucket_obj))};
 }
 
 Bucket::~Bucket() {
-  lcb_destroy(bucket_lcb_obj_);
-  context_.Reset();
+  if (is_connected_) {
+    lcb_destroy(connection_);
+  }
 }
 
-// Associates the lcb instance with the bucket object and returns it
-v8::Local<v8::Object> Bucket::WrapBucketMap() {
-  v8::EscapableHandleScope handle_scope(isolate_);
-
-  if (bucket_map_template_.IsEmpty()) {
-    auto raw_template = MakeBucketMapTemplate();
-    bucket_map_template_.Reset(isolate_, raw_template);
+Error Bucket::Connect() {
+  LOG(logTrace) << __func__ << " connecting to bucket " << RU(bucket_name_)
+                << std::endl;
+  if (is_connected_) {
+    LOG(logError)
+        << __func__
+        << " Attempting to connect an already connected bucket instance"
+        << std::endl;
+    return std::make_unique<std::string>("already connected");
   }
 
-  auto templ =
-      v8::Local<v8::ObjectTemplate>::New(isolate_, bucket_map_template_);
-  auto context = context_.Get(isolate_);
-  v8::Local<v8::Object> result;
-  if (!TO_LOCAL(templ->NewInstance(context), &result)) {
-    return handle_scope.Escape(result);
+  auto utils = UnwrapData(isolate_)->utils;
+
+  auto conn_str_info = utils->GetConnectionString(bucket_name_);
+  if (!conn_str_info.is_valid) {
+    return std::make_unique<std::string>(conn_str_info.msg);
   }
 
-  result->SetInternalField(static_cast<int>(InternalFields::kLcbInstance),
-                           v8::External::New(isolate_, &bucket_lcb_obj_));
-  result->SetInternalField(static_cast<int>(InternalFields::kBlockMutation),
-                           v8::External::New(isolate_, &block_mutation_));
-  result->SetInternalField(static_cast<int>(InternalFields::kIsSourceBucket),
-                           v8::External::New(isolate_, &is_source_bucket_));
-  return handle_scope.Escape(result);
-}
-
-// Adds the bucket object as a global variable in JavaScript
-bool Bucket::InstallMaps() {
-  v8::HandleScope handle_scope(isolate_);
-
-  auto bucket_obj = WrapBucketMap();
-  auto context = v8::Local<v8::Context>::New(isolate_, context_);
-
-  LOG(logInfo) << "Bucket: Registering handler for bucket_alias: "
-               << bucket_alias_ << " connection string : " << RS(bucket_name_)
+  LOG(logInfo) << __func__
+               << " connection string : " << RU(conn_str_info.conn_str)
                << std::endl;
 
-  auto global = context->Global();
-  auto install_maps_status = false;
+  lcb_create_st options = {nullptr};
+  options.version = 3;
+  options.v.v3.connstr = conn_str_info.conn_str.c_str();
+  options.v.v3.type = LCB_TYPE_BUCKET;
 
-  TO(global->Set(context, v8Str(isolate_, bucket_alias_.c_str()), bucket_obj),
-     &install_maps_status);
-  return install_maps_status;
-}
-
-// Performs the lcb related calls when bucket object is accessed
-template <>
-void Bucket::BucketGet<v8::Local<v8::Name>>(
-    const v8::Local<v8::Name> &name,
-    const v8::PropertyCallbackInfo<v8::Value> &info) {
-  auto isolate = info.GetIsolate();
-  auto isolate_data = UnwrapData(isolate);
-  auto js_exception = isolate_data->js_exception;
-  std::lock_guard<std::mutex> guard(isolate_data->termination_lock_);
-  if (!isolate_data->is_executing_) {
-    return;
+  auto result = lcb_create(&connection_, &options);
+  if (result != LCB_SUCCESS) {
+    return FormatErrorAndDestroyConn("Unable to initialize connection handle",
+                                     result);
   }
 
-  auto validate_info = ValidateKey(name);
-  if (validate_info.is_fatal) {
-    js_exception->ThrowEventingError(validate_info.msg);
-    ++bucket_op_exception_count;
-    return;
+  result = RetryWithFixedBackoff(5, 200, IsRetriable, lcb_cntl, connection_,
+                                 LCB_CNTL_SET, LCB_CNTL_LOGGER, &evt_logger);
+  if (result != LCB_SUCCESS) {
+    return FormatErrorAndDestroyConn("Unable to set logger hooks", result);
   }
 
-  v8::HandleScope handle_scope(isolate);
-  auto context = isolate->GetCurrentContext();
-
-  v8::String::Utf8Value utf8_key(isolate, name.As<v8::String>());
-  std::string key(*utf8_key);
-
-  auto bucket_lcb_obj_ptr = UnwrapInternalField<lcb_t>(
-      info.Holder(), static_cast<int>(InternalFields::kLcbInstance));
-
-  lcb_CMDGET gcmd = {0};
-  LCB_CMD_SET_KEY(&gcmd, key.c_str(), key.length());
-
-  auto max_retry_count = isolate_data->lcb_retry_count;
-  const auto max_timeout = isolate_data->op_timeout;
-  auto result =
-      RetryLcbCommand(*bucket_lcb_obj_ptr, gcmd, max_retry_count, max_timeout, LcbGet);
-  if (result.first != LCB_SUCCESS) {
-    HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, result.first);
-    return;
-  }
-  if (result.second.rc == LCB_KEY_ENOENT) {
-    HandleEnoEnt(isolate, info, *bucket_lcb_obj_ptr);
-    return;
+  auto auth = lcbauth_new();
+  result = RetryWithFixedBackoff(5, 200, IsRetriable, lcbauth_set_callbacks,
+                                 auth, isolate_, GetUsername, GetPassword);
+  if (result != LCB_SUCCESS) {
+    return FormatErrorAndDestroyConn("Unable to set auth callbacks", result);
   }
 
-  LOG(logTrace) << "Bucket: Get call result Key: " << RU(key)
-                << " Value: " << RU(result.second.value) << std::endl;
+  result = RetryWithFixedBackoff(5, 200, IsRetriable, lcbauth_set_mode, auth,
+                                 LCBAUTH_MODE_DYNAMIC);
+  if (result != LCB_SUCCESS) {
+    return FormatErrorAndDestroyConn("Unable to set auth mode to dynamic",
+                                     result);
+  }
+  lcb_set_auth(connection_, auth);
 
-  v8::Local<v8::Value> value_json;
-  TO_LOCAL(v8::JSON::Parse(context, v8Str(isolate, result.second.value)),
-           &value_json);
-  info.GetReturnValue().Set(value_json);
-}
-
-// Performs the lcb related calls when bucket object is accessed
-template <>
-void Bucket::BucketSet<v8::Local<v8::Name>>(
-    const v8::Local<v8::Name> &name, const v8::Local<v8::Value> &value_obj,
-    const v8::PropertyCallbackInfo<v8::Value> &info) {
-  auto isolate = info.GetIsolate();
-  auto js_exception = UnwrapData(isolate)->js_exception;
-  std::lock_guard<std::mutex> guard(UnwrapData(isolate)->termination_lock_);
-  if (!UnwrapData(isolate)->is_executing_) {
-    return;
+  result = RetryWithFixedBackoff(5, 200, IsRetriable, lcb_connect, connection_);
+  if (result != LCB_SUCCESS) {
+    return FormatErrorAndDestroyConn("Unable to connect to bucket", result);
   }
 
-  auto validate_info = ValidateKeyValue(name, value_obj);
-  if (validate_info.is_fatal) {
-    js_exception->ThrowEventingError(validate_info.msg);
-    ++bucket_op_exception_count;
-    return;
+  result = RetryWithFixedBackoff(5, 200, IsRetriable, lcb_wait, connection_);
+  if (result != LCB_SUCCESS) {
+    return FormatErrorAndDestroyConn("Unable to schedule call for connect",
+                                     result);
   }
 
-  auto block_mutation = UnwrapInternalField<bool>(
-      info.Holder(), static_cast<int>(InternalFields::kBlockMutation));
-  if (*block_mutation) {
-    js_exception->ThrowKVError("Writing to source bucket is forbidden");
-    ++bucket_op_exception_count;
-    return;
+  lcb_install_callback3(connection_, LCB_CALLBACK_GET, GetCallback);
+  lcb_install_callback3(connection_, LCB_CALLBACK_STORE, SetCallback);
+  lcb_install_callback3(connection_, LCB_CALLBACK_SDMUTATE,
+                        SubDocumentCallback);
+  lcb_install_callback3(connection_, LCB_CALLBACK_REMOVE, DeleteCallback);
+
+  // TODO : Need to make timeout configurable
+  lcb_U32 lcb_timeout = 2500000; // 2.5s
+  result =
+      RetryWithFixedBackoff(5, 200, IsRetriable, lcb_cntl, connection_,
+                            LCB_CNTL_SET, LCB_CNTL_OP_TIMEOUT, &lcb_timeout);
+  if (result != LCB_SUCCESS) {
+    return FormatErrorAndDestroyConn("Unable to set timeout for bucket ops",
+                                     result);
   }
 
-  auto is_source_bucket = UnwrapInternalField<bool>(
-      info.Holder(), static_cast<int>(InternalFields::kIsSourceBucket));
-  if (*is_source_bucket) {
-    BucketSetWithXattr(name, value_obj, info);
-  } else {
-    BucketSetWithoutXattr(name, value_obj, info);
+  auto enable_detailed_err_codes = true;
+  result = RetryWithFixedBackoff(5, 200, IsRetriable, lcb_cntl, connection_,
+                                 LCB_CNTL_SET, LCB_CNTL_DETAILED_ERRCODES,
+                                 &enable_detailed_err_codes);
+  if (result != LCB_SUCCESS) {
+    return FormatErrorAndDestroyConn("Unable to set detailed error codes",
+                                     result);
   }
+  LOG(logTrace) << __func__ << " connected to bucket " << RU(bucket_name_)
+                << " successfully" << std::endl;
+  is_connected_ = true;
+  return nullptr;
 }
 
-// Performs the lcb related calls when bucket object is accessed
-template <>
-void Bucket::BucketDelete<v8::Local<v8::Name>>(
-    const v8::Local<v8::Name> &name,
-    const v8::PropertyCallbackInfo<v8::Boolean> &info) {
-  auto isolate = info.GetIsolate();
-  auto js_exception = UnwrapData(isolate)->js_exception;
-  std::lock_guard<std::mutex> guard(UnwrapData(isolate)->termination_lock_);
-  if (!UnwrapData(isolate)->is_executing_) {
-    return;
-  }
+Error Bucket::FormatErrorAndDestroyConn(const std::string &message,
+                                        const lcb_error_t &error) const {
+  std::stringstream err_msg;
+  err_msg << message << ", err: " << lcb_strerror(connection_, error);
+  lcb_destroy(connection_);
+  LOG(logError) << __func__ << " " << err_msg.str() << std::endl;
+  return std::make_unique<std::string>(err_msg.str());
+}
 
-  auto validate_info = ValidateKey(name);
-  if (validate_info.is_fatal) {
-    js_exception->ThrowKVError(validate_info.msg);
-    ++bucket_op_exception_count;
-    return;
-  }
-
-  auto block_mutation = UnwrapInternalField<bool>(
-      info.Holder(), static_cast<int>(InternalFields::kBlockMutation));
-  if (*block_mutation) {
-    js_exception->ThrowKVError("Delete from source bucket is forbidden");
-    ++bucket_op_exception_count;
-    return;
+std::tuple<Error, std::unique_ptr<lcb_error_t>, std::unique_ptr<Result>>
+Bucket::Get(const std::string &key) {
+  if (!is_connected_) {
+    return {std::make_unique<std::string>("Connection is not initialized"),
+            nullptr, nullptr};
   }
 
-  auto is_source_bucket = UnwrapInternalField<bool>(
-      info.Holder(), static_cast<int>(InternalFields::kIsSourceBucket));
-  if (*is_source_bucket) {
-    BucketDeleteWithXattr(name, info);
-  } else {
-    BucketDeleteWithoutXattr(name, info);
+  lcb_CMDGET cmd = {0};
+  LCB_CMD_SET_KEY(&cmd, key.c_str(), key.length());
+  const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
+  const auto max_timeout = UnwrapData(isolate_)->op_timeout;
+  auto [err_code, result] =
+      RetryLcbCommand(connection_, cmd, max_retry, max_timeout, LcbGet);
+  if (err_code != LCB_SUCCESS) {
+    ++lcb_retry_failure;
+    return {nullptr, std::make_unique<lcb_error_t>(err_code), nullptr};
   }
+  return {nullptr, std::make_unique<lcb_error_t>(err_code),
+          std::make_unique<Result>(std::move(result))};
 }
 
-void Bucket::HandleBucketOpFailure(v8::Isolate *isolate,
-                                   lcb_t bucket_lcb_obj_ptr,
-                                   lcb_error_t error) {
-  auto isolate_data = UnwrapData(isolate);
-  AddLcbException(isolate_data, error);
-  ++bucket_op_exception_count;
-
-  auto js_exception = isolate_data->js_exception;
-  js_exception->ThrowKVError(bucket_lcb_obj_ptr, error);
-}
-
-// Registers the necessary callbacks to the bucket object in JavaScript
-v8::Local<v8::ObjectTemplate> Bucket::MakeBucketMapTemplate() {
-  v8::EscapableHandleScope handle_scope(isolate_);
-
-  auto result = v8::ObjectTemplate::New(isolate_);
-  // We will store lcb_instance associated with this bucket object in the
-  // internal field
-  result->SetInternalFieldCount(
-      static_cast<int>(InternalFields::kMaxInternalFields));
-  // Register corresponding callbacks for alphanumeric accesses on bucket
-  // object
-  result->SetHandler(v8::NamedPropertyHandlerConfiguration(
-      BucketGetDelegate, BucketSetDelegate, nullptr, BucketDeleteDelegate));
-  // Register corresponding callbacks for numeric accesses on bucket object
-  result->SetIndexedPropertyHandler(
-      v8::IndexedPropertyGetterCallback(BucketGetDelegate),
-      v8::IndexedPropertySetterCallback(BucketSetDelegate), nullptr,
-      v8::IndexedPropertyDeleterCallback(BucketDeleteDelegate));
-  return handle_scope.Escape(result);
-}
-
-// Delegates to the appropriate type of handler
-template <typename T>
-void Bucket::BucketGetDelegate(
-    T name, const v8::PropertyCallbackInfo<v8::Value> &info) {
-  BucketGet<T>(name, info);
-}
-
-template <typename T>
-void Bucket::BucketSetDelegate(
-    T key, v8::Local<v8::Value> value,
-    const v8::PropertyCallbackInfo<v8::Value> &info) {
-  BucketSet<T>(key, value, info);
-}
-
-template <typename T>
-void Bucket::BucketDeleteDelegate(
-    T key, const v8::PropertyCallbackInfo<v8::Boolean> &info) {
-  BucketDelete<T>(key, info);
-}
-
-// Specialized templates to forward the delegate to the overload doing the
-// acutal work
-template <>
-void Bucket::BucketGet<uint32_t>(
-    uint32_t key, const v8::PropertyCallbackInfo<v8::Value> &info) {
-  BucketGet<v8::Local<v8::Name>>(v8Name(info.GetIsolate(), key), info);
-}
-
-template <>
-void Bucket::BucketSet<uint32_t>(
-    uint32_t key, const v8::Local<v8::Value> &value,
-    const v8::PropertyCallbackInfo<v8::Value> &info) {
-  BucketSet<v8::Local<v8::Name>>(v8Name(info.GetIsolate(), key), value, info);
-}
-
-template <>
-void Bucket::BucketDelete<uint32_t>(
-    uint32_t key, const v8::PropertyCallbackInfo<v8::Boolean> &info) {
-  BucketDelete<v8::Local<v8::Name>>(v8Name(info.GetIsolate(), key), info);
-}
-
-void Bucket::BucketSetWithXattr(
-    const v8::Local<v8::Name> &name, const v8::Local<v8::Value> &value_obj,
-    const v8::PropertyCallbackInfo<v8::Value> &info) {
-  auto isolate = info.GetIsolate();
-  auto isolate_data = UnwrapData(isolate);
-  v8::HandleScope handle_scope(isolate);
-  v8::String::Utf8Value utf8_key(isolate, name.As<v8::String>());
-  std::string key(*utf8_key);
-  auto value = JSONStringify(isolate, value_obj);
-
-  LOG(logTrace) << "Bucket: Set call Key: " << RU(key)
-                << " Value: " << RU(value) << std::endl;
-
-  auto bucket_lcb_obj_ptr = UnwrapInternalField<lcb_t>(
-      info.Holder(), static_cast<int>(InternalFields::kLcbInstance));
+std::tuple<Error, std::unique_ptr<lcb_error_t>, std::unique_ptr<Result>>
+Bucket::SetWithXattr(const std::string &key, const std::string &value) {
+  if (!is_connected_) {
+    return {std::make_unique<std::string>("Connection is not initialized"),
+            nullptr, nullptr};
+  }
 
   lcb_SDSPEC function_id_spec = {0};
-  std::string function_instance_id = GetFunctionInstanceID(isolate);
+  auto function_instance_id = GetFunctionInstanceID(isolate_);
   std::string function_instance_id_path("_eventing.fiid");
   function_id_spec.sdcmd = LCB_SDCMD_DICT_UPSERT;
   function_id_spec.options =
@@ -441,96 +253,58 @@ void Bucket::BucketSetWithXattr(
 
   std::vector<lcb_SDSPEC> specs = {function_id_spec, dcp_seqno_spec,
                                    value_crc32_spec, doc_spec};
-  lcb_CMDSUBDOC mcmd = {0};
-  LCB_CMD_SET_KEY(&mcmd, key.c_str(), key.length());
-  mcmd.specs = specs.data();
-  mcmd.nspecs = specs.size();
-  mcmd.cmdflags = LCB_CMDSUBDOC_F_UPSERT_DOC;
+  lcb_CMDSUBDOC cmd = {0};
+  LCB_CMD_SET_KEY(&cmd, key.c_str(), key.length());
+  cmd.specs = specs.data();
+  cmd.nspecs = specs.size();
+  cmd.cmdflags = LCB_CMDSUBDOC_F_UPSERT_DOC;
 
-  auto max_retry_count = isolate_data->lcb_retry_count;
-  const auto max_timeout = isolate_data->op_timeout;
-  auto result =
-      RetryLcbCommand(*bucket_lcb_obj_ptr, mcmd, max_retry_count, max_timeout, LcbSubdocSet);
-  if (result.first != LCB_SUCCESS) {
-    LOG(logTrace) << "Bucket: LCB_SUBDOC_STORE call failed: " << result.first
-                  << std::endl;
-    HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, result.first);
-    return;
+  const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
+  const auto max_timeout = UnwrapData(isolate_)->op_timeout;
+  auto [err_code, result] =
+      RetryLcbCommand(connection_, cmd, max_retry, max_timeout, LcbSubdocSet);
+  if (err_code != LCB_SUCCESS) {
+    ++lcb_retry_failure;
+    return {nullptr, std::make_unique<lcb_error_t>(err_code), nullptr};
   }
-
-  // Throw an exception in JavaScript if the bucket set call failed.
-  if (result.second.rc != LCB_SUCCESS) {
-    LOG(logTrace) << "Bucket: LCB_SUBDOC_STORE call failed: "
-                  << result.second.rc << std::endl;
-    HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, result.second.rc);
-    return;
-  }
-
-  info.GetReturnValue().Set(value_obj);
+  return {nullptr, std::make_unique<lcb_error_t>(err_code),
+          std::make_unique<Result>(std::move(result))};
 }
 
-void Bucket::BucketSetWithoutXattr(
-    const v8::Local<v8::Name> &name, const v8::Local<v8::Value> &value_obj,
-    const v8::PropertyCallbackInfo<v8::Value> &info) {
-  auto isolate = info.GetIsolate();
-  auto isolate_data = UnwrapData(isolate);
-  v8::HandleScope handle_scope(isolate);
-  v8::String::Utf8Value utf8_key(isolate, name.As<v8::String>());
-  std::string key(*utf8_key);
-  auto value = JSONStringify(isolate, value_obj);
-
-  LOG(logTrace) << "Bucket: Set call Key: " << RU(key)
-                << " Value: " << RU(value) << std::endl;
-
-  auto bucket_lcb_obj_ptr = UnwrapInternalField<lcb_t>(
-      info.Holder(), static_cast<int>(InternalFields::kLcbInstance));
-
-  lcb_CMDSTORE scmd = {0};
-  LCB_CMD_SET_KEY(&scmd, key.c_str(), key.length());
-  LCB_CMD_SET_VALUE(&scmd, value.c_str(), value.length());
-  scmd.operation = LCB_SET;
-  scmd.flags = 0x2000000;
-
-  auto max_retry_count = isolate_data->lcb_retry_count;
-  const auto max_timeout = isolate_data->op_timeout;
-
-  auto result =
-      RetryLcbCommand(*bucket_lcb_obj_ptr, scmd, max_retry_count, max_timeout, LcbSet);
-
-  if (result.first != LCB_SUCCESS) {
-    LOG(logTrace) << "Bucket: LCB_STORE call failed: "
-                  << lcb_strerror(*bucket_lcb_obj_ptr, result.first)
-                  << std::endl;
-    HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, result.first);
-    return;
+std::tuple<Error, std::unique_ptr<lcb_error_t>, std::unique_ptr<Result>>
+Bucket::SetWithoutXattr(const std::string &key, const std::string &value) {
+  if (!is_connected_) {
+    return {std::make_unique<std::string>("Connection is not initialized"),
+            nullptr, nullptr};
   }
 
-  // Throw an exception in JavaScript if the bucket set call failed.
-  if (result.second.rc != LCB_SUCCESS) {
-    LOG(logTrace) << "Bucket: LCB_STORE call failed: " << result.second.rc
-                  << std::endl;
-    HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, result.second.rc);
-    return;
-  }
+  lcb_CMDSTORE cmd = {0};
+  LCB_CMD_SET_KEY(&cmd, key.c_str(), key.length());
+  LCB_CMD_SET_VALUE(&cmd, value.c_str(), value.length());
+  cmd.operation = LCB_SET;
+  cmd.flags = 0x2000000;
 
-  info.GetReturnValue().Set(value_obj);
+  const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
+  const auto max_timeout = UnwrapData(isolate_)->op_timeout;
+  auto [err_code, result] =
+      RetryLcbCommand(connection_, cmd, max_retry, max_timeout, LcbSet);
+  if (err_code != LCB_SUCCESS) {
+    ++lcb_retry_failure;
+    return {nullptr, std::make_unique<lcb_error_t>(err_code), nullptr};
+  }
+  return {nullptr, std::make_unique<lcb_error_t>(err_code),
+          std::make_unique<Result>(std::move(result))};
 }
 
-void Bucket::BucketDeleteWithXattr(
-    const v8::Local<v8::Name> &name,
-    const v8::PropertyCallbackInfo<v8::Boolean> &info) {
-  auto isolate = info.GetIsolate();
-  auto isolate_data = UnwrapData(isolate);
-
-  v8::HandleScope handle_scope(isolate);
-  v8::String::Utf8Value utf8_key(isolate, name.As<v8::String>());
-  std::string key(*utf8_key);
-
-  auto bucket_lcb_obj_ptr = UnwrapInternalField<lcb_t>(
-      info.Holder(), static_cast<int>(InternalFields::kLcbInstance));
+std::tuple<Error, std::unique_ptr<lcb_error_t>, std::unique_ptr<Result>>
+Bucket::DeleteWithXattr(const std::string &key) {
+  if (!is_connected_) {
+    return {std::make_unique<std::string>("Connection is not initialized"),
+            nullptr, nullptr};
+  }
 
   lcb_SDSPEC function_id_spec = {0};
-  std::string function_instance_id = GetFunctionInstanceID(isolate);
+  std::string function_instance_id = GetFunctionInstanceID(isolate_);
   std::string function_instance_id_path("_eventing.fiid");
   function_id_spec.sdcmd = LCB_SDCMD_DICT_UPSERT;
   function_id_spec.options =
@@ -569,88 +343,309 @@ void Bucket::BucketDeleteWithXattr(
 
   std::vector<lcb_SDSPEC> specs = {function_id_spec, dcp_seqno_spec,
                                    value_crc32_spec, doc_spec};
-  lcb_CMDSUBDOC mcmd = {0};
-  LCB_CMD_SET_KEY(&mcmd, key.c_str(), key.length());
-  mcmd.specs = specs.data();
-  mcmd.nspecs = specs.size();
+  lcb_CMDSUBDOC cmd = {0};
+  LCB_CMD_SET_KEY(&cmd, key.c_str(), key.length());
+  cmd.specs = specs.data();
+  cmd.nspecs = specs.size();
 
-  auto max_retry_count = isolate_data->lcb_retry_count;
-  const auto max_timeout = isolate_data->op_timeout;
-  auto result = RetryLcbCommand(*bucket_lcb_obj_ptr, mcmd, max_retry_count, max_timeout,
-                                LcbSubdocDelete);
-
-  if (result.first != LCB_SUCCESS) {
-    LOG(logTrace) << "Bucket: LCB_SUDOC_REMOVE call failed: "
-                  << lcb_strerror(*bucket_lcb_obj_ptr, result.first)
-                  << std::endl;
-    HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, result.first);
-    return;
+  const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
+  const auto max_timeout = UnwrapData(isolate_)->op_timeout;
+  auto [err_code, result] =
+      RetryLcbCommand(connection_, cmd, max_retry, max_timeout, LcbSubdocDelete);
+  if (err_code != LCB_SUCCESS) {
+    ++lcb_retry_failure;
+    return {nullptr, std::make_unique<lcb_error_t>(err_code), nullptr};
   }
-
-  if (result.second.rc == LCB_KEY_ENOENT) {
-    HandleEnoEnt(isolate, *bucket_lcb_obj_ptr);
-    return;
-  }
-
-  // Throw an exception in JavaScript if the bucket delete call failed.
-  if (result.second.rc != LCB_SUCCESS) {
-    LOG(logTrace) << "Bucket: LCB_SUBDOC_REMOVE call failed: "
-                  << result.second.rc << std::endl;
-    HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, result.second.rc);
-    return;
-  }
-
-  info.GetReturnValue().Set(true);
+  return {nullptr, std::make_unique<lcb_error_t>(err_code),
+          std::make_unique<Result>(std::move(result))};
 }
 
-void Bucket::BucketDeleteWithoutXattr(
+std::tuple<Error, std::unique_ptr<lcb_error_t>, std::unique_ptr<Result>>
+Bucket::DeleteWithoutXattr(const std::string &key) {
+  if (!is_connected_) {
+    return {std::make_unique<std::string>("Connection is not initialized"),
+            nullptr, nullptr};
+  }
+
+  lcb_CMDREMOVE cmd = {0};
+  LCB_CMD_SET_KEY(&cmd, key.c_str(), key.length());
+
+  const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
+  const auto max_timeout = UnwrapData(isolate_)->op_timeout;
+  auto [err_code, result] =
+      RetryLcbCommand(connection_, cmd, max_retry, max_timeout, LcbDelete);
+  if (err_code != LCB_SUCCESS) {
+    ++lcb_retry_failure;
+    return {nullptr, std::make_unique<lcb_error_t>(err_code), nullptr};
+  }
+  return {nullptr, std::make_unique<lcb_error_t>(err_code),
+          std::make_unique<Result>(std::move(result))};
+}
+
+// Performs the lcb related calls when bucket object is accessed
+template <>
+void BucketBinding::BucketGet<v8::Local<v8::Name>>(
     const v8::Local<v8::Name> &name,
-    const v8::PropertyCallbackInfo<v8::Boolean> &info) {
+    const v8::PropertyCallbackInfo<v8::Value> &info) {
   auto isolate = info.GetIsolate();
   auto isolate_data = UnwrapData(isolate);
+  auto js_exception = isolate_data->js_exception;
+  std::lock_guard<std::mutex> guard(isolate_data->termination_lock_);
+  if (!isolate_data->is_executing_) {
+    return;
+  }
+
+  auto validate_info = ValidateKey(name);
+  if (validate_info.is_fatal) {
+    js_exception->ThrowEventingError(validate_info.msg);
+    ++bucket_op_exception_count;
+    return;
+  }
 
   v8::HandleScope handle_scope(isolate);
+  auto context = isolate->GetCurrentContext();
+
   v8::String::Utf8Value utf8_key(isolate, name.As<v8::String>());
   std::string key(*utf8_key);
 
-  auto bucket_lcb_obj_ptr = UnwrapInternalField<lcb_t>(
-      info.Holder(), static_cast<int>(InternalFields::kLcbInstance));
-
-  lcb_CMDREMOVE rcmd = {0};
-  LCB_CMD_SET_KEY(&rcmd, key.c_str(), key.length());
-
-  auto max_retry_count = isolate_data->lcb_retry_count;
-  const auto max_timeout = isolate_data->op_timeout;
-  auto result =
-      RetryLcbCommand(*bucket_lcb_obj_ptr, rcmd, max_retry_count, max_timeout, LcbDelete);
-
-  if (result.first != LCB_SUCCESS) {
-    LOG(logTrace) << "Bucket: LCB_REMOVE call failed: "
-                  << lcb_strerror(*bucket_lcb_obj_ptr, result.first)
-                  << std::endl;
-    HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, result.first);
+  auto bucket = UnwrapInternalField<Bucket>(info.Holder(),
+                                            InternalFields::kBucketInstance);
+  auto [error, err_code, result] = bucket->Get(key);
+  if (error != nullptr) {
+    js_exception->ThrowEventingError(*error);
+    return;
+  }
+  if (*err_code != LCB_SUCCESS) {
+    HandleBucketOpFailure(isolate, bucket->GetConnection(), *err_code);
+    return;
+  }
+  if (result->rc == LCB_KEY_ENOENT) {
+    HandleEnoEnt(isolate, info, bucket->GetConnection());
+    return;
+  }
+  if (result->rc != LCB_SUCCESS) {
+    HandleBucketOpFailure(isolate, bucket->GetConnection(), result->rc);
     return;
   }
 
-  if (result.second.rc == LCB_KEY_ENOENT) {
-    HandleEnoEnt(isolate, *bucket_lcb_obj_ptr);
+  v8::Local<v8::Value> value_json;
+  TO_LOCAL(v8::JSON::Parse(context, v8Str(isolate, result->value)),
+           &value_json);
+  // TODO : Log here or throw exception if JSON parse fails
+  info.GetReturnValue().Set(value_json);
+}
+
+// Performs the lcb related calls when bucket object is accessed
+template <>
+void BucketBinding::BucketSet<v8::Local<v8::Name>>(
+    const v8::Local<v8::Name> &name, const v8::Local<v8::Value> &value_obj,
+    const v8::PropertyCallbackInfo<v8::Value> &info) {
+  auto isolate = info.GetIsolate();
+  auto js_exception = UnwrapData(isolate)->js_exception;
+  std::lock_guard<std::mutex> guard(UnwrapData(isolate)->termination_lock_);
+  if (!UnwrapData(isolate)->is_executing_) {
     return;
   }
 
-  // Throw an exception in JavaScript if the bucket delete call failed.
-  if (result.second.rc != LCB_SUCCESS) {
-    LOG(logTrace) << "Bucket: LCB_REMOVE call failed: " << result.second.rc
-                  << std::endl;
-    HandleBucketOpFailure(isolate, *bucket_lcb_obj_ptr, result.second.rc);
+  auto validate_info = ValidateKeyValue(name, value_obj);
+  if (validate_info.is_fatal) {
+    js_exception->ThrowEventingError(validate_info.msg);
+    ++bucket_op_exception_count;
     return;
   }
 
+  auto block_mutation =
+      UnwrapInternalField<bool>(info.Holder(), InternalFields::kBlockMutation);
+  if (*block_mutation) {
+    ++bucket_op_exception_count;
+    js_exception->ThrowEventingError("Writing to source bucket is forbidden");
+    return;
+  }
+
+  // TODO : Do not cast to v8::String, just use name directly
+  v8::String::Utf8Value utf8_key(isolate, name.As<v8::String>());
+  std::string key(*utf8_key);
+  auto value = JSONStringify(isolate, value_obj);
+
+  auto bucket = UnwrapInternalField<Bucket>(info.Holder(),
+                                            InternalFields::kBucketInstance);
+  auto is_source_bucket =
+      UnwrapInternalField<bool>(info.Holder(), InternalFields::kIsSourceBucket);
+
+  auto [error, err_code, result] =
+      BucketSet(key, value, *is_source_bucket, bucket);
+  if (error != nullptr) {
+    js_exception->ThrowEventingError(*error);
+    return;
+  }
+  if (*err_code != LCB_SUCCESS) {
+    HandleBucketOpFailure(isolate, bucket->GetConnection(), *err_code);
+    return;
+  }
+  if (result->rc != LCB_SUCCESS) {
+    HandleBucketOpFailure(isolate, bucket->GetConnection(), result->rc);
+    return;
+  }
+  info.GetReturnValue().Set(value_obj);
+}
+
+// Performs the lcb related calls when bucket object is accessed
+template <>
+void BucketBinding::BucketDelete<v8::Local<v8::Name>>(
+    const v8::Local<v8::Name> &name,
+    const v8::PropertyCallbackInfo<v8::Boolean> &info) {
+  auto isolate = info.GetIsolate();
+  auto js_exception = UnwrapData(isolate)->js_exception;
+  std::lock_guard<std::mutex> guard(UnwrapData(isolate)->termination_lock_);
+  if (!UnwrapData(isolate)->is_executing_) {
+    return;
+  }
+
+  auto validate_info = ValidateKey(name);
+  if (validate_info.is_fatal) {
+    js_exception->ThrowKVError(validate_info.msg);
+    ++bucket_op_exception_count;
+    return;
+  }
+
+  auto block_mutation = UnwrapInternalField<bool>(
+      info.Holder(), static_cast<int>(InternalFields::kBlockMutation));
+  if (*block_mutation) {
+    js_exception->ThrowEventingError("Delete from source bucket is forbidden");
+    ++bucket_op_exception_count;
+    return;
+  }
+
+  v8::String::Utf8Value utf8_key(isolate, name.As<v8::String>());
+  std::string key(*utf8_key);
+
+  auto is_source_bucket =
+      UnwrapInternalField<bool>(info.Holder(), InternalFields::kIsSourceBucket);
+  auto bucket = UnwrapInternalField<Bucket>(info.Holder(),
+                                            InternalFields::kBucketInstance);
+  auto [error, err_code, result] = BucketDelete(key, is_source_bucket, bucket);
+  if (error != nullptr) {
+    js_exception->ThrowEventingError(*error);
+    return;
+  }
+  if (*err_code != LCB_SUCCESS) {
+    HandleBucketOpFailure(isolate, bucket->GetConnection(), *err_code);
+    return;
+  }
+  if (result->rc == LCB_KEY_ENOENT) {
+    HandleEnoEnt(isolate, bucket->GetConnection());
+    return;
+  }
+  if (result->rc != LCB_SUCCESS) {
+    HandleBucketOpFailure(isolate, bucket->GetConnection(), result->rc);
+    return;
+  }
   info.GetReturnValue().Set(true);
 }
 
-void Bucket::HandleEnoEnt(v8::Isolate *isolate,
-                          const v8::PropertyCallbackInfo<v8::Value> &info,
-                          lcb_t instance) {
+Error BucketBinding::InstallBinding(v8::Isolate *isolate,
+                                    const v8::Local<v8::Context> &context) {
+  v8::HandleScope handle_scope(isolate);
+  auto [err_new_obj, obj] = factory_->NewBucketObj();
+  if (err_new_obj != nullptr) {
+    return std::move(err_new_obj);
+  }
+
+  auto err_connect = bucket_.Connect();
+  if (err_connect != nullptr) {
+    return err_connect;
+  }
+
+  (*obj)->SetInternalField(InternalFields::kBlockMutation,
+                           v8::External::New(isolate, &block_mutation_));
+  (*obj)->SetInternalField(InternalFields::kBucketInstance,
+                           v8::External::New(isolate, &bucket_));
+  (*obj)->SetInternalField(InternalFields::kIsSourceBucket,
+                           v8::External::New(isolate, &is_source_bucket_));
+
+  auto global = context->Global();
+  auto result = false;
+  if (!TO(global->Set(context, v8Str(isolate, bucket_alias_), *obj), &result) ||
+      !result) {
+    return std::make_unique<std::string>(
+        "Unable to install bucket binding with alias " + bucket_alias_ +
+        " to global scope");
+  }
+  return nullptr;
+}
+
+void BucketBinding::HandleBucketOpFailure(v8::Isolate *isolate,
+                                          lcb_t connection, lcb_error_t error) {
+  auto isolate_data = UnwrapData(isolate);
+  AddLcbException(isolate_data, error);
+  ++bucket_op_exception_count;
+
+  auto js_exception = isolate_data->js_exception;
+  js_exception->ThrowKVError(connection, error);
+}
+
+// Delegates to the appropriate type of handler
+template <typename T>
+void BucketBinding::BucketGetDelegate(
+    T name, const v8::PropertyCallbackInfo<v8::Value> &info) {
+  BucketGet<T>(name, info);
+}
+
+template <typename T>
+void BucketBinding::BucketSetDelegate(
+    T key, v8::Local<v8::Value> value,
+    const v8::PropertyCallbackInfo<v8::Value> &info) {
+  BucketSet<T>(key, value, info);
+}
+
+template <typename T>
+void BucketBinding::BucketDeleteDelegate(
+    T key, const v8::PropertyCallbackInfo<v8::Boolean> &info) {
+  BucketDelete<T>(key, info);
+}
+
+// Specialized templates to forward the delegate to the overload doing the
+// actual work
+template <>
+void BucketBinding::BucketGet<uint32_t>(
+    uint32_t key, const v8::PropertyCallbackInfo<v8::Value> &info) {
+  BucketGet<v8::Local<v8::Name>>(v8Name(info.GetIsolate(), key), info);
+}
+
+template <>
+void BucketBinding::BucketSet<uint32_t>(
+    uint32_t key, const v8::Local<v8::Value> &value,
+    const v8::PropertyCallbackInfo<v8::Value> &info) {
+  BucketSet<v8::Local<v8::Name>>(v8Name(info.GetIsolate(), key), value, info);
+}
+
+template <>
+void BucketBinding::BucketDelete<uint32_t>(
+    uint32_t key, const v8::PropertyCallbackInfo<v8::Boolean> &info) {
+  BucketDelete<v8::Local<v8::Name>>(v8Name(info.GetIsolate(), key), info);
+}
+
+std::tuple<Error, std::unique_ptr<lcb_error_t>, std::unique_ptr<Result>>
+BucketBinding::BucketSet(const std::string &key, const std::string &value,
+                         bool is_source_bucket, Bucket *bucket) {
+  if (is_source_bucket) {
+    return bucket->SetWithXattr(key, value);
+  }
+  return bucket->SetWithoutXattr(key, value);
+}
+
+std::tuple<Error, std::unique_ptr<lcb_error_t>, std::unique_ptr<Result>>
+BucketBinding::BucketDelete(const std::string &key, bool is_source_bucket,
+                            Bucket *bucket) {
+  if (is_source_bucket) {
+    return bucket->DeleteWithXattr(key);
+  }
+  return bucket->DeleteWithoutXattr(key);
+}
+
+void BucketBinding::HandleEnoEnt(
+    v8::Isolate *isolate, const v8::PropertyCallbackInfo<v8::Value> &info,
+    lcb_t instance) {
   const auto version = UnwrapData(isolate)->lang_compat->version;
   if (version < LanguageCompatibility::Version::k6_5_0) {
     HandleBucketOpFailure(isolate, instance, LCB_KEY_ENOENT);
@@ -659,14 +654,14 @@ void Bucket::HandleEnoEnt(v8::Isolate *isolate,
   info.GetReturnValue().Set(v8::Undefined(isolate));
 }
 
-void Bucket::HandleEnoEnt(v8::Isolate *isolate, lcb_t instance) {
+void BucketBinding::HandleEnoEnt(v8::Isolate *isolate, lcb_t instance) {
   const auto version = UnwrapData(isolate)->lang_compat->version;
   if (version < LanguageCompatibility::Version::k6_5_0) {
     HandleBucketOpFailure(isolate, instance, LCB_KEY_ENOENT);
   }
 }
 
-Info Bucket::ValidateKey(const v8::Local<v8::Name> &arg) {
+Info BucketBinding::ValidateKey(const v8::Local<v8::Name> &arg) {
   auto info = Utils::ValidateDataType(arg);
   if (info.is_fatal) {
     return {true, "Invalid data type for key - " + info.msg};
@@ -674,7 +669,7 @@ Info Bucket::ValidateKey(const v8::Local<v8::Name> &arg) {
   return {false};
 }
 
-Info Bucket::ValidateValue(const v8::Local<v8::Value> &arg) {
+Info BucketBinding::ValidateValue(const v8::Local<v8::Value> &arg) {
   auto info = Utils::ValidateDataType(arg);
   if (info.is_fatal) {
     return {true, "Invalid data type for value - " + info.msg};
@@ -682,8 +677,8 @@ Info Bucket::ValidateValue(const v8::Local<v8::Value> &arg) {
   return {false};
 }
 
-Info Bucket::ValidateKeyValue(const v8::Local<v8::Name> &key,
-                              const v8::Local<v8::Value> &value) {
+Info BucketBinding::ValidateKeyValue(const v8::Local<v8::Name> &key,
+                                     const v8::Local<v8::Value> &value) {
   auto info = ValidateKey(key);
   if (info.is_fatal) {
     return info;

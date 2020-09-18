@@ -12,19 +12,16 @@
 #ifndef COUCHBASE_LCB_UTILS_H
 #define COUCHBASE_LCB_UTILS_H
 
-#include "log.h"
-#include "utils.h"
 #include <libcouchbase/couchbase.h>
 #include <thread>
 #include "utils.h"
 
 struct Result {
-  lcb_CAS cas;
-  lcb_error_t rc;
+  lcb_CAS cas{0};
+  lcb_error_t rc{LCB_SUCCESS};
   std::string value;
-  uint32_t exptime;
-  int64_t counter;
-  Result() : cas(0), rc(LCB_SUCCESS) {}
+  uint32_t exptime{0};
+  int64_t counter{0};
 };
 
 constexpr int def_lcb_retry_count = 6;
@@ -37,13 +34,13 @@ const char *GetPassword(void *cookie, const char *host, const char *port,
                         const char *bucket);
 
 // lcb related callbacks
-void get_callback(lcb_t instance, int, const lcb_RESPBASE *rb);
+void GetCallback(lcb_t instance, int, const lcb_RESPBASE *rb);
 
-void set_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb);
+void SetCallback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb);
 
-void sdmutate_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb);
+void SubDocumentCallback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb);
 
-void del_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb);
+void DeleteCallback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb);
 
 void counter_callback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb);
 
@@ -98,4 +95,5 @@ std::pair<lcb_error_t, Result> RetryLcbCommand(lcb_t instance, CmdType &cmd,
 }
 
 extern struct lcb_logprocs_st evt_logger;
+
 #endif // COUCHBASE_LCB_UTILS_H

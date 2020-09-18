@@ -22,7 +22,7 @@ deployment_config *ParseDeployment(const char *app_code) {
 
   auto buckets = dep_cfg->buckets();
 
-  std::map<std::string, std::vector<std::string>> buckets_info;
+  std::unordered_map<std::string, std::vector<std::string>> buckets_info;
   std::vector<std::string> bucket_alias;
   for (flatbuffers::uoffset_t i = 0; i < buckets->size(); i++) {
     std::vector<std::string> bucket_info;

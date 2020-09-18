@@ -30,10 +30,13 @@
 #include <sstream>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <uv.h>
 #include <v8.h>
+#include <vector>
 
 #include "blocking_deque.h"
+#include "bucket.h"
 #include "commands.h"
 #include "histogram.h"
 #include "insight.h"
@@ -174,7 +177,7 @@ enum RETURN_CODE {
   kJSONParseFailed
 };
 
-class Bucket;
+class BucketBinding;
 class N1QL;
 class ConnectionPool;
 class V8Worker;
@@ -332,6 +335,10 @@ private:
   GetVbAndSeqNum(const std::unique_ptr<WorkerMessage> &msg) const;
   v8::Local<v8::ObjectTemplate> NewGlobalObj() const;
   void InstallCurlBindings(const std::vector<CurlBinding> &curl_bindings) const;
+  void InstallBucketBindings(
+      const std::unordered_map<
+          std::string,
+          std::unordered_map<std::string, std::vector<std::string>>> &config);
   void InitializeIsolateData(const server_settings_t *server_settings,
                              const handler_config_t *h_config,
                              const std::string &source_bucket);
@@ -355,7 +362,6 @@ private:
   std::vector<uint64_t> processed_bucketops_;
   std::mutex bucketops_lock_;
   std::mutex pause_lock_;
-  std::list<Bucket *> bucket_handles_;
   v8::Isolate *isolate_;
   v8::Platform *platform_;
   inspector::Agent *agent_;
@@ -372,6 +378,8 @@ private:
   std::unordered_set<int64_t> partitions_;
   std::vector<std::string> handler_headers_;
   std::vector<std::string> handler_footers_;
+  std::shared_ptr<BucketFactory> bucket_factory_;
+  std::vector<BucketBinding> bucket_bindings_;
 };
 
 #endif
