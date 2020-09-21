@@ -41,6 +41,10 @@ public:
                     v8::Local<v8::Object> &curl_error_out) {
     return NewCustomError(message_val, curl_error_out, "CurlError");
   }
+  Info NewTypeError(const v8::Local<v8::Value> &message_val,
+                    v8::Local<v8::Object> &type_error_out) {
+    return NewCustomError(message_val, type_error_out, "TypeError");
+  }
 
 private:
   Info NewCustomError(const v8::Local<v8::Value> &message_val,
@@ -65,6 +69,7 @@ public:
   void ThrowN1QLError(const std::string &err_msg);
   void ThrowEventingError(const std::string &err_msg);
   void ThrowCurlError(const std::string &err_msg);
+  void ThrowTypeError(const std::string &err_msg);
 
   ~JsException();
 

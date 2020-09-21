@@ -29,6 +29,7 @@ class Communicator;
 class CodeInsight;
 struct CurlCodex;
 struct LanguageCompatibility;
+class BucketOps;
 
 namespace Query {
 class Manager;
@@ -65,6 +66,7 @@ struct IsolateData {
   CodeInsight *code_insight{nullptr};
   LanguageCompatibility *lang_compat{nullptr};
 
+  BucketOps *bucket_ops{nullptr};
   std::mutex termination_lock_;
   bool is_executing_{false};
 };

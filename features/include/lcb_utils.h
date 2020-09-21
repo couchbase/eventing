@@ -17,11 +17,15 @@
 #include "utils.h"
 
 struct Result {
+  std::string key;
   lcb_CAS cas{0};
   lcb_error_t rc{LCB_SUCCESS};
+  uint8_t datatype{0};
   std::string value;
   uint32_t exptime{0};
   int64_t counter{0};
+  const void *binary{0};
+  size_t byteLength;
 };
 
 constexpr int def_lcb_retry_count = 6;
@@ -37,6 +41,8 @@ const char *GetPassword(void *cookie, const char *host, const char *port,
 void GetCallback(lcb_t instance, int, const lcb_RESPBASE *rb);
 
 void SetCallback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb);
+
+void SubDocumentLookupCallback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb);
 
 void SubDocumentCallback(lcb_t instance, int cbtype, const lcb_RESPBASE *rb);
 

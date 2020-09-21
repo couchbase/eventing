@@ -41,6 +41,7 @@ SET(FEATURES_SRC
         ../features/src/utils.cc
         ../features/src/base64.cc
         ../features/src/insight.cc
+        ../features/src/bucket_ops.cc
         ../third_party/crc64/crc64.cc
         ../third_party/crc32/crc32.cc)
 
