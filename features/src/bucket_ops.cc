@@ -466,7 +466,7 @@ void BucketOps::CounterOps(v8::FunctionCallbackInfo<v8::Value> args,
   }
 
   v8::Local<v8::Object> response_obj = v8::Object::New(isolate_);
-  if (result->rc == LCB_ERR_SUBDOC_DELTA_INVALID) {
+  if (result->rc == LCB_ERR_SUBDOC_PATH_MISMATCH) {
     info = SetErrorObject(response_obj, "LCB_DELTA_BADVAL",
                           "counter value cannot be parsed as a number",
                           result->rc, invalid_counter_str_, true);
