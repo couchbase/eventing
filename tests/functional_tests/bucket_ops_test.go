@@ -102,6 +102,28 @@ func TestAdvancedUpsertOps(t *testing.T) {
 		"advanced_bucket_ops_upsert", setting, t)
 }
 
+func TestAdvancedReplaceOps(t *testing.T) {
+        itemCount := 1024
+
+        pumpBucketOpsSrc(opsType{count: itemCount}, dstBucket, &rateLimit{})
+        setting := &commonSettings{
+                aliasSources:       []string{dstBucket},
+                aliasHandles:       []string{"dst_bucket"},
+                srcMutationEnabled: true,
+        }
+        testPumpDoc(itemCount, 0, dstBucket, false,
+                "advanced_bucket_ops_replace", setting, t)
+
+        log.Printf("Testing upsert operation on source bucket")
+        setting = &commonSettings{
+                aliasSources:       []string{srcBucket},
+                aliasHandles:       []string{"dst_bucket"},
+                srcMutationEnabled: true,
+        }
+        testPumpDoc(itemCount, 0, srcBucket, false,
+                "advanced_bucket_ops_replace", setting, t)
+}
+
 func TestAdvancedDeleteOps(t *testing.T) {
 	itemCount := 100
 
@@ -132,6 +154,21 @@ func TestEnoentAdvancedGet(t *testing.T) {
 	}
 	testPumpDoc(itemCount, itemCount*2, srcBucket, false,
 		"advanced_bucket_ops_get_enoent", setting, t)
+}
+
+func TestEnoentAdvancedReplace(t *testing.T) {
+        itemCount := 100
+        testPumpDoc(itemCount, itemCount, dstBucket, false,
+                "advanced_bucket_ops_replace_enoent", &commonSettings{}, t)
+
+        log.Printf("Testing get enoent operation on source bucket")
+        setting := &commonSettings{
+                aliasSources:       []string{srcBucket},
+                aliasHandles:       []string{"dst_bucket"},
+                srcMutationEnabled: true,
+        }
+        testPumpDoc(itemCount, itemCount*2, srcBucket, false,
+                "advanced_bucket_ops_replace_enoent", setting, t)
 }
 
 func TestEnoentAdvancedDelete(t *testing.T) {
@@ -216,6 +253,28 @@ func TestExipryInsert(t *testing.T) {
 		setting, t)
 }
 
+func TestExipryReplace(t *testing.T) {
+        itemCount := 100
+        setting := &commonSettings{
+                aliasSources:       []string{srcBucket},
+                aliasHandles:       []string{"dst_bucket"},
+                srcMutationEnabled: true,
+        }
+
+        testPumpDocExpiry(itemCount, 0, srcBucket, "advanced_bucket_ops_replace_expiry",
+                setting, t)
+
+        log.Printf("Testing on the destination bucket for expiry insert")
+
+        setting = &commonSettings{
+                aliasSources:       []string{dstBucket},
+                aliasHandles:       []string{"dst_bucket"},
+                srcMutationEnabled: true,
+        }
+        testPumpDocExpiry(itemCount, 0, dstBucket, "advanced_bucket_ops_replace_expiry",
+                setting, t)
+}
+
 func TestExipryUpsert(t *testing.T) {
 	itemCount := 100
 	setting := &commonSettings{
@@ -238,7 +297,7 @@ func TestExipryUpsert(t *testing.T) {
 		setting, t)
 }
 
-func TestCasUpsert(t *testing.T) {
+func TestCasReplace(t *testing.T) {
 	itemCount := 100
 	setting := &commonSettings{
 		aliasSources:       []string{srcBucket},
@@ -247,7 +306,7 @@ func TestCasUpsert(t *testing.T) {
 	}
 
 	testPumpDoc(itemCount, 0, srcBucket, false,
-		"advanced_bucket_ops_upsert_cas", setting, t)
+		"advanced_bucket_ops_replace_cas", setting, t)
 
 	log.Printf("Testing on the destination bucket for upsert with cas")
 
@@ -258,7 +317,7 @@ func TestCasUpsert(t *testing.T) {
 		srcMutationEnabled: true,
 	}
 	testPumpDoc(itemCount, 0, dstBucket, false,
-		"advanced_bucket_ops_upsert_cas", setting, t)
+		"advanced_bucket_ops_replace_cas", setting, t)
 }
 
 func TestCasDelete(t *testing.T) {

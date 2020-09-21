@@ -54,6 +54,7 @@ public:
   static void GetOp(const v8::FunctionCallbackInfo<v8::Value> &args);
   static void InsertOp(const v8::FunctionCallbackInfo<v8::Value> &args);
   static void UpsertOp(const v8::FunctionCallbackInfo<v8::Value> &args);
+  static void ReplaceOp(const v8::FunctionCallbackInfo<v8::Value> &args);
   static void DeleteOp(const v8::FunctionCallbackInfo<v8::Value> &args);
   static void IncrementOp(const v8::FunctionCallbackInfo<v8::Value> &args);
   static void DecrementOp(const v8::FunctionCallbackInfo<v8::Value> &args);
