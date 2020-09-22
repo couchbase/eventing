@@ -15,6 +15,7 @@
 #include <unordered_map>
 
 #include "bucket.h"
+#include "bucket_cache.h"
 #include "bucket_ops.h"
 #include "curl.h"
 #include "insight.h"
@@ -285,6 +286,10 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
 
   timer_context_size = h_config->timer_context_size;
 
+  BucketCache::Fetch().SetMaxSize(h_config->bucket_cache_size);
+  BucketCache::Fetch().SetMaxAge(
+      std::chrono::milliseconds(h_config->bucket_cache_age));
+
   LOG(logInfo) << "Initialised V8Worker handle, app_name: "
                << h_config->app_name
                << " debugger port: " << RS(settings_->debugger_port)
@@ -301,6 +306,8 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
                << " n1ql_prepare_all: " << h_config->n1ql_prepare_all
                << " num_vbuckets: " << num_vbuckets_
                << " num_timer_partitions: " << h_config->num_timer_partitions
+               << " bucket_cache_size: " << h_config->bucket_cache_size
+               << " bucket_cache_age: " << h_config->bucket_cache_age
                << std::endl;
 
   src_path_ = settings_->eventing_dir + "/" + app_name_ + ".t.js";

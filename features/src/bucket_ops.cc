@@ -35,6 +35,7 @@ BucketOps::BucketOps(v8::Isolate *isolate,
   key_exist_str_ = "key_already_exists";
   doc_str_ = "doc";
   meta_str_ = "meta";
+  cache_str_ = "cache";
   counter_str_ = "count";
   error_str_ = "error";
   success_str_ = "success";
@@ -144,8 +145,8 @@ Info BucketOps::SetDocBody(std::unique_ptr<Result> const &result,
       return {true, "Unable to parse response body as JSON"};
     }
   } else {
-    doc = utils->ToArrayBuffer(const_cast<void *>(result->binary),
-                               result->byteLength);
+    doc = utils->ToArrayBuffer(static_cast<void *>(result->value.data()),
+                               result->value.length());
   }
 
   auto success = false;
@@ -311,6 +312,37 @@ MetaInfo BucketOps::ExtractMetaInfo(v8::Local<v8::Value> meta_object,
     meta.expiry = (uint32_t)info.epoch;
   }
   return {true, meta};
+}
+
+OptionsInfo BucketOps::ExtractOptionsInfo(v8::Local<v8::Value> options_object) {
+  v8::HandleScope handle_scope(isolate_);
+
+  auto context = context_.Get(isolate_);
+
+  OptionsData options = {false};
+
+  if (!options_object->IsObject()) {
+    return {false, "3rd argument, if present, must be object"};
+  }
+
+  v8::Local<v8::Object> req_obj;
+  if (!TO_LOCAL(options_object->ToObject(context), &req_obj)) {
+    return {false, "error in casting options object to Object"};
+  }
+
+  if (req_obj->Has(v8Str(isolate_, cache_str_))) {
+    v8::Local<v8::Value> cache;
+    if (!TO_LOCAL(req_obj->Get(context, v8Str(isolate_, cache_str_)), &cache)) {
+      return {false, "error reading 'cache' parameter in options"};
+    }
+    if (!cache->IsBoolean()) {
+      return {false, "the 'cache' parameter in options should be a boolean"};
+    }
+    auto cache_value = cache.As<v8::Boolean>();
+    options.cache = cache_value->Value();
+  }
+
+  return {true, options};
 }
 
 EpochInfo BucketOps::Epoch(const v8::Local<v8::Value> &date_val) {
@@ -545,7 +577,38 @@ void BucketOps::GetOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
   }
   auto meta = meta_info.meta;
 
+  OptionsData options = {false};
+  if (args.Length() > 2) {
+    auto options_info = bucket_ops->ExtractOptionsInfo(args[2]);
+    if (!options_info.is_valid) {
+      ++bucket_op_exception_count;
+      js_exception->ThrowTypeError(options_info.msg);
+      return;
+    }
+    options = options_info.options;
+  }
+
   auto bucket = BucketBinding::GetBucket(isolate, args[0]);
+  v8::Local<v8::Object> response_obj = v8::Object::New(isolate);
+
+  if (options.cache) {
+    auto result = std::make_unique<Result>();
+    auto idx = BucketCache::MakeKey(bucket->BucketName(), bucket->ScopeName(),
+                                    bucket->CollectionName(), meta.key);
+    auto found = BucketCache::Fetch().Get(idx, *(result.get()));
+    if (found) {
+      info = bucket_ops->ResponseSuccessObject(std::move(result), response_obj,
+                                               true);
+      if (info.is_fatal) {
+        ++bucket_op_exception_count;
+        js_exception->ThrowEventingError(info.msg);
+        return;
+      }
+      args.GetReturnValue().Set(response_obj);
+      return;
+    }
+  }
+
   auto [error, err_code, result] = bucket->GetWithMeta(meta.key);
   if (error != nullptr) {
     ++bucket_op_exception_count;
@@ -553,7 +616,6 @@ void BucketOps::GetOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
     return;
   }
 
-  v8::Local<v8::Object> response_obj = v8::Object::New(isolate);
   if (*err_code != LCB_SUCCESS) {
     bucket_ops->HandleBucketOpFailure(bucket->GetConnection(), *err_code);
     return;
@@ -580,6 +642,13 @@ void BucketOps::GetOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
   }
 
   result->key = meta.key;
+
+  if (options.cache) {
+    auto idx = BucketCache::MakeKey(bucket->BucketName(), bucket->ScopeName(),
+                                    bucket->CollectionName(), meta.key);
+    BucketCache::Fetch().Set(idx, *result);
+  }
+
   info =
       bucket_ops->ResponseSuccessObject(std::move(result), response_obj, true);
   if (info.is_fatal) {

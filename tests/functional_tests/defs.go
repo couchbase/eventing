@@ -78,6 +78,9 @@ const (
 
 	deadlineTimeout  = 6
 	executionTimeout = 5
+
+	bucketCacheSize = 64 * 1024 * 1024
+	bucketCacheAge  = 1000 // ms
 )
 
 const (
@@ -140,6 +143,8 @@ type commonSettings struct {
 	languageCompatibility    string
 	version                  string
 	numTimerPartitions       int
+	bucketCacheSize          int
+	bucketCacheAge           int
 }
 
 type rateLimit struct {

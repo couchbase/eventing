@@ -356,6 +356,8 @@ func (c *Consumer) makeV8InitPayload(appName, debuggerPort, currHost, eventingDi
 	payload.PayloadAddLcbRetryCount(builder, int32(c.lcbRetryCount))
 	payload.PayloadAddSrcMutation(builder, smu[0])
 	payload.PayloadAddNumTimerPartitions(builder, int32(c.numTimerPartitions))
+	payload.PayloadAddBucketCacheSize(builder, c.bucketCacheSize)
+	payload.PayloadAddBucketCacheAge(builder, c.bucketCacheAge)
 
 	if c.n1qlPrepareAll {
 		payload.PayloadAddN1qlPrepareAll(builder, 0x1)

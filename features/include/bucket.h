@@ -19,6 +19,7 @@
 #include <utility>
 #include <v8.h>
 
+#include "bucket_cache.h"
 #include "error.h"
 #include "info.h"
 #include "isolate_data.h"
@@ -93,6 +94,10 @@ public:
                       int64_t delta);
 
   lcb_INSTANCE *GetConnection() const { return connection_; }
+
+  const std::string &BucketName() const { return bucket_name_; };
+  const std::string &ScopeName() const { return scope_name_; };
+  const std::string &CollectionName() const { return collection_name_; };
 
 private:
   Error FormatErrorAndDestroyConn(const std::string &message,

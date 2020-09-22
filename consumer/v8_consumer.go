@@ -37,6 +37,8 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		aggDCPFeedMemCap:                hConfig.AggDCPFeedMemCap,
 		breakpadOn:                      pConfig.BreakpadOn,
 		sourceKeyspace:                  hConfig.SourceKeyspace,
+		bucketCacheSize:                 hConfig.BucketCacheSize,
+		bucketCacheAge:                  hConfig.BucketCacheAge,
 		cbBucket:                        b,
 		cbBucketRWMutex:                 &sync.RWMutex{},
 		checkpointInterval:              time.Duration(hConfig.CheckpointInterval) * time.Millisecond,

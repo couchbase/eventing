@@ -403,6 +403,8 @@ type HandlerConfig struct {
 	WorkerQueueMemCap        int64
 	WorkerResponseTimeout    int
 	LcbRetryCount            int
+	BucketCacheSize          int64
+	BucketCacheAge           int64
 	NumTimerPartitions       int
 }
 

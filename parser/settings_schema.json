@@ -162,6 +162,18 @@
       "description": "number of seconds before writing a progress checkpoint",
       "minimum": 1,
       "default": 60
+    },
+    "bucket_cache_size": {
+      "type": "integer",
+      "description": "maximum size in bytes the bucket cache can grow to",
+      "minimum": 20971520,
+      "default": 67108864
+    },
+    "bucket_cache_age": {
+      "type": "integer",
+      "description": "time in milliseconds after which a cached bucket object is considered stale",
+      "minimum": 1,
+      "default": 1000
     }
   }
 }

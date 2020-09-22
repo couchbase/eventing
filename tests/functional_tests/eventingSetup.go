@@ -94,6 +94,9 @@ func postToEventingEndpoint(context, url string, payload []byte) (response *rest
 }
 
 func createPadding(paddingCount int) string {
+	if paddingCount < 1 {
+		return ""
+	}
 	pad := make([]byte, paddingCount)
 	for idx := range pad {
 		pad[idx] = lettersAndDigits[rand.Intn(len(lettersAndDigits))]
@@ -281,6 +284,18 @@ func createFunction(deploymentStatus, processingStatus bool, id int, s *commonSe
 		settings["num_timer_partitions"] = numTimerPartitions
 	} else {
 		settings["num_timer_partitions"] = s.numTimerPartitions
+	}
+
+	if s.bucketCacheSize == 0 {
+		settings["bucket_cache_size"] = bucketCacheSize
+	} else {
+		settings["bucket_cache_size"] = s.bucketCacheSize
+	}
+
+	if s.bucketCacheAge == 0 {
+		settings["bucket_cache_age"] = bucketCacheAge
+	} else {
+		settings["bucket_cache_age"] = s.bucketCacheAge
 	}
 
 	settings["processing_status"] = processingStatus

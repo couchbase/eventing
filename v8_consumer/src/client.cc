@@ -523,6 +523,8 @@ void AppWorker::RouteMessageWithResponse(
       handler_config->handler_footers =
           ToStringArray(payload->handler_footers());
       handler_config->num_timer_partitions = payload->num_timer_partitions();
+      handler_config->bucket_cache_size = payload->bucket_cache_size();
+      handler_config->bucket_cache_age = payload->bucket_cache_age();
 
       server_settings->checkpoint_interval = payload->checkpoint_interval();
       checkpoint_interval_ =

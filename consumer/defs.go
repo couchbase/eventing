@@ -367,6 +367,8 @@ type Consumer struct {
 	insight               chan *common.Insight
 	languageCompatibility string
 	notifyWorker          uint32
+	bucketCacheSize       int64
+	bucketCacheAge        int64
 }
 
 // For V8 worker spawned for debugging purpose
