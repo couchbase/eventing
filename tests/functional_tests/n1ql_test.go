@@ -188,6 +188,8 @@ func TestN1QLExhaustConnPool(t *testing.T) {
 	flushFunctionAndBucket(functionName)
 }
 
+/*
+// TODO: uncomment it once CCBC-1269
 func TestN1QLGraceLowTimeOut(t *testing.T) {
 	functionName := t.Name()
 	handler := "n1ql_timeout_query"
@@ -248,6 +250,7 @@ func TestN1QLGraceLowTimeOut(t *testing.T) {
 
 	dumpStats()
 }
+*/
 
 func TestN1QLGraceSufficientTimeOut(t *testing.T) {
 	functionName := t.Name()

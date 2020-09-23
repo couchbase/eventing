@@ -3,22 +3,22 @@ package consumer
 import (
 	"bufio"
 	"fmt"
-	"net"
-	"os"
-	"os/exec"
-	"strconv"
-	"strings"
-	"sync"
-	"sync/atomic"
-	"time"
-	"unsafe"
-
 	"github.com/couchbase/eventing/common"
 	mcd "github.com/couchbase/eventing/dcp/transport"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/parser"
 	"github.com/couchbase/eventing/util"
 	"github.com/google/flatbuffers/go"
+	"net"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"time"
+	"unsafe"
 )
 
 // ClearEventStats flushes event processing stats
@@ -441,8 +441,10 @@ func (c *Consumer) SpawnCompilationWorker(appCode, appContent, appName, eventing
 	var pid int
 	go func() {
 		user, key := util.LocalKey()
+		executable_img := filepath.Join(filepath.Dir(os.Args[0]), "eventing-consumer")
+
 		cmd := exec.Command(
-			"eventing-consumer",
+			executable_img,
 			appName,
 			"af_inet",
 			c.tcpPort,

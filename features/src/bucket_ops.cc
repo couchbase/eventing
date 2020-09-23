@@ -20,6 +20,7 @@
 
 extern std::atomic<int64_t> bucket_op_exception_count;
 extern std::atomic<int64_t> lcb_retry_failure;
+std::atomic<int64_t> bkt_ops_cas_mismatch_count = {0};
 
 BucketOps::BucketOps(v8::Isolate *isolate,
                      const v8::Local<v8::Context> &context)
@@ -489,6 +490,7 @@ void BucketOps::CounterOps(v8::FunctionCallbackInfo<v8::Value> args,
       js_exception->ThrowEventingError(info.msg);
       return;
     }
+    ++bkt_ops_cas_mismatch_count;
     args.GetReturnValue().Set(response_obj);
     return;
   }
@@ -756,6 +758,7 @@ void BucketOps::ReplaceOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
       js_exception->ThrowEventingError(info.msg);
       return;
     }
+    ++bkt_ops_cas_mismatch_count;
     args.GetReturnValue().Set(response_obj);
     return;
   }
@@ -942,6 +945,7 @@ void BucketOps::DeleteOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
       js_exception->ThrowEventingError(info.msg);
       return;
     }
+    ++bkt_ops_cas_mismatch_count;
     args.GetReturnValue().Set(response_obj);
     return;
   }

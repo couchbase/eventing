@@ -3787,6 +3787,7 @@ func (m *ServiceMgr) highCardStats() []byte {
 			stats = populateUint(fmtStr, appName, "dcp_deletion_sent_to_worker", keyspace, stats, processingStats)
 			stats = populateUint(fmtStr, appName, "dcp_expiry_sent_to_worker", keyspace, stats, processingStats)
 			stats = populateUint(fmtStr, appName, "dcp_deletion_suppressed_counter", keyspace, stats, processingStats)
+			stats = populateUint(fmtStr, appName, "worker_spawn_counter", keyspace, stats, processingStats)
 		}
 
 		executionStats := m.superSup.GetExecutionStats(appName)
@@ -3815,6 +3816,7 @@ func (m *ServiceMgr) highCardStats() []byte {
 			stats = populate(fmtStr, appName, "n1ql_op_exception_count", keyspace, stats, failureStats)
 			stats = populate(fmtStr, appName, "timer_context_size_exception_counter", keyspace, stats, failureStats)
 			stats = populate(fmtStr, appName, "timer_callback_missing_counter", keyspace, stats, failureStats)
+			stats = populate(fmtStr, appName, "bkt_ops_cas_mismatch_count", keyspace, stats, failureStats)
 		}
 
 	}
