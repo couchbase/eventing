@@ -259,16 +259,16 @@ MetaInfo BucketOps::ExtractMetaInfo(v8::Local<v8::Value> meta_object,
 
   v8::Local<v8::Object> req_obj;
   if (!TO_LOCAL(meta_object->ToObject(context), &req_obj)) {
-    return {false, "error in casting metadata object to Object"};
+    return {false, "error in casting 2nd argument to Object"};
   }
 
   v8::Local<v8::Value> key;
   if (req_obj->Has(v8Str(isolate_, key_str_))) {
     if (!TO_LOCAL(req_obj->Get(context, v8Str(isolate_, key_str_)), &key)) {
-      return {false, "error in reading document key"};
+      return {false, "error in reading document key from 2nd argument"};
     }
   } else {
-    return {false, "document key is not present in meta object"};
+    return {false, "document key is not present in 2nd argument"};
   }
 
   auto info = Utils::ValidateDataType(key);
@@ -301,7 +301,7 @@ MetaInfo BucketOps::ExtractMetaInfo(v8::Local<v8::Value> meta_object,
     }
 
     if (!expiry->IsDate()) {
-      return {false, "expiry should be a data object"};
+      return {false, "expiry should be a date object"};
     }
 
     auto info = Epoch(expiry);
@@ -631,6 +631,15 @@ void BucketOps::InsertOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
     js_exception->ThrowTypeError(meta_info.msg);
     return;
   }
+
+  info = Utils::ValidateDataType(args[2]);
+  if (info.is_fatal) {
+    ++bucket_op_exception_count;
+    auto err_msg = "Invalid data type for 3rd argument: " + info.msg;
+    js_exception->ThrowTypeError(err_msg);
+    return;
+  }
+
   auto meta = meta_info.meta;
 
   auto is_source_bucket = BucketBinding::IsSourceBucket(isolate, args[0]);
@@ -726,6 +735,14 @@ void BucketOps::ReplaceOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
     return;
   }
   auto meta = meta_info.meta;
+
+  info = Utils::ValidateDataType(args[2]);
+  if (info.is_fatal) {
+    ++bucket_op_exception_count;
+    auto err_msg = "Invalid data type for 3rd argument: " + info.msg;
+    js_exception->ThrowTypeError(err_msg);
+    return;
+  }
 
   auto is_source_bucket = BucketBinding::IsSourceBucket(isolate, args[0]);
   auto bucket = BucketBinding::GetBucket(isolate, args[0]);
@@ -837,6 +854,14 @@ void BucketOps::UpsertOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
     return;
   }
   auto meta = meta_info.meta;
+
+  info = Utils::ValidateDataType(args[2]);
+  if (info.is_fatal) {
+    ++bucket_op_exception_count;
+    auto err_msg = "Invalid data type for 3rd argument: " + info.msg;
+    js_exception->ThrowTypeError(err_msg);
+    return;
+  }
 
   auto is_source_bucket = BucketBinding::IsSourceBucket(isolate, args[0]);
   auto bucket = BucketBinding::GetBucket(isolate, args[0]);
