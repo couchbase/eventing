@@ -26,10 +26,11 @@ public:
 
 private:
   std::pair<bool, bool> GetNextTimer(TimerEvent &tevent);
-  void IncrementPartition();
+  std::pair<bool, bool> IncrementPartition();
   TimerStore *store_;
   int64_t curr_partition_{0};
   int64_t stop_;
+  int64_t last_timer_req_ts_;
   std::string top_key_;
   int64_t top_cas_{0};
   int64_t current_{std::numeric_limits<int64_t>::max()};
