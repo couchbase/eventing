@@ -369,9 +369,12 @@ func (p *Producer) parseDepcfg() error {
 		logging.Errorf("%s [%s] Failed to get list of kv nodes in the cluster, err: %v", logPrefix, p.appName, err)
 		return err
 	}
-
 	logging.Infof("%s [%s] kv nodes from cinfo: %+v", logPrefix, p.appName, p.kvHostPorts)
 
+	p.dcpConfig["collectionAware"], err = util.CollectionAware(p.auth, p.nsServerHostPort)
+	if err != nil {
+		logging.Errorf("%s [%s] Failed to cluster collection aware status, err: %v", logPrefix, p.appName, err)
+	}
 	return nil
 }
 

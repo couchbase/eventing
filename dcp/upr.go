@@ -154,9 +154,10 @@ type DcpFeed struct {
 	finch     chan bool
 	logPrefix string
 	// config
-	config         map[string]interface{}
-	numConnections int
-	activeVbOnly   bool
+	config          map[string]interface{}
+	numConnections  int
+	activeVbOnly    bool
+	collectionAware bool
 }
 
 // StartDcpFeed creates and starts a new Dcp feed.
@@ -203,6 +204,8 @@ func (b *Bucket) StartDcpFeedOver(
 		config:    copyconfig(config),
 		logPrefix: fmt.Sprintf("DCP[%v]", name),
 	}
+
+	feed.collectionAware = config["collectionAware"].(bool)
 	feed.numConnections = config["numConnections"].(int)
 	feed.activeVbOnly = config["activeVbOnly"].(bool)
 
