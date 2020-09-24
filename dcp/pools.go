@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"math"
 	"math/rand"
 	"net"
 	"net/http"
@@ -561,6 +562,7 @@ func (p *Pool) refresh() (err error) {
 	p.BucketMap = make(map[string]Bucket)
 	p.Manifest = make(map[string]*collections.CollectionManifest)
 
+	version := p.GetClusterCompatVersion()
 loop:
 	buckets := []Bucket{}
 	err = p.client.parseURLResponse(p.BucketURL["uri"], &buckets)
@@ -583,18 +585,20 @@ loop:
 		b.init(nb)
 		p.BucketMap[b.Name] = b
 		manifest := &collections.CollectionManifest{}
-		err = p.client.parseURLResponse("pools/default/buckets/"+b.Name+"/collections", manifest)
-		if err != nil {
-			// bucket list is out of sync with cluster bucket list
-			// bucket might have got deleted.
-			if strings.Contains(err.Error(), "HTTP error 404") {
-				logging.Warnf("cluster_info: Out of sync for bucket %s. Retrying..", b.Name)
-				goto loop
-			}
-			return err
-		}
-		p.Manifest[b.Name] = manifest
 
+		if version >= 7 {
+			err = p.client.parseURLResponse("pools/default/buckets/"+b.Name+"/collections", manifest)
+			if err != nil {
+				// bucket list is out of sync with cluster bucket list
+				// bucket might have got deleted.
+				if strings.Contains(err.Error(), "HTTP error 404") {
+					logging.Warnf("cluster_info: Out of sync for bucket %s. Retrying..", b.Name)
+					goto loop
+				}
+				return err
+			}
+			p.Manifest[b.Name] = manifest
+		}
 	}
 	return nil
 }
@@ -678,10 +682,26 @@ func (p *Pool) GetBucket(name string) (*Bucket, error) {
 }
 
 func (p *Pool) GetCollectionID(bucket, scope, collection string) (uint32, error) {
-	if manifest, ok := p.Manifest[bucket]; ok {
-		return manifest.GetCollectionID(scope, collection)
+	version := p.GetClusterCompatVersion()
+	if version >= 7 {
+		if manifest, ok := p.Manifest[bucket]; ok {
+			return manifest.GetCollectionID(scope, collection)
+		}
+		return 0, collections.COLLECTION_ID_NIL
 	}
-	return 0, collections.COLLECTION_ID_NIL
+	return 0, nil
+}
+
+func (p *Pool) GetClusterCompatVersion() uint32 {
+	version := (uint32)(math.MaxUint32)
+	for _, n := range p.Nodes {
+		// ClusterCompatibility = major * 0x10000 + minor
+		v := uint32(n.ClusterCompatibility / 65536)
+		if v < version {
+			version = v
+		}
+	}
+	return version
 }
 
 // GetPool gets the pool to which this bucket belongs.
