@@ -10,20 +10,21 @@
 // permissions and limitations under the License.
 
 #include "bucket_ops.h"
-#include "utils.h"
-#include "lcb_utils.h"
-#include "js_exception.h"
-#include "isolate_data.h"
 #include "bucket.h"
 #include "info.h"
+#include "isolate_data.h"
+#include "js_exception.h"
+#include "lcb_utils.h"
+#include "utils.h"
 #include "v8worker.h"
 
 extern std::atomic<int64_t> bucket_op_exception_count;
 extern std::atomic<int64_t> lcb_retry_failure;
 std::atomic<int64_t> bkt_ops_cas_mismatch_count = {0};
 
-BucketOps::BucketOps(v8::Isolate *isolate, const v8::Local<v8::Context> &context)
- : isolate_(isolate) {
+BucketOps::BucketOps(v8::Isolate *isolate,
+                     const v8::Local<v8::Context> &context)
+    : isolate_(isolate) {
   context_.Reset(isolate_, context);
   cas_str_ = "cas";
   key_str_ = "id";
@@ -42,9 +43,7 @@ BucketOps::BucketOps(v8::Isolate *isolate, const v8::Local<v8::Context> &context
   invalid_counter_str_ = "not_number";
 }
 
-BucketOps::~BucketOps() {
-  context_.Reset();
-}
+BucketOps::~BucketOps() { context_.Reset(); }
 
 void BucketOps::HandleBucketOpFailure(lcb_t connection, lcb_error_t error) {
   auto isolate_data = UnwrapData(isolate_);
@@ -55,8 +54,10 @@ void BucketOps::HandleBucketOpFailure(lcb_t connection, lcb_error_t error) {
   js_exception->ThrowKVError(connection, error);
 }
 
-Info BucketOps::SetErrorObject(v8::Local<v8::Object> &response_obj, std::string name, std::string desc,
-                                lcb_error_t error, const char* error_type, bool value) {
+Info BucketOps::SetErrorObject(v8::Local<v8::Object> &response_obj,
+                               std::string name, std::string desc,
+                               lcb_error_t error, const char *error_type,
+                               bool value) {
   auto context = context_.Get(isolate_);
   auto code_value = v8::Number::New(isolate_, lcb_get_errtype(error));
   auto name_value = v8Str(isolate_, name);
@@ -82,7 +83,8 @@ Info BucketOps::SetErrorObject(v8::Local<v8::Object> &response_obj, std::string 
     return {true, "Unable to set desc value"};
   }
 
-  if (!TO(error_obj->Set(context, v8Str(isolate_, error_type), v8::Boolean::New(isolate_, value)),
+  if (!TO(error_obj->Set(context, v8Str(isolate_, error_type),
+                         v8::Boolean::New(isolate_, value)),
           &success) ||
       !success) {
     return {true, "Unable to set error_type value"};
@@ -94,7 +96,8 @@ Info BucketOps::SetErrorObject(v8::Local<v8::Object> &response_obj, std::string 
     return {true, "Unable to set error object"};
   }
 
-  if (!TO(response_obj->Set(context, v8Str(isolate_, success_str_), v8::Boolean::New(isolate_, false)),
+  if (!TO(response_obj->Set(context, v8Str(isolate_, success_str_),
+                            v8::Boolean::New(isolate_, false)),
           &success) ||
       !success) {
     return {true, "Unable to set success value"};
@@ -103,15 +106,17 @@ Info BucketOps::SetErrorObject(v8::Local<v8::Object> &response_obj, std::string 
   return {false};
 }
 
-Info BucketOps::SetCounterData(std::unique_ptr<Result> const &result, v8::Local<v8::Object> &response_obj) {
+Info BucketOps::SetCounterData(std::unique_ptr<Result> const &result,
+                               v8::Local<v8::Object> &response_obj) {
   v8::HandleScope handle_scope(isolate_);
   auto context = context_.Get(isolate_);
 
   auto counter = v8::Object::New(isolate_);
   auto success = false;
   if (!TO(counter->Set(context, v8Str(isolate_, counter_str_),
-                            v8::Number::New(isolate_, result->counter)), &success)
-        ||!success) {
+                       v8::Number::New(isolate_, result->counter)),
+          &success) ||
+      !success) {
     return {true, "Unable to set doc body"};
   }
 
@@ -123,7 +128,8 @@ Info BucketOps::SetCounterData(std::unique_ptr<Result> const &result, v8::Local<
   return {false};
 }
 
-Info BucketOps::SetDocBody(std::unique_ptr<Result> const &result, v8::Local<v8::Object> &response_obj) {
+Info BucketOps::SetDocBody(std::unique_ptr<Result> const &result,
+                           v8::Local<v8::Object> &response_obj) {
   v8::HandleScope handle_scope(isolate_);
   auto context = context_.Get(isolate_);
   auto utils = UnwrapData(isolate_)->utils;
@@ -131,13 +137,14 @@ Info BucketOps::SetDocBody(std::unique_ptr<Result> const &result, v8::Local<v8::
   v8::Local<v8::Value> doc;
 
   // doc is json type
-  if(result->datatype & 1) {
-    if(!TO_LOCAL(v8::JSON::Parse(context, v8Str(isolate_, result->value)),
-               &doc)){
+  if (result->datatype & 1) {
+    if (!TO_LOCAL(v8::JSON::Parse(context, v8Str(isolate_, result->value)),
+                  &doc)) {
       return {true, "Unable to parse response body as JSON"};
     }
   } else {
-    doc = utils->ToArrayBuffer(const_cast<void *>(result->binary), result->byteLength);
+    doc = utils->ToArrayBuffer(const_cast<void *>(result->binary),
+                               result->byteLength);
   }
 
   auto success = false;
@@ -149,38 +156,43 @@ Info BucketOps::SetDocBody(std::unique_ptr<Result> const &result, v8::Local<v8::
   return {false};
 }
 
-Info BucketOps::SetMetaObject(std::unique_ptr<Result> const &result, v8::Local<v8::Object> &response_obj) {
+Info BucketOps::SetMetaObject(std::unique_ptr<Result> const &result,
+                              v8::Local<v8::Object> &response_obj) {
   v8::HandleScope handle_scope(isolate_);
   auto context = context_.Get(isolate_);
 
   auto meta_obj = v8::Object::New(isolate_);
 
   bool success = false;
-  if (!TO(meta_obj->Set(context, v8Str(isolate_, key_str_), v8Str(isolate_, result->key)),
+  if (!TO(meta_obj->Set(context, v8Str(isolate_, key_str_),
+                        v8Str(isolate_, result->key)),
           &success) ||
       !success) {
     return {true, "Unable to set document key value in metaObject"};
   }
 
-  if (!TO(meta_obj->Set(context, v8Str(isolate_, cas_str_), v8Str(isolate_, std::to_string(result->cas))),
+  if (!TO(meta_obj->Set(context, v8Str(isolate_, cas_str_),
+                        v8Str(isolate_, std::to_string(result->cas))),
           &success) ||
       !success) {
     return {true, "Unable to set cas value in metaObject"};
   }
 
-  if(result->exptime) {
+  if (result->exptime) {
     double expiry = static_cast<double>(result->exptime) * 1000;
-    if (!TO(meta_obj->Set(context, v8Str(isolate_, expiry_str_), v8::Date::New(isolate_, expiry)),
-          &success) ||
-      !success) {
+    if (!TO(meta_obj->Set(context, v8Str(isolate_, expiry_str_),
+                          v8::Date::New(isolate_, expiry)),
+            &success) ||
+        !success) {
       return {true, "Unable to set expiration value in metaObject"};
     }
   }
 
-  if(result->datatype & 1) {
-    if (!TO(meta_obj->Set(context, v8Str(isolate_, data_type_str_), v8Str(isolate_, json_str_)),
-          &success) ||
-      !success) {
+  if (result->datatype & 1) {
+    if (!TO(meta_obj->Set(context, v8Str(isolate_, data_type_str_),
+                          v8Str(isolate_, json_str_)),
+            &success) ||
+        !success) {
       return {true, "Unable to set expiration value in metaObject"};
     }
   }
@@ -201,27 +213,28 @@ Info BucketOps::ResponseSuccessObject(std::unique_ptr<Result> const &result,
   auto context = context_.Get(isolate_);
 
   Info info;
-  if(is_doc_needed) {
+  if (is_doc_needed) {
     info = SetDocBody(result, response_obj);
-    if(info.is_fatal) {
+    if (info.is_fatal) {
       return info;
     }
   }
 
-  if(counter_needed) {
-      info = SetCounterData(result, response_obj);
-      if(info.is_fatal) {
-        return info;
-      }
+  if (counter_needed) {
+    info = SetCounterData(result, response_obj);
+    if (info.is_fatal) {
+      return info;
+    }
   }
 
   info = SetMetaObject(result, response_obj);
-  if(info.is_fatal) {
+  if (info.is_fatal) {
     return info;
   }
 
   bool success = false;
-  if (!TO(response_obj->Set(context, v8Str(isolate_, success_str_), v8::Boolean::New(isolate_, true)),
+  if (!TO(response_obj->Set(context, v8Str(isolate_, success_str_),
+                            v8::Boolean::New(isolate_, true)),
           &success) ||
       !success) {
     return {true, "Unable to set success value"};
@@ -230,7 +243,8 @@ Info BucketOps::ResponseSuccessObject(std::unique_ptr<Result> const &result,
   return {false};
 }
 
-MetaInfo BucketOps::ExtractMetaInfo(v8::Local<v8::Value> meta_object, bool cas_check, bool expiry_check) {
+MetaInfo BucketOps::ExtractMetaInfo(v8::Local<v8::Value> meta_object,
+                                    bool cas_check, bool expiry_check) {
   auto utils = UnwrapData(isolate_)->utils;
   v8::HandleScope handle_scope(isolate_);
 
@@ -238,59 +252,60 @@ MetaInfo BucketOps::ExtractMetaInfo(v8::Local<v8::Value> meta_object, bool cas_c
 
   MetaData meta = {"", 0, 0};
 
-  if(!meta_object->IsObject()) {
+  if (!meta_object->IsObject()) {
     return {false, "2nd argument should be object"};
   }
 
   v8::Local<v8::Object> req_obj;
   if (!TO_LOCAL(meta_object->ToObject(context), &req_obj)) {
-    return {false, "error in casting metadata object to Object"};
+    return {false, "error in casting 2nd argument to Object"};
   }
 
   v8::Local<v8::Value> key;
-  if(req_obj->Has(v8Str(isolate_, key_str_))) {
+  if (req_obj->Has(v8Str(isolate_, key_str_))) {
     if (!TO_LOCAL(req_obj->Get(context, v8Str(isolate_, key_str_)), &key)) {
-      return {false, "error in reading document key"};
+      return {false, "error in reading document key from 2nd argument"};
     }
   } else {
-      return {false, "document key is not present in meta object"};
+    return {false, "document key is not present in 2nd argument"};
   }
 
   auto info = Utils::ValidateDataType(key);
-  if(info.is_fatal) {
+  if (info.is_fatal) {
     return {false, "Invalid data type for metaId: " + info.msg};
   }
 
   meta.key = utils->ToCPPString(key.As<v8::String>());
-  if(meta.key == "") {
+  if (meta.key == "") {
     return {false, "document key cannot be empty"};
   }
 
-  if(cas_check && req_obj->Has(v8Str(isolate_, cas_str_))) {
+  if (cas_check && req_obj->Has(v8Str(isolate_, cas_str_))) {
     v8::Local<v8::Value> cas;
     if (!TO_LOCAL(req_obj->Get(context, v8Str(isolate_, cas_str_)), &cas)) {
       return {false, "error in reading cas"};
     }
-    if(!cas->IsString()) {
+    if (!cas->IsString()) {
       return {false, "cas should be a string"};
     }
     auto cas_value = utils->ToCPPString(cas.As<v8::String>());
     meta.cas = std::strtoull(cas_value.c_str(), nullptr, 10);
   }
 
-  if(expiry_check && req_obj->Has(v8Str(isolate_, expiry_str_))) {
+  if (expiry_check && req_obj->Has(v8Str(isolate_, expiry_str_))) {
     v8::Local<v8::Value> expiry;
-    if (!TO_LOCAL(req_obj->Get(context, v8Str(isolate_, expiry_str_)), &expiry)) {
+    if (!TO_LOCAL(req_obj->Get(context, v8Str(isolate_, expiry_str_)),
+                  &expiry)) {
       return {false, "error in reading expiration"};
     }
 
-    if(!expiry->IsDate()) {
-      return {false, "expiry should be a data object"};
+    if (!expiry->IsDate()) {
+      return {false, "expiry should be a date object"};
     }
 
     auto info = Epoch(expiry);
-    if(!info.is_valid) {
-        return {false, "Unable to compute epoch for the given Date instance"};
+    if (!info.is_valid) {
+      return {false, "Unable to compute epoch for the given Date instance"};
     }
     meta.expiry = (uint32_t)info.epoch;
   }
@@ -337,7 +352,7 @@ Info BucketOps::VerifyBucketObject(v8::Local<v8::Value> bucket_binding) {
 
 std::tuple<Error, std::unique_ptr<lcb_error_t>, std::unique_ptr<Result>>
 BucketOps::Delete(const std::string &key, lcb_CAS cas, bool is_source_bucket,
-                            Bucket *bucket) {
+                  Bucket *bucket) {
   if (is_source_bucket) {
     return bucket->DeleteWithXattr(key, cas);
   }
@@ -345,8 +360,8 @@ BucketOps::Delete(const std::string &key, lcb_CAS cas, bool is_source_bucket,
 }
 
 std::tuple<Error, std::unique_ptr<lcb_error_t>, std::unique_ptr<Result>>
-BucketOps::Counter(const std::string &key, lcb_CAS cas, lcb_U32 expiry, std::string delta,
-                   bool is_source_bucket, Bucket *bucket) {
+BucketOps::Counter(const std::string &key, lcb_CAS cas, lcb_U32 expiry,
+                   std::string delta, bool is_source_bucket, Bucket *bucket) {
   if (is_source_bucket) {
     return bucket->CounterWithXattr(key, cas, expiry, delta);
   }
@@ -354,19 +369,22 @@ BucketOps::Counter(const std::string &key, lcb_CAS cas, lcb_U32 expiry, std::str
 }
 
 std::tuple<Error, std::unique_ptr<lcb_error_t>, std::unique_ptr<Result>>
-BucketOps::Set(const std::string &key, const void* value, int value_length, lcb_storage_t op_type,
-               lcb_U32 expiry, lcb_CAS cas, lcb_U32 doc_type, bool is_source_bucket, Bucket *bucket) {
+BucketOps::Set(const std::string &key, const void *value, int value_length,
+               lcb_storage_t op_type, lcb_U32 expiry, lcb_CAS cas,
+               lcb_U32 doc_type, bool is_source_bucket, Bucket *bucket) {
   if (is_source_bucket) {
     lcb_U32 cmd_flag = 0;
-    if(op_type == LCB_SET) {
+    if (op_type == LCB_SET) {
       cmd_flag = LCB_CMDSUBDOC_F_UPSERT_DOC;
-    } else if(op_type == LCB_ADD) {
+    } else if (op_type == LCB_ADD) {
       cmd_flag = LCB_CMDSUBDOC_F_INSERT_DOC;
     }
 
-    return bucket->SetWithXattr(key, value, value_length, cmd_flag, expiry, cas);
+    return bucket->SetWithXattr(key, value, value_length, cmd_flag, expiry,
+                                cas);
   }
-  return bucket->SetWithoutXattr(key, value, value_length, op_type, expiry, cas, doc_type);
+  return bucket->SetWithoutXattr(key, value, value_length, op_type, expiry, cas,
+                                 doc_type);
 }
 
 std::tuple<Error, std::unique_ptr<lcb_error_t>, std::unique_ptr<Result>>
@@ -375,23 +393,26 @@ BucketOps::BucketSet(const std::string &key, v8::Local<v8::Value> value,
                      bool is_source_bucket, Bucket *bucket) {
   v8::HandleScope scope(isolate_);
 
-  if(value->IsArrayBuffer()) {
+  if (value->IsArrayBuffer()) {
     auto array_buf = value.As<v8::ArrayBuffer>();
     auto contents = array_buf->GetContents();
     auto data = static_cast<const uint8_t *>(contents.Data());
     int data_length = contents.ByteLength();
-    lcb_U32  doc_type = 0x00000000;
-    return Set(key, data, data_length, op_type, expiry, cas, doc_type, is_source_bucket, bucket);
+    lcb_U32 doc_type = 0x00000000;
+    return Set(key, data, data_length, op_type, expiry, cas, doc_type,
+               is_source_bucket, bucket);
   }
 
   auto json_value = JSONStringify(isolate_, value);
-  const char* data = json_value.c_str();
+  const char *data = json_value.c_str();
   int data_length = strlen(data);
   lcb_U32 doc_type = 0x2000000;
-  return Set(key, data, data_length, op_type, expiry, cas, doc_type, is_source_bucket, bucket);
+  return Set(key, data, data_length, op_type, expiry, cas, doc_type,
+             is_source_bucket, bucket);
 }
 
-void BucketOps::CounterOps(v8::FunctionCallbackInfo<v8::Value> args, std::string delta) {
+void BucketOps::CounterOps(v8::FunctionCallbackInfo<v8::Value> args,
+                           std::string delta) {
   v8::HandleScope handle_scope(isolate_);
 
   auto isolate_data = UnwrapData(isolate_);
@@ -399,26 +420,27 @@ void BucketOps::CounterOps(v8::FunctionCallbackInfo<v8::Value> args, std::string
 
   if (args.Length() < 2) {
     ++bucket_op_exception_count;
-    js_exception->ThrowTypeError("couchbase.counter requires at least 2 arguments");
+    js_exception->ThrowTypeError(
+        "couchbase.counter requires at least 2 arguments");
     return;
   }
 
   auto info = VerifyBucketObject(args[0]);
-  if(info.is_fatal) {
+  if (info.is_fatal) {
     ++bucket_op_exception_count;
     js_exception->ThrowTypeError(info.msg);
     return;
   }
 
   auto block_mutation = BucketBinding::GetBlockMutation(isolate_, args[0]);
-  if(block_mutation) {
+  if (block_mutation) {
     ++bucket_op_exception_count;
     js_exception->ThrowEventingError("Writing to source bucket is forbidden");
     return;
   }
 
   auto meta_info = ExtractMetaInfo(args[1]);
-  if(!meta_info.is_valid) {
+  if (!meta_info.is_valid) {
     ++bucket_op_exception_count;
     js_exception->ThrowTypeError(meta_info.msg);
     return;
@@ -428,7 +450,8 @@ void BucketOps::CounterOps(v8::FunctionCallbackInfo<v8::Value> args, std::string
   auto bucket = BucketBinding::GetBucket(isolate_, args[0]);
   auto is_source_bucket = BucketBinding::IsSourceBucket(isolate_, args[0]);
 
-  auto [error, err_code, result] = Counter(meta.key, meta.cas, meta.expiry, delta, is_source_bucket, bucket);
+  auto [error, err_code, result] =
+      Counter(meta.key, meta.cas, meta.expiry, delta, is_source_bucket, bucket);
 
   if (error != nullptr) {
     ++bucket_op_exception_count;
@@ -442,11 +465,13 @@ void BucketOps::CounterOps(v8::FunctionCallbackInfo<v8::Value> args, std::string
   }
 
   v8::Local<v8::Object> response_obj = v8::Object::New(isolate_);
-  if (result->rc == LCB_DELTA_BADVAL || result->rc == LCB_SUBDOC_MULTI_FAILURE) {
-    info = SetErrorObject(response_obj, "LCB_DELTA_BADVAL", "counter value cannot be parsed as a number",
-                           result->rc, invalid_counter_str_, true);
+  if (result->rc == LCB_DELTA_BADVAL ||
+      result->rc == LCB_SUBDOC_MULTI_FAILURE) {
+    info = SetErrorObject(response_obj, "LCB_DELTA_BADVAL",
+                          "counter value cannot be parsed as a number",
+                          result->rc, invalid_counter_str_, true);
 
-    if(info.is_fatal) {
+    if (info.is_fatal) {
       ++bucket_op_exception_count;
       js_exception->ThrowEventingError(info.msg);
       return;
@@ -456,9 +481,11 @@ void BucketOps::CounterOps(v8::FunctionCallbackInfo<v8::Value> args, std::string
   }
 
   if (result->rc == LCB_KEY_EEXISTS) {
-    info = SetErrorObject(response_obj, "LCB_KEY_EEXISTS", "The document key exists with a CAS value different than specified",
-                           result->rc, cas_mismatch_str_, true);
-    if(info.is_fatal) {
+    info = SetErrorObject(
+        response_obj, "LCB_KEY_EEXISTS",
+        "The document key exists with a CAS value different than specified",
+        result->rc, cas_mismatch_str_, true);
+    if (info.is_fatal) {
       ++bucket_op_exception_count;
       js_exception->ThrowEventingError(info.msg);
       return;
@@ -477,7 +504,7 @@ void BucketOps::CounterOps(v8::FunctionCallbackInfo<v8::Value> args, std::string
   result->exptime = meta.expiry;
 
   info = ResponseSuccessObject(std::move(result), response_obj, false, true);
-  if(info.is_fatal) {
+  if (info.is_fatal) {
     ++bucket_op_exception_count;
     js_exception->ThrowEventingError(info.msg);
   }
@@ -504,14 +531,14 @@ void BucketOps::GetOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
   }
 
   auto info = bucket_ops->VerifyBucketObject(args[0]);
-  if(info.is_fatal) {
+  if (info.is_fatal) {
     ++bucket_op_exception_count;
     js_exception->ThrowTypeError(info.msg);
     return;
   }
 
   auto meta_info = bucket_ops->ExtractMetaInfo(args[1]);
-  if(!meta_info.is_valid) {
+  if (!meta_info.is_valid) {
     ++bucket_op_exception_count;
     js_exception->ThrowTypeError(meta_info.msg);
     return;
@@ -533,11 +560,12 @@ void BucketOps::GetOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
   }
 
   if (result->rc == LCB_KEY_ENOENT) {
-    info = bucket_ops->SetErrorObject(response_obj, "LCB_KEY_ENOENT",
-                                       "The document key does not exist on the server",
-                                       result->rc, bucket_ops->key_not_found_str_, true);
+    info = bucket_ops->SetErrorObject(
+        response_obj, "LCB_KEY_ENOENT",
+        "The document key does not exist on the server", result->rc,
+        bucket_ops->key_not_found_str_, true);
 
-    if(info.is_fatal) {
+    if (info.is_fatal) {
       ++bucket_op_exception_count;
       js_exception->ThrowEventingError(info.msg);
       return;
@@ -552,8 +580,9 @@ void BucketOps::GetOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
   }
 
   result->key = meta.key;
-  info = bucket_ops->ResponseSuccessObject(std::move(result), response_obj, true);
-  if(info.is_fatal) {
+  info =
+      bucket_ops->ResponseSuccessObject(std::move(result), response_obj, true);
+  if (info.is_fatal) {
     ++bucket_op_exception_count;
     js_exception->ThrowEventingError(info.msg);
     return;
@@ -577,37 +606,48 @@ void BucketOps::InsertOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
   if (args.Length() < 3) {
     ++bucket_op_exception_count;
-    js_exception->ThrowTypeError("couchbase.insert requires at least 3 arguments");
+    js_exception->ThrowTypeError(
+        "couchbase.insert requires at least 3 arguments");
     return;
   }
 
   auto info = bucket_ops->VerifyBucketObject(args[0]);
-  if(info.is_fatal) {
+  if (info.is_fatal) {
     ++bucket_op_exception_count;
     js_exception->ThrowTypeError(info.msg);
     return;
   }
 
   auto block_mutation = BucketBinding::GetBlockMutation(isolate, args[0]);
-  if(block_mutation) {
+  if (block_mutation) {
     ++bucket_op_exception_count;
     js_exception->ThrowEventingError("Writing to source bucket is forbidden");
     return;
   }
 
   auto meta_info = bucket_ops->ExtractMetaInfo(args[1], false, true);
-  if(!meta_info.is_valid) {
+  if (!meta_info.is_valid) {
     ++bucket_op_exception_count;
     js_exception->ThrowTypeError(meta_info.msg);
     return;
   }
+
+  info = Utils::ValidateDataType(args[2]);
+  if (info.is_fatal) {
+    ++bucket_op_exception_count;
+    auto err_msg = "Invalid data type for 3rd argument: " + info.msg;
+    js_exception->ThrowTypeError(err_msg);
+    return;
+  }
+
   auto meta = meta_info.meta;
 
   auto is_source_bucket = BucketBinding::IsSourceBucket(isolate, args[0]);
   auto bucket = BucketBinding::GetBucket(isolate, args[0]);
 
-  auto [error, err_code, result] = bucket_ops->BucketSet(meta.key, args[2], LCB_ADD, meta.expiry,
-                                                     meta.cas, is_source_bucket, bucket);
+  auto [error, err_code, result] =
+      bucket_ops->BucketSet(meta.key, args[2], LCB_ADD, meta.expiry, meta.cas,
+                            is_source_bucket, bucket);
 
   if (error != nullptr) {
     ++bucket_op_exception_count;
@@ -622,11 +662,12 @@ void BucketOps::InsertOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
   v8::Local<v8::Object> response_obj = v8::Object::New(isolate);
   if (result->rc == LCB_KEY_EEXISTS) {
-    info = bucket_ops->SetErrorObject(response_obj, "LCB_KEY_EEXISTS",
-                                       "The document key already exists in the server.",
-                                       result->rc, bucket_ops->key_exist_str_, true);
+    info = bucket_ops->SetErrorObject(
+        response_obj, "LCB_KEY_EEXISTS",
+        "The document key already exists in the server.", result->rc,
+        bucket_ops->key_exist_str_, true);
 
-    if(info.is_fatal) {
+    if (info.is_fatal) {
       ++bucket_op_exception_count;
       js_exception->ThrowEventingError(info.msg);
       return;
@@ -644,7 +685,7 @@ void BucketOps::InsertOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
   result->exptime = meta.expiry;
 
   info = bucket_ops->ResponseSuccessObject(std::move(result), response_obj);
-  if(info.is_fatal) {
+  if (info.is_fatal) {
     ++bucket_op_exception_count;
     js_exception->ThrowEventingError(info.msg);
     return;
@@ -668,37 +709,47 @@ void BucketOps::ReplaceOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
   if (args.Length() < 3) {
     ++bucket_op_exception_count;
-    js_exception->ThrowTypeError("couchbase.upsert requires at least 3 arguments");
+    js_exception->ThrowTypeError(
+        "couchbase.upsert requires at least 3 arguments");
     return;
   }
 
   auto info = bucket_ops->VerifyBucketObject(args[0]);
-  if(info.is_fatal) {
+  if (info.is_fatal) {
     ++bucket_op_exception_count;
     js_exception->ThrowTypeError(info.msg);
     return;
   }
 
   auto block_mutation = BucketBinding::GetBlockMutation(isolate, args[0]);
-  if(block_mutation) {
+  if (block_mutation) {
     ++bucket_op_exception_count;
     js_exception->ThrowEventingError("Writing to source bucket is forbidden");
     return;
   }
 
   auto meta_info = bucket_ops->ExtractMetaInfo(args[1], true, true);
-  if(!meta_info.is_valid) {
+  if (!meta_info.is_valid) {
     ++bucket_op_exception_count;
     js_exception->ThrowTypeError(meta_info.msg);
     return;
   }
   auto meta = meta_info.meta;
 
+  info = Utils::ValidateDataType(args[2]);
+  if (info.is_fatal) {
+    ++bucket_op_exception_count;
+    auto err_msg = "Invalid data type for 3rd argument: " + info.msg;
+    js_exception->ThrowTypeError(err_msg);
+    return;
+  }
+
   auto is_source_bucket = BucketBinding::IsSourceBucket(isolate, args[0]);
   auto bucket = BucketBinding::GetBucket(isolate, args[0]);
 
-  auto [error, err_code, result] = bucket_ops->BucketSet(meta.key, args[2], LCB_REPLACE, meta.expiry,
-                                                     meta.cas, is_source_bucket, bucket);
+  auto [error, err_code, result] =
+      bucket_ops->BucketSet(meta.key, args[2], LCB_REPLACE, meta.expiry,
+                            meta.cas, is_source_bucket, bucket);
 
   if (error != nullptr) {
     ++bucket_op_exception_count;
@@ -714,11 +765,12 @@ void BucketOps::ReplaceOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
   v8::Local<v8::Object> response_obj = v8::Object::New(isolate);
 
   if (result->rc == LCB_KEY_EEXISTS) {
-    info = bucket_ops->SetErrorObject(response_obj, "LCB_KEY_EEXISTS",
-                                       "The document key exists with a CAS value different than specified",
-                                       result->rc, bucket_ops->cas_mismatch_str_, true);
+    info = bucket_ops->SetErrorObject(
+        response_obj, "LCB_KEY_EEXISTS",
+        "The document key exists with a CAS value different than specified",
+        result->rc, bucket_ops->cas_mismatch_str_, true);
 
-    if(info.is_fatal) {
+    if (info.is_fatal) {
       ++bucket_op_exception_count;
       js_exception->ThrowEventingError(info.msg);
       return;
@@ -729,11 +781,12 @@ void BucketOps::ReplaceOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
   }
 
   if (result->rc == LCB_KEY_ENOENT) {
-    info = bucket_ops->SetErrorObject(response_obj, "LCB_KEY_ENOENT",
-                                       "The document key does not exist on the server",
-                                       result->rc, bucket_ops->key_not_found_str_, true);
+    info = bucket_ops->SetErrorObject(
+        response_obj, "LCB_KEY_ENOENT",
+        "The document key does not exist on the server", result->rc,
+        bucket_ops->key_not_found_str_, true);
 
-    if(info.is_fatal) {
+    if (info.is_fatal) {
       ++bucket_op_exception_count;
       js_exception->ThrowEventingError(info.msg);
       return;
@@ -751,7 +804,7 @@ void BucketOps::ReplaceOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
   result->exptime = meta.expiry;
 
   info = bucket_ops->ResponseSuccessObject(std::move(result), response_obj);
-  if(info.is_fatal) {
+  if (info.is_fatal) {
     ++bucket_op_exception_count;
     js_exception->ThrowEventingError(info.msg);
     return;
@@ -775,37 +828,47 @@ void BucketOps::UpsertOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
   if (args.Length() < 3) {
     ++bucket_op_exception_count;
-    js_exception->ThrowTypeError("couchbase.upsert requires at least 3 arguments");
+    js_exception->ThrowTypeError(
+        "couchbase.upsert requires at least 3 arguments");
     return;
   }
 
   auto info = bucket_ops->VerifyBucketObject(args[0]);
-  if(info.is_fatal) {
+  if (info.is_fatal) {
     ++bucket_op_exception_count;
     js_exception->ThrowTypeError(info.msg);
     return;
   }
 
   auto block_mutation = BucketBinding::GetBlockMutation(isolate, args[0]);
-  if(block_mutation) {
+  if (block_mutation) {
     ++bucket_op_exception_count;
     js_exception->ThrowEventingError("Writing to source bucket is forbidden");
     return;
   }
 
   auto meta_info = bucket_ops->ExtractMetaInfo(args[1], false, true);
-  if(!meta_info.is_valid) {
+  if (!meta_info.is_valid) {
     ++bucket_op_exception_count;
     js_exception->ThrowTypeError(meta_info.msg);
     return;
   }
   auto meta = meta_info.meta;
 
+  info = Utils::ValidateDataType(args[2]);
+  if (info.is_fatal) {
+    ++bucket_op_exception_count;
+    auto err_msg = "Invalid data type for 3rd argument: " + info.msg;
+    js_exception->ThrowTypeError(err_msg);
+    return;
+  }
+
   auto is_source_bucket = BucketBinding::IsSourceBucket(isolate, args[0]);
   auto bucket = BucketBinding::GetBucket(isolate, args[0]);
 
-  auto [error, err_code, result] = bucket_ops->BucketSet(meta.key, args[2], LCB_SET, meta.expiry,
-                                                     meta.cas, is_source_bucket, bucket);
+  auto [error, err_code, result] =
+      bucket_ops->BucketSet(meta.key, args[2], LCB_SET, meta.expiry, meta.cas,
+                            is_source_bucket, bucket);
 
   if (error != nullptr) {
     ++bucket_op_exception_count;
@@ -828,7 +891,7 @@ void BucketOps::UpsertOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
   result->exptime = meta.expiry;
 
   info = bucket_ops->ResponseSuccessObject(std::move(result), response_obj);
-  if(info.is_fatal) {
+  if (info.is_fatal) {
     ++bucket_op_exception_count;
     js_exception->ThrowEventingError(info.msg);
     return;
@@ -852,26 +915,27 @@ void BucketOps::DeleteOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
   if (args.Length() < 2) {
     ++bucket_op_exception_count;
-    js_exception->ThrowTypeError("couchbase.delete requires at least 2 arguments");
+    js_exception->ThrowTypeError(
+        "couchbase.delete requires at least 2 arguments");
     return;
   }
 
   auto info = bucket_ops->VerifyBucketObject(args[0]);
-  if(info.is_fatal) {
+  if (info.is_fatal) {
     ++bucket_op_exception_count;
     js_exception->ThrowTypeError(info.msg);
     return;
   }
 
   auto block_mutation = BucketBinding::GetBlockMutation(isolate, args[0]);
-  if(block_mutation) {
+  if (block_mutation) {
     ++bucket_op_exception_count;
     js_exception->ThrowEventingError("Delete from source bucket is forbidden");
     return;
   }
 
   auto meta_info = bucket_ops->ExtractMetaInfo(args[1], true);
-  if(!meta_info.is_valid) {
+  if (!meta_info.is_valid) {
     ++bucket_op_exception_count;
     js_exception->ThrowTypeError(meta_info.msg);
     return;
@@ -881,7 +945,8 @@ void BucketOps::DeleteOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
   auto bucket = BucketBinding::GetBucket(isolate, args[0]);
   auto is_source_bucket = BucketBinding::IsSourceBucket(isolate, args[0]);
 
-  auto [error, err_code, result] = bucket_ops->Delete(meta.key, meta.cas, is_source_bucket, bucket);
+  auto [error, err_code, result] =
+      bucket_ops->Delete(meta.key, meta.cas, is_source_bucket, bucket);
   if (error != nullptr) {
     ++bucket_op_exception_count;
     js_exception->ThrowEventingError(*error);
@@ -895,11 +960,12 @@ void BucketOps::DeleteOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
   v8::Local<v8::Object> response_obj = v8::Object::New(isolate);
   if (result->rc == LCB_KEY_EEXISTS) {
-    info = bucket_ops->SetErrorObject(response_obj, "LCB_KEY_EEXISTS",
-                                       "The document key exists with a CAS value different than specified",
-                                       result->rc, bucket_ops->cas_mismatch_str_, true);
+    info = bucket_ops->SetErrorObject(
+        response_obj, "LCB_KEY_EEXISTS",
+        "The document key exists with a CAS value different than specified",
+        result->rc, bucket_ops->cas_mismatch_str_, true);
 
-    if(info.is_fatal) {
+    if (info.is_fatal) {
       ++bucket_op_exception_count;
       js_exception->ThrowEventingError(info.msg);
       return;
@@ -910,11 +976,12 @@ void BucketOps::DeleteOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
   }
 
   if (result->rc == LCB_KEY_ENOENT) {
-    info = bucket_ops->SetErrorObject(response_obj, "LCB_KEY_ENOENT",
-                                       "The document key does not exist on the server",
-                                       result->rc, bucket_ops->key_not_found_str_, true);
+    info = bucket_ops->SetErrorObject(
+        response_obj, "LCB_KEY_ENOENT",
+        "The document key does not exist on the server", result->rc,
+        bucket_ops->key_not_found_str_, true);
 
-    if(info.is_fatal) {
+    if (info.is_fatal) {
       ++bucket_op_exception_count;
       js_exception->ThrowEventingError(info.msg);
       return;
@@ -930,7 +997,7 @@ void BucketOps::DeleteOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
   result->key = meta.key;
   info = bucket_ops->ResponseSuccessObject(std::move(result), response_obj);
-  if(info.is_fatal) {
+  if (info.is_fatal) {
     ++bucket_op_exception_count;
     js_exception->ThrowEventingError(info.msg);
     return;
