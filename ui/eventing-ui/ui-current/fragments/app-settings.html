@@ -152,6 +152,27 @@
         </div>
       </div>
       <div class="formrow">
+        <label class="inline">Default Feed Boundary</label>
+        <span
+                class="fa-stack icon-info"
+                uib-tooltip="The preferred Feed Boundary for the handler."
+                tooltip-placement="right">
+        <span class="icon fa-circle-thin fa-stack-2x"></span>
+        <span class="icon fa-info fa-stack-1x"></span>
+        </span>
+        <select
+          name="default_stream_boundary"
+          ng-init="appModel.settings.default_stream_boundary = appModel.settings.default_stream_boundary ? appModel.settings.default_stream_boundary : 'everything'"
+          ng-model="appModel.settings.default_stream_boundary">
+          <option value="everything">Everything</option>
+          <option value="from_now">From now</option>
+        </select>
+        <div class="error field-error"
+             ng-show="appModel.settings.default_stream_boundary === '' ">
+            Please specify a default feed boundary
+        </div>
+      </div>
+      <div class="formrow">
         <label>Description</label>
         <textarea rows="3" ng-model="appModel.settings.description">
         </textarea>
@@ -294,6 +315,7 @@
           <input
                   type="number"
                   name="timer_context_size"
+                  ng-init="appModel.settings.timer_context_size = appModel.settings.timer_context_size ? appModel.settings.timer_context_size : 1024"
                   ng-model="appModel.settings.timer_context_size"
                   ng-init="appModel.settings.timer_context_size = appModel.settings.timer_context_size ? appModel.settings.timer_context_size : 1024"
                   min="20"
@@ -306,7 +328,7 @@
           <div
                   class="error field-error"
                   ng-show="formCtrl.createAppForm.timer_context_size.$error.isnan && formCtrl.createAppForm.timer_context_size.$dirty">
-                  Timer Context Size requires a value and must be a number
+                  Timer Context Size requires a value
           </div>
           <div
                   class="error field-error"

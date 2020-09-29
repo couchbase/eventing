@@ -114,6 +114,7 @@ func (m *ServiceMgr) fillMissingWithDefaults(appName string, settings map[string
 	fillMissingDefault(app, settings, "worker_queue_cap", float64(100*1000))
 	fillMissingDefault(app, settings, "worker_queue_mem_cap", float64(1024))
 	fillMissingDefault(app, settings, "worker_response_timeout", float64(3600))
+	fillMissingDefault(app, settings, "default_stream_boundary", "everything")
 
 	// metastore related configuration
 	fillMissingDefault(app, settings, "timer_queue_mem_cap", float64(50))
