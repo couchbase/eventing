@@ -12,7 +12,11 @@ import (
 	"github.com/couchbase/eventing/util"
 )
 
-var METRICS_PREFIX = "eventing_"
+const (
+	METRICS_PREFIX      = "eventing_"
+	APPROX_METRIC_COUNT = 27
+	APPROX_METRIC_SIZE  = 100
+)
 
 const (
 	metakvEventingPath       = "/eventing/"

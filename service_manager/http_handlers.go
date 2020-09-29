@@ -3858,12 +3858,17 @@ func (m *ServiceMgr) highCardStats() []byte {
 	fmtStr := "%v%v{bucket: \"%v\", scope: \"%v\", collection: \"%v\", functionName: \"%v\"} %v\n"
 
 	deployedApps := m.superSup.GetDeployedApps()
-	stats := make([]byte, 0)
+	stats := make([]byte, 0, APPROX_METRIC_COUNT*APPROX_METRIC_SIZE*len(deployedApps))
 	for appName, _ := range deployedApps {
 		keyspace := m.superSup.GetSourceKeyspace(appName)
 		if keyspace == nil {
 			continue
 		}
+
+		backlog := fmt.Sprintf(fmtStr, METRICS_PREFIX, "dcp_backlog", keyspace.BucketName,
+			keyspace.ScopeName, keyspace.CollectionName, appName,
+			m.superSup.GetDcpEventsRemainingToProcess(appName))
+		stats = append(stats, []byte(backlog)...)
 
 		processingStats := m.superSup.GetEventProcessingStats(appName)
 		if processingStats != nil {
@@ -3902,6 +3907,7 @@ func (m *ServiceMgr) highCardStats() []byte {
 			stats = populate(fmtStr, appName, "timer_context_size_exception_counter", keyspace, stats, failureStats)
 			stats = populate(fmtStr, appName, "timer_callback_missing_counter", keyspace, stats, failureStats)
 			stats = populate(fmtStr, appName, "bkt_ops_cas_mismatch_count", keyspace, stats, failureStats)
+			stats = populate(fmtStr, appName, "checkpoint_failure_count", keyspace, stats, failureStats)
 		}
 
 	}
