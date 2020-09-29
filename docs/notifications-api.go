@@ -9,9 +9,9 @@ import (
 type Code error
 
 var (
-	TopicNotFound    Code = errors.New("topic does not exist")
-	TopicSliceClosed Code = errors.New("topic slice is closed")
-	Timeout          Code = errors.New("operation timed out")
+	TopicNotFound Code = errors.New("topic does not exist")
+	TopicClosed   Code = errors.New("topic is closed")
+	Timeout       Code = errors.New("operation timed out")
 )
 
 type Error interface {
@@ -23,7 +23,7 @@ type Error interface {
 }
 
 type Notification interface {
-	// Key is a opaque identifier, and is unique for a given TopicSlice.
+	// Key is a opaque identifier, and is unique for a given Topic.
 	// Reading the key of an expired notification could return a Timeout error.
 	Key() (string, Error)
 
@@ -36,7 +36,7 @@ type Notification interface {
 	Expiry() time.Time
 }
 
-type TopicSlice interface {
+type Topic interface {
 	// Get the channel from which notifications can be read. The returned object is valid
 	// until it is acknowledged or lease expires. Caller should never close this channel.
 	NotifyChannel() (<-chan Notification, Error)
@@ -57,7 +57,7 @@ type TopicSlice interface {
 	// Describe the definition time characteristics of this topic
 	Describe() (*TopicDef, Error)
 
-	// Close a TopicSlice. After this is called, no items must be read from notification channel, and
+	// Close a Topic. After this is called, no items must be read from notification channel, and
 	// no items must be queued to acknowledgement channel, and notification objects held are invalid.
 	// A topic should ideally not be closed when there are unread or unacknowledged items, but if done,
 	// unread and unacknowledged items will be re-queued at unspecified time and in unspecified order.
@@ -99,12 +99,8 @@ type TopicDef interface {
 }
 
 type NotificationManager interface {
-	// Open a TopicSlice. In order to see all notifications on a topic, a TopicSlice must be opened
-	// on each eventing node. It is the responsibility of ns_server to identify the list of such nodes.
-	// On a given node, for a given topic, exactly one TopicSlice must be opened. Calling Open more than once
-	// for a given topic on a given node will cause all previously opened TopicSlices for the topic on this node
-	// to be deemed as implcitly Close()-ed but timing of such implicit closure is unspecified.
-	OpenTopic(topic string) (*TopicSlice, Error)
+	// Open a Topic. Any number of actors can open a given topic.
+	OpenTopic(topic string) (*Topic, Error)
 
 	// Describe the definition time characteristics of a topic. This is a superset of what appears in the UI.
 	DescribeTopic(topic string) (*TopicDef, Error)
