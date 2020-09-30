@@ -401,7 +401,7 @@ func TestTimerBucketOp(t *testing.T) {
 	time.Sleep(5 * time.Second)
 	handler := "bucket_op_with_timer"
 	flushFunctionAndBucket(functionName)
-	createAndDeployFunction(functionName, handler, &commonSettings{})
+	createAndDeployFunction(functionName, handler, &commonSettings{numTimerPartitions: 128})
 
 	pumpBucketOps(opsType{}, &rateLimit{})
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
@@ -443,9 +443,10 @@ func TestDeployUndeployLoopTimer(t *testing.T) {
 	time.Sleep(5 * time.Second)
 	handler := "bucket_op_with_timer"
 	flushFunctionAndBucket(functionName)
+	var counts [5]int = [5]int{32, 128, 256, 512, 1024}
 
 	for i := 0; i < 5; i++ {
-		createAndDeployFunction(functionName, handler, &commonSettings{})
+		createAndDeployFunction(functionName, handler, &commonSettings{numTimerPartitions: counts[i]})
 
 		pumpBucketOps(opsType{}, &rateLimit{})
 		eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
@@ -1102,7 +1103,7 @@ func TestUndeployWhenTimersAreFired(t *testing.T) {
 	time.Sleep(5 * time.Second)
 	handler := "bucket_op_with_timer_with_large_context"
 	flushFunctionAndBucket(functionName)
-	createAndDeployFunction(functionName, handler, &commonSettings{})
+	createAndDeployFunction(functionName, handler, &commonSettings{numTimerPartitions: 256})
 	waitForDeployToFinish(functionName)
 
 	go pumpBucketOps(opsType{count: itemCount * 8}, &rateLimit{})

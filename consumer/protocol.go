@@ -355,6 +355,7 @@ func (c *Consumer) makeV8InitPayload(appName, debuggerPort, currHost, eventingDi
 	payload.PayloadAddN1qlConsistency(builder, n1qlConsistency)
 	payload.PayloadAddLcbRetryCount(builder, int32(c.lcbRetryCount))
 	payload.PayloadAddSrcMutation(builder, smu[0])
+	payload.PayloadAddNumTimerPartitions(builder, int32(c.numTimerPartitions))
 
 	if c.n1qlPrepareAll {
 		payload.PayloadAddN1qlPrepareAll(builder, 0x1)

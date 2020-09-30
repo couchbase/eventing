@@ -157,6 +157,7 @@ typedef struct handler_config_s {
   int execution_timeout;
   int lcb_retry_count;
   int lcb_inst_capacity;
+  int num_timer_partitions;
   bool skip_lcb_bootstrap;
   bool using_timer;
   int64_t timer_context_size;
@@ -325,6 +326,7 @@ public:
   std::map<int, int64_t> lcb_exceptions_;
   IsolateData data_;
   int32_t num_vbuckets_{1024};
+  int32_t timer_reduction_ratio_{1};
 
 private:
   CompilationInfo CompileHandler(std::string app_name, std::string handler);

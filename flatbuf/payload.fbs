@@ -49,6 +49,7 @@ table Payload {
   lcb_retry_count:int;
 
   src_mutation:bool; // Allow source bucket mutations
+  num_timer_partitions:int; // Timer partitions are configurable using this.
 }
 
 root_type Payload;

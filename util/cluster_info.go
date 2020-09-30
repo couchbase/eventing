@@ -758,6 +758,22 @@ func (c *ClusterInfoCache) GetCollectionID(bucket, scope, collection string) (ui
 	return c.pool.GetCollectionID(bucket, scope, collection)
 }
 
+func (c *ClusterInfoCache) GetNodeCompatVersion(service string) uint32 {
+	version := (uint32)(math.MaxUint32)
+	for _, n := range c.nodes {
+		for _, s := range n.Services {
+			if s == service {
+				v := uint32(n.ClusterCompatibility / 65536)
+				if v < version {
+					version = v
+				}
+				break
+			}
+		}
+	}
+	return version
+}
+
 func getConfig() (c common.Config) {
 
 	data, err := MetakvGet(common.MetakvConfigPath)

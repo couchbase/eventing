@@ -214,6 +214,22 @@ func KVNodesAddresses(auth, hostaddress, bucket string) ([]string, error) {
 	return kvNodes, nil
 }
 
+func CollectionAware(auth, hostaddress string) (bool, error) {
+	cic, err := FetchClusterInfoClient(hostaddress)
+	if err != nil {
+		return false, err
+	}
+	cinfo := cic.GetClusterInfoCache()
+	cinfo.RLock()
+	defer cinfo.RUnlock()
+
+	ver := cinfo.GetNodeCompatVersion("kv")
+	if ver >= 7 {
+		return true, nil
+	}
+	return false, nil
+}
+
 func EventingNodesAddresses(auth, hostaddress string) ([]string, error) {
 	logPrefix := "util::EventingNodesAddresses"
 	cic, err := FetchClusterInfoClient(hostaddress)
@@ -1977,4 +1993,8 @@ func AppendLangCompat(path, appName string, payload []byte) ([]byte, error) {
 	}
 
 	return payload, nil
+}
+
+func RoundUpToNearestPowerOf2(number float64) int {
+	return 1 << uint16(math.Ceil(math.Log2(number)))
 }

@@ -55,6 +55,8 @@ type DcpFeed struct {
 	stats              DcpStats  // Stats for dcp client
 	dcplatency         *Average
 	enableReadDeadline int32 // 0 => Read deadline is disabled in doReceive, 1 => enabled
+
+	collectionAware bool // Check if all kv nodes are above version 7
 }
 
 // NewDcpFeed creates a new DCP Feed.
@@ -75,13 +77,14 @@ func NewDcpFeed(
 		dcplatency: &Average{},
 	}
 
+	feed.collectionAware = config["collectionAware"].(bool)
 	mc.Hijack()
 	feed.conn = mc
 	rcvch := make(chan []interface{}, dataChanSize)
 	feed.lastAckTime = time.Now()
 	go feed.genServer(opaque, feed.reqch, feed.finch, rcvch, config)
 	go feed.doReceive(rcvch, feed.finch, mc)
-	logging.Infof("%v ##%x feed started ...", feed.logPrefix, opaque)
+	logging.Infof("%v ##%x feed started ... collectionAware: %v", feed.logPrefix, opaque, feed.collectionAware)
 	return feed, nil
 }
 
@@ -585,7 +588,7 @@ func (feed *DcpFeed) doDcpOpen(
 	feed.conn.SetMcdConnectionDeadline()
 	defer feed.conn.ResetMcdConnectionDeadline()
 
-	if true /* if collection aware */ {
+	if feed.collectionAware {
 		if err := feed.enableCollections(rcvch); err != nil {
 			return err
 		}
@@ -735,11 +738,12 @@ func (feed *DcpFeed) doDcpRequestStream(
 		return err
 	}
 	stream := &DcpStream{
-		AppOpaque: opaqueMSB,
-		Vbucket:   vbno,
-		Vbuuid:    vuuid,
-		StartSeq:  startSequence,
-		EndSeq:    endSequence,
+		AppOpaque:        opaqueMSB,
+		Vbucket:          vbno,
+		Vbuuid:           vuuid,
+		StartSeq:         startSequence,
+		EndSeq:           endSequence,
+		collectionsAware: feed.collectionAware,
 	}
 	feed.vbstreams[vbno] = stream
 	return nil
@@ -909,17 +913,18 @@ func vbOpaque(opq32 uint32) uint16 {
 
 // DcpStream is per stream data structure over an DCP Connection.
 type DcpStream struct {
-	AppOpaque   uint16
-	CloseOpaque uint16
-	Vbucket     uint16 // Vbucket id
-	Vbuuid      uint64 // vbucket uuid
-	Seqno       uint64
-	StartSeq    uint64 // start sequence number
-	EndSeq      uint64 // end sequence number
-	Snapstart   uint64
-	Snapend     uint64
-	LastSeen    int64 // UnixNano value of last seen
-	connected   bool
+	AppOpaque        uint16
+	CloseOpaque      uint16
+	Vbucket          uint16 // Vbucket id
+	Vbuuid           uint64 // vbucket uuid
+	Seqno            uint64
+	StartSeq         uint64 // start sequence number
+	EndSeq           uint64 // end sequence number
+	Snapstart        uint64
+	Snapend          uint64
+	LastSeen         int64 // UnixNano value of last seen
+	connected        bool
+	collectionsAware bool
 }
 
 // DcpEvent memcached events for DCP streams.
@@ -964,7 +969,7 @@ func newDcpEvent(rq *transport.MCRequest, stream *DcpStream) *DcpEvent {
 	}
 
 	docId := rq.Key
-	if true /*Collection aware*/ {
+	if stream.collectionsAware {
 		switch event.Opcode {
 		case transport.DCP_MUTATION, transport.DCP_DELETION, transport.DCP_EXPIRATION:
 			docId, event.CollectionID = collections.LEB128Dec(rq.Key)

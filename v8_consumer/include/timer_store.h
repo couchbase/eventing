@@ -23,16 +23,16 @@
 #include "timer_defs.h"
 #include "timer_iterator.h"
 #include "utils.h"
+#include "v8worker.h"
 
 namespace timer {
 class TimerStore {
 public:
   explicit TimerStore(v8::Isolate *isolate, const std::string &prefix,
-                      const std::vector<int64_t> &partitions,
                       const std::string &metadata_bucket,
                       const std::string &metadata_scope,
                       const std::string &metadata_collection,
-                      int32_t num_vbuckets);
+                      int32_t num_vbuckets, int32_t timer_reduction_ratio);
   ~TimerStore();
 
   lcb_STATUS SetTimer(TimerInfo &timer, int max_retry_count,
@@ -66,6 +66,7 @@ private:
 
   void ShrinkSpan(int64_t partition, int64_t start);
 
+  bool IsValidTimerPartition(int vb);
   std::pair<lcb_STATUS, Result> GetCounter(const std::string &key,
                                            int max_retry_count,
                                            uint32_t max_retry_secs);
@@ -109,6 +110,7 @@ private:
   lcb_INSTANCE *crud_handle_{nullptr};
   std::mutex store_lock_;
   int32_t num_vbuckets_{1024};
+  int32_t timer_reduction_ratio_{1};
   friend class Iterator;
 };
 } // namespace timer

@@ -9,6 +9,7 @@
 // or implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
+#include <cmath>
 #include <mutex>
 
 #include "crc32.h"
@@ -23,8 +24,10 @@ thread_local std::mt19937_64
     rng(std::random_device{}() +
         std::hash<std::thread::id>()(std::this_thread::get_id()));
 
-Timer::Timer(v8::Isolate *isolate, const v8::Local<v8::Context> &context)
-    : isolate_(isolate) {
+Timer::Timer(v8::Isolate *isolate, const v8::Local<v8::Context> &context,
+             int32_t timer_reduction_ratio)
+    : timer_mask_bits_(uint16_t(log2(timer_reduction_ratio))),
+      isolate_(isolate) {
   context_.Reset(isolate_, context);
 }
 
@@ -196,9 +199,14 @@ void Timer::FillTimerPartition(timer::TimerInfo &timer_info,
                                const int32_t &num_vbuckets) {
   auto ref = timer_info.callback + ":" + timer_info.reference;
   uint32_t hash = crc32_8(ref.c_str(), ref.size(), 0 /*crc_in*/);
-  timer_info.vb = hash % num_vbuckets;
+  if (timer_mask_bits_ > 0)
+    timer_info.vb = ((hash % num_vbuckets) >> timer_mask_bits_)
+                    << timer_mask_bits_;
+  else
+    timer_info.vb = hash % num_vbuckets;
   LOG(logTrace) << "ref: " << ref << "hash: " << hash
                 << "num_vbuckets: " << num_vbuckets
+                << "timer_mask_bits: " << timer_mask_bits_
                 << "Timer Partition is: " << timer_info.vb << " " << std::endl;
 }
 
