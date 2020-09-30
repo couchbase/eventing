@@ -3855,7 +3855,7 @@ func (m *ServiceMgr) prometheusHigh(w http.ResponseWriter, r *http.Request) {
 
 func (m *ServiceMgr) highCardStats() []byte {
 	// service_type{bucket, scope, collection, functionName} value
-	fmtStr := "%v%v{bucket: \"%v\", scope: \"%v\", collection: \"%v\", functionName: \"%v\"} %v\n"
+	fmtStr := "%v%v{bucket=\"%v\", scope=\"%v\", collection=\"%v\", functionName=\"%v\"} %v\n"
 
 	deployedApps := m.superSup.GetDeployedApps()
 	stats := make([]byte, 0, APPROX_METRIC_COUNT*APPROX_METRIC_SIZE*len(deployedApps))
@@ -3899,7 +3899,7 @@ func (m *ServiceMgr) highCardStats() []byte {
 		}
 
 		failureStats := m.superSup.GetFailureStats(appName)
-		if executionStats != nil {
+		if failureStats != nil {
 			//TODO: Add num_curl_exceptions, num_curl_timeout
 			stats = populate(fmtStr, appName, "bucket_op_exception_count", keyspace, stats, failureStats)
 			stats = populate(fmtStr, appName, "timeout_count", keyspace, stats, failureStats)
