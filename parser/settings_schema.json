@@ -4,18 +4,9 @@
   "type": "object",
   "additionalProperties": false,
   "dependencies": {
-    "deployment_status": [
-      "processing_status",
-      "dcp_stream_boundary"
-    ],
-    "processing_status": [
-      "deployment_status",
-      "dcp_stream_boundary"
-    ],
-    "dcp_stream_boundary": [
-      "deployment_status",
-      "processing_status"
-    ]
+    "deployment_status": ["processing_status", "dcp_stream_boundary"],
+    "processing_status": ["deployment_status", "dcp_stream_boundary"],
+    "dcp_stream_boundary": ["deployment_status", "processing_status"]
   },
   "properties": {
     "cpp_worker_thread_count": {
@@ -27,11 +18,7 @@
     "dcp_stream_boundary": {
       "type": "string",
       "description": "indicates where to start dcp stream from (beginning of time, present point, or point where paused)",
-      "enum": [
-        "everything",
-        "from_now",
-        "from_prior"
-      ],
+      "enum": ["everything", "from_now", "from_prior"],
       "default": "from_now"
     },
     "deadline_timeout": {
@@ -56,10 +43,7 @@
     "language_compatibility": {
       "type": "string",
       "description": "eventing language version this handler assumes in terms of syntax and behavior",
-      "enum": [
-        "6.0.0",
-        "6.5.0"
-      ],
+      "enum": ["6.0.0", "6.5.0"],
       "default": "6.5.0"
     },
     "lcb_inst_capacity": {
@@ -77,22 +61,13 @@
     "log_level": {
       "type": "string",
       "description": "level of detail in system logging",
-      "enum": [
-        "INFO",
-        "ERROR",
-        "WARNING",
-        "DEBUG",
-        "TRACE"
-      ],
+      "enum": ["INFO", "ERROR", "WARNING", "DEBUG", "TRACE"],
       "default": "INFO"
     },
     "n1ql_consistency": {
       "type": "string",
       "description": "consistency level used by n1ql statements in the handler",
-      "enum": [
-        "none",
-        "request"
-      ],
+      "enum": ["none", "request"],
       "default": "none"
     },
     "num_timer_partitions": {
@@ -119,7 +94,7 @@
       "type": "integer",
       "description": "size limit of timer context object",
       "minimum": 20,
-      "maximum": 19922944,
+      "maximum": 20971520,
       "default": 1024
     },
     "user_prefix": {

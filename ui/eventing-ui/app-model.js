@@ -166,7 +166,8 @@ ApplicationModel.prototype.getDefaultModel = function() {
             execution_timeout: 60,
             user_prefix: 'eventing',
             n1ql_consistency: 'none',
-            language_compatibility: '6.5.0'
+            language_compatibility: '6.5.0',
+            timer_context_size: 1024
         }
     };
 };
@@ -201,6 +202,7 @@ ApplicationModel.prototype.initializeDefaults = function() {
     this.settings.user_prefix = 'eventing';
     this.settings.n1ql_consistency = 'none';
     this.version = getVersion();
+    this.settings.timer_context_size = 1024;
 };
 
 function determineUIStatus(status) {
