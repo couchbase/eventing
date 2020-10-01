@@ -744,8 +744,8 @@ func (m *ServiceMgr) validateTimerContextSize(field string, settings map[string]
 	info.Code = m.statusCodes.errInvalidConfig.Code
 
 	if val, ok := settings[field]; ok {
-		if val.(float64) > 19*1024*1024 {
-			info.Info = fmt.Sprintf("%s value can not be more than 19MB", field)
+		if val.(float64) > 20*1024*1024 {
+			info.Info = fmt.Sprintf("%s value can not be more than 20MB", field)
 			return
 		}
 

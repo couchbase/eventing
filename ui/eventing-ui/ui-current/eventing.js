@@ -1838,6 +1838,8 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                     form.appname.$error.required = form.appname.$viewValue === '' ||
                         form.appname.$viewValue === undefined;
 
+                    form.timer_context_size.$error.isnan = isNaN(form.timer_context_size.$viewValue) || (form.timer_context_size.$viewValue == null);
+
                     return form.appname.$error.required ||
                         form.appname.$error.appExists ||
                         form.worker_count.$error.required ||
@@ -1845,6 +1847,10 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         form.worker_count.$error.max ||
                         form.execution_timeout.$error.required ||
                         form.execution_timeout.$error.min ||
+                        form.timer_context_size.$error.required ||
+                        form.timer_context_size.$error.min ||
+                        form.timer_context_size.$error.max ||
+                        form.timer_context_size.$error.isnan ||
                         formCtrl.sourceBuckets.indexOf(form.source_bucket.$viewValue) === -1 ||
                         formCtrl.metadataBuckets.indexOf(form.metadata_bucket.$viewValue) === -1 ||
                         form.appname.$error.appnameInvalid || bindingError || hostnameError;
