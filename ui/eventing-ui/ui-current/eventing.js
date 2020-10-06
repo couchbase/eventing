@@ -900,6 +900,7 @@ angular.module('eventing', [
                         scopes.push(scope.name);
                     }
                     self.scopes[index] = scopes;
+                    self.populateCollections($scope.bindings[index].scope, index);
                 });
             };
 
@@ -924,7 +925,7 @@ angular.module('eventing', [
                         scopes.push(scope.name);
                     }
                     self.sourceScopes = scopes;
-                    self.populateSourceCollections("_default");
+                    self.populateSourceCollections($scope.appModel.depcfg.source_scope);
                 });
             };
 
@@ -953,7 +954,7 @@ angular.module('eventing', [
                 self.scopes.push([]);
                 self.collections.push([]);
                 self.responses.push([]);
-                self.populateScope(self.sourceBucket[0], 0);
+                self.populateScope(self.sourceBuckets[0], self.responses.length - 1);
             };
 
             self.Remove = function(index) {
@@ -971,7 +972,7 @@ angular.module('eventing', [
                         scopes.push(scope.name);
                     }
                     self.metadataScopes = scopes;
-                    self.populateMetadataCollections("_default");
+                    self.populateMetadataCollections($scope.appModel.depcfg.metadata_scope);
                 });
             };
 
@@ -1025,15 +1026,41 @@ angular.module('eventing', [
                 self.scopes.push([]);
                 self.collections.push([]);
                 self.responses.push([]);
+                if (!$scope.bindings[binding].scope) {
+                    $scope.bindings[binding].scope = "_default";
+                }
+
+                if (!$scope.bindings[binding].collection) {
+                    $scope.bindings[binding].collection = "_default";
+                }
+
                 if ($scope.bindings[binding].name != "") {
                     self.populateScope($scope.bindings[binding].name, binding);
                 }
-                if ($scope.bindings[binding].collection != "") {
+
+                if ($scope.bindings[binding].scope != "") {
                     self.populateCollections($scope.bindings[binding].scope, binding);
                 }
             }
-            self.populateSourceScopes("default");
-            self.populateMetadataScopes("eventing");
+
+            if (!$scope.appModel.depcfg.source_scope) {
+                $scope.appModel.depcfg.source_scope = "_default";
+            }
+
+            if (!$scope.appModel.depcfg.source_collection) {
+                $scope.appModel.depcfg.source_collection = "_default";
+            }
+
+            if (!$scope.appModel.depcfg.metadata_scope) {
+                $scope.appModel.depcfg.metadata_scope = "_default";
+            }
+
+            if (!$scope.appModel.depcfg.metadata_collection) {
+                $scope.appModel.depcfg.metadata_collection = "_default";
+            }
+
+            self.populateSourceScopes($scope.appModel.depcfg.source_bucket);
+            self.populateMetadataScopes($scope.appModel.depcfg.metadata_bucket);
         }
     ])
     // Controller for settings.
@@ -1105,6 +1132,7 @@ angular.module('eventing', [
                         scopes.push(scope.name);
                     }
                     self.scopes[index] = scopes;
+                    self.populateCollections(self.bindings[index].scope, index);
                 }).catch(function(data) {
                     console.log(data);
                 });
@@ -1444,7 +1472,7 @@ angular.module('eventing', [
                                                     var raw = navigator.userAgent.match(/Chrom(e|ium)\/([0-9]+)\./);
                                                     var chromeVersion = (raw ? parseInt(raw[2], 10) : false);
                                                     if (!isNaN(chromeVersion)) {
-                                                        if (chromeVersion < 66 ) {
+                                                        if (chromeVersion < 66) {
                                                             debugScope.url = "chrome-devtools://devtools/bundled/inspector.html?experiments=true&v8only=true&ws=" + responseContent["websocket"];
                                                         } else if (chromeVersion < 82) {
                                                             debugScope.url = "chrome-devtools://devtools/bundled/js_app.html?experiments=true&v8only=true&ws=" + responseContent["websocket"];
