@@ -1449,12 +1449,12 @@ angular.module('eventing', [
                                                         } else if (chromeVersion < 82) {
                                                             debugScope.url = "chrome-devtools://devtools/bundled/js_app.html?experiments=true&v8only=true&ws=" + responseContent["websocket"];
                                                         } else if (chromeVersion < 84) {
-                                                            debugScope.url = "devtools://devtools/bundled/js_app.html?experiments=true&v8only=true&ws=" + responseContent["websocket"]
+                                                            debugScope.url = "devtools://devtools/bundled/js_app.html?ws=" + responseContent["websocket"]
                                                         } else {
-                                                            debugScope.url = "devtools://devtools/bundled/inspector.html?experiments=true&v8only=true&ws=" + responseContent["websocket"];
+                                                            debugScope.url = "devtools://devtools/bundled/inspector.html?ws=" + responseContent["websocket"];
                                                         }
                                                     } else {
-                                                        debugScope.url = "devtools://devtools/bundled/inspector.html?experiments=true&v8only=true&ws=" + responseContent["websocket"];
+                                                        debugScope.url = "devtools://devtools/bundled/inspector.html?ws=" + responseContent["websocket"];
                                                     }
                                                 }
                                             })
