@@ -313,12 +313,14 @@ type EventingSuperSup interface {
 	WriteDebuggerToken(appName, token string, hostnames []string)
 	IncWorkerRespawnedCount()
 	WorkerRespawnedCount() uint32
+	CheckLifeCycleOpsDuringRebalance() bool
 }
 
 type EventingServiceMgr interface {
 	UpdateBucketGraphFromMetakv(functionName string) error
 	ResetFailoverStatus()
 	GetFailoverStatus() (failoverNotifTs int64, changeId string)
+	CheckLifeCycleOpsDuringRebalance() bool
 }
 
 type Config map[string]interface{}

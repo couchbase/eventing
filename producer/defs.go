@@ -171,6 +171,7 @@ type Producer struct {
 	// Supervisor of workers responsible for
 	// pipelining messages to V8
 	workerSupervisor *suptree.Supervisor
+	lazyUndeploy     bool
 }
 
 type vbNodeWorkerMapping struct {

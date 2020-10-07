@@ -659,3 +659,7 @@ func (s *SuperSupervisor) IncWorkerRespawnedCount() {
 func (s *SuperSupervisor) WorkerRespawnedCount() uint32 {
 	return atomic.LoadUint32(&s.workerRespawnedCount)
 }
+
+func (s *SuperSupervisor) CheckLifeCycleOpsDuringRebalance() bool {
+	return s.serviceMgr.CheckLifeCycleOpsDuringRebalance()
+}

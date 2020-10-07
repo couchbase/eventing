@@ -543,6 +543,10 @@ func (p *Producer) RebalanceTaskProgress() *common.RebalanceProgress {
 
 	producerLevelProgress := &common.RebalanceProgress{}
 
+	if p.lazyUndeploy {
+		return producerLevelProgress
+	}
+
 	for _, c := range p.getConsumers() {
 		progress := c.RebalanceTaskProgress()
 
@@ -926,6 +930,10 @@ func (p *Producer) BootstrapStatus() bool {
 // RebalanceStatus returns state of rebalance for all running consumer instances
 func (p *Producer) RebalanceStatus() bool {
 	logPrefix := "Producer::RebalanceStatus"
+
+	if p.lazyUndeploy {
+		return false
+	}
 
 	consumerRebStatuses := make(map[string]bool)
 	for _, c := range p.getConsumers() {

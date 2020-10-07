@@ -772,6 +772,14 @@ func (m *ServiceMgr) checkTopologyChangeReadiness(changeType service.TopologyCha
 	return nil
 }
 
+func (m *ServiceMgr) CheckLifeCycleOpsDuringRebalance() bool {
+	rebStatus := m.checkLifeCycleOpsDuringRebalance()
+	if rebStatus.Code != m.statusCodes.ok.Code {
+		return true
+	}
+	return false
+}
+
 func ConstructKeyspace(keyspace string) common.Keyspace {
 	// var namespace string
 	scope, collection := "_default", "_default"
