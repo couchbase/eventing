@@ -190,7 +190,7 @@ fi
 cd $WORKSPACE/goproj/src/github.com/couchbase/query/parser/n1ql
 git ls-files -s n1ql.nex n1ql.y > ~/n1ql_parser.maybe
 test -f ~/n1ql_parser.good || cp ~/n1ql_parser.maybe ~/n1ql_parser.good
-msg="--- FAIL: N1QL grammer appears to have changed recently. Review and if OK, run: cp ~/n1ql_parser.maybe ~/n1ql_parser.good"
+msg="FAIL(manual): N1QL grammer appears to have changed recently. Review and if OK, run: cp ~/n1ql_parser.maybe ~/n1ql_parser.good"
 diff ~/n1ql_parser.good ~/n1ql_parser.maybe || echo "$msg" >> /tmp/fail.log
 
 # Verify results
@@ -201,6 +201,8 @@ grep '\sfail\s*$' $WORKSPACE/test-full.log >> /tmp/fail.log
 grep 'FAIL\s*github.com/couchbase' $WORKSPACE/test-full.log >> /tmp/fail.log
 grep -- '--- FAIL:' $WORKSPACE/test-full.log >> /tmp/fail.log
 grep '^\s*2i' $WORKSPACE/test-full.log | grep 'fail\s*$' >> /tmp/fail.log
+grep 'FAILED (errors=' $WORKSPACE/test-full.log >> /tmp/fail.log
+grep 'FAIL(manual)' $WORKSPACE/test-full.log >> /tmp/fail.log
 egrep 'pass [0-9]+.*fail [1-9]+' $WORKSPACE/test-full.log >> /tmp/fail.log
 faillog="`cat /tmp/fail.log`"
 if [ "$faillog" != "" ]; then error_exit "Required test failed" "$faillog"; fi
