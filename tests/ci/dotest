@@ -201,7 +201,7 @@ grep '\sfail\s*$' $WORKSPACE/test-full.log >> /tmp/fail.log
 grep 'FAIL\s*github.com/couchbase' $WORKSPACE/test-full.log >> /tmp/fail.log
 grep -- '--- FAIL:' $WORKSPACE/test-full.log >> /tmp/fail.log
 grep '^\s*2i' $WORKSPACE/test-full.log | grep 'fail\s*$' >> /tmp/fail.log
-grep 'FAILED (errors=' $WORKSPACE/test-full.log >> /tmp/fail.log
+grep -A1 'FAILED (errors=' $WORKSPACE/test-full.log >> /tmp/fail.log
 grep 'FAIL(manual)' $WORKSPACE/test-full.log >> /tmp/fail.log
 egrep 'pass [0-9]+.*fail [1-9]+' $WORKSPACE/test-full.log >> /tmp/fail.log
 faillog="`cat /tmp/fail.log`"
