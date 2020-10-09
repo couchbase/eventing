@@ -807,22 +807,22 @@ func trim(right string, i int) (string, string) {
 	return left, right
 }
 
-func populate(fmtStr, appName, key string, keySpace *common.Keyspace, stats []byte, cStats map[string]interface{}) []byte {
+func populate(fmtStr, appName, key string, stats []byte, cStats map[string]interface{}) []byte {
 	var str string
 	if val, ok := cStats[key]; ok {
-		str = fmt.Sprintf(fmtStr, METRICS_PREFIX, key, keySpace.BucketName, keySpace.ScopeName, keySpace.CollectionName, appName, val)
+		str = fmt.Sprintf(fmtStr, METRICS_PREFIX, key, appName, val)
 	} else {
-		str = fmt.Sprintf(fmtStr, METRICS_PREFIX, key, keySpace.BucketName, keySpace.ScopeName, keySpace.CollectionName, appName, 0)
+		str = fmt.Sprintf(fmtStr, METRICS_PREFIX, key, appName, 0)
 	}
 	return append(stats, []byte(str)...)
 }
 
-func populateUint(fmtStr, appName, key string, keySpace *common.Keyspace, stats []byte, cStats map[string]uint64) []byte {
+func populateUint(fmtStr, appName, key string, stats []byte, cStats map[string]uint64) []byte {
 	var str string
 	if val, ok := cStats[key]; ok {
-		str = fmt.Sprintf(fmtStr, METRICS_PREFIX, key, keySpace.BucketName, keySpace.ScopeName, keySpace.CollectionName, appName, val)
+		str = fmt.Sprintf(fmtStr, METRICS_PREFIX, key, appName, val)
 	} else {
-		str = fmt.Sprintf(fmtStr, METRICS_PREFIX, key, keySpace.BucketName, keySpace.ScopeName, keySpace.CollectionName, appName, 0)
+		str = fmt.Sprintf(fmtStr, METRICS_PREFIX, key, appName, 0)
 	}
 	return append(stats, []byte(str)...)
 }

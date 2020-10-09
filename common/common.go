@@ -160,7 +160,6 @@ type EventingProducer interface {
 	GetVbOwner(vb uint16) (string, string, error)
 	GetSeqsProcessed() map[int]int64
 	GetDebuggerToken() string
-	GetSourceKeyspace() *Keyspace
 	InternalVbDistributionStats() map[string]string
 	IsEventingNodeAlive(eventingHostPortAddr, nodeUUID string) bool
 	IsPlannerRunning() bool
@@ -292,7 +291,6 @@ type EventingSuperSup interface {
 	GetLocallyDeployedApps() map[string]string
 	GetMetaStoreStats(appName string) map[string]uint64
 	GetBucket(bucketName string) (*couchbase.Bucket, error)
-	GetSourceKeyspace(appName string) *Keyspace
 	GetSeqsProcessed(appName string) map[int]int64
 	InternalVbDistributionStats(appName string) map[string]string
 	KillAllConsumers()

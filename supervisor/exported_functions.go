@@ -89,13 +89,6 @@ func (s *SuperSupervisor) GetCurlLatencyStats(appName string) common.StatsData {
 	return nil
 }
 
-func (s *SuperSupervisor) GetSourceKeyspace(appName string) *common.Keyspace {
-	if p, ok := s.runningFns()[appName]; ok {
-		return p.GetSourceKeyspace()
-	}
-	return nil
-}
-
 func (s *SuperSupervisor) GetInsight(appName string) *common.Insight {
 	logPrefix := "SuperSupervisor::GetInsight"
 	if p, ok := s.runningFns()[appName]; ok {

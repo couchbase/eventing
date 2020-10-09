@@ -3855,59 +3855,54 @@ func (m *ServiceMgr) prometheusHigh(w http.ResponseWriter, r *http.Request) {
 
 func (m *ServiceMgr) highCardStats() []byte {
 	// service_type{bucket, scope, collection, functionName} value
-	fmtStr := "%v%v{bucket=\"%v\", scope=\"%v\", collection=\"%v\", functionName=\"%v\"} %v\n"
+	fmtStr := "%v%v{functionName=\"%v\"} %v\n"
 
 	deployedApps := m.superSup.GetDeployedApps()
 	stats := make([]byte, 0, APPROX_METRIC_COUNT*APPROX_METRIC_SIZE*len(deployedApps))
-	for appName, _ := range deployedApps {
-		keyspace := m.superSup.GetSourceKeyspace(appName)
-		if keyspace == nil {
-			continue
-		}
 
-		backlog := fmt.Sprintf(fmtStr, METRICS_PREFIX, "dcp_backlog", keyspace.BucketName,
-			keyspace.ScopeName, keyspace.CollectionName, appName,
+	for appName, _ := range deployedApps {
+		backlog := fmt.Sprintf(fmtStr, METRICS_PREFIX, "dcp_backlog", appName,
 			m.superSup.GetDcpEventsRemainingToProcess(appName))
 		stats = append(stats, []byte(backlog)...)
 
 		processingStats := m.superSup.GetEventProcessingStats(appName)
 		if processingStats != nil {
-			stats = populateUint(fmtStr, appName, "dcp_mutation_sent_to_worker", keyspace, stats, processingStats)
-			stats = populateUint(fmtStr, appName, "dcp_mutation_suppressed_counter", keyspace, stats, processingStats)
-			stats = populateUint(fmtStr, appName, "dcp_deletion_sent_to_worker", keyspace, stats, processingStats)
-			stats = populateUint(fmtStr, appName, "dcp_expiry_sent_to_worker", keyspace, stats, processingStats)
-			stats = populateUint(fmtStr, appName, "dcp_deletion_suppressed_counter", keyspace, stats, processingStats)
-			stats = populateUint(fmtStr, appName, "worker_spawn_counter", keyspace, stats, processingStats)
+			stats = populateUint(fmtStr, appName, "dcp_mutation_sent_to_worker", stats, processingStats)
+			stats = populateUint(fmtStr, appName, "dcp_mutation_suppressed_counter", stats, processingStats)
+			stats = populateUint(fmtStr, appName, "dcp_deletion_sent_to_worker", stats, processingStats)
+			stats = populateUint(fmtStr, appName, "dcp_expiry_sent_to_worker", stats, processingStats)
+			stats = populateUint(fmtStr, appName, "dcp_deletion_suppressed_counter", stats, processingStats)
+			stats = populateUint(fmtStr, appName, "worker_spawn_counter", stats, processingStats)
 		}
 
 		executionStats := m.superSup.GetExecutionStats(appName)
 		if executionStats != nil {
-			stats = populate(fmtStr, appName, "agg_queue_memory", keyspace, stats, executionStats)
-			stats = populate(fmtStr, appName, "agg_queue_size", keyspace, stats, executionStats)
-			stats = populate(fmtStr, appName, "on_update_success", keyspace, stats, executionStats)
-			stats = populate(fmtStr, appName, "on_update_failure", keyspace, stats, executionStats)
-			stats = populate(fmtStr, appName, "dcp_delete_msg_counter", keyspace, stats, executionStats)
-			stats = populate(fmtStr, appName, "dcp_mutations_msg_counter", keyspace, stats, executionStats)
-			stats = populate(fmtStr, appName, "on_delete_success", keyspace, stats, executionStats)
-			stats = populate(fmtStr, appName, "on_delete_failure", keyspace, stats, executionStats)
-			stats = populate(fmtStr, appName, "timer_cancel_counter", keyspace, stats, executionStats)
-			stats = populate(fmtStr, appName, "timer_create_counter", keyspace, stats, executionStats)
-			stats = populate(fmtStr, appName, "timer_create_failure", keyspace, stats, executionStats)
-			stats = populate(fmtStr, appName, "timer_callback_failure", keyspace, stats, executionStats)
+			stats = populate(fmtStr, appName, "agg_queue_memory", stats, executionStats)
+			stats = populate(fmtStr, appName, "agg_queue_size", stats, executionStats)
+			stats = populate(fmtStr, appName, "on_update_success", stats, executionStats)
+			stats = populate(fmtStr, appName, "on_update_failure", stats, executionStats)
+			stats = populate(fmtStr, appName, "dcp_delete_msg_counter", stats, executionStats)
+			stats = populate(fmtStr, appName, "dcp_mutations_msg_counter", stats, executionStats)
+			stats = populate(fmtStr, appName, "on_delete_success", stats, executionStats)
+			stats = populate(fmtStr, appName, "on_delete_failure", stats, executionStats)
+			stats = populate(fmtStr, appName, "timer_cancel_counter", stats, executionStats)
+			stats = populate(fmtStr, appName, "timer_create_counter", stats, executionStats)
+			stats = populate(fmtStr, appName, "timer_create_failure", stats, executionStats)
+			stats = populate(fmtStr, appName, "timer_callback_failure", stats, executionStats)
 			// TODO: change it to timer_callback_success
-			stats = populate(fmtStr, appName, "timer_msg_counter", keyspace, stats, executionStats)
+			stats = populate(fmtStr, appName, "timer_msg_counter", stats, executionStats)
 		}
 
 		failureStats := m.superSup.GetFailureStats(appName)
 		if failureStats != nil {
 			//TODO: Add num_curl_exceptions, num_curl_timeout
-			stats = populate(fmtStr, appName, "bucket_op_exception_count", keyspace, stats, failureStats)
-			stats = populate(fmtStr, appName, "timeout_count", keyspace, stats, failureStats)
-			stats = populate(fmtStr, appName, "n1ql_op_exception_count", keyspace, stats, failureStats)
-			stats = populate(fmtStr, appName, "timer_context_size_exception_counter", keyspace, stats, failureStats)
-			stats = populate(fmtStr, appName, "timer_callback_missing_counter", keyspace, stats, failureStats)
-			stats = populate(fmtStr, appName, "bkt_ops_cas_mismatch_count", keyspace, stats, failureStats)
-			stats = populate(fmtStr, appName, "checkpoint_failure_count", keyspace, stats, failureStats)
+			stats = populate(fmtStr, appName, "bucket_op_exception_count", stats, failureStats)
+			stats = populate(fmtStr, appName, "timeout_count", stats, failureStats)
+			stats = populate(fmtStr, appName, "n1ql_op_exception_count", stats, failureStats)
+			stats = populate(fmtStr, appName, "timer_context_size_exception_counter", stats, failureStats)
+			stats = populate(fmtStr, appName, "timer_callback_missing_counter", stats, failureStats)
+			stats = populate(fmtStr, appName, "bkt_ops_cas_mismatch_count", stats, failureStats)
+			stats = populate(fmtStr, appName, "checkpoint_failure_count", stats, failureStats)
 		}
 
 	}
