@@ -14,7 +14,16 @@
       <p class="ng-binding">{{handlerCtrl.errorMessage}}</p>
     </div>
   </mn-element-cargo>
-  <form name="formHandler">
+  <form name="formHandler" class="forms">
+    <div class="row margin-bottom-half">
+      <h4>Function Editor</h4>
+      <a ui-sref="app.admin.eventing.summary" class="text-smaller">
+        &lt; back to Eventing
+      </a>
+      <span
+         class="icon fa-search ace-search-icon"
+         ng-click="searchInCode()"></span>
+    </div>
     <div class="functions-editor-wrapper">
       <div class="functions-editor" name="handlerEditor" id="handler-editor"
            ng-model="handlerCtrl.handler"
@@ -38,11 +47,6 @@
       <span class="icon fa-circle-thin fa-stack-2x"></span>
       <span class="icon fa-info fa-stack-1x"></span>
       </span>
-    </div>
-    <div>
-      <a href="#!/eventing/summary">
-        < back to Eventing
-      </a>
     </div>
     <div>
       <a ng-click="handlerCtrl.cancelEdit()"
