@@ -92,8 +92,8 @@ type Application struct {
 }
 
 type DepCfg struct {
-	Buckets            []Bucket `json:"buckets"`
-	Curl               []Curl   `json:"curl"`
+	Buckets            []Bucket `json:"buckets,omitempty"`
+	Curl               []Curl   `json:"curl,omitempty"`
 	SourceBucket       string   `json:"source_bucket"`
 	SourceScope        string   `json:"source_scope"`
 	SourceCollection   string   `json:"source_collection"`
@@ -160,7 +160,6 @@ type EventingProducer interface {
 	GetVbOwner(vb uint16) (string, string, error)
 	GetSeqsProcessed() map[int]int64
 	GetDebuggerToken() string
-	GetSourceKeyspace() *Keyspace
 	InternalVbDistributionStats() map[string]string
 	IsEventingNodeAlive(eventingHostPortAddr, nodeUUID string) bool
 	IsPlannerRunning() bool
@@ -292,7 +291,6 @@ type EventingSuperSup interface {
 	GetLocallyDeployedApps() map[string]string
 	GetMetaStoreStats(appName string) map[string]uint64
 	GetBucket(bucketName string) (*couchbase.Bucket, error)
-	GetSourceKeyspace(appName string) *Keyspace
 	GetSeqsProcessed(appName string) map[int]int64
 	InternalVbDistributionStats(appName string) map[string]string
 	KillAllConsumers()
@@ -315,12 +313,14 @@ type EventingSuperSup interface {
 	WriteDebuggerToken(appName, token string, hostnames []string)
 	IncWorkerRespawnedCount()
 	WorkerRespawnedCount() uint32
+	CheckLifeCycleOpsDuringRebalance() bool
 }
 
 type EventingServiceMgr interface {
 	UpdateBucketGraphFromMetakv(functionName string) error
 	ResetFailoverStatus()
 	GetFailoverStatus() (failoverNotifTs int64, changeId string)
+	CheckLifeCycleOpsDuringRebalance() bool
 }
 
 type Config map[string]interface{}

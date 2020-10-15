@@ -181,6 +181,8 @@ func (c *Consumer) Serve() {
 	if err != nil {
 		logging.Infof("%s [%s:%s:%d] failed to getCollectionID: for bucket: %s scope: %s collection: %s error: %v", logPrefix, c.workerName,
 			c.tcpPort, c.Pid(), c.sourceKeyspace.BucketName, c.sourceKeyspace.ScopeName, c.sourceKeyspace.CollectionName, err)
+		c.isBootstrapping = false
+		c.signalBootstrapFinishCh <- struct{}{}
 		return
 	}
 	c.collectionID = cid

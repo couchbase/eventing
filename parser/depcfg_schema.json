@@ -1,18 +1,20 @@
 {
   "$schema": "http://json-schema.org/schema#",
+  "$id": "depcfg_schema.json",
   "type": "object",
+  "additionalProperties": false,
   "description": "deployment configuration",
   "required": [
-    "buckets",
-    "curl",
     "metadata_bucket",
     "source_bucket"
   ],
   "properties": {
     "buckets": {
       "type": "array",
+      "additionalItems": false,
       "items": {
         "type": "object",
+        "additionalProperties": false,
         "required": [
           "alias",
           "bucket_name",
@@ -31,12 +33,31 @@
             "description": "name of the bucket this binding maps to",
             "minLength": 1,
             "maxLength": 100,
-            "pattern": "^[A-Za-z0-9_\\.\\-\\%]$"
+            "pattern": "^[A-Za-z0-9_\\.\\-\\%]+$"
+          },
+          "scope_name": {
+            "type": "string",
+            "description": "name of the scope this binding maps to",
+            "minLength": 1,
+            "maxLength": 30,
+            "pattern": "^[A-Za-z0-9_\\-][A-Za-z0-9_\\-\\%]*$",
+            "default": "_default"
+          },
+          "collection_name": {
+            "type": "string",
+            "description": "name of the collection this binding maps to",
+            "minLength": 1,
+            "maxLength": 100,
+            "pattern": "^[A-Za-z0-9_\\-][A-Za-z0-9_\\-\\%]*$",
+            "default": "_default"
           },
           "access": {
             "type": "string",
             "description": "bucket access level (read or read+write)",
-            "enum": ["r","rw"],
+            "enum": [
+              "r",
+              "rw"
+            ],
             "default": "rw"
           }
         }
@@ -44,15 +65,14 @@
     },
     "curl": {
       "type": "array",
+      "additionalItems": false,
       "items": {
         "type": "object",
+        "additionalProperties": false,
         "required": [
           "hostname",
           "value",
           "auth_type",
-          "username",
-          "password",
-          "bearer_key",
           "allow_cookies",
           "validate_ssl_certificate"
         ],
@@ -74,7 +94,12 @@
           "auth_type": {
             "type": "string",
             "description": "http authentication method to use with this endpoint",
-            "enum": ["no-auth", "basic", "bearer", "digest"],
+            "enum": [
+              "no-auth",
+              "basic",
+              "bearer",
+              "digest"
+            ],
             "default": "no-auth"
           },
           "username": {
@@ -109,14 +134,46 @@
       "description": "bucket to store eventing checkpoints and timers",
       "minLength": 1,
       "maxLength": 100,
-      "pattern": "^[A-Za-z0-9_\\.\\-\\%]$"
+      "pattern": "^[A-Za-z0-9_\\.\\-\\%]+$"
+    },
+    "metadata_scope": {
+      "type": "string",
+      "description": "scope to store eventing checkpoints and timers",
+      "minLength": 1,
+      "maxLength": 30,
+      "pattern": "^[A-Za-z0-9_\\-][A-Za-z0-9_\\-\\%]*$",
+      "default": "_default"
+    },
+    "metadata_collection": {
+      "type": "string",
+      "description": "collection to store eventing checkpoints and timers",
+      "minLength": 1,
+      "maxLength": 30,
+      "pattern": "^[A-Za-z0-9_\\-][A-Za-z0-9_\\-\\%]*$",
+      "default": "_default"
     },
     "source_bucket": {
       "type": "string",
       "description": "bucket to listen to for document mutations",
       "minLength": 1,
       "maxLength": 100,
-      "pattern": "^[A-Za-z0-9_\\.\\-\\%]$"
+      "pattern": "^[A-Za-z0-9_\\.\\-\\%]+$"
+    },
+    "source_scope": {
+      "type": "string",
+      "description": "scope to listen to for document mutations",
+      "minLength": 1,
+      "maxLength": 30,
+      "pattern": "^[A-Za-z0-9_\\-][A-Za-z0-9_\\-\\%]*$",
+      "default": "_default"
+    },
+    "source_collection": {
+      "type": "string",
+      "description": "collection to listen to for document mutations",
+      "minLength": 1,
+      "maxLength": 30,
+      "pattern": "^[A-Za-z0-9_\\-][A-Za-z0-9_\\-\\%]*$",
+      "default": "_default"
     }
   }
 }

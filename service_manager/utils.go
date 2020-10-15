@@ -772,6 +772,14 @@ func (m *ServiceMgr) checkTopologyChangeReadiness(changeType service.TopologyCha
 	return nil
 }
 
+func (m *ServiceMgr) CheckLifeCycleOpsDuringRebalance() bool {
+	rebStatus := m.checkLifeCycleOpsDuringRebalance()
+	if rebStatus.Code != m.statusCodes.ok.Code {
+		return true
+	}
+	return false
+}
+
 func ConstructKeyspace(keyspace string) common.Keyspace {
 	// var namespace string
 	scope, collection := "_default", "_default"
@@ -807,22 +815,22 @@ func trim(right string, i int) (string, string) {
 	return left, right
 }
 
-func populate(fmtStr, appName, key string, keySpace *common.Keyspace, stats []byte, cStats map[string]interface{}) []byte {
+func populate(fmtStr, appName, key string, stats []byte, cStats map[string]interface{}) []byte {
 	var str string
 	if val, ok := cStats[key]; ok {
-		str = fmt.Sprintf(fmtStr, METRICS_PREFIX, key, keySpace.BucketName, keySpace.ScopeName, keySpace.CollectionName, appName, val)
+		str = fmt.Sprintf(fmtStr, METRICS_PREFIX, key, appName, val)
 	} else {
-		str = fmt.Sprintf(fmtStr, METRICS_PREFIX, key, keySpace.BucketName, keySpace.ScopeName, keySpace.CollectionName, appName, 0)
+		str = fmt.Sprintf(fmtStr, METRICS_PREFIX, key, appName, 0)
 	}
 	return append(stats, []byte(str)...)
 }
 
-func populateUint(fmtStr, appName, key string, keySpace *common.Keyspace, stats []byte, cStats map[string]uint64) []byte {
+func populateUint(fmtStr, appName, key string, stats []byte, cStats map[string]uint64) []byte {
 	var str string
 	if val, ok := cStats[key]; ok {
-		str = fmt.Sprintf(fmtStr, METRICS_PREFIX, key, keySpace.BucketName, keySpace.ScopeName, keySpace.CollectionName, appName, val)
+		str = fmt.Sprintf(fmtStr, METRICS_PREFIX, key, appName, val)
 	} else {
-		str = fmt.Sprintf(fmtStr, METRICS_PREFIX, key, keySpace.BucketName, keySpace.ScopeName, keySpace.CollectionName, appName, 0)
+		str = fmt.Sprintf(fmtStr, METRICS_PREFIX, key, appName, 0)
 	}
 	return append(stats, []byte(str)...)
 }

@@ -1,9 +1,11 @@
 {
   "$schema": "http://json-schema.org/schema#",
+  "$id": "settings_schema.json",
   "type": "object",
-  "dependencies" : {
-    "deployment_status":   ["processing_status", "dcp_stream_boundary"],
-    "processing_status":   ["deployment_status", "dcp_stream_boundary"],
+  "additionalProperties": false,
+  "dependencies": {
+    "deployment_status": ["processing_status", "dcp_stream_boundary"],
+    "processing_status": ["deployment_status", "dcp_stream_boundary"],
     "dcp_stream_boundary": ["deployment_status", "processing_status"]
   },
   "properties": {
@@ -18,6 +20,10 @@
       "description": "indicates where to start dcp stream from (beginning of time, present point, or point where paused)",
       "enum": ["everything", "from_now", "from_prior"],
       "default": "from_now"
+    },
+    "deadline_timeout": {
+      "type": "integer",
+      "description": "worker read deadline (in seconds). normally, this must not be specified"
     },
     "deployment_status": {
       "type": "boolean",
@@ -64,6 +70,11 @@
       "enum": ["none", "request"],
       "default": "none"
     },
+    "num_timer_partitions": {
+      "type": "integer",
+      "description": "number of timer shards. defaults to number of vbuckets",
+      "enum": [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]
+    },
     "processing_status": {
       "type": "boolean",
       "description": "indicates if the function is running (i.e., not paused). true=running, false=paused",
@@ -71,9 +82,8 @@
     },
     "sock_batch_size": {
       "type": "integer",
-      "description": "batch size for messages from eventing-producer to eventing-consumer",
-      "minimum": 1,
-      "default": 10
+      "description": "batch size for messages from producer to consumer. normally, this must not be specified",
+      "minimum": 1
     },
     "tick_duration": {
       "type": "integer",
@@ -84,7 +94,7 @@
       "type": "integer",
       "description": "size limit of timer context object",
       "minimum": 20,
-      "maximum": 19922944,
+      "maximum": 20971520,
       "default": 1024
     },
     "user_prefix": {
@@ -106,6 +116,7 @@
     },
     "handler_headers": {
       "type": "array",
+      "additionalItems": false,
       "description": "code to automatically prepend to top of handler code",
       "items": {
         "type": "string"
@@ -113,6 +124,7 @@
     },
     "handler_footers": {
       "type": "array",
+      "additionalItems": false,
       "description": "code to automatically append to bottom of handler code",
       "items": {
         "type": "string"

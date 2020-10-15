@@ -107,8 +107,8 @@ type application struct {
 }
 
 type depCfg struct {
-	Curl           []common.Curl `json:"curl"`
-	Buckets        []bucket      `json:"buckets"`
+	Curl           []common.Curl `json:"curl,omitempty"`
+	Buckets        []bucket      `json:"buckets,omitempty"`
 	MetadataBucket string        `json:"metadata_bucket"`
 	SourceBucket   string        `json:"source_bucket"`
 }

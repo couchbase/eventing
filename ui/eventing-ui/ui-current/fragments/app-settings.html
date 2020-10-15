@@ -282,6 +282,37 @@
             Warning: Configured script timeout seems large. It may slowdown mutation processing.
           </div>
         </div>
+        <div class="formrow indent-1">
+          <label class="inline"> Timer Context Max Size</label>
+          <span
+                  class="fa-stack icon-info"
+                  uib-tooltip="Maximum allowed value of the Timer Context Size in Bytes."
+                  tooltip-placement="right">
+          <span class="icon fa-circle-thin fa-stack-2x"></span>
+          <span class="icon fa-info fa-stack-1x"></span>
+          </span>
+          <input
+                  type="number"
+                  name="timer_context_size"
+                  ng-model="appModel.settings.timer_context_size"
+                  min="20"
+                  max="20971520">
+          <div
+                  class="error field-error"
+                  ng-show="formCtrl.createAppForm.timer_context_size.$error.min && formCtrl.createAppForm.timer_context_size.$dirty">
+                  Timer Context Size must be greater than or equal to 20 Bytes
+          </div>
+          <div
+                  class="error field-error"
+                  ng-show="formCtrl.createAppForm.timer_context_size.$error.isnan && formCtrl.createAppForm.timer_context_size.$dirty">
+                  Timer Context Size requires a value and must be a number
+          </div>
+          <div
+                  class="error field-error"
+                  ng-show="formCtrl.createAppForm.timer_context_size.$error.max && formCtrl.createAppForm.timer_context_size.$dirty">
+                  Timer Context Size must be less than or equal to 20 MB
+          </div>
+        </div>
       </div>
       <!-- bindings  ------------------------------------------------------------- -->
       <div class="row">

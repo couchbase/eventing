@@ -916,18 +916,35 @@ func (p *Producer) pollForDeletedVbs() {
 
 	p.pollBucketTicker = time.NewTicker(p.pollBucketInterval)
 	updateMetakv := true
+	deleteMetaKv := true
 
 	for {
 		select {
 		case <-p.pollBucketTicker.C:
+
+			if p.lazyUndeploy {
+				if !p.superSup.CheckLifeCycleOpsDuringRebalance() {
+					p.superSup.StopProducer(p.appName, deleteMetaKv, updateMetakv)
+				}
+				continue
+			}
+
 			hostAddress := net.JoinHostPort(util.Localhost(), p.GetNsServerPort())
-			srcKeyspaceExist := util.CheckKeyspaceExist(p.SourceBucket(), p.SourceScope(), p.SourceCollection(), hostAddress)
 			metadataKeyspaceExist := util.CheckKeyspaceExist(p.MetadataBucket(), p.MetadataScope(), p.MetadataCollection(), hostAddress)
+			srcKeyspaceExist := util.CheckKeyspaceExist(p.SourceBucket(), p.SourceScope(), p.SourceCollection(), hostAddress)
 
 			if !(srcKeyspaceExist && metadataKeyspaceExist) {
 				logging.Infof("%s [%s:%d] Stopping running producer source Keyspace: srcKeyspaceExist: %t metadataKeyspaceExist: %t",
 					logPrefix, p.appName, p.LenRunningConsumers(), srcKeyspaceExist, metadataKeyspaceExist)
-				p.superSup.StopProducer(p.appName, !metadataKeyspaceExist, updateMetakv)
+
+				// if rebalance ongoing set the flag and continue
+				if p.superSup.CheckLifeCycleOpsDuringRebalance() {
+					// remove it from bootstrap list
+					deleteMetaKv = !metadataKeyspaceExist
+					p.lazyUndeploy = true
+				} else {
+					p.superSup.StopProducer(p.appName, !metadataKeyspaceExist, updateMetakv)
+				}
 			}
 
 		case <-p.pollBucketStopCh:

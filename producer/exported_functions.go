@@ -216,10 +216,6 @@ func (p *Producer) MetadataCollection() string {
 	return p.metadataKeyspace.CollectionName
 }
 
-func (p *Producer) GetSourceKeyspace() *common.Keyspace {
-	return p.handlerConfig.SourceKeyspace
-}
-
 // SourceBucket returns the source bucket for event handler
 func (p *Producer) SourceBucket() string {
 	return p.handlerConfig.SourceKeyspace.BucketName
@@ -546,6 +542,10 @@ func (p *Producer) RebalanceTaskProgress() *common.RebalanceProgress {
 	logPrefix := "Producer::RebalanceTaskProgress"
 
 	producerLevelProgress := &common.RebalanceProgress{}
+
+	if p.lazyUndeploy {
+		return producerLevelProgress
+	}
 
 	for _, c := range p.getConsumers() {
 		progress := c.RebalanceTaskProgress()
@@ -930,6 +930,10 @@ func (p *Producer) BootstrapStatus() bool {
 // RebalanceStatus returns state of rebalance for all running consumer instances
 func (p *Producer) RebalanceStatus() bool {
 	logPrefix := "Producer::RebalanceStatus"
+
+	if p.lazyUndeploy {
+		return false
+	}
 
 	consumerRebStatuses := make(map[string]bool)
 	for _, c := range p.getConsumers() {
