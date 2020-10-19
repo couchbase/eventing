@@ -1949,10 +1949,18 @@ func (m *ServiceMgr) savePrimaryStore(app *application) (info *runtimeInfo) {
 		return
 	}
 
-	if app.DeploymentConfig.SourceBucket == app.DeploymentConfig.MetadataBucket {
+	sourceKeyspace := common.Keyspace{BucketName: app.DeploymentConfig.SourceBucket,
+		ScopeName:      app.DeploymentConfig.SourceScope,
+		CollectionName: app.DeploymentConfig.SourceCollection}
+
+	metadataKeyspace := common.Keyspace{BucketName: app.DeploymentConfig.MetadataBucket,
+		ScopeName:      app.DeploymentConfig.MetadataScope,
+		CollectionName: app.DeploymentConfig.MetadataCollection}
+
+	if sourceKeyspace == metadataKeyspace {
 		info.Code = m.statusCodes.errSrcMbSame.Code
-		info.Info = fmt.Sprintf("Function: %s source bucket same as metadata bucket. source_bucket : %s metadata_bucket : %s",
-			app.Name, app.DeploymentConfig.SourceBucket, app.DeploymentConfig.MetadataBucket)
+		info.Info = fmt.Sprintf("Function: %s source keyspace same as metadata keyspace. source : %s metadata : %s",
+			app.Name, sourceKeyspace, metadataKeyspace)
 		logging.Errorf("%s %s", logPrefix, info.Info)
 		return
 	}
