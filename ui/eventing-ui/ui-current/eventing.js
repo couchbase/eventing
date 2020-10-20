@@ -1261,6 +1261,12 @@ angular.module('eventing', [
                     console.log(err);
                 });
 
+            var config = require("ace/config");
+            $scope.searchInCode = function() {
+                config.loadModule("ace/ext/cb-searchbox",
+                function(e) {if ($scope.editor) e.Search($scope.editor, true, true)});
+              }
+
             self.handler = app.appcode;
             self.pristineHandler = app.appcode;
             self.debugToolTip = "Displays a URL that connects the Chrome Dev-Tools with the application handler. Code must be deployed and debugger must be enabled in the settings in order to debug";
@@ -1278,6 +1284,14 @@ angular.module('eventing', [
                 // Need to disable the syntax checking.
                 // TODO : Figure out how to add N1QL grammar to ace editor.
                 editor.getSession().setUseWorker(false);
+
+                $scope.editor = editor;
+                $scope.editor.commands.addCommand({
+                    name: "Search Pop Up.",
+                    exec: $scope.searchInCode,
+                    bindKey: {mac: "cmd-f", win: "ctrl-f"},
+                    readOnly: true
+                });
 
                 // Allow editor to load fully and add annotations
                 var showAnnotations = function() {
@@ -2096,7 +2110,7 @@ angular.module('eventing', [
                     form.appname.$error.required = form.appname.$viewValue === '' ||
                         form.appname.$viewValue === undefined;
 
-                    form.timer_context_size.$error.isnan = isNaN(form.timer_context_size.$error.isnum.$viewValue)
+                    form.timer_context_size.$error.isnan = isNaN(form.timer_context_size.$viewValue) || (form.timer_context_size.$viewValue == null);
 
                     return form.appname.$error.required ||
                         form.appname.$error.appExists ||

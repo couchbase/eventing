@@ -330,7 +330,7 @@ func (m *ServiceMgr) initErrCodes() {
 		{
 			Name:        m.statusCodes.errSrcMbSame.Name,
 			Code:        m.statusCodes.errSrcMbSame.Code,
-			Description: "Source bucket same as metadata bucket",
+			Description: "Source keyspace same as metadata keyspace",
 		},
 		{
 			Name:        m.statusCodes.errInvalidExt.Name,
