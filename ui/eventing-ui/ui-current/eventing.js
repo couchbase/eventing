@@ -2110,7 +2110,7 @@ angular.module('eventing', [
                     form.appname.$error.required = form.appname.$viewValue === '' ||
                         form.appname.$viewValue === undefined;
 
-                    form.timer_context_size.$error.isnan = isNaN(form.timer_context_size.$error.isnum.$viewValue)
+                    form.timer_context_size.$error.isnan = isNaN(form.timer_context_size.$viewValue) || (form.timer_context_size.$viewValue == null);
 
                     return form.appname.$error.required ||
                         form.appname.$error.appExists ||
