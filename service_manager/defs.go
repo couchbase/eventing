@@ -66,9 +66,11 @@ var (
 	}
 
 	functionQueryKeys = map[string]struct{}{
-		"source_bucket": struct{}{},
-		"function_type": struct{}{},
-		"deployed":      struct{}{},
+		"source_bucket":     struct{}{},
+		"source_scope":      struct{}{},
+		"source_collection": struct{}{},
+		"function_type":     struct{}{},
+		"deployed":          struct{}{},
 	}
 
 	defaultNumTimerPartitions = int(math.Min(math.Max(float64(runtime.NumCPU()*10), 128), 1024))
