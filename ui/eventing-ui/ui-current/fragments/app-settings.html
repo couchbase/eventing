@@ -14,130 +14,109 @@
     <h2 ng-show="formCtrl.isDialog">Add Function</h2>
     <h2 ng-show="!formCtrl.isDialog">Function Settings</h2>
   </div>
-  <form name="formCtrl.createAppForm" autocomplete="off">
-    <div class="panel-content forms">
+  <form name="formCtrl.createAppForm" autocomplete="off" class="forms">
+    <div class="panel-content">
       <div class="formrow">
-        <label class="inline">Source Bucket</label>
+        <label class="inline">
+          Listen To Location
+          <small> bucket.scope.collection</small>
+        </label>
         <span class="fa-stack icon-info"
-              uib-tooltip="The function will listen to this {bucket, scope, collection} for changes. Memcached buckets are not allowed."
+              uib-tooltip="The function will listen to this resource for changes. Memcached buckets are not allowed."
               tooltip-placement="right">
         <span class="icon fa-circle-thin fa-stack-2x"></span>
         <span class="icon fa-info fa-stack-1x"></span>
         </span>
-        <select ng-disabled="!formCtrl.isDialog"
-                ng-model="appModel.depcfg.source_bucket"
-                ng-change = "formCtrl.populateSourceScopes(appModel.depcfg.source_bucket)"
-                ng-options="bucket for bucket in formCtrl.sourceBuckets"
-                name="source_bucket">
-        </select>
-        <label class="inline">Source Scope</label>
-        <span class="fa-stack icon-info"
-              uib-tooltip="The function will listen to this {bucket, scope, collection} for changes. Memcached buckets are not allowed."
-              tooltip-placement="right">
-        <span class="icon fa-circle-thin fa-stack-2x"></span>
-        <span class="icon fa-info fa-stack-1x"></span>
-        </span>
-        <select ng-disabled="!formCtrl.isDialog"
-                ng-model="appModel.depcfg.source_scope"
-                ng-change = "formCtrl.populateSourceCollections(appModel.depcfg.source_scope)"
-                ng-options="scope for scope in formCtrl.sourceScopes"
-                name="source_scope">
-        </select>
-        <label class="inline">Source Collection</label>
-        <span class="fa-stack icon-info"
-              uib-tooltip="The function will listen to this {bucket, scope, collection} for changes. Memcached buckets are not allowed."
-              tooltip-placement="right">
-        <span class="icon fa-circle-thin fa-stack-2x"></span>
-        <span class="icon fa-info fa-stack-1x"></span>
-        </span>
-        <select ng-disabled="!formCtrl.isDialog"
-                ng-model="appModel.depcfg.source_collection"
-                ng-options="collection for collection in formCtrl.sourceCollections"
-                name="source_collection">
-        </select>
+        <div class="row items-bottom">
+          <select ng-disabled="!formCtrl.isDialog"
+                  ng-model="appModel.depcfg.source_bucket"
+                  ng-change = "formCtrl.populateSourceScopes(appModel.depcfg.source_bucket)"
+                  ng-options="bucket for bucket in formCtrl.sourceBuckets"
+                  name="source_bucket">
+          </select>
+          .
+          <select ng-disabled="!formCtrl.isDialog"
+                  ng-model="appModel.depcfg.source_scope"
+                  ng-change = "formCtrl.populateSourceCollections(appModel.depcfg.source_scope)"
+                  ng-options="scope for scope in formCtrl.sourceScopes"
+                  name="source_scope">
+          </select>
+          .
+          <select ng-disabled="!formCtrl.isDialog"
+                  ng-model="appModel.depcfg.source_collection"
+                  ng-options="collection for collection in formCtrl.sourceCollections"
+                  name="source_collection">
+          </select>
+        </div>
+
         <div class="error field-error"
              ng-show="formCtrl.sourceBuckets.indexOf(appModel.depcfg.source_bucket) === -1 &&
                       formCtrl.sourceScopes.indexOf(appModel.depcfg.source_scope) === -1 &&
                       formCtrl.sourceCollections.indexOf(appModel.depcfg.source_collection) === -1">
-          Please specify a source Keyspace for your function.
+          Please specify a source location for your function.
         </div>
       </div>
+
       <div class="formrow">
-        <label class="inline">Metadata Bucket</label>
+        <label class="inline">
+          Eventing Storage
+          <small> bucket.scope.collection</small>
+        </label>
         <span class="fa-stack icon-info"
-              uib-tooltip="This {bucket, scope, collection} is used to store system data and should not be used by other applications."
+              uib-tooltip="This resource is used to store system data and should not be used by other applications."
               tooltip-placement="right">
         <span class="icon fa-circle-thin fa-stack-2x"></span>
         <span class="icon fa-info fa-stack-1x"></span>
         </span>
-        <select
-                ng-disabled="!formCtrl.isDialog"
-                ng-model="appModel.depcfg.metadata_bucket"
-                ng-change = "formCtrl.populateMetadataScopes(appModel.depcfg.metadata_bucket)"
-                ng-options="bucket for bucket in formCtrl.metadataBuckets"
-                name="metadata_bucket">
-        </select>
-        <small>System data stored in this {bucket, scope, collection} will have the document ID prefixed with <strong>{{appModel.settings.user_prefix}}</strong></small>
-        <div
-                class="error field-error"
-                ng-show="formCtrl.metadataBuckets.indexOf(appModel.depcfg.metadata_bucket) === -1">
-          Please specify a metadata bucket.
+
+        <div class="row items-bottom">
+          <select
+             ng-disabled="!formCtrl.isDialog"
+             ng-model="appModel.depcfg.metadata_bucket"
+             ng-change = "formCtrl.populateMetadataScopes(appModel.depcfg.metadata_bucket)"
+             ng-options="bucket for bucket in formCtrl.metadataBuckets"
+             name="metadata_bucket">
+          </select>
+  .
+          <select
+             ng-disabled="!formCtrl.isDialog"
+             ng-model="appModel.depcfg.metadata_scope"
+             ng-change = "formCtrl.populateMetadataCollections(appModel.depcfg.metadata_scope)"
+             ng-options="scope for scope in formCtrl.metadataScopes"
+             name="metadata_scope">
+          </select>
+  .
+          <select
+             ng-disabled="!formCtrl.isDialog"
+             ng-model="appModel.depcfg.metadata_collection"
+             ng-options="collection for collection in formCtrl.metadataCollections"
+             name="metadata_collection">
+          </select>
         </div>
-        <div class="formrow">
-        <label class="inline">Metadata Scope</label>
-        <span class="fa-stack icon-info"
-              uib-tooltip="This bucket is used to store system data and should not be used by other applications."
-              tooltip-placement="right">
-        <span class="icon fa-circle-thin fa-stack-2x"></span>
-        <span class="icon fa-info fa-stack-1x"></span>
-        </span>
-        <select
-                ng-disabled="!formCtrl.isDialog"
-                ng-model="appModel.depcfg.metadata_scope"
-                ng-change = "formCtrl.populateMetadataCollections(appModel.depcfg.metadata_scope)"
-                ng-options="scope for scope in formCtrl.metadataScopes"
-                name="metadata_scope">
-        </select>
-        <div
-                class="error field-error"
-                ng-show="formCtrl.metadataScopes.indexOf(appModel.depcfg.metadata_scope) === -1">
-          Please specify a metadata Scope.
+        <div class="error field-error" ng-show="formCtrl.srcMetaSameBucket(appModel)">
+          Source and metadata keyspace cannot be the same.
         </div>
-        <div class="formrow">
-        <label class="inline">Metadata Collection</label>
-        <span class="fa-stack icon-info"
-              uib-tooltip="This bucket:scope is used to store system data and should not be used by other applications."
-              tooltip-placement="right">
-        <span class="icon fa-circle-thin fa-stack-2x"></span>
-        <span class="icon fa-info fa-stack-1x"></span>
-        </span>
-        <select
-                ng-disabled="!formCtrl.isDialog"
-                ng-model="appModel.depcfg.metadata_collection"
-                ng-options="collection for collection in formCtrl.metadataCollections"
-                name="metadata_collection">
-        </select>
+
         <div
-                class="error field-error"
-                ng-show="formCtrl.metadataCollections.indexOf(appModel.depcfg.metadata_collection) === -1">
-          Please specify a metadata collection.
+           class="error field-error"
+           ng-show="formCtrl.metadataBuckets.indexOf(appModel.depcfg.metadata_bucket) === -1">
+          Please specify a location to store Eventing data.
         </div>
-        <div
-                class="error field-error"
-                ng-show="formCtrl.srcMetaSameBucket(appModel)">
-          Source and metadata Keyspace cannot be the same.
-        </div>
+        <small>
+          System data stored in this location will have the document ID prefixed with
+          <strong>{{appModel.settings.user_prefix}}</strong>
+        </small>
       </div>
       <div class="formrow">
         <label>Function Name</label>
         <input
-                type="text"
-                name="appname"
-                ng-disabled="!formCtrl.isDialog"
-                ng-model="appModel.appname">
+           type="text"
+           name="appname"
+           ng-disabled="!formCtrl.isDialog"
+           ng-model="appModel.appname">
         <div
-                class="error field-error"
-                ng-show="formCtrl.createAppForm.appname.$error.required">
+           class="error field-error"
+           ng-show="formCtrl.createAppForm.appname.$error.required">
           Name cannot be empty
         </div>
         <div
@@ -146,8 +125,8 @@
           A function with this name already exists.
         </div>
         <div
-                class="error field-error"
-                ng-show="formCtrl.createAppForm.appname.$error.appnameInvalid">
+           class="error field-error"
+           ng-show="formCtrl.createAppForm.appname.$error.appnameInvalid">
           Function name can only start with characters in range A-Z, a-z, 0-9 and can only contain characters in range A-Z, a-z, 0-9, underscore and hyphen.
         </div>
       </div>
@@ -173,50 +152,55 @@
         </div>
       </div>
       <div class="formrow">
-        <label>Description</label>
-        <textarea rows="3" ng-model="appModel.settings.description">
-        </textarea>
+        <label class="inline">
+          Description
+          <small>(optional)</small>
+        </label>
+        <textarea rows="3" ng-model="appModel.settings.description"></textarea>
       </div>
       <div
-              class="disclosure formrow"
-              ng-class="{disclosed: showSettings}"
-              ng-click="showSettings = !showSettings">
+         class="disclosure formrow"
+         ng-class="{disclosed: showSettings}"
+         ng-click="showSettings = !showSettings">
         Settings
       </div>
       <div ng-show="showSettings">
         <div class="formrow indent-1">
           <label class="inline">System Log Level</label>
           <span
-                  class="fa-stack icon-info"
-                  uib-tooltip="Granularity of system events being captured in the log"
-                  tooltip-placement="right">
+             class="fa-stack icon-info"
+             uib-tooltip="Granularity of system events being captured in the log"
+             tooltip-placement="right">
           <span class="icon fa-circle-thin fa-stack-2x"></span>
           <span class="icon fa-info fa-stack-1x"></span>
           </span>
           <select
-                  ng-model="appModel.settings.log_level"
-                  ng-init="appModel.settings.log_level = appModel.settings.log_level ? appModel.settings.log_level : 'INFO'">
+             ng-model="appModel.settings.log_level"
+             ng-init="appModel.settings.log_level = appModel.settings.log_level ? appModel.settings.log_level : 'INFO'">
             <option value="INFO">Info</option>
             <option value="ERROR">Error</option>
             <option value="WARNING">Warning</option>
             <option value="DEBUG">Debug</option>
             <option value="TRACE">Trace</option>
           </select>
-          <small>Application log file for this Function is at : <br><strong>{{formCtrl.logFileLocation}}</strong></small>
+          <small>
+            Application log file for this Function is at: <br>
+            <strong>{{formCtrl.logFileLocation}}</strong>
+          </small>
         </div>
         <div class="formrow indent-1">
           <label class="inline">N1QL Consistency</label>
           <span
-                  class="fa-stack icon-info"
-                  uib-tooltip="Consistency level of N1QL statements in the handler"
-                  tooltip-placement="right">
+             class="fa-stack icon-info"
+             uib-tooltip="Consistency level of N1QL statements in the handler"
+             tooltip-placement="right">
           <span class="icon fa-circle-thin fa-stack-2x"></span>
           <span class="icon fa-info fa-stack-1x"></span>
           </span>
           <select
-                  ng-model="appModel.settings.n1ql_consistency"
-                  ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
-                  ng-init="appModel.settings.n1ql_consistency = appModel.settings.n1ql_consistency ? appModel.settings.n1ql_consistency : 'none'">
+             ng-model="appModel.settings.n1ql_consistency"
+             ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
+             ng-init="appModel.settings.n1ql_consistency = appModel.settings.n1ql_consistency ? appModel.settings.n1ql_consistency : 'none'">
             <option value="none" selected>None</option>
             <option value="request">Request</option>
           </select>
@@ -224,48 +208,48 @@
         <div class="formrow indent-1">
           <label class="inline">Workers</label>
           <span
-                  class="fa-stack icon-info"
-                  uib-tooltip="Number of workers per node to process the events. If no value is specified, a default value of 3 workers is used."
-                  tooltip-placement="right">
+             class="fa-stack icon-info"
+             uib-tooltip="Number of workers per node to process the events. If no value is specified, a default value of 3 workers is used."
+             tooltip-placement="right">
           <span class="icon fa-circle-thin fa-stack-2x"></span>
           <span class="icon fa-info fa-stack-1x"></span>
           </span>
           <input
-                  type="number"
-                  name="worker_count"
-                  ng-model="appModel.settings.worker_count"
-                  ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
-                  min="1"
-                  max="64">
+             type="number"
+             name="worker_count"
+             ng-model="appModel.settings.worker_count"
+             ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
+             min="1"
+             max="64">
           <div
-                  class="error field-error"
-                  ng-show="formCtrl.createAppForm.worker_count.$error.min && formCtrl.createAppForm.worker_count.$dirty">
+             class="error field-error"
+             ng-show="formCtrl.createAppForm.worker_count.$error.min && formCtrl.createAppForm.worker_count.$dirty">
             Worker count must be positive
           </div>
           <div
-                  class="error field-error"
-                  ng-show="formCtrl.createAppForm.worker_count.$error.required && formCtrl.createAppForm.worker_count.$dirty">
+             class="error field-error"
+             ng-show="formCtrl.createAppForm.worker_count.$error.required && formCtrl.createAppForm.worker_count.$dirty">
             Worker count requires a value
           </div>
           <div
-                  class="error field-error"
-                  ng-show="formCtrl.createAppForm.worker_count.$error.max && formCtrl.createAppForm.worker_count.$dirty">
+             class="error field-error"
+             ng-show="formCtrl.createAppForm.worker_count.$error.max && formCtrl.createAppForm.worker_count.$dirty">
             Worker count must be less than 64
           </div>
         </div>
         <div class="formrow indent-1">
           <label class="inline">Language compatibility</label>
           <span
-                  class="fa-stack icon-info"
-                  uib-tooltip="Language compatibility of the handler"
-                  tooltip-placement="right">
+             class="fa-stack icon-info"
+             uib-tooltip="Language compatibility of the handler"
+             tooltip-placement="right">
           <span class="icon fa-circle-thin fa-stack-2x"></span>
           <span class="icon fa-info fa-stack-1x"></span>
           </span>
           <select
-            ng-model="appModel.settings.language_compatibility"
-            ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
-            ng-init="appModel.settings.language_compatibility = appModel.settings.language_compatibility ? appModel.settings.language_compatibility : '6.5.0'">
+             ng-model="appModel.settings.language_compatibility"
+             ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
+             ng-init="appModel.settings.language_compatibility = appModel.settings.language_compatibility ? appModel.settings.language_compatibility : '6.5.0'">
             <option value="6.0.0">6.0.0</option>
             <option value="6.5.0" selected>6.5.0</option>
           </select>
@@ -275,277 +259,293 @@
             <small>in seconds</small>
           </label>
           <span
-                  class="fa-stack icon-info"
-                  uib-tooltip="Time after which the Function's execution will be timed out"
-                  tooltip-placement="top">
+             class="fa-stack icon-info"
+             uib-tooltip="Time after which the Function's execution will be timed out"
+             tooltip-placement="top">
           <span class="icon fa-circle-thin fa-stack-2x"></span>
           <span class="icon fa-info fa-stack-1x"></span>
           </span>
           <input
-                  type="number"
-                  name="execution_timeout"
-                  ng-model="appModel.settings.execution_timeout"
-                  ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
-                  min="1">
+             type="number"
+             name="execution_timeout"
+             ng-model="appModel.settings.execution_timeout"
+             ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
+             min="1">
           <div
-                  class="error field-error"
-                  ng-show="formCtrl.createAppForm.execution_timeout.$error.min && formCtrl.createAppForm.execution_timeout.$dirty">
+             class="error field-error"
+             ng-show="formCtrl.createAppForm.execution_timeout.$error.min && formCtrl.createAppForm.execution_timeout.$dirty">
             Script timeout must be a positive number.
           </div>
           <div
-                  class="error field-error"
-                  ng-show="formCtrl.createAppForm.execution_timeout.$error.required && formCtrl.createAppForm.execution_timeout.$dirty">
+             class="error field-error"
+             ng-show="formCtrl.createAppForm.execution_timeout.$error.required && formCtrl.createAppForm.execution_timeout.$dirty">
             Script timeout cannot be empty.
           </div>
           <div
-                  class="error field-error"
-                  ng-show="formCtrl.createAppForm.execution_timeout.$dirty && formCtrl.executionTimeoutCheck(appModel)">
+             class="error field-error"
+             ng-show="formCtrl.createAppForm.execution_timeout.$dirty && formCtrl.executionTimeoutCheck(appModel)">
             Warning: Configured script timeout seems large. It may slowdown mutation processing.
           </div>
         </div>
         <div class="formrow indent-1">
           <label class="inline"> Timer Context Max Size</label>
           <span
-                  class="fa-stack icon-info"
-                  uib-tooltip="Maximum allowed value of the Timer Context Size in Bytes."
-                  tooltip-placement="right">
+             class="fa-stack icon-info"
+             uib-tooltip="Maximum allowed value of the Timer Context Size in Bytes."
+             tooltip-placement="right">
           <span class="icon fa-circle-thin fa-stack-2x"></span>
           <span class="icon fa-info fa-stack-1x"></span>
           </span>
           <input
-                  type="number"
-                  name="timer_context_size"
-                  ng-init="appModel.settings.timer_context_size = appModel.settings.timer_context_size ? appModel.settings.timer_context_size : 1024"
-                  ng-model="appModel.settings.timer_context_size"
-                  ng-init="appModel.settings.timer_context_size = appModel.settings.timer_context_size ? appModel.settings.timer_context_size : 1024"
-                  min="20"
-                  max="20971520">
+             type="number"
+             name="timer_context_size"
+             ng-model="appModel.settings.timer_context_size"
+             min="20"
+             max="20971520">
           <div
-                  class="error field-error"
-                  ng-show="formCtrl.createAppForm.timer_context_size.$error.min && formCtrl.createAppForm.timer_context_size.$dirty">
-                  Timer Context Size must be greater than or equal to 20 Bytes
+             class="error field-error"
+             ng-show="formCtrl.createAppForm.timer_context_size.$error.min && formCtrl.createAppForm.timer_context_size.$dirty">
+            Timer Context Size must be greater than or equal to 20 Bytes
           </div>
           <div
-                  class="error field-error"
-                  ng-show="formCtrl.createAppForm.timer_context_size.$error.isnan && formCtrl.createAppForm.timer_context_size.$dirty">
-                  Timer Context Size requires a value
+             class="error field-error"
+             ng-show="formCtrl.createAppForm.timer_context_size.$error.isnan && formCtrl.createAppForm.timer_context_size.$dirty">
+            Timer Context Size requires a value and must be a number
           </div>
           <div
-                  class="error field-error"
-                  ng-show="formCtrl.createAppForm.timer_context_size.$error.max && formCtrl.createAppForm.timer_context_size.$dirty">
-                  Timer Context Size must be less than or equal to 20 MB
+             class="error field-error"
+             ng-show="formCtrl.createAppForm.timer_context_size.$error.max && formCtrl.createAppForm.timer_context_size.$dirty">
+            Timer Context Size must be less than or equal to 20 MB
           </div>
         </div>
       </div>
-      <!-- bindings  ------------------------------------------------------------- -->
-      <div class="row">
+
+<!-- bindings  ------------------------------------------------------------- -->
+      <div class="row margin-top-1-5">
         <h4>Bindings</h4>
         <div class="margin-bottom-half">
           <button
-                  class="outline btn-small"
-                  title="Add a binding"
-                  ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
-                  ng-click="formCtrl.Initialize();">
+             class="outline btn-small"
+             title="Add a binding"
+             ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
+             ng-click="formCtrl.Initialize();">
             +
           </button>
           <button
-                  class="outline btn-small"
-                  title="Remove parameter"
-                  ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
-                  ng-click="formCtrl.Remove(-1)">
+             class="outline btn-small"
+             title="Remove parameter"
+             ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
+             ng-click="formCtrl.Remove(-1)">
             -
           </button>
         </div>
       </div>
       <hr>
-      <!-- binding TYPE -->
-      <div ng-repeat="binding in (formCtrl.isDialog ? bindings : formCtrl.bindings) track by $index">
-        <div class="row flex-left flex-wrap margin-bottom-1 margin-right-1">
-          <span class="fix-width-2 padding-right-half margin-bottom-half">
-            <select
-                    ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].type"
-                    ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)">
-              <option value="" disabled selected>binding type</option>
-              <option value="alias">bucket alias</option>
-              <option value="url">URL alias</option>
-            </select>
-          </span>
-          <!-- ALIAS binding ALIAS & BUCKET NAME, PERMISSIONS -->
+
+<!-- binding TYPE ---------------------------------------------------------- -->
+      <div ng-repeat="binding in (formCtrl.isDialog ? bindings : formCtrl.bindings) track by $index" class="margin-left-half margin-bottom-half padding-top-1 border-top">
+        <div class="row flex-left items-top flex-wrap margin-bottom-half">
+          <select
+             class="fix-width-2 margin-right-half bold"
+             ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].type"
+             ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)">
+            <option value="" disabled selected>binding type</option>
+            <option value="alias">bucket alias</option>
+            <option value="url">URL alias</option>
+          </select>
+
+<!-- ALIAS binding ALIAS & BUCKET NAME, PERMISSIONS ------------------------ -->
           <span
-                  class="padding-right-half flex-grow-1 margin-bottom-half"
-                  ng-if="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].type === 'alias'">
+             class="row padding-right-half flex-grow-1 margin-bottom-half"
+             ng-if="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].type === 'alias'">
             <input
-                    type="text"
-                    ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].value"
-                    ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
-                    placeholder="alias name...">
+               type="text"
+               ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].value"
+               ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
+               placeholder="alias name..."
+               class="bold">
             <div
-                    class="error field-error"
-                    ng-show="formCtrl.createAppForm.appname.$error.bindingsValidList[$index]">
+               class="error field-error"
+               ng-show="formCtrl.createAppForm.appname.$error.bindingsValidList[$index]">
               Alias Name can only contain characters in range A-Z, a-z, 0-9, _ and $ and it should not be a JavaScript keyword.
             </div>
+            <a
+               class="grayblack-3 margin-left-1"
+               ng-show="!formCtrl.isAppDeployed"
+               ng-click="(formCtrl.isDialog ? bindings : formCtrl.bindings).Remove(1)">
+              <span class="icon fa-close"></span>
+            </a>
           </span>
-          <span
-                  class="fix-width-2 padding-right-half margin-bottom-half"
-                  ng-if="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].type === 'alias'">
-           <label>BucketName: </label>
+        <div
+           class="formrow row items-top width-12 margin-right-2"
+           ng-if="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].type === 'alias'">
+          <div class="width-11">
+            <label>
+              Bucket
+              <small> bucket.scope.collection</small>
+            </label>
+            <div class="row items-bottom">
+              <select
+                 ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
+                 ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].name"
+                 ng-change="formCtrl.populateScope((formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].name, $index)"
+                 ng-options="bucket for bucket in formCtrl.sourceBuckets">
+                <option value=""></option>
+              </select>
+              .
+              <select
+                 ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
+                 ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].scope"
+                 ng-change="formCtrl.populateCollections((formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].scope, $index)"
+                 ng-options="scope for scope in formCtrl.scopes[$index]">
+                <option value=""></option>
+              </select>
+              .
+              <select
+                 ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
+                 ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].collection"
+                 ng-options="collection for collection in formCtrl.collections[$index]">
+                <option value=""></option><!-- empty <option> fixes layout of subsequent elements -->
+              </select>
+            </div>
+          </div>
+          <div class="margin-left-1">
+            <label>Access</label>
             <select
-                    ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
-                    ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].name"
-		    ng-change="formCtrl.populateScope((formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].name, $index)"
-                    ng-options="bucket for bucket in formCtrl.sourceBuckets">
-              <option value=""></option>
-	     </select>
-            <label>ScopeName: </label>
-             <select
-                    ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
-                    ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].scope"
-		    ng-change="formCtrl.populateCollections((formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].scope, $index)"
-                    ng-options="scope for scope in formCtrl.scopes[$index]">
-              <option value=""></option>
-             </select>
-	     <label>CollectionName: </label>
-             <select
-                    ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
-                    ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].collection"
-                    ng-options="collection for collection in formCtrl.collections[$index]">
-              <option value=""></option>
-	     </select>
-              <!-- empty <option> fixes layout of subsequent elements -->
-            </select>
-          </span>
-          <span
-                  class="fix-width-2 padding-right-half margin-bottom-half"
-                  ng-if="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].type === 'alias'">
-            <select ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
-	      ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].access">
+               ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
+               ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].access"
+               class="flex-grow-0">
               <option value="r">read only</option>
               <option value="rw">read and write</option>
             </select>
-          </span>
-          <!-- URL binding ALIAS NAME, HOSTNAME, ALLOW COOKIES, AUTH TYPE -->
-          <span
-                  class="padding-right-half flex-grow-1 margin-bottom-half"
-                  ng-if="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].type === 'url'">
-            <input
-                    type="text"
-                    ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].value"
-                    ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
-                    placeholder="alias name...">
-            <div
-                    class="error field-error"
-                    ng-show="formCtrl.createAppForm.appname.$error.bindingsValidList[$index]">
-              Alias Name can only contain characters in range A-Z, a-z, 0-9, _ and $ and it should not be a JavaScript keyword.
-            </div>
-          </span>
-          <span
-                  class="padding-right-half flex-grow-1 margin-bottom-half"
-                  ng-if="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].type === 'url'">
-            <input
-                    type="text"
-                    ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].hostname"
-                    ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
-                    placeholder="URL...">
-            <div class="error field-error" ng-show="formCtrl.createAppForm.appname.$error.hostnameValidList[$index]">
-              Hostname cannot be empty and must start with http:// or https://
-            </div>
-          </span>
-          <span
-                  class="padding-right-half margin-bottom-half width-12"
-                  ng-show="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].type === 'url'">
-            <input
-                    type="checkbox"
-                    id="{{'allow-cookies-' + $index }}"
-                    name="allow_cookies"
-                    value="allow"
-                    ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].allow_cookies"
-                    ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)">
-            <label for="{{'allow-cookies-' + $index }}" ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)">
-              allow cookies
-            </label>
-            <input
-                    type="checkbox"
-                    id="{{'validate-ssl-certificate-' + $index}}"
-                    name="validate_ssl_certificate"
-                    ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].validate_ssl_certificate"
-                    ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)">
-            <label for="{{'validate-ssl-certificate-' + $index}}" ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)">
-              validate SSL certificate
-            </label>
-          </span>
-          <span
-                  class="fix-width-1-5 padding-right-half margin-bottom-half"
-                  ng-show="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].type === 'url'">
-            <select
-                    ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].auth_type"
-                    ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)">
-              <option value="no-auth">no auth</option>
-              <option value="basic">basic</option>
-              <option value="bearer">bearer</option>
-              <option value="digest">digest</option>
-            </select>
-          </span>
-          <!-- AUTH extra fields -->
-          <span
-                  ng-if="((formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].auth_type === 'basic') && ((formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].type === 'url')"
-                  class="padding-right-half flex-grow-1 margin-bottom-half">
-            <input
-                    type="text"
-                    ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].username"
-                    id="auth-basic-username"
-                    ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
-                    placeholder="username...">
-          </span>
-          <span
-                  ng-if="((formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].auth_type === 'basic') && ((formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].type === 'url')"
-                  class="padding-right-half flex-grow-1 margin-bottom-half">
-            <input
-                    type="password"
-                    ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].password"
-                    id="auth-basic-password"
-                    ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
-                    placeholder="password...">
-          </span>
-          <span
-                  ng-if="((formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].auth_type === 'digest') && ((formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].type === 'url')"
-                  class="padding-right-half flex-grow-1 margin-bottom-half">
-            <input
-                    type="text"
-                    ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].username"
-                    id="auth-digest-username"
-                    ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
-                    placeholder="username...">
-          </span>
-          <span
-                  ng-if="((formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].auth_type === 'digest') && ((formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].type === 'url')"
-                  class="padding-right-half flex-grow-1 margin-bottom-half">
-            <input
-                    type="password"
-                    ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].password"
-                    id="auth-digest-password"
-                    ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
-                    placeholder="password...">
-          </span>
-          <span
-                  ng-if="((formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].auth_type === 'bearer') && ((formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].type === 'url')"
-                  class="padding-right-half flex-grow-1 margin-bottom-half">
-            <input
-                    type="password"
-                    ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].bearer_key"
-                    id="auth-bearer"
-                    ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
-                    placeholder="bearer key...">
-          </span>
-          <div
-                  class="red-2 cursor-pointer"
-                  ng-show="!formCtrl.isAppDeployed"
-                  ng-click="(formCtrl.isDialog ? bindings : formCtrl.bindings).Remove(1)"
-                  style="position: absolute; top: 0; right: -16px;">
-            <span class="icon fa-close"></span>
           </div>
         </div>
-      </div>
-      <!-- binding error messaging ----------------------------------------------- -->
+
+
+<!-- URL binding ALIAS NAME, HOSTNAME, ALLOW COOKIES, AUTH TYPE ------------ -->
+      <span
+         class="padding-right-half flex-grow-1"
+         ng-if="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].type === 'url'">
+        <input
+           type="text"
+           ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].value"
+           ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
+           placeholder="alias name...">
+        <div
+          class="error field-error"
+          ng-show="formCtrl.createAppForm.appname.$error.bindingsValidList[$index]">
+          Alias Name can only contain characters in range A-Z, a-z, 0-9, _ and $ and it should not be a JavaScript keyword.
+        </div>
+      </span>
+      <span
+         class="row padding-right-half flex-grow-1 margin-bottom-half"
+         ng-if="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].type === 'url'">
+        <input
+          type="text"
+          ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].hostname"
+          ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
+          placeholder="URL...">
+        <div
+           class="error field-error"
+           ng-show="formCtrl.createAppForm.appname.$error.hostnameValidList[$index]">
+          Hostname cannot be empty and must start with http:// or https://
+        </div>
+        <a
+           class="grayblack-3 margin-left-1"
+           ng-show="!formCtrl.isAppDeployed"
+           ng-click="(formCtrl.isDialog ? bindings : formCtrl.bindings).Remove(1)">
+          <span class="icon fa-close"></span>
+        </a>
+      </span>
+
+      <span
+        class="padding-right-half margin-bottom-half width-12"
+        ng-show="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].type === 'url'">
+        <input
+          type="checkbox"
+          id="{{'allow-cookies-' + $index }}"
+          name="allow_cookies"
+          value="allow"
+          ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].allow_cookies"
+          ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)">
+        <label for="{{'allow-cookies-' + $index }}" ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)">
+          allow cookies
+        </label>
+        <input
+          type="checkbox"
+          id="{{'validate-ssl-certificate-' + $index}}"
+          name="validate_ssl_certificate"
+          ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].validate_ssl_certificate"
+          ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)">
+        <label for="{{'validate-ssl-certificate-' + $index}}" ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)">
+          validate SSL certificate
+        </label>
+      </span>
+      <span
+        class="fix-width-1-5 padding-right-half margin-bottom-half"
+        ng-show="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].type === 'url'">
+        <select
+          ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].auth_type"
+          ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)">
+          <option value="no-auth">no auth</option>
+          <option value="basic">basic</option>
+          <option value="bearer">bearer</option>
+          <option value="digest">digest</option>
+        </select>
+      </span>
+<!-- AUTH extra fields -->
+      <span
+        ng-if="((formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].auth_type === 'basic') && ((formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].type === 'url')"
+        class="padding-right-half flex-grow-1 margin-bottom-half">
+        <input
+           type="text"
+           ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].username"
+           id="auth-basic-username"
+           ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
+           placeholder="username...">
+      </span>
+      <span
+         ng-if="((formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].auth_type === 'basic') && ((formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].type === 'url')"
+         class="padding-right-half flex-grow-1 margin-bottom-half">
+        <input
+           type="password"
+           ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].password"
+           id="auth-basic-password"
+           ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
+           placeholder="password...">
+      </span>
+      <span
+         ng-if="((formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].auth_type === 'digest') && ((formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].type === 'url')"
+         class="padding-right-half flex-grow-1 margin-bottom-half">
+        <input
+           type="text"
+           ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].username"
+           id="auth-digest-username"
+           ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
+           placeholder="username...">
+      </span>
+      <span
+        ng-if="((formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].auth_type === 'digest') && ((formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].type === 'url')"
+        class="padding-right-half flex-grow-1 margin-bottom-half">
+        <input
+          type="password"
+          ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].password"
+          id="auth-digest-password"
+          ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
+          placeholder="password...">
+      </span>
+      <span
+        ng-if="((formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].auth_type === 'bearer') && ((formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].type === 'url')"
+        class="padding-right-half flex-grow-1 margin-bottom-half">
+        <input
+           type="password"
+           ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].bearer_key"
+           id="auth-bearer"
+           ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
+           placeholder="bearer key...">
+      </span>
+
+<!-- binding error messaging ----------------------------------------------- -->
       <div class="row margin-bottom-half error field-error"
            ng-show="!formCtrl.validateVariableRegex((formCtrl.isDialog ? bindings : formCtrl.bindings)[$index])">
         Alias value must be a valid identifier
@@ -555,29 +555,30 @@
         Alias value must neither be a JavaScript nor a N1QL reserved word
       </div>
     </div>
-    <div class="panel-footer">
-      <a
-              ng-if="formCtrl.isDialog"
-              ng-click="$dismiss('cancel')">
-        Cancel
-      </a>
-      <button
-              ng-if="formCtrl.isDialog"
-              ng-click="$close('ok')"
-              ng-disabled="formCtrl.isFormInvalid() || formCtrl.srcMetaSameBucket(appModel) || formCtrl.isFuncNameUndefined() ">
-        Next: Add Code
-      </button>
-      <a
-              ng-if="!formCtrl.isDialog"
-              ng-click="formCtrl.cancelEdit($dismiss)">
-        Cancel
-      </a>
-      <button
-              ng-if="!formCtrl.isDialog"
-              ng-click="formCtrl.saveSettings($dismiss, $close)"
-              ng-disabled="formCtrl.isFormInvalid()">
-        Save
-      </button>
-    </div>
+  </div>
+  </div>
+  <div class="panel-footer">
+    <a
+       ng-if="formCtrl.isDialog"
+       ng-click="$dismiss('cancel')">
+      Cancel
+    </a>
+    <button
+       ng-if="formCtrl.isDialog"
+       ng-click="$close('ok')"
+       ng-disabled="formCtrl.isFormInvalid() || formCtrl.srcMetaSameBucket(appModel) || formCtrl.isFuncNameUndefined() ">
+      Next: Add Code
+    </button>
+    <a
+       ng-if="!formCtrl.isDialog"
+       ng-click="formCtrl.cancelEdit($dismiss)">
+      Cancel
+    </a>
+    <button
+       ng-if="!formCtrl.isDialog"
+       ng-click="formCtrl.saveSettings($dismiss, $close)"
+       ng-disabled="formCtrl.isFormInvalid()">
+      Save
+    </button>
   </form>
 </div>
