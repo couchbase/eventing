@@ -54,6 +54,7 @@ angular.module('eventing', [
             self.appListStaleCount = 0;
             self.statusPollMillis = 2000;
             self.deployedStats = null;
+	    self.annotationList = []
 
             // Broadcast on channel 'isEventingRunning'
             $rootScope.$broadcast('isEventingRunning', self.isEventingRunning);
@@ -84,6 +85,11 @@ angular.module('eventing', [
                             metaDataBucket: "",
                             lastSampleTime: new Date().valueOf()
                         };
+			ApplicationService.public.getAnnotations().then(function(response) {self.annotationList = response.data});
+			var deprecatedMap = new Map();
+			for(var app of self.annotationList) {
+			       deprecatedMap[app.name] = (app.deprecatedNames ? app.deprecatedNames : [""]) .join(", ");
+			}
 
                         for (var rspApp of response.apps ? response.apps : []) {
 
@@ -97,6 +103,7 @@ angular.module('eventing', [
                                 // add to update list to process later e.g. a remote add
                                 self.needAppList.add(rspApp.name);
                             } else {
+				self.appList[rspApp.name].deprecatedNames = deprecatedMap[rspApp.name] ? deprecatedMap[rspApp.name] : "";
                                 rspAppList.add(rspApp.name);
                                 self.appList[rspApp.name].status = rspApp.composite_status;
 
@@ -190,7 +197,7 @@ angular.module('eventing', [
                         self.errorCode = errResponse && errResponse.status || 500;
                         // Do not log the occasional HTTP abort when we leave the Eventing view
                         if (!(errResponse.status === -1 && errResponse.xhrStatus === 'abort')) {
-                            console.error('Unable to list apps');
+				console.error('Unable to list apps');
                         }
                     });
             }
@@ -1393,6 +1400,13 @@ angular.module('eventing', [
                                     ApplicationService.server.showSuccessAlert('Code saved successfully!');
                                     ApplicationService.server.showWarningAlert('Deploy for changes to take effect!');
 
+                                    app.deprecatedNames = "";
+                                    response.data.info.split(";").filter(msg => msg.includes("Warning")).forEach(function(msg){
+                                        var fnNames = JSON.parse(msg.split(":")[1].trim());
+                                        ApplicationService.server.showWarningAlert('Warning: The handler uses following deprecated function(s) - ' + fnNames.join(","));
+                                        app.deprecatedNames = fnNames;
+                                    });
+
                                     self.disableCancelButton = self.disableSaveButton = true;
                                     self.disableDeployButton = false;
                                     self.warning = false;
@@ -1645,6 +1659,9 @@ angular.module('eventing', [
                             data: [app]
                         });
                     },
+		    getAnnotations: function() {
+			    return $http.get('/_p/event/getAnnotations')
+		    },
                     getFunction: function(fname) {
                         return $http.get('/_p/event/api/v1/functions/' + fname);
                     },

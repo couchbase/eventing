@@ -50,6 +50,9 @@ var function_name = regexp.MustCompile(
 var requiredFunctions = map[string]struct{}{"OnUpdate": struct{}{},
 	"OnDelete": struct{}{}}
 
+var n1qlQueryUse = regexp.MustCompile(
+	`N1qlQuery([[:space:]]*)\(`)
+
 func cleanse(str string) string {
 	washed := []byte(str)
 	for esc, sub, pos := "", "", 0; pos < len(str); pos++ {
@@ -268,4 +271,13 @@ func (parsed *ParsedStatements) ValidateExports() (bool, error) {
 func UsingTimer(input string) bool {
 	bare := cleanse(input)
 	return timer_use.MatchString(bare)
+}
+
+func ListDeprecatedFunctions(input string) []string {
+	bare := cleanse(input)
+	listOfFns := []string{}
+	if n1qlQueryUse.MatchString(bare) {
+		listOfFns = append(listOfFns, "N1qlQuery")
+	}
+	return listOfFns
 }
