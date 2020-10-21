@@ -50,7 +50,7 @@ func NewServiceMgr(config util.Config, rebalanceRunning bool, superSup common.Ev
 		statsWritten: true,
 		stopTracerCh: make(chan struct{}, 1),
 		superSup:     superSup,
-		finch:      make(chan bool),
+		finch:        make(chan bool),
 	}
 
 	mgr.config.Store(config)
@@ -390,11 +390,23 @@ func (m *ServiceMgr) settingChangeCallback(path string, value []byte, rev interf
 		return nil
 	}
 
-	if value == nil {
+	m.fnMu.Lock()
+	defer m.fnMu.Unlock()
+	functionName := pathTokens[len(pathTokens)-1]
+	cfg, ok := m.fnsInPrimaryStore[functionName]
+
+	if !ok {
 		return nil
 	}
 
-	functionName := pathTokens[len(pathTokens)-1]
+	if value == nil {
+		delete(m.bucketFunctionMap[cfg.SourceBucket], functionName)
+		if len(m.bucketFunctionMap[cfg.SourceBucket]) == 0 {
+			delete(m.bucketFunctionMap, cfg.SourceBucket)
+		}
+
+		return nil
+	}
 
 	settings := make(map[string]interface{})
 	err := json.Unmarshal(value, &settings)
@@ -417,11 +429,6 @@ func (m *ServiceMgr) settingChangeCallback(path string, value []byte, rev interf
 			logPrefix, functionName)
 		return nil
 	}
-
-	m.fnMu.Lock()
-	defer m.fnMu.Unlock()
-
-	cfg := m.fnsInPrimaryStore[functionName]
 
 	source, _ := m.getSourceAndDestinationsFromDepCfg(&cfg)
 	if processingStatus == false {
