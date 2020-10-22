@@ -114,6 +114,7 @@ func (m *ServiceMgr) fillMissingWithDefaults(appName string, settings map[string
 	fillMissingDefault(app, settings, "worker_queue_cap", float64(100*1000))
 	fillMissingDefault(app, settings, "worker_queue_mem_cap", float64(1024))
 	fillMissingDefault(app, settings, "worker_response_timeout", float64(3600))
+	fillMissingDefault(app, settings, "default_stream_boundary", "everything")
 
 	// metastore related configuration
 	fillMissingDefault(app, settings, "timer_queue_mem_cap", float64(50))
@@ -442,19 +443,42 @@ func (m *ServiceMgr) validateQueryKey(query url.Values) (info *runtimeInfo) {
 	return
 }
 
-func (m *ServiceMgr) validateQueryBucket(query url.Values) (info *runtimeInfo) {
+func (m *ServiceMgr) validateQueryKeyspace(query url.Values) (info *runtimeInfo) {
 	info = &runtimeInfo{}
 	info.Code = m.statusCodes.ok.Code
-	buckets, found := query["source_bucket"]
-	if !found {
-		return
-	}
-	bucketLen := len(buckets)
-	if bucketLen > 1 {
+	buckets, bktPresent := query["source_bucket"]
+
+	if bktPresent && len(buckets) > 1 {
 		info.Info = "more than one bucket name present in function list query"
 		info.Code = m.statusCodes.errReadReq.Code
 		return
 	}
+
+	scopes, scopePresent := query["source_scope"]
+	if !bktPresent && scopePresent {
+		info.Info = "filter on scope is given without filter on bucket"
+		info.Code = m.statusCodes.errReadReq.Code
+		return
+	}
+
+	if scopePresent && len(scopes) > 1 {
+		info.Info = "more than one scope name present in function list query"
+		info.Code = m.statusCodes.errReadReq.Code
+		return
+	}
+
+	collections, collectionPresent := query["source_collection"]
+	if !(scopePresent && bktPresent) && collectionPresent {
+		info.Info = "filter on collection is given without filter on bucket or scope"
+		info.Code = m.statusCodes.errReadReq.Code
+		return
+	}
+	if collectionPresent && len(collections) > 1 {
+		info.Info = "more than one collection name present in function list query"
+		info.Code = m.statusCodes.errReadReq.Code
+		return
+	}
+
 	return
 }
 
@@ -518,7 +542,7 @@ func (m *ServiceMgr) validateFunctionListQuery(query url.Values) (info *runtimeI
 		return
 	}
 
-	if info = m.validateQueryBucket(query); info.Code != m.statusCodes.ok.Code {
+	if info = m.validateQueryKeyspace(query); info.Code != m.statusCodes.ok.Code {
 		logging.Errorf("%s %s", logPrefix, info.Info)
 		return
 	}
@@ -542,57 +566,67 @@ func (m *ServiceMgr) getFunctionList(query url.Values) (fnlist functionList, inf
 		return
 	}
 
-	// TODO: return list by bucket, scope, collection
-	/*
-		m.fnMu.RLock()
-		defer m.fnMu.RUnlock()
-		bucket := query.Get("source_bucket")
-		buckets := make(map[string]struct{})
-		if bucket == "" {
-			for currBucket := range m.bucketFunctionMap {
-				buckets[currBucket] = struct{}{}
-			}
-		} else {
-			buckets[bucket] = struct{}{}
+	m.fnMu.RLock()
+	defer m.fnMu.RUnlock()
+	bucket := query.Get("source_bucket")
+	scope := query.Get("source_scope")
+	collection := query.Get("source_collection")
+	keyspace := make(map[common.Keyspace]struct{})
+	if bucket == "" {
+		for currKeyspace := range m.bucketFunctionMap {
+			keyspace[currKeyspace] = struct{}{}
+		}
+	} else {
+		if scope == "" {
+			scope = "_default"
+		}
+		if collection == "" {
+			collection = "_default"
 		}
 
-		functionType := query.Get("function_type")
-		fnTypes := make(map[string]struct{})
-		if functionType == "" {
-			fnTypes = funtionTypes
-		} else {
-			fnTypes[functionType] = struct{}{}
+		sourceKeyspace := common.Keyspace{BucketName: bucket,
+			ScopeName:      scope,
+			CollectionName: collection,
 		}
+		keyspace[sourceKeyspace] = struct{}{}
+	}
 
-		deployStatus := query.Get("deployed")
-		deployStatusList := make(map[bool]struct{})
-		if deployStatus == "" {
+	functionType := query.Get("function_type")
+	fnTypes := make(map[string]struct{})
+	if functionType == "" {
+		fnTypes = funtionTypes
+	} else {
+		fnTypes[functionType] = struct{}{}
+	}
+
+	deployStatus := query.Get("deployed")
+	deployStatusList := make(map[bool]struct{})
+	if deployStatus == "" {
+		deployStatusList[true] = struct{}{}
+		deployStatusList[false] = struct{}{}
+	} else {
+		if deployStatus == "true" {
 			deployStatusList[true] = struct{}{}
-			deployStatusList[false] = struct{}{}
 		} else {
-			if deployStatus == "true" {
-				deployStatusList[true] = struct{}{}
-			} else {
-				deployStatusList[false] = struct{}{}
-			}
+			deployStatusList[false] = struct{}{}
 		}
+	}
 
-		for currBucket := range buckets {
-			functions, ok := m.bucketFunctionMap[currBucket]
-			if !ok {
+	for currKeyspace := range keyspace {
+		functions, ok := m.bucketFunctionMap[currKeyspace]
+		if !ok {
+			continue
+		}
+		for function, meta := range functions {
+			if _, ok = fnTypes[meta.fnType]; !ok {
 				continue
 			}
-			for function, meta := range functions {
-				if _, ok = fnTypes[meta.fnType]; !ok {
-					continue
-				}
-				if _, ok = deployStatusList[meta.fnDeployed]; !ok {
-					continue
-				}
-				fnlist.Functions = append(fnlist.Functions, function)
+			if _, ok = deployStatusList[meta.fnDeployed]; !ok {
+				continue
 			}
+			fnlist.Functions = append(fnlist.Functions, function)
 		}
-	*/
+	}
 	return
 }
 

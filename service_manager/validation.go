@@ -839,6 +839,11 @@ func (m *ServiceMgr) validateSettings(appName string, settings map[string]interf
 		return
 	}
 
+	defaultStreamBoundaryValues := []string{"everything", "from_now"}
+	if info = m.validatePossibleValues("default_stream_boundary", settings, defaultStreamBoundaryValues); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
 	if info = m.validatePositiveInteger("deadline_timeout", settings); info.Code != m.statusCodes.ok.Code {
 		return
 	}

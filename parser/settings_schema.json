@@ -25,6 +25,12 @@
       "type": "integer",
       "description": "worker read deadline (in seconds). normally, this must not be specified"
     },
+    "default_stream_boundary": {
+      "type": "string",
+      "description": "the default value for the dcp stream boudnary for each handler",
+      "enum": ["everything", "from_now"],
+      "default": "everything"
+    },
     "deployment_status": {
       "type": "boolean",
       "description": "indicates if the function is deployed. true=deployed, false=undeployed",

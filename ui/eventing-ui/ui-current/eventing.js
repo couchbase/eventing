@@ -465,7 +465,7 @@ angular.module('eventing', [
             function changeState(operation, app, scope) {
                 var appClone = app.clone();
                 scope.settings = {};
-                scope.settings.changeFeedBoundary = 'everything';
+                scope.settings.changeFeedBoundary = app.settings.default_stream_boundary;
 
                 $uibModal.open({
                         templateUrl: '../_p/ui/event/ui-current/dialogs/app-actions.html',
@@ -2111,6 +2111,7 @@ angular.module('eventing', [
                         form.appname.$viewValue === undefined;
 
                     form.timer_context_size.$error.isnan = isNaN(form.timer_context_size.$viewValue) || (form.timer_context_size.$viewValue == null);
+                    form.default_stream_boundary.$error = form.default_stream_boundary.$viewValue === '';
 
                     return form.appname.$error.required ||
                         form.appname.$error.appExists ||
@@ -2125,7 +2126,7 @@ angular.module('eventing', [
                         form.timer_context_size.$error.isnan ||
                         formCtrl.sourceBuckets.indexOf(form.source_bucket.$viewValue) === -1 ||
                         formCtrl.metadataBuckets.indexOf(form.metadata_bucket.$viewValue) === -1 ||
-                        form.appname.$error.appnameInvalid || bindingError || hostnameError;
+                        form.appname.$error.appnameInvalid || bindingError || hostnameError || form.default_stream_boundary.$error;
                 }
             }
         }

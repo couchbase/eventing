@@ -131,7 +131,11 @@ func (p *Producer) parseDepcfg() error {
 	if val, ok := settings["dcp_stream_boundary"]; ok {
 		p.handlerConfig.StreamBoundary = common.DcpStreamBoundary(val.(string))
 	} else {
-		p.handlerConfig.StreamBoundary = common.DcpStreamBoundary("everything")
+		if defaultValue, ok := settings["default_stream_boundary"]; ok {
+			p.handlerConfig.StreamBoundary = common.DcpStreamBoundary(defaultValue.(string))
+		} else {
+			p.handlerConfig.StreamBoundary = common.DcpStreamBoundary("everything")
+		}
 	}
 
 	if val, ok := settings["deadline_timeout"]; ok {
