@@ -25,7 +25,7 @@ import (
 )
 
 type AuditEntry struct {
-	goadt.GenericFields
+	goadt.CommonAuditFields
 	Context string `json:"context"`
 }
 
@@ -44,7 +44,7 @@ func Init(restPort string) error {
 
 func Log(event auditevent.AuditEvent, req *http.Request, context interface{}) error {
 	entry := AuditEntry{
-		GenericFields: goadt.GetAuditBasicFields(req),
+		CommonAuditFields: goadt.GetCommonAuditFields(req),
 		Context:       fmt.Sprintf("%v", context),
 	}
 	if auditService == nil {

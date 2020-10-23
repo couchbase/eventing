@@ -190,6 +190,9 @@ func (m *ServiceMgr) initService() {
 			ReadTimeout:  httpReadTimeOut,
 			WriteTimeout: httpWriteTimeOut,
 			Handler:      mux,
+			ConnContext: func(ctx context.Context, conn net.Conn) context.Context {
+				return context.WithValue(ctx, "conn", conn)
+			},
 		}
 		proto := util.GetNetworkProtocol()
 		listner, err := net.Listen(proto, addr)
