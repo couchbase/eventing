@@ -206,7 +206,7 @@ Query::IterableResult::NewObject(const Query::Row &row) {
   std::stringstream err_msg;
   v8::Local<v8::Value> value_val;
   // TODO : If JSON parse fails, try to provide (row, col) information
-  if (!TO_LOCAL(v8::JSON::Parse(isolate_, v8Str(isolate_, row.data)),
+  if (!TO_LOCAL(v8::JSON::Parse(context, v8Str(isolate_, row.data)),
                 &value_val)) {
     err_msg << "Unable to parse query row as JSON : " << RU(row.data);
     return {true, err_msg.str()};

@@ -476,7 +476,7 @@ void AppWorker::FlushToConn(uv_stream_t *stream, char *msg, int length) {
 void AppWorker::RouteMessageWithResponse(
     std::unique_ptr<WorkerMessage> worker_msg) {
   std::string key, val, doc_id, callback_fn, doc_ids_cb_fns, compile_resp;
-  v8::Platform *platform;
+  std::unique_ptr<v8::Platform> platform;
   server_settings_t *server_settings;
   handler_config_t *handler_config;
 
@@ -542,15 +542,15 @@ void AppWorker::RouteMessageWithResponse(
       LOG(logDebug) << "Loading app:" << app_name_ << std::endl;
 
       v8::V8::InitializeICUDefaultLocation(executable_img.c_str(), nullptr);
-      platform = v8::platform::CreateDefaultPlatform();
-      v8::V8::InitializePlatform(platform);
+      platform = v8::platform::NewDefaultPlatform();
+      v8::V8::InitializePlatform(platform.get());
       v8::V8::Initialize();
 
       {
         std::lock_guard<std::mutex> lck(workers_map_mutex_);
         for (int16_t i = 0; i < thr_count_; i++) {
           V8Worker *w = new V8Worker(
-              platform, handler_config, server_settings, function_name_,
+              platform.release(), handler_config, server_settings, function_name_,
               function_id_, handler_instance_id, user_prefix_, &latency_stats_,
               &curl_latency_stats_, ns_server_port_, num_vbuckets_);
 

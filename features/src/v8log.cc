@@ -69,14 +69,14 @@ void ConsoleLog(const v8::FunctionCallbackInfo<v8::Value> &args) {
   auto context = isolate->GetCurrentContext();
 
   Log(args);
-  auto console_v8_str = v8::String::NewFromUtf8(isolate, "console");
-  auto log_v8_str = v8::String::NewFromUtf8(isolate, "log");
+  auto console_v8_str = v8::String::NewFromUtf8(isolate, "console").ToLocalChecked();
+  auto log_v8_str = v8::String::NewFromUtf8(isolate, "log").ToLocalChecked();
   auto console = context->Global()
-                     ->Get(console_v8_str)
-                     ->ToObject(context)
-                     .ToLocalChecked();
-  auto log_fn = v8::Local<v8::Function>::Cast(console->Get(log_v8_str));
+                     ->Get(context, console_v8_str).ToLocalChecked()
+                     ->ToObject(context).ToLocalChecked();
+  auto log_fn = v8::Local<v8::Function>::Cast(console->Get(context, log_v8_str).ToLocalChecked());
 
+  v8::Handle<v8::Value> result;
   v8::Local<v8::Value> log_args[ConsoleLogMaxArity];
   auto i = 0;
   for (; i < args.Length() && i < ConsoleLogMaxArity; ++i) {
@@ -85,8 +85,8 @@ void ConsoleLog(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
   // Calling console.log with the args passed to log() function.
   if (i < ConsoleLogMaxArity) {
-    log_fn->Call(log_fn, args.Length(), log_args);
+    if(!TO_LOCAL(log_fn->Call(context, log_fn, args.Length(), log_args), &result)) return;
   } else {
-    log_fn->Call(log_fn, ConsoleLogMaxArity, log_args);
+    if(!TO_LOCAL(log_fn->Call(context, log_fn, ConsoleLogMaxArity, log_args), &result)) return;
   }
 }

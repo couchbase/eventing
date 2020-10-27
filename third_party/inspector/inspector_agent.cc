@@ -306,7 +306,8 @@ void Agent::PauseOnNextJavascriptStatement(const std::string &reason) {
 
 void Agent::RequestIoThreadStart() {
   uv_async_send(&start_io_thread_async);
-  platform_->CallOnForegroundThread(isolate_, new StartIoTask(this));
+  std::unique_ptr<Task> curr_task =std::unique_ptr<Task>(new StartIoTask(this));
+  platform_->CallOnWorkerThread(std::move(curr_task));
   isolate_->RequestInterrupt(StartIoInterrupt, this);
   uv_async_send(&start_io_thread_async);
 }

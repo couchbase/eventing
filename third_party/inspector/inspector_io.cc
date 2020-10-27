@@ -79,11 +79,11 @@ std::string StringViewToUtf8(const StringView &view) {
 
   size_t result_length = view.length() * sizeof(*source);
   std::string result(result_length, '\0');
-  icu_62::UnicodeString utf16(unicodeSource, view.length());
+  icu::UnicodeString utf16(unicodeSource, view.length());
   // ICU components for std::string compatibility are not enabled in build...
   bool done = false;
   while (!done) {
-    icu_62::CheckedArrayByteSink sink(&result[0], result_length);
+    icu::CheckedArrayByteSink sink(&result[0], result_length);
     utf16.toUTF8(sink);
     result_length = sink.NumberOfBytesAppended();
     result.resize(result_length);
@@ -116,8 +116,8 @@ void ReleasePairOnAsyncClose(uv_handle_t *async) {
 } // namespace
 
 std::unique_ptr<StringBuffer> Utf8ToStringView(const std::string &message) {
-  icu_62::UnicodeString utf16 =
-      icu_62::UnicodeString::fromUTF8(icu_62::StringPiece(message.data(), message.length()));
+  icu::UnicodeString utf16 =
+      icu::UnicodeString::fromUTF8(icu::StringPiece(message.data(), message.length()));
   StringView view(reinterpret_cast<const uint16_t *>(utf16.getBuffer()),
                   utf16.length());
   return StringBuffer::create(view);
@@ -355,8 +355,9 @@ void InspectorIo::PostIncomingMessage(InspectorAction action, int session_id,
   if (AppendMessage(&incoming_message_queue_, action, session_id,
                     Utf8ToStringView(message))) {
     Agent *agent = main_thread_req_->second;
-    platform_->CallOnForegroundThread(isolate_,
-                                      new DispatchMessagesTask(agent));
+    std::unique_ptr<Task> curr_task = std::unique_ptr<Task>(new DispatchMessagesTask(agent));
+    std::shared_ptr<v8::TaskRunner> task_runner = platform_->GetForegroundTaskRunner(isolate_);
+    task_runner->PostTask(std::move(curr_task));
     isolate_->RequestInterrupt(InterruptCallback, agent);
     auto result = uv_async_send(&main_thread_req_->first);
     validate(0 == result);

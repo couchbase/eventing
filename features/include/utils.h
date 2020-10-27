@@ -32,6 +32,7 @@
 #define TO_LOCAL(maybe, local)                                                 \
   (ToLocal((maybe), (local), __FILE__, __FUNCTION__, __LINE__))
 #define IS_EMPTY(v8obj) (IsEmpty((v8obj), __FILE__, __FUNCTION__, __LINE__))
+#define CHECK_SUCCESS(maybe)(CheckSuccess(maybe, __FILE__, __FUNCTION__, __LINE__))
 
 struct CompilationInfo {
   CompilationInfo() : compile_success(false), index(0), line_no(0), col_no(0) {}
@@ -73,6 +74,13 @@ bool To(const v8::Maybe<T> &from, T *to, const char *file = "",
   LOG(logError) << "file : " << file << " line : " << line
                 << " caller : " << caller << " : Returning empty value";
   return false;
+}
+
+template <typename T>
+void CheckSuccess(const v8::Maybe<T> &from, const char *file = "", const char *caller = "", int line = -1) {
+  if(!from.FromJust()) {
+    LOG(logError) << "file : " << file << "line : " << line << "caller : " << caller << " : Error with SET/GET";
+  }
 }
 
 template <typename T>

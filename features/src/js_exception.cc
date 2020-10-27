@@ -61,7 +61,7 @@ void JsException::CopyMembers(JsException &&exc_obj) {
 // Extracts the error message, composes an exception object and throws.
 void JsException::ThrowKVError(lcb_INSTANCE *instance, lcb_STATUS error) {
   v8::HandleScope handle_scope(isolate_);
-
+  auto context = isolate_->GetCurrentContext();
   auto code_name = code_.Get(isolate_);
   auto desc_name = desc_.Get(isolate_);
   auto name_name = name_.Get(isolate_);
@@ -72,9 +72,9 @@ void JsException::ThrowKVError(lcb_INSTANCE *instance, lcb_STATUS error) {
   auto desc_value = v8Str(isolate_, lcb_strerror_long(error));
 
   auto message = v8::Object::New(isolate_);
-  message->Set(code_name, code_value);
-  message->Set(desc_name, desc_value);
-  message->Set(name_name, name_value);
+  CHECK_SUCCESS(message->Set(context, code_name, code_value));
+  CHECK_SUCCESS(message->Set(context, desc_name, desc_value));
+  CHECK_SUCCESS(message->Set(context, name_name, name_value));
 
   auto custom_error = UnwrapData(isolate_)->custom_error;
   v8::Local<v8::Object> error_obj;
