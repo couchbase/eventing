@@ -1195,7 +1195,7 @@ angular.module('eventing', [
 
                 if (JSON.stringify(appModel.depcfg) !== JSON.stringify(config)) {
                     $scope.appModel.depcfg = config;
-                    ApplicationService.server.showWarningAlert('Bindings changed. Deploy for changes to take effect.');
+                    ApplicationService.server.showWarningAlert('Bindings changed. Deploy or Resume function for changes to take effect.');
                 }
 
                 // Deadline timeout must be greater than execution timeout.
