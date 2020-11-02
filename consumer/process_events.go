@@ -420,7 +420,7 @@ func (c *Consumer) startDcp(flogs couchbase.FailoverLog) error {
 		return err
 	}
 
-	vbSeqnos, err := util.BucketSeqnos(c.producer.NsServerHostPort(), "default", c.sourceKeyspace.BucketName)
+	vbSeqnos, err := util.GetSeqnos(c.producer.NsServerHostPort(), "default", c.sourceKeyspace.BucketName, c.collectionID)
 	if err != nil && c.dcpStreamBoundary != common.DcpEverything {
 		logging.Errorf("%s [%s:%s:%d] Failed to fetch vb seqnos, err: %v", logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
 		return nil
@@ -1074,7 +1074,7 @@ func (c *Consumer) handleFailoverLog() {
 						case <-c.stopConsumerCh:
 							return
 						default:
-							vbSeqNos, err := util.BucketSeqnos(c.producer.NsServerHostPort(), "default", c.sourceKeyspace.BucketName)
+							vbSeqNos, err := util.GetSeqnos(c.producer.NsServerHostPort(), "default", c.sourceKeyspace.BucketName, c.collectionID)
 							if err == nil {
 								break vbLabel
 							}

@@ -11,6 +11,7 @@ type CollectionManifest struct {
 }
 
 const COLLECTION_SUPPORTED_VERSION uint32 = 7
+const CID_FOR_BUCKET uint32 = 0
 
 type CollectionScope struct {
 	Name        string       `json:"name"`
@@ -67,7 +68,7 @@ func LEB128Dec(data []byte) ([]byte, uint32) {
 
 func GetCidAsUint32(collId string) (uint32, error) {
 	if collId == "" {
-		return 0, nil
+		return CID_FOR_BUCKET, nil
 	}
 	cid, err := strconv.ParseUint(collId, 16, 32)
 	if err != nil {

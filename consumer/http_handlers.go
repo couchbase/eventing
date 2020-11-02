@@ -131,7 +131,7 @@ func (c *Consumer) dcpEventsRemainingToProcess() error {
 	c.vbDcpEventsRemaining = make(map[int]int64)
 	c.statsRWMutex.Unlock()
 
-	seqNos, err := util.BucketSeqnos(c.producer.NsServerHostPort(), "default", c.sourceKeyspace.BucketName)
+	seqNos, err := util.GetSeqnos(c.producer.NsServerHostPort(), "default", c.sourceKeyspace.BucketName, c.collectionID)
 	if err != nil {
 		logging.Errorf("%s [%s:%s:%d] Failed to fetch get_all_vb_seqnos, err: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
