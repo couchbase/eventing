@@ -263,6 +263,11 @@ type appStatusResponse struct {
 	NumEventingNodes int         `json:"num_eventing_nodes"`
 }
 
+type singleAppStatusResponse struct {
+	App              appStatus `json:"app"`
+	NumEventingNodes int       `json:"num_eventing_nodes"`
+}
+
 type eventingVer struct {
 	major        int
 	minor        int

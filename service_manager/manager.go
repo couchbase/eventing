@@ -165,6 +165,7 @@ func (m *ServiceMgr) initService() {
 
 	// Public REST APIs
 	mux.HandleFunc("/api/v1/status", m.statusHandler)
+	mux.HandleFunc("/api/v1/status/", m.statusHandler)
 	mux.HandleFunc("/api/v1/stats", m.statsHandler)
 	mux.HandleFunc("/api/v1/config", m.configHandler)
 	mux.HandleFunc("/api/v1/config/", m.configHandler)
