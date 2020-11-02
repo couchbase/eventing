@@ -10,6 +10,8 @@ type CollectionManifest struct {
 	Scopes []CollectionScope `json:"scopes"`
 }
 
+const COLLECTION_SUPPORTED_VERSION uint32 = 7
+
 type CollectionScope struct {
 	Name        string       `json:"name"`
 	UID         string       `json:"uid"` // base 16 string
@@ -34,7 +36,7 @@ func (cm *CollectionManifest) GetCollectionID(scope, collection string) (uint32,
 					return GetCidAsUint32(cmCollection.UID)
 				}
 			}
-		return 0, COLLECTION_NOT_FOUND
+			return 0, COLLECTION_NOT_FOUND
 		}
 	}
 	return 0, SCOPE_NOT_FOUND

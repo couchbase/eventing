@@ -1,14 +1,17 @@
 package util
 
-import "sync"
-import "time"
-import "fmt"
-import "sort"
-import "errors"
+import (
+	"errors"
+	"fmt"
+	"sort"
+	"sync"
+	"time"
 
-import "github.com/couchbase/eventing/dcp"
-import "github.com/couchbase/eventing/dcp/transport/client"
-import "github.com/couchbase/eventing/logging"
+	"github.com/couchbase/eventing/common/collections"
+	"github.com/couchbase/eventing/dcp"
+	"github.com/couchbase/eventing/dcp/transport/client"
+	"github.com/couchbase/eventing/logging"
+)
 
 const seqsReqChanSize = 20000
 const seqsBufSize = 64 * 1024
@@ -127,8 +130,9 @@ func (r *vbSeqnosReader) Routine() {
 
 func addDBSbucket(cluster, pooln, bucketn string) (err error) {
 	var bucket *couchbase.Bucket
+	var clusterVer uint32
 
-	bucket, err = ConnectBucket(cluster, pooln, bucketn)
+	bucket, clusterVer, err = ConnectBucket(cluster, pooln, bucketn)
 	if err != nil {
 		logging.Errorf("Unable to connect with bucket %q\n", bucketn)
 		return err
@@ -176,15 +180,13 @@ func addDBSbucket(cluster, pooln, bucketn string) (err error) {
 	var conn *memcached.Client
 
 	for kvaddr := range m {
-		uuid, _ := NewUUID()
-		name := uuid.Str()
-		if name == "" {
-			err = fmt.Errorf("invalid uuid")
-			logging.Errorf("NewUUID() failed: %v\n", err)
+		conn, err = bucket.GetMcConn(kvaddr)
+		if err != nil {
+			logging.Errorf("StartDcpFeedOver(): %v\n", err)
 			return err
 		}
 
-		conn, err = bucket.GetMcConn(kvaddr)
+		err := tryEnableCollection(conn, clusterVer)
 		if err != nil {
 			logging.Errorf("StartDcpFeedOver(): %v\n", err)
 			return err
@@ -364,4 +366,34 @@ func pollForDeletedBuckets() {
 
 func SetDcpMemcachedTimeout(val uint32) {
 	memcached.SetDcpMemcachedTimeout(val)
+}
+
+func getConnName() (string, error) {
+	uuid, _ := NewUUID()
+	name := uuid.Str()
+	if name == "" {
+		err := fmt.Errorf("getConnName: invalid uuid.")
+
+		// probably not a good idea to fail if uuid
+		// based name fails. Can return const string
+		return "", err
+	}
+	connName := "getseqnos-" + name
+	return connName, nil
+}
+
+func tryEnableCollection(conn *memcached.Client, clusterVer uint32) error {
+	if clusterVer >= collections.COLLECTION_SUPPORTED_VERSION {
+		if !conn.IsCollectionsEnabled() {
+			connName, err := getConnName()
+			if err != nil {
+				return err
+			}
+			err = conn.EnableCollections(connName)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }

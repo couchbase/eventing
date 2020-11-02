@@ -36,6 +36,7 @@ var ErrorInvalidFeed = errors.New("dcp.invalidFeed")
 
 // ErrorEnableCollections
 var ErrorEnableCollections = errors.New("dcp.EnableCollections")
+var ErrorCollectionsNotEnabled = errors.New("dcp.ErrorCollectionsNotEnabled")
 
 // DcpFeed represents an DCP feed. A feed contains a connection to a single
 // host and multiple vBuckets
@@ -800,7 +801,7 @@ func (feed *DcpFeed) enableCollections(rcvch chan []interface{}) error {
 	} else if (len(body) != 2) || (body[0] != 0x00 && body[1] != transport.FEATURE_COLLECTIONS) {
 		fmsg := "%v DCP_HELO (feature_collections) body = %v. Expecting body = 0x0012"
 		logging.Errorf(fmsg, prefix, opcode)
-		return ErrorEnableCollections
+		return ErrorCollectionsNotEnabled
 	}
 
 	fmsg := "%v received response for DCP_HELO (feature_collections)"

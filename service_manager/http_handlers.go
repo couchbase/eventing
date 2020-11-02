@@ -3676,9 +3676,10 @@ type version struct {
 }
 
 var verMap = map[string]version{
-	"vulcan":     {5, 5},
-	"alice":      {6, 0},
-	"mad-hatter": {6, 5},
+	"vulcan":       {5, 5},
+	"alice":        {6, 0},
+	"mad-hatter":   {6, 5},
+	"cheshire-cat": {7, 0},
 }
 
 func (r version) satisfies(need version) bool {

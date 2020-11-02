@@ -586,7 +586,7 @@ loop:
 		p.BucketMap[b.Name] = b
 		manifest := &collections.CollectionManifest{}
 
-		if version >= 7 {
+		if version >= collections.COLLECTION_SUPPORTED_VERSION {
 			err = p.client.parseURLResponse("pools/default/buckets/"+b.Name+"/collections", manifest)
 			if err != nil {
 				// bucket list is out of sync with cluster bucket list
@@ -683,7 +683,7 @@ func (p *Pool) GetBucket(name string) (*Bucket, error) {
 
 func (p *Pool) GetCollectionID(bucket, scope, collection string) (uint32, error) {
 	version := p.GetClusterCompatVersion()
-	if version >= 7 {
+	if version >= collections.COLLECTION_SUPPORTED_VERSION {
 		if manifest, ok := p.Manifest[bucket]; ok {
 			return manifest.GetCollectionID(scope, collection)
 		}

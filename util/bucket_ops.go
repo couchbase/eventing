@@ -102,12 +102,14 @@ func ClusterAuthUrl(cluster string) (string, error) {
 //---------------------
 
 // ConnectBucket will instantiate a couchbase-bucket instance with cluster.
-// caller's responsibility to close the bucket.
-func ConnectBucket(cluster, pooln, bucketn string) (*couchbase.Bucket, error) {
+// caller's responsibility to close the bucket. It also returns clusterVersion
+func ConnectBucket(cluster, pooln, bucketn string) (*couchbase.Bucket,
+	uint32, error) {
+
 	if strings.HasPrefix(cluster, "http") {
 		u, err := url.Parse(cluster)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		cluster = u.Host
 	}
@@ -119,17 +121,19 @@ func ConnectBucket(cluster, pooln, bucketn string) (*couchbase.Bucket, error) {
 
 	couch, err := couchbase.ConnectWithAuth("http://"+cluster, ah)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	pool, err := couch.GetPool(pooln)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
+
+	clusterVersion := pool.GetClusterCompatVersion()
 	bucket, err := pool.GetBucket(bucketn)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
-	return bucket, err
+	return bucket, clusterVersion, err
 }
 
 func GetConnectionStr(kvVBMap map[uint16]string) string {

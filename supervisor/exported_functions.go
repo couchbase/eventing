@@ -610,7 +610,7 @@ func (s *SuperSupervisor) GetAppLog(fnName string, sz int64) []string {
 func (s *SuperSupervisor) watchBucketWithLock(bucketName string) error {
 	if _, ok := s.buckets[bucketName]; !ok {
 		hostPortAddr := net.JoinHostPort(util.Localhost(), s.restPort)
-		b, err := util.ConnectBucket(hostPortAddr, "default", bucketName)
+		b, _, err := util.ConnectBucket(hostPortAddr, "default", bucketName)
 		if err != nil {
 			logging.Errorf("Could not connect to bucket %s", bucketName)
 			return err
