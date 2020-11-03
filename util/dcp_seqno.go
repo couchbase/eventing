@@ -183,8 +183,8 @@ func addDBSbucket(cluster, pooln, bucketn string) (err error) {
 			logging.Errorf("NewUUID() failed: %v\n", err)
 			return err
 		}
-		fname := couchbase.NewDcpFeedName("getseqnos-" + name)
-		conn, err = bucket.GetDcpConn(fname, kvaddr)
+
+		conn, err = bucket.GetMcConn(kvaddr)
 		if err != nil {
 			logging.Errorf("StartDcpFeedOver(): %v\n", err)
 			return err
