@@ -300,6 +300,7 @@
              type="number"
              name="timer_context_size"
              ng-model="appModel.settings.timer_context_size"
+	     ng-init="appModel.settings.timer_context_size = appModel.settings.timer_context_size ? appModel.settings.timer_context_size : 1024"
              min="20"
              max="20971520">
           <div
