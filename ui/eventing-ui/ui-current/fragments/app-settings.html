@@ -131,27 +131,6 @@
         </div>
       </div>
       <div class="formrow">
-        <label class="inline">Default Feed Boundary</label>
-        <span
-                class="fa-stack icon-info"
-                uib-tooltip="The preferred Feed Boundary for the handler."
-                tooltip-placement="right">
-        <span class="icon fa-circle-thin fa-stack-2x"></span>
-        <span class="icon fa-info fa-stack-1x"></span>
-        </span>
-        <select
-          name="default_stream_boundary"
-          ng-init="appModel.settings.default_stream_boundary = appModel.settings.default_stream_boundary ? appModel.settings.default_stream_boundary : 'everything'"
-          ng-model="appModel.settings.default_stream_boundary">
-          <option value="everything">Everything</option>
-          <option value="from_now">From now</option>
-        </select>
-        <div class="error field-error"
-             ng-show="appModel.settings.default_stream_boundary === '' ">
-            Please specify a default feed boundary
-        </div>
-      </div>
-      <div class="formrow">
         <label class="inline">
           Description
           <small>(optional)</small>
@@ -188,6 +167,27 @@
             <strong>{{formCtrl.logFileLocation}}</strong>
           </small>
         </div>
+	<div class="formrow indent-1">
+        	<label class="inline">Default Feed Boundary</label>
+        	<span
+               	 class="fa-stack icon-info"
+                	uib-tooltip="The preferred Feed Boundary for the handler."
+                	tooltip-placement="right">
+        	<span class="icon fa-circle-thin fa-stack-2x"></span>
+        	<span class="icon fa-info fa-stack-1x"></span>
+        	</span>
+        	<select
+          		name="default_stream_boundary"
+          		ng-init="appModel.settings.default_stream_boundary = appModel.settings.default_stream_boundary ? appModel.settings.default_stream_boundary : 'everything'"
+          		ng-model="appModel.settings.default_stream_boundary">
+          		<option value="everything">Everything</option>
+          		<option value="from_now">From now</option>
+        	</select>
+        	<div class="error field-error"
+             		ng-show="appModel.settings.default_stream_boundary === '' ">
+            		Please specify a default feed boundary
+        	</div>
+      	</div>
         <div class="formrow indent-1">
           <label class="inline">N1QL Consistency</label>
           <span
