@@ -20,10 +20,10 @@ var maybe_n1ql = regexp.MustCompile(
 	`(?iU)` +
 		`((?:alter|build|create|` +
 		// 'delete' is a js keyword, so look for 'delete from'
-		`delete[[:space:]]+from[[:space:]]+[[:word:]]+` +
+		`delete[[:space:]]+from[[:space:]]+(?:[[:word:]][[:punct:]]?)+` +
 		`|drop|execute|explain|from|grant|infer|` +
 		`insert|merge|prepare|rename|select|` +
-		`revoke|update|upsert) +` +
+		`revoke|update|upsert)[[:space:]]+` +
 		`[^;]+;)`)
 
 var spaced_line = regexp.MustCompile(

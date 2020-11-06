@@ -67,6 +67,7 @@ var snippet_inputs = []string{
 		/* yet another comment */
 		something=nothing and // or // exists // any
 		nosuchthing = /* annoying comment */ "nosuchvalue"; // ending comment`,
+	`DELETE from dst_bucket.scope_1.coll_4 USE KEYS "newDocID2";`,
 }
 
 var snippet_outputs = []string{
@@ -128,6 +129,7 @@ var snippet_outputs = []string{
 		'/* yet another comment */\n' +
 		'something=nothing and  --  or // exists // any\n' +
 		'nosuchthing = /* annoying comment */ \"nosuchvalue\";', {}); // ending comment`,
+	`N1QL('DELETE from dst_bucket.scope_1.coll_4 USE KEYS \"newDocID2\";', {});`,
 }
 
 var script_inputs = []string{
