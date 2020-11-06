@@ -375,7 +375,7 @@
             <a
                class="grayblack-3 margin-left-1"
                ng-show="!formCtrl.isAppDeployed"
-               ng-click="(formCtrl.isDialog ? bindings : formCtrl.bindings).Remove(1)">
+               ng-click="formCtrl.Remove($index)">
               <span class="icon fa-close"></span>
             </a>
           </span>
@@ -456,7 +456,7 @@
         <a
            class="grayblack-3 margin-left-1"
            ng-show="!formCtrl.isAppDeployed"
-           ng-click="(formCtrl.isDialog ? bindings : formCtrl.bindings).Remove(1)">
+           ng-click="formCtrl.Remove($index)">
           <span class="icon fa-close"></span>
         </a>
       </span>

@@ -1183,7 +1183,7 @@ angular.module('eventing', [
             };
 
             self.Remove = function(index) {
-                self.bindings.splice(index, 1);
+		self.bindings.splice(index, 1);
                 self.scopes.splice(index, 1);
                 self.responses.splice(index, 1);
                 self.collections.splice(index, 1);
@@ -2081,7 +2081,9 @@ angular.module('eventing', [
                         if (binding.value.length) {
                             bindingsValid = isValidVariable(binding.value);
                             bindingsValidList.push(!bindingsValid);
-                        }
+                        } else {
+			    bindingsValidList.push(false);
+			}
                         if (bindingsValid === false) {
                             bindingError = true;
                         }
