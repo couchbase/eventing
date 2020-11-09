@@ -3129,6 +3129,8 @@ func (m *ServiceMgr) notifyRetryToAllProducers(appName string, r *retry) (info *
 	return
 }
 
+var singleFuncStatusPattern = regexp.MustCompile("^/api/v1/status/(.*[^/])/?$") // Match is agnostic of trailing '/'
+
 func (m *ServiceMgr) statusHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if !m.validateAuth(w, r, EventingPermissionManage) {
@@ -3142,7 +3144,15 @@ func (m *ServiceMgr) statusHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	audit.Log(auditevent.ListDeployed, r, nil)
-	response, info := m.statusHandlerImpl()
+
+	var appNameFromURI string
+
+	if match := singleFuncStatusPattern.FindStringSubmatch(r.URL.Path); len(match) != 0 {
+		appNameFromURI = match[1]
+	}
+
+	response, info := m.statusHandlerImpl(appNameFromURI)
+
 	if info.Code != m.statusCodes.ok.Code {
 		m.sendErrorInfo(w, info)
 		return
@@ -3160,14 +3170,23 @@ func (m *ServiceMgr) statusHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "%s", string(data))
 }
 
-func (m *ServiceMgr) statusHandlerImpl() (response appStatusResponse, info *runtimeInfo) {
+func (m *ServiceMgr) statusHandlerImpl(appName string) (response interface{}, info *runtimeInfo) {
+
 	appDeployedNodesCounter, appBootstrappingNodesCounter, appPausingNodesCounter, numEventingNodes, info := m.getAppList()
 	if info.Code != m.statusCodes.ok.Code {
 		return
 	}
 
-	response.NumEventingNodes = numEventingNodes
+	var statusHandlerResponse appStatusResponse
+
+	statusHandlerResponse.NumEventingNodes = numEventingNodes
 	for _, app := range m.getTempStoreAll() {
+
+		// Is the status of this app needed?
+		if appName != "" && appName != app.Name {
+			continue
+		}
+
 		deploymentStatus, processingStatus, err := m.getStatuses(app.Name)
 		if err != nil {
 			info.Code = m.statusCodes.errInvalidConfig.Code
@@ -3197,8 +3216,28 @@ func (m *ServiceMgr) statusHandlerImpl() (response appStatusResponse, info *runt
 		} else {
 			status.CompositeStatus = m.determineStatus(status, appPausingNodesCounter, numEventingNodes, false)
 		}
-		response.Apps = append(response.Apps, status)
+
+		statusHandlerResponse.Apps = append(statusHandlerResponse.Apps, status)
+
+		// Do we already have the status of the app we care about?
+		if appName != "" && appName == app.Name {
+			break
+		}
 	}
+
+	if appName != "" {
+		if len(statusHandlerResponse.Apps) == 0 {
+			info.Code = m.statusCodes.errAppNotFoundTs.Code
+			info.Info = fmt.Sprintf("Function: %s not found", appName)
+		} else {
+			response = &singleAppStatusResponse{statusHandlerResponse.Apps[0], statusHandlerResponse.NumEventingNodes}
+
+			return
+		}
+	}
+
+	response = statusHandlerResponse
+
 	return
 }
 
@@ -3637,9 +3676,10 @@ type version struct {
 }
 
 var verMap = map[string]version{
-	"vulcan":     {5, 5},
-	"alice":      {6, 0},
-	"mad-hatter": {6, 5},
+	"vulcan":       {5, 5},
+	"alice":        {6, 0},
+	"mad-hatter":   {6, 5},
+	"cheshire-cat": {7, 0},
 }
 
 func (r version) satisfies(need version) bool {

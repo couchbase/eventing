@@ -22,7 +22,7 @@ var commonConnectBucketOpCallback = func(args ...interface{}) error {
 	hostPortAddr := net.JoinHostPort(util.Localhost(), p.GetNsServerPort())
 
 	var err error
-	*b, err = util.ConnectBucket(hostPortAddr, "default", p.metadataKeyspace.BucketName)
+	*b, _, err = util.ConnectBucket(hostPortAddr, "default", p.metadataKeyspace.BucketName)
 	if err != nil {
 		logging.Errorf("%s [%s:%d] Connect to bucket: %s failed, err: %v",
 			logPrefix, p.appName, p.LenRunningConsumers(), p.metadataKeyspace.BucketName, err)

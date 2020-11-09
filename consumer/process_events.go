@@ -73,18 +73,10 @@ func (c *Consumer) processDCPEvents() {
 
 			switch e.Opcode {
 			case mcd.DCP_MUTATION:
-				if c.collectionID != e.CollectionID {
+				if c.filterMutations(e) {
 					continue
 				}
 
-				c.filterVbEventsRWMutex.RLock()
-				if _, ok := c.filterVbEvents[e.VBucket]; ok {
-					c.filterVbEventsRWMutex.RUnlock()
-					continue
-				}
-				c.filterVbEventsRWMutex.RUnlock()
-
-				c.vbProcessingStats.updateVbStat(e.VBucket, "last_read_seq_no", e.Seqno)
 				logging.Tracef("%s [%s:%s:%d] Got DCP_MUTATION for key: %ru datatype: %v",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key), e.Datatype)
 
@@ -114,16 +106,9 @@ func (c *Consumer) processDCPEvents() {
 				}
 
 			case mcd.DCP_DELETION:
-				if c.collectionID != e.CollectionID {
+				if c.filterMutations(e) {
 					continue
 				}
-
-				c.filterVbEventsRWMutex.RLock()
-				if _, ok := c.filterVbEvents[e.VBucket]; ok {
-					c.filterVbEventsRWMutex.RUnlock()
-					continue
-				}
-				c.filterVbEventsRWMutex.RUnlock()
 
 				if c.processAndSendDcpDelOrExpMessage(e, functionInstanceID, true) {
 					c.dcpDeletionCounter++
@@ -132,16 +117,9 @@ func (c *Consumer) processDCPEvents() {
 				}
 
 			case mcd.DCP_EXPIRATION:
-				if c.collectionID != e.CollectionID {
+				if c.filterMutations(e) {
 					continue
 				}
-
-				c.filterVbEventsRWMutex.RLock()
-				if _, ok := c.filterVbEvents[e.VBucket]; ok {
-					c.filterVbEventsRWMutex.RUnlock()
-					continue
-				}
-				c.filterVbEventsRWMutex.RUnlock()
 
 				c.processAndSendDcpDelOrExpMessage(e, functionInstanceID, false)
 				c.dcpExpiryCounter++
@@ -420,7 +398,7 @@ func (c *Consumer) startDcp(flogs couchbase.FailoverLog) error {
 		return err
 	}
 
-	vbSeqnos, err := util.BucketSeqnos(c.producer.NsServerHostPort(), "default", c.sourceKeyspace.BucketName)
+	vbSeqnos, err := util.GetSeqnos(c.producer.NsServerHostPort(), "default", c.sourceKeyspace.BucketName, c.collectionID)
 	if err != nil && c.dcpStreamBoundary != common.DcpEverything {
 		logging.Errorf("%s [%s:%s:%d] Failed to fetch vb seqnos, err: %v", logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
 		return nil
@@ -1074,7 +1052,7 @@ func (c *Consumer) handleFailoverLog() {
 						case <-c.stopConsumerCh:
 							return
 						default:
-							vbSeqNos, err := util.BucketSeqnos(c.producer.NsServerHostPort(), "default", c.sourceKeyspace.BucketName)
+							vbSeqNos, err := util.GetSeqnos(c.producer.NsServerHostPort(), "default", c.sourceKeyspace.BucketName, c.collectionID)
 							if err == nil {
 								break vbLabel
 							}
@@ -1362,7 +1340,6 @@ func (c *Consumer) handleStreamEnd(vBucket uint16, last_processed_seqno uint64) 
 // return false if message is supressed else true
 func (c *Consumer) processAndSendDcpDelOrExpMessage(e *cb.DcpEvent, functionInstanceID string, checkRecursiveEvent bool) bool {
 	logPrefix := "Consumer::processAndSendDcpMessage"
-	c.vbProcessingStats.updateVbStat(e.VBucket, "last_read_seq_no", e.Seqno)
 	switch e.Datatype {
 	case uint8(includeXATTRs):
 		xattrLen := binary.BigEndian.Uint32(e.Value[0:4])
@@ -1379,4 +1356,21 @@ func (c *Consumer) processAndSendDcpDelOrExpMessage(e *cb.DcpEvent, functionInst
 		c.sendEvent(e)
 	}
 	return true
+}
+
+// return true if filter event else false
+func (c *Consumer) filterMutations(e *cb.DcpEvent) bool {
+	c.filterVbEventsRWMutex.RLock()
+	if _, ok := c.filterVbEvents[e.VBucket]; ok {
+		c.filterVbEventsRWMutex.RUnlock()
+		return true
+	}
+	c.filterVbEventsRWMutex.RUnlock()
+
+	c.vbProcessingStats.updateVbStat(e.VBucket, "last_read_seq_no", e.Seqno)
+	if c.collectionID != e.CollectionID {
+		return true
+	}
+
+	return false
 }

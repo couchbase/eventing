@@ -1,14 +1,17 @@
 package util
 
-import "sync"
-import "time"
-import "fmt"
-import "sort"
-import "errors"
+import (
+	"errors"
+	"fmt"
+	"sort"
+	"sync"
+	"time"
 
-import "github.com/couchbase/eventing/dcp"
-import "github.com/couchbase/eventing/dcp/transport/client"
-import "github.com/couchbase/eventing/logging"
+	"github.com/couchbase/eventing/common/collections"
+	"github.com/couchbase/eventing/dcp"
+	"github.com/couchbase/eventing/dcp/transport/client"
+	"github.com/couchbase/eventing/logging"
+)
 
 const seqsReqChanSize = 20000
 const seqsBufSize = 64 * 1024
@@ -48,14 +51,18 @@ func newKVConn(mc *memcached.Client) *kvConn {
 	return &kvConn{mc: mc, seqsbuf: make([]uint64, 1024), tmpbuf: make([]byte, seqsBufSize)}
 }
 
-type vbSeqnosRequest chan *vbSeqnosResponse
-
-func (ch *vbSeqnosRequest) Reply(response *vbSeqnosResponse) {
-	*ch <- response
+type vbSeqnosRequest struct {
+	cid         uint32
+	bucketLevel bool
+	respCh      chan *vbSeqnosResponse
 }
 
-func (ch *vbSeqnosRequest) Response() ([]uint64, error) {
-	response := <-*ch
+func (req *vbSeqnosRequest) Reply(response *vbSeqnosResponse) {
+	req.respCh <- response
+}
+
+func (req *vbSeqnosRequest) Response() ([]uint64, error) {
+	response := <-req.respCh
 	return response.seqnos, response.err
 }
 
@@ -81,14 +88,35 @@ func (r *vbSeqnosReader) Close() {
 	close(r.requestCh)
 }
 
-func (r *vbSeqnosReader) GetSeqnos() (seqs []uint64, err error) {
+func (r *vbSeqnosReader) GetBucketLevelSeqnos() (seqs []uint64, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			err = errConnClosed
 		}
 	}()
 
-	req := make(vbSeqnosRequest, 1)
+	req := vbSeqnosRequest{
+		cid:         collections.CID_FOR_BUCKET,
+		bucketLevel: true,
+		respCh:      make(chan *vbSeqnosResponse, 1),
+	}
+	r.requestCh <- req
+	seqs, err = req.Response()
+	return
+}
+
+func (r *vbSeqnosReader) GetCollectionSeqnos(cid uint32) (seqs []uint64, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = errConnClosed
+		}
+	}()
+
+	req := vbSeqnosRequest{
+		cid:    cid,
+		respCh: make(chan *vbSeqnosResponse, 1),
+	}
+
 	r.requestCh <- req
 	seqs, err = req.Response()
 	return
@@ -99,7 +127,7 @@ func (r *vbSeqnosReader) GetSeqnos() (seqs []uint64, err error) {
 func (r *vbSeqnosReader) Routine() {
 	for req := range r.requestCh {
 		l := len(r.requestCh)
-		seqnos, err := CollectSeqnos(r.kvfeeds)
+		seqnos, err := CollectSeqnos(r.kvfeeds, req.bucketLevel, req.cid)
 		response := &vbSeqnosResponse{
 			seqnos: seqnos,
 			err:    err,
@@ -127,8 +155,9 @@ func (r *vbSeqnosReader) Routine() {
 
 func addDBSbucket(cluster, pooln, bucketn string) (err error) {
 	var bucket *couchbase.Bucket
+	var clusterVer uint32
 
-	bucket, err = ConnectBucket(cluster, pooln, bucketn)
+	bucket, clusterVer, err = ConnectBucket(cluster, pooln, bucketn)
 	if err != nil {
 		logging.Errorf("Unable to connect with bucket %q\n", bucketn)
 		return err
@@ -176,15 +205,13 @@ func addDBSbucket(cluster, pooln, bucketn string) (err error) {
 	var conn *memcached.Client
 
 	for kvaddr := range m {
-		uuid, _ := NewUUID()
-		name := uuid.Str()
-		if name == "" {
-			err = fmt.Errorf("invalid uuid")
-			logging.Errorf("NewUUID() failed: %v\n", err)
+		conn, err = bucket.GetMcConn(kvaddr)
+		if err != nil {
+			logging.Errorf("StartDcpFeedOver(): %v\n", err)
 			return err
 		}
 
-		conn, err = bucket.GetMcConn(kvaddr)
+		err := tryEnableCollection(conn, clusterVer)
 		if err != nil {
 			logging.Errorf("StartDcpFeedOver(): %v\n", err)
 			return err
@@ -258,11 +285,58 @@ func BucketSeqnos(cluster, pooln, bucketn string) (l_seqnos []uint64, err error)
 		return nil, err
 	}
 
-	l_seqnos, err = reader.GetSeqnos()
+	l_seqnos, err = reader.GetBucketLevelSeqnos()
 	return
 }
 
-func CollectSeqnos(kvfeeds map[string]*kvConn) (l_seqnos []uint64, err error) {
+func CollectionSeqnos(cluster, pooln, bucketn string,
+	cid uint32) (l_seqnos []uint64, err error) {
+
+	// any type of error will cleanup the bucket and its kvfeeds.
+	defer func() {
+		if err != nil {
+			delDBSbucket(bucketn, true)
+		}
+	}()
+
+	var reader *vbSeqnosReader
+
+	reader, err = func() (*vbSeqnosReader, error) {
+		dcp_buckets_seqnos.rw.RLock()
+		reader, ok := dcp_buckets_seqnos.readerMap[bucketn]
+		dcp_buckets_seqnos.rw.RUnlock()
+		if !ok { // no {bucket,kvfeeds} found, create!
+			dcp_buckets_seqnos.rw.Lock()
+			defer dcp_buckets_seqnos.rw.Unlock()
+
+			// Recheck if reader is still not present since we acquired write lock
+			// after releasing the read lock.
+			if reader, ok = dcp_buckets_seqnos.readerMap[bucketn]; !ok {
+				if err = addDBSbucket(cluster, pooln, bucketn); err != nil {
+					return nil, err
+				}
+				// addDBSbucket has populated the reader
+				reader = dcp_buckets_seqnos.readerMap[bucketn]
+			}
+		}
+		return reader, nil
+	}()
+	if err != nil {
+		return nil, err
+	}
+
+	l_seqnos, err = reader.GetCollectionSeqnos(cid)
+	return
+}
+
+func GetSeqnos(cluster, pool, bucket string, cid uint32) (l_seqnos []uint64, err error) {
+	if cid != collections.CID_FOR_BUCKET {
+		return CollectionSeqnos(cluster, pool, bucket, cid)
+	}
+	return BucketSeqnos(cluster, pool, bucket)
+}
+
+func CollectSeqnos(kvfeeds map[string]*kvConn, bucketLevel bool, cid uint32) (l_seqnos []uint64, err error) {
 	var wg sync.WaitGroup
 
 	// Buffer for storing kv_seqs from each node
@@ -275,7 +349,17 @@ func CollectSeqnos(kvfeeds map[string]*kvConn) (l_seqnos []uint64, err error) {
 		go func(index int, feed *kvConn) {
 			defer wg.Done()
 			kv_seqnos_node[index] = feed.seqsbuf
-			errors[index] = couchbase.GetSeqs(feed.mc, kv_seqnos_node[index], feed.tmpbuf)
+			if bucketLevel {
+				errors[index] = couchbase.GetSeqs(feed.mc, kv_seqnos_node[index], feed.tmpbuf)
+			} else {
+				err = tryEnableCollection(feed.mc, 7)
+				if err != nil {
+					errors[index] = err
+					return
+				}
+				errors[index] = couchbase.GetCollectionSeqs(feed.mc,
+					kv_seqnos_node[index], feed.tmpbuf, cid)
+			}
 		}(i, feed)
 		i++
 	}
@@ -364,4 +448,34 @@ func pollForDeletedBuckets() {
 
 func SetDcpMemcachedTimeout(val uint32) {
 	memcached.SetDcpMemcachedTimeout(val)
+}
+
+func getConnName() (string, error) {
+	uuid, _ := NewUUID()
+	name := uuid.Str()
+	if name == "" {
+		err := fmt.Errorf("getConnName: invalid uuid.")
+
+		// probably not a good idea to fail if uuid
+		// based name fails. Can return const string
+		return "", err
+	}
+	connName := "getseqnos-" + name
+	return connName, nil
+}
+
+func tryEnableCollection(conn *memcached.Client, clusterVer uint32) error {
+	if clusterVer >= collections.COLLECTION_SUPPORTED_VERSION {
+		if !conn.IsCollectionsEnabled() {
+			connName, err := getConnName()
+			if err != nil {
+				return err
+			}
+			err = conn.EnableCollections(connName)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }

@@ -114,7 +114,7 @@ var commonConnectBucketOpCallback = func(args ...interface{}) error {
 	defer c.cbBucketRWMutex.Unlock()
 
 	var err error
-	*b, err = util.ConnectBucket(hostPortAddr, "default", c.sourceKeyspace.BucketName)
+	*b, _, err = util.ConnectBucket(hostPortAddr, "default", c.sourceKeyspace.BucketName)
 	if err != nil {
 		logging.Errorf("%s [%s:%d] Connect to bucket: %s failed isTerminateRunning: %d , err: %v",
 			logPrefix, c.workerName, c.producer.LenRunningConsumers(), c.sourceKeyspace.BucketName,

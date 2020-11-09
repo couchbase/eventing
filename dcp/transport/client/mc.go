@@ -23,6 +23,8 @@ type Client struct {
 	healthy bool
 
 	hdrBuf []byte
+
+	collectionsEnabled uint32 // 0 => collections disabled, 1 => collections enabled
 }
 
 var dialFun = net.Dial
@@ -63,6 +65,14 @@ func Wrap(rwc io.ReadWriteCloser) (rv *Client, err error) {
 // Close the connection when you're done.
 func (c *Client) Close() error {
 	return c.conn.Close()
+}
+
+func (c *Client) SetCollectionsEnabled() {
+	atomic.StoreUint32(&c.collectionsEnabled, 1)
+}
+
+func (c *Client) IsCollectionsEnabled() bool {
+	return (atomic.LoadUint32(&c.collectionsEnabled) == 1)
 }
 
 func (c *Client) SetDeadline(t time.Time) error {
@@ -648,4 +658,34 @@ func (c *Client) StatsMap(key string) (map[string]string, error) {
 func (c *Client) Hijack() io.ReadWriteCloser {
 	c.healthy = false
 	return c.conn
+}
+
+func (c *Client) EnableCollections(clientName string) error {
+	if !c.IsCollectionsEnabled() {
+		if resp, err := c.sendHeloCollections(clientName); err != nil {
+			return err
+		} else {
+			opcode := resp.Opcode
+			body := resp.Body
+			if opcode != transport.HELO {
+				logging.Errorf("Memcached HELO for %v (feature_collections) opcode = %v. Expecting opcode = 0x1f", clientName, opcode)
+				return ErrorEnableCollections
+			} else if (len(body) != 2) || (body[0] != 0x00 && body[1] != transport.FEATURE_COLLECTIONS) {
+				logging.Errorf("Memcached HELO for %v (feature_collections) body = %v. Expecting body = 0x0012", clientName, body)
+				return ErrorCollectionsNotEnabled
+			}
+		}
+		c.SetCollectionsEnabled()
+	}
+	return nil
+}
+
+func (c *Client) sendHeloCollections(name string) (resp *transport.MCResponse, err error) {
+	req := &transport.MCRequest{
+		Opcode: transport.HELO,
+		Key:    ([]byte)(name),
+		Body:   []byte{0x00, transport.FEATURE_COLLECTIONS},
+	}
+
+	return c.Send(req)
 }

@@ -224,7 +224,7 @@ func CollectionAware(auth, hostaddress string) (bool, error) {
 	defer cinfo.RUnlock()
 
 	ver := cinfo.GetNodeCompatVersion("kv")
-	if ver >= 7 {
+	if ver >= collections.COLLECTION_SUPPORTED_VERSION {
 		return true, nil
 	}
 	return false, nil

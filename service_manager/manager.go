@@ -165,6 +165,7 @@ func (m *ServiceMgr) initService() {
 
 	// Public REST APIs
 	mux.HandleFunc("/api/v1/status", m.statusHandler)
+	mux.HandleFunc("/api/v1/status/", m.statusHandler)
 	mux.HandleFunc("/api/v1/stats", m.statsHandler)
 	mux.HandleFunc("/api/v1/config", m.configHandler)
 	mux.HandleFunc("/api/v1/config/", m.configHandler)
@@ -189,6 +190,9 @@ func (m *ServiceMgr) initService() {
 			ReadTimeout:  httpReadTimeOut,
 			WriteTimeout: httpWriteTimeOut,
 			Handler:      mux,
+			ConnContext: func(ctx context.Context, conn net.Conn) context.Context {
+				return context.WithValue(ctx, "conn", conn)
+			},
 		}
 		proto := util.GetNetworkProtocol()
 		listner, err := net.Listen(proto, addr)
