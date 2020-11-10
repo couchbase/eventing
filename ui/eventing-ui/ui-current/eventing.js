@@ -1403,7 +1403,7 @@ angular.module('eventing', [
                                     app.deprecatedNames = "";
                                     response.data.info.split(";").filter(msg => msg.includes("Warning")).forEach(function(msg){
                                         var fnNames = JSON.parse(msg.split(":")[1].trim());
-                                        ApplicationService.server.showWarningAlert('Warning: The handler uses following deprecated function(s) - ' + fnNames.join(","));
+                                        ApplicationService.server.showWarningAlert('Warning: The Function uses following deprecated API(s) - ' + fnNames.join(","));
                                         app.deprecatedNames = fnNames;
                                     });
 
