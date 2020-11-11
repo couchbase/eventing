@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/couchbase/eventing/parser"
 )
 
 func testEnoent(itemCount int, handler string, settings *commonSettings, t *testing.T) {
@@ -158,7 +160,7 @@ func TestImportExport(t *testing.T) {
 		t.Errorf("Unable to export Functions %v, err : %v\n", exportFunctionsURL, err)
 		return
 	}
-	err = ValidateHandlerListSchema(exportResponse)
+	err = parser.ValidateHandlerListSchema(exportResponse)
 	if err != nil {
 		t.Errorf("Unable to validate export: %v, data: %s", err, exportResponse)
 	}
@@ -168,7 +170,7 @@ func TestImportExport(t *testing.T) {
 
 	_, err = makeRequest("POST", strings.NewReader(string(exportResponse)), importFunctionsURL)
 	if err != nil {
-		t.Errorf("Unable import Functions, err : %v\n", err)
+		t.Errorf("Unable import Functions,  err : %v\n", err)
 		return
 	}
 
@@ -181,7 +183,7 @@ func TestImportExport(t *testing.T) {
 		return
 	}
 
-	err = ValidateHandlerListSchema(response)
+	err = parser.ValidateHandlerListSchema(response)
 	if err != nil {
 		t.Errorf("Unable to validate re-export: %v, data: %s", err, exportResponse)
 	}

@@ -1487,6 +1487,11 @@ func (m *ServiceMgr) parseFunctionPayload(data []byte, fnName string) applicatio
 	app.Name = string(config.AppName())
 	app.FunctionID = uint32(config.HandlerUUID())
 	app.FunctionInstanceID = string(config.FunctionInstanceID())
+	if config.EnforceSchema() == byte(0x1) {
+		app.EnforceSchema = true
+	} else {
+		app.EnforceSchema = false
+	}
 
 	d := new(cfg.DepCfg)
 	depcfg := new(depCfg)
@@ -1944,6 +1949,10 @@ func (m *ServiceMgr) encodeAppPayload(app *application) []byte {
 	appCode := builder.CreateString(app.AppHandlers)
 	aName := builder.CreateString(app.Name)
 	fiid := builder.CreateString(app.FunctionInstanceID)
+	schema := byte(0x0)
+	if app.EnforceSchema {
+		schema = byte(0x1)
+	}
 
 	cfg.ConfigStart(builder)
 	cfg.ConfigAddAppCode(builder, appCode)
@@ -1953,6 +1962,7 @@ func (m *ServiceMgr) encodeAppPayload(app *application) []byte {
 	cfg.ConfigAddCurl(builder, curlBindingsVector)
 	cfg.ConfigAddAccess(builder, access)
 	cfg.ConfigAddFunctionInstanceID(builder, fiid)
+	cfg.ConfigAddEnforceSchema(builder, schema)
 
 	config := cfg.ConfigEnd(builder)
 
@@ -2738,6 +2748,20 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
+			app, info := m.getTempStore(appName)
+			if info.Code != m.statusCodes.ok.Code {
+				m.sendErrorInfo(w, info)
+				return
+			}
+
+			if app.EnforceSchema == true {
+				m.MaybeEnforceSettingsSchema(data)
+				if info.Code != m.statusCodes.ok.Code {
+					m.sendErrorInfo(w, info)
+					return
+				}
+			}
+
 			var settings map[string]interface{}
 			err = json.Unmarshal(data, &settings)
 			if err != nil {
@@ -2901,6 +2925,20 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
+		app, info := m.getTempStore(appName)
+		if info.Code != m.statusCodes.ok.Code {
+			m.sendErrorInfo(w, info)
+			return
+		}
+
+		if app.EnforceSchema == true {
+			m.MaybeEnforceSettingsSchema(data)
+			if info.Code != m.statusCodes.ok.Code {
+				m.sendErrorInfo(w, info)
+				return
+			}
+		}
+
 		settings["deployment_status"] = true
 		settings["processing_status"] = true
 
@@ -2985,6 +3023,12 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 			audit.Log(auditevent.CreateFunction, r, appName)
 
 			app, info := m.unmarshalApp(r)
+			if info.Code != m.statusCodes.ok.Code {
+				m.sendErrorInfo(w, info)
+				return
+			}
+
+			info = m.MaybeEnforceFunctionSchema(app)
 			if info.Code != m.statusCodes.ok.Code {
 				m.sendErrorInfo(w, info)
 				return
@@ -3082,6 +3126,15 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 				m.sendErrorInfo(w, info)
 				return
 			}
+
+			for _, app := range *appList {
+				info = m.MaybeEnforceFunctionSchema(app)
+				if info.Code != m.statusCodes.ok.Code {
+					m.sendErrorInfo(w, info)
+					return
+				}
+			}
+
 			var isMixedMode bool
 			if isMixedMode, info = m.isMixedModeCluster(); info.Code != m.statusCodes.ok.Code {
 				m.sendErrorInfo(w, info)
@@ -3558,6 +3611,15 @@ func (m *ServiceMgr) importHandler(w http.ResponseWriter, r *http.Request) {
 		m.sendErrorInfo(w, info)
 		return
 	}
+
+	for _, app := range *appList {
+		info = m.MaybeEnforceFunctionSchema(app)
+		if info.Code != m.statusCodes.ok.Code {
+			m.sendErrorInfo(w, info)
+			return
+		}
+	}
+
 	var isMixedMode bool
 	if isMixedMode, info = m.isMixedModeCluster(); info.Code != m.statusCodes.ok.Code {
 		m.sendErrorInfo(w, info)
@@ -3664,6 +3726,14 @@ func (m *ServiceMgr) backupHandler(w http.ResponseWriter, r *http.Request) {
 		if info.Code != m.statusCodes.ok.Code {
 			m.sendErrorInfo(w, info)
 			return
+		}
+
+		for _, app := range *appList {
+			info = m.MaybeEnforceFunctionSchema(app)
+			if info.Code != m.statusCodes.ok.Code {
+				m.sendErrorInfo(w, info)
+				return
+			}
 		}
 
 		remap, err := getRestoreMap(r)

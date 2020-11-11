@@ -185,6 +185,7 @@ type application struct {
 	AppHandlers        string                 `json:"appcode"`
 	DeploymentConfig   depCfg                 `json:"depcfg"`
 	EventingVersion    string                 `json:"version"`
+	EnforceSchema      bool                   `json:"enforce_schema"`
 	FunctionID         uint32                 `json:"handleruuid"`
 	FunctionInstanceID string                 `json:"function_instance_id"`
 	Name               string                 `json:"appname"`
@@ -260,8 +261,8 @@ type appStatus struct {
 }
 
 type annotation struct {
-	Name		      string   `json:"name"`
-	DeprecatedNames       []string `json:"deprecatedNames",omitempty`
+	Name            string   `json:"name"`
+	DeprecatedNames []string `json:"deprecatedNames",omitempty`
 }
 
 type appStatusResponse struct {

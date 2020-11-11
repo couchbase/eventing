@@ -241,6 +241,10 @@ func (m *ServiceMgr) unmarshalApp(r *http.Request) (app application, info *runti
 		return
 	}
 
+	if app.Settings == nil {
+		app.Settings = make(map[string]interface{}, 1)
+	}
+
 	info.Code = m.statusCodes.ok.Code
 	info.Info = "OK"
 	return
@@ -271,6 +275,12 @@ func (m *ServiceMgr) unmarshalAppList(w http.ResponseWriter, r *http.Request) (a
 		info.Info = fmt.Sprintf("Failed to unmarshal payload err: %v", err)
 		logging.Errorf("%s %s", logPrefix, info.Info)
 		return
+	}
+
+	for _, app := range *appList {
+		if app.Settings == nil {
+			app.Settings = make(map[string]interface{}, 1)
+		}
 	}
 
 	info.Code = m.statusCodes.ok.Code
@@ -815,6 +825,36 @@ func (m *ServiceMgr) CheckLifeCycleOpsDuringRebalance() bool {
 		return true
 	}
 	return false
+}
+
+func (m *ServiceMgr) MaybeEnforceFunctionSchema(app application) *runtimeInfo {
+	info := &runtimeInfo{}
+	if appData, err := json.Marshal(app); err == nil && app.EnforceSchema == true {
+		schemaErr := parser.ValidateHandlerSchema(appData)
+		if schemaErr != nil {
+			info.Code = m.statusCodes.errInvalidConfig.Code
+			info.Info = fmt.Sprintf("Invalid function configuration, err: %v", schemaErr)
+			logging.Errorf("%s\n", info.Info)
+			return info
+		}
+	}
+	info.Code = m.statusCodes.ok.Code
+	info.Info = fmt.Sprint("Success")
+	return info
+}
+
+func (m *ServiceMgr) MaybeEnforceSettingsSchema(data []byte) *runtimeInfo {
+	info := &runtimeInfo{}
+	schemaErr := parser.ValidateSettingsSchema(data)
+	if schemaErr != nil {
+		info.Code = m.statusCodes.errInvalidConfig.Code
+		info.Info = fmt.Sprintf("Invalid settings configuration, err: %v", schemaErr)
+		logging.Errorf("%s\n", info.Info)
+		return info
+	}
+	info.Code = m.statusCodes.ok.Code
+	info.Info = fmt.Sprint("Success")
+	return info
 }
 
 func ConstructKeyspace(keyspace string) common.Keyspace {
