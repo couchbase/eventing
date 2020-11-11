@@ -240,6 +240,7 @@ Bucket::GetWithMeta(const std::string &key) {
   const auto max_timeout = UnwrapData(isolate_)->op_timeout;
   auto [err_code, result] =
       RetryLcbCommand(connection_, *cmd, max_retry, max_timeout, LcbSubdocSet);
+  lcb_subdocspecs_destroy(specs);
   if (err_code != LCB_SUCCESS) {
     ++lcb_retry_failure;
     return {nullptr, std::make_unique<lcb_STATUS>(err_code), nullptr};
@@ -274,6 +275,7 @@ Bucket::CounterWithoutXattr(const std::string &key, uint64_t cas,
   const auto max_timeout = UnwrapData(isolate_)->op_timeout;
   auto [err_code, result] =
       RetryLcbCommand(connection_, *cmd, max_retry, max_timeout, LcbSubdocSet);
+  lcb_subdocspecs_destroy(spec);
   if (err_code != LCB_SUCCESS) {
     ++lcb_retry_failure;
     return {nullptr, std::make_unique<lcb_STATUS>(err_code), nullptr};
@@ -333,6 +335,7 @@ Bucket::CounterWithXattr(const std::string &key, uint64_t cas, lcb_U32 expiry,
   const auto max_timeout = UnwrapData(isolate_)->op_timeout;
   auto [err_code, result] =
       RetryLcbCommand(connection_, *cmd, max_retry, max_timeout, LcbSubdocSet);
+  lcb_subdocspecs_destroy(specs);
   if (err_code != LCB_SUCCESS) {
     ++lcb_retry_failure;
     return {nullptr, std::make_unique<lcb_STATUS>(err_code), nullptr};
@@ -391,6 +394,7 @@ Bucket::SetWithXattr(const std::string &key, const char *value,
   const auto max_timeout = UnwrapData(isolate_)->op_timeout;
   auto [err_code, result] =
       RetryLcbCommand(connection_, *cmd, max_retry, max_timeout, LcbSubdocSet);
+  lcb_subdocspecs_destroy(specs);
   if (err_code != LCB_SUCCESS) {
     ++lcb_retry_failure;
     return {nullptr, std::make_unique<lcb_STATUS>(err_code), nullptr};
@@ -478,6 +482,7 @@ Bucket::DeleteWithXattr(const std::string &key, uint64_t cas) {
   const auto max_timeout = UnwrapData(isolate_)->op_timeout;
   auto [err_code, result] = RetryLcbCommand(connection_, *cmd, max_retry,
                                             max_timeout, LcbSubdocDelete);
+  lcb_subdocspecs_destroy(specs);
   if (err_code != LCB_SUCCESS) {
     ++lcb_retry_failure;
     return {nullptr, std::make_unique<lcb_STATUS>(err_code), nullptr};
