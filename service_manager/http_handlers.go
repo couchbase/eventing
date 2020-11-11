@@ -40,7 +40,7 @@ func (m *ServiceMgr) startTracing(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	logging.Infof("%s Got request to start tracing", logPrefix)
+	logging.Infof("%s REST Call: %v %v", logPrefix, r.URL.Path, r.Method)
 	audit.Log(auditevent.StartTracing, r, nil)
 
 	os.Remove(m.uuid + "_trace.out")
@@ -68,6 +68,7 @@ func (m *ServiceMgr) stopTracing(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	logging.Infof("%s REST Call: %v %v", logPrefix, r.URL.Path, r.Method)
 	audit.Log(auditevent.StopTracing, r, nil)
 	logging.Infof("%s Got request to stop tracing", logPrefix)
 	m.stopTracerCh <- struct{}{}
@@ -98,7 +99,7 @@ func (m *ServiceMgr) deletePrimaryStoreHandler(w http.ResponseWriter, r *http.Re
 	values := r.URL.Query()
 	appName := values["name"][0]
 
-	logging.Infof("%s Function: %s deleting from primary store", logPrefix, appName)
+	logging.Infof("%s REST Call: %v %v", logPrefix, r.URL.Path, r.Method)
 	audit.Log(auditevent.DeleteFunction, r, appName)
 	m.deletePrimaryStore(appName)
 }
@@ -157,6 +158,7 @@ func (m *ServiceMgr) deletePrimaryStore(appName string) (info *runtimeInfo) {
 }
 
 func (m *ServiceMgr) deleteTempStoreHandler(w http.ResponseWriter, r *http.Request) {
+	logPrefix := "ServiceMgr::deleteTempStoreHandler"
 	if !m.validateAuth(w, r, EventingPermissionManage) {
 		return
 	}
@@ -164,6 +166,7 @@ func (m *ServiceMgr) deleteTempStoreHandler(w http.ResponseWriter, r *http.Reque
 	values := r.URL.Query()
 	appName := values["name"][0]
 
+	logging.Infof("%s REST Call: %v %v", logPrefix, r.URL.Path, r.Method)
 	audit.Log(auditevent.DeleteDrafts, r, appName)
 
 	m.deleteTempStore(appName)
@@ -509,7 +512,7 @@ func (m *ServiceMgr) startDebugger(w http.ResponseWriter, r *http.Request) {
 	values := r.URL.Query()
 	appName := values["name"][0]
 
-	logging.Infof("%s Function: %s got request to start debugger", logPrefix, appName)
+	logging.Infof("%s REST Call: %v %v", logPrefix, r.URL.Path, r.Method)
 	audit.Log(auditevent.StartDebug, r, appName)
 
 	config, info := m.getConfig()
@@ -588,7 +591,7 @@ func (m *ServiceMgr) stopDebugger(w http.ResponseWriter, r *http.Request) {
 	values := r.URL.Query()
 	appName := values["name"][0]
 
-	logging.Infof("%s Function: %s got request to stop V8 debugger", logPrefix, appName)
+	logging.Infof("%s REST Call: %v %v", logPrefix, r.URL.Path, r.Method)
 	audit.Log(auditevent.StopDebug, r, appName)
 
 	if m.checkIfDeployed(appName) {
@@ -1163,6 +1166,7 @@ func (m *ServiceMgr) setSettingsHandler(w http.ResponseWriter, r *http.Request) 
 	params := r.URL.Query()
 	appName := params["name"][0]
 
+	logging.Infof("%s REST Call: %v %v", logPrefix, r.URL.Path, r.Method)
 	audit.Log(auditevent.SetSettings, r, appName)
 	data, err := ioutil.ReadAll(r.Body)
 	if err != nil {
@@ -1689,6 +1693,7 @@ func (m *ServiceMgr) saveTempStoreHandler(w http.ResponseWriter, r *http.Request
 	params := r.URL.Query()
 	appName := params["name"][0]
 
+	logging.Infof("%s REST Call: %v %v", logPrefix, r.URL.Path, r.Method)
 	audit.Log(auditevent.SaveDraft, r, appName)
 
 	data, err := ioutil.ReadAll(r.Body)
@@ -1778,6 +1783,7 @@ func (m *ServiceMgr) savePrimaryStoreHandler(w http.ResponseWriter, r *http.Requ
 	values := r.URL.Query()
 	appName := values["name"][0]
 
+	logging.Infof("%s REST Call: %v %v", logPrefix, r.URL.Path, r.Method)
 	audit.Log(auditevent.CreateFunction, r, appName)
 
 	data, err := ioutil.ReadAll(r.Body)
@@ -2472,6 +2478,8 @@ func (m *ServiceMgr) configHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	logging.Infof("%s REST Call: %v %v", logPrefix, r.URL.Path, r.Method)
+
 	info := &runtimeInfo{}
 
 	switch r.Method {
@@ -2641,7 +2649,10 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	logging.Tracef("%s Function handler invoked.", logPrefix)
+	if r.Method != "GET" { // We do not want to flood logs with GET calls
+		logging.Infof("%s REST Call: %v %v", logPrefix, r.URL.Path, r.Method)
+	}
+
 	functions := regexp.MustCompile("^/api/v1/functions/?$")
 	functionsName := regexp.MustCompile("^/api/v1/functions/(.*[^/])/?$") // Match is agnostic of trailing '/'
 	functionsNameSettings := regexp.MustCompile("^/api/v1/functions/(.*[^/])/settings/?$")
@@ -3459,11 +3470,13 @@ func (m *ServiceMgr) populateStats(fullStats bool) []stats {
 
 // Clears up all Eventing related artifacts from metakv, typically will be used for rebalance tests
 func (m *ServiceMgr) cleanupEventing(w http.ResponseWriter, r *http.Request) {
+	logPrefix := "ServiceMgr::cleanupEventing"
 	if !m.validateAuth(w, r, EventingPermissionManage) {
 		cbauth.SendForbidden(w, EventingPermissionManage)
 		return
 	}
 
+	logging.Infof("%s REST Call: %v %v", logPrefix, r.URL.Path, r.Method)
 	audit.Log(auditevent.CleanupEventing, r, nil)
 
 	util.Retry(util.NewFixedBackoff(time.Second), nil, cleanupEventingMetaKvPath, metakvChecksumPath)
@@ -3487,6 +3500,7 @@ func (m *ServiceMgr) exportHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	logging.Infof("%s REST Call: %v %v", logPrefix, r.URL.Path, r.Method)
 	audit.Log(auditevent.ExportFunctions, r, nil)
 
 	exportedFns := make([]string, 0)
@@ -3530,6 +3544,7 @@ func (m *ServiceMgr) importHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	logging.Infof("%s REST Call: %v %v", logPrefix, r.URL.Path, r.Method)
 	audit.Log(auditevent.ImportFunctions, r, nil)
 
 	appList, info := m.unmarshalAppList(w, r)
