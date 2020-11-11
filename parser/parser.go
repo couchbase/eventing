@@ -20,10 +20,10 @@ var maybe_n1ql = regexp.MustCompile(
 	`(?iU)` +
 		`((?:alter|build|create|` +
 		// 'delete' is a js keyword, so look for 'delete from'
-		`delete[[:space:]]+from[[:space:]]+[[:word:]]+` +
+		`delete[[:space:]]+from[[:space:]]+(?:[[:word:]][[:punct:]]?)+` +
 		`|drop|execute|explain|from|grant|infer|` +
 		`insert|merge|prepare|rename|select|` +
-		`revoke|update|upsert) +` +
+		`revoke|update|upsert)[[:space:]]+` +
 		`[^;]+;)`)
 
 var spaced_line = regexp.MustCompile(
@@ -49,6 +49,9 @@ var function_name = regexp.MustCompile(
 
 var requiredFunctions = map[string]struct{}{"OnUpdate": struct{}{},
 	"OnDelete": struct{}{}}
+
+var n1qlQueryUse = regexp.MustCompile(
+	`N1qlQuery([[:space:]]*)\(`)
 
 func cleanse(str string) string {
 	washed := []byte(str)
@@ -268,4 +271,13 @@ func (parsed *ParsedStatements) ValidateExports() (bool, error) {
 func UsingTimer(input string) bool {
 	bare := cleanse(input)
 	return timer_use.MatchString(bare)
+}
+
+func ListDeprecatedFunctions(input string) []string {
+	bare := cleanse(input)
+	listOfFns := []string{}
+	if n1qlQueryUse.MatchString(bare) {
+		listOfFns = append(listOfFns, "N1qlQuery")
+	}
+	return listOfFns
 }

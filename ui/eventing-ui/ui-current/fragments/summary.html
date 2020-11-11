@@ -61,6 +61,7 @@
         <div class="cbui-tablerow-expanded"
              ng-if="app.actionsVisible">
           <p class="width-6">{{app.settings.description}}</p>
+          <p class="width-6 error field-error" ng-show="app.deprecatedNames">Function uses deprecated API(s): {{app.deprecatedNames}}</p>
           <div class="width-12">
 	    <table style="border-collapse:collapse;padding:0px;margin:0px"  border="0" cellpadding="0" cellspacing="0">
 	      <tr>

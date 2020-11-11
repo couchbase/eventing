@@ -123,6 +123,7 @@ func (m *ServiceMgr) initService() {
 	mux.HandleFunc("/getAggRebalanceProgress", m.getAggRebalanceProgress)
 	mux.HandleFunc("/getAggRebalanceStatus", m.getAggRebalanceStatus)
 	mux.HandleFunc("/getApplication/", m.getPrimaryStoreHandler)
+	mux.HandleFunc("/getAnnotations", m.getAnnotations)
 	mux.HandleFunc("/getAppTempStore/", m.getTempStoreHandler)
 	mux.HandleFunc("/getBootstrappingApps", m.getBootstrappingApps)
 	mux.HandleFunc("/getBootstrapStatus", m.getBootstrapStatus)
@@ -181,6 +182,7 @@ func (m *ServiceMgr) initService() {
 
 	mux.HandleFunc("/_prometheusMetrics", m.prometheusLow)
 	mux.HandleFunc("/_prometheusMetricsHigh", m.prometheusHigh)
+
 
 	go func() {
 		addr := net.JoinHostPort("", m.adminHTTPPort)

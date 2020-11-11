@@ -1560,6 +1560,31 @@ func (m *ServiceMgr) getPrimaryStoreHandler(w http.ResponseWriter, r *http.Reque
 	fmt.Fprintf(w, "%s\n", data)
 }
 
+func (m *ServiceMgr) getAnnotations(w http.ResponseWriter, r *http.Request) {
+	logPrefix := "ServiceMgr::getAnnotations"
+
+	if !m.validateAuth(w, r, EventingPermissionManage) {
+		cbauth.SendForbidden(w, EventingPermissionManage)
+		return
+	}
+	applications := m.getTempStoreAll()
+	respData := make([]annotation, len(applications))
+	for _, app := range applications {
+		respObj := annotation{}
+		respObj.Name = app.Name
+		respObj.DeprecatedNames = parser.ListDeprecatedFunctions(app.AppHandlers)
+		respData = append(respData, respObj)
+	}
+	data, err := json.Marshal(respData)
+	if err != nil {
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
+		fmt.Fprintf(w, "Failed to marshal response for annotations, err: %v", err)
+		logging.Errorf("%s Failed to marshal response for annotations, err: %v", logPrefix, err)
+	}
+	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
+	fmt.Fprintf(w, "%s\n", data)
+}
+
 func (m *ServiceMgr) getTempStoreHandler(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "ServiceMgr::getTempStoreHandler"
 
@@ -1698,6 +1723,11 @@ func (m *ServiceMgr) saveTempStoreHandler(w http.ResponseWriter, r *http.Request
 	}
 
 	info := m.saveTempStore(app)
+	deprecatedFnsList := parser.ListDeprecatedFunctions(app.AppHandlers)
+	if len(deprecatedFnsList) > 0 {
+		jsonList, _ := json.Marshal(deprecatedFnsList)
+		info.Info = fmt.Sprintf("%s; Warning: %s", info.Info, jsonList)
+	}
 	m.sendRuntimeInfo(w, info)
 }
 

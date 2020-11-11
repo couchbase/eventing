@@ -258,6 +258,11 @@ type appStatus struct {
 	ProcessingStatus      bool   `json:"processing_status"`
 }
 
+type annotation struct {
+	Name		      string   `json:"name"`
+	DeprecatedNames       []string `json:"deprecatedNames",omitempty`
+}
+
 type appStatusResponse struct {
 	Apps             []appStatus `json:"apps"`
 	NumEventingNodes int         `json:"num_eventing_nodes"`
