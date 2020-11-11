@@ -183,7 +183,6 @@ func (m *ServiceMgr) initService() {
 	mux.HandleFunc("/_prometheusMetrics", m.prometheusLow)
 	mux.HandleFunc("/_prometheusMetricsHigh", m.prometheusHigh)
 
-
 	go func() {
 		addr := net.JoinHostPort("", m.adminHTTPPort)
 
@@ -244,6 +243,9 @@ func (m *ServiceMgr) initService() {
 					TLSNextProto: make(map[string]func(*http.Server, *tls.Conn, http.Handler), 0),
 					TLSConfig:    tlscfg,
 					Handler:      mux,
+					ConnContext: func(ctx context.Context, conn net.Conn) context.Context {
+						return context.WithValue(ctx, "conn", conn)
+					},
 				}
 
 				proto := util.GetNetworkProtocol()
