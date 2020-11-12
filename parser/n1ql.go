@@ -54,19 +54,19 @@ func Parse(query string) (info *ParseInfo, alg algebra.Statement) {
 		info.IsDmlQuery = false
 
 	case *algebra.Insert:
-		info.KeyspaceName = queryType.KeyspaceRef().Keyspace()
+		info.KeyspaceName = queryType.KeyspaceRef().FullName()
 
 	case *algebra.Upsert:
-		info.KeyspaceName = queryType.KeyspaceRef().Keyspace()
+		info.KeyspaceName = queryType.KeyspaceRef().FullName()
 
 	case *algebra.Delete:
-		info.KeyspaceName = queryType.KeyspaceRef().Keyspace()
+		info.KeyspaceName = queryType.KeyspaceRef().FullName()
 
 	case *algebra.Update:
-		info.KeyspaceName = queryType.KeyspaceRef().Keyspace()
+		info.KeyspaceName = queryType.KeyspaceRef().FullName()
 
 	case *algebra.Merge:
-		info.KeyspaceName = queryType.KeyspaceRef().Keyspace()
+		info.KeyspaceName = queryType.KeyspaceRef().FullName()
 
 	default:
 		info.IsDmlQuery = false
