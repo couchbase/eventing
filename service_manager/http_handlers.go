@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"path/filepath"
 	"regexp"
 	"runtime"
 	"runtime/debug"
@@ -3574,6 +3575,179 @@ func (m *ServiceMgr) importHandler(w http.ResponseWriter, r *http.Request) {
 
 	logging.Infof("%s Imported functions: %+v", logPrefix, importedFns)
 	m.sendRuntimeInfoList(w, infoList)
+}
+
+func (m *ServiceMgr) backupHandler(w http.ResponseWriter, r *http.Request) {
+	url := filepath.Clean(r.URL.Path)
+	info := &runtimeInfo{}
+	w.Header().Set("Content-Type", "application/json")
+	if !m.validateAuth(w, r, EventingPermissionManage) {
+		cbauth.SendForbidden(w, EventingPermissionManage)
+		return
+	}
+
+	req := strings.Split(url, "/")
+	// eventing only allows cluster level backup/restore
+	if len(req) > 4 {
+		info.Code = m.statusCodes.errRequestedOpFailed.Code
+		info.Info = fmt.Sprintf("Only cluster level backup is allowed: request Url %s", url)
+		m.sendErrorInfo(w, info)
+		return
+	}
+
+	include := r.FormValue("include")
+	exclude := r.FormValue("exclude")
+
+	if len(include) != 0 && len(exclude) != 0 {
+		info.Code = m.statusCodes.errRequestedOpFailed.Code
+		info.Info = fmt.Sprintf("Only one include or exclude filter should be present")
+		m.sendErrorInfo(w, info)
+		return
+	}
+
+	var filterMap map[string]bool
+	var err error
+	var filterType string
+	if len(include) != 0 {
+		filterType = "include"
+		filterMap, err = filterQueryMap(include, true)
+	}
+
+	if len(exclude) != 0 {
+		filterType = "exclude"
+		filterMap, err = filterQueryMap(exclude, false)
+	}
+
+	if err != nil {
+		info.Code = m.statusCodes.errRequestedOpFailed.Code
+		info.Info = fmt.Sprintf("%s", err)
+		m.sendErrorInfo(w, info)
+		return
+	}
+
+	switch r.Method {
+	case "GET":
+		// call for backup
+		exportedFun := m.backupApps(filterMap, filterType)
+		data, err := json.MarshalIndent(exportedFun, "", " ")
+		if err != nil {
+			w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
+			w.WriteHeader(m.getDisposition(m.statusCodes.errMarshalResp.Code))
+			fmt.Fprintf(w, `{"error":"Failed to marshal response, err: %v"}`, err)
+			return
+		}
+
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
+		fmt.Fprintf(w, "%s\n", data)
+
+	case "POST":
+		// call restore handler
+		var isMixedMode bool
+		if isMixedMode, info = m.isMixedModeCluster(); info.Code != m.statusCodes.ok.Code {
+			m.sendErrorInfo(w, info)
+			return
+		}
+
+		if isMixedMode {
+			info.Code = m.statusCodes.errMixedMode.Code
+			info.Info = "Life-cycle operations except delete and undeploy are not allowed in a mixed mode cluster"
+			m.sendErrorInfo(w, info)
+			return
+		}
+
+		appList, info := m.unmarshalAppList(w, r)
+		if info.Code != m.statusCodes.ok.Code {
+			m.sendErrorInfo(w, info)
+			return
+		}
+
+		remap, err := getRestoreMap(r)
+		if err != nil {
+			info.Code = m.statusCodes.errRequestedOpFailed.Code
+			info.Info = fmt.Sprintf("%s", err)
+			m.sendErrorInfo(w, info)
+			return
+		}
+
+		apps := m.restoreAppList(appList, filterMap, remap, filterType)
+		infoList := m.createApplications(r, apps, true)
+		m.sendRuntimeInfoList(w, infoList)
+
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+}
+
+func (m *ServiceMgr) backupApps(filterMap map[string]bool, filterType string) []application {
+	apps := m.getTempStoreAll()
+	return m.filterAppList(apps, filterMap, filterType, true)
+}
+
+func (m *ServiceMgr) restoreAppList(apps *[]application, filterMap map[string]bool, remap map[string]common.Keyspace, filterType string) *[]application {
+	filteredApps := m.filterAppList(*apps, filterMap, filterType, false)
+	appList := make([]application, 0, len(filteredApps))
+	for _, app := range filteredApps {
+		deploymentConfig := app.DeploymentConfig
+		val, length, ok := remapContains(remap, deploymentConfig.SourceBucket, deploymentConfig.SourceScope, deploymentConfig.SourceCollection)
+		if ok {
+			app.DeploymentConfig.SourceBucket = val.BucketName
+			if length == 2 {
+				app.DeploymentConfig.SourceScope = val.ScopeName
+			}
+			if length == 3 {
+				app.DeploymentConfig.SourceScope = val.ScopeName
+				app.DeploymentConfig.SourceCollection = val.CollectionName
+			}
+		}
+
+		val, length, ok = remapContains(remap, deploymentConfig.MetadataBucket, deploymentConfig.MetadataScope, deploymentConfig.MetadataCollection)
+		if ok {
+			app.DeploymentConfig.MetadataBucket = val.BucketName
+			if length == 2 {
+				app.DeploymentConfig.MetadataScope = val.ScopeName
+			}
+			if length == 3 {
+				app.DeploymentConfig.MetadataScope = val.ScopeName
+				app.DeploymentConfig.MetadataCollection = val.CollectionName
+			}
+		}
+
+		for i := range deploymentConfig.Buckets {
+			val, length, ok = remapContains(remap, deploymentConfig.Buckets[i].BucketName, deploymentConfig.Buckets[i].ScopeName, deploymentConfig.Buckets[i].CollectionName)
+			if ok {
+				app.DeploymentConfig.Buckets[i].BucketName = val.BucketName
+				if length == 2 {
+					app.DeploymentConfig.Buckets[i].ScopeName = val.ScopeName
+				}
+				if length == 3 {
+					app.DeploymentConfig.Buckets[i].ScopeName = val.ScopeName
+					app.DeploymentConfig.Buckets[i].CollectionName = val.CollectionName
+				}
+			}
+		}
+		appList = append(appList, app)
+	}
+	return &appList
+}
+
+func (m *ServiceMgr) filterAppList(apps []application, filterMap map[string]bool, filterType string, backup bool) []application {
+	filteredFns := make([]application, 0)
+	for _, app := range apps {
+		if applyFilter(app, filterMap, filterType) {
+			if backup {
+				for i := range app.DeploymentConfig.Curl {
+					app.DeploymentConfig.Curl[i].Username = ""
+					app.DeploymentConfig.Curl[i].Password = ""
+					app.DeploymentConfig.Curl[i].BearerKey = ""
+				}
+				app.Settings["deployment_status"] = false
+				app.Settings["processing_status"] = false
+			}
+			filteredFns = append(filteredFns, app)
+		}
+	}
+	return filteredFns
 }
 
 func (m *ServiceMgr) createApplications(r *http.Request, appList *[]application, isImport bool) (infoList []*runtimeInfo) {
