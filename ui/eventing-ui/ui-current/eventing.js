@@ -86,9 +86,11 @@ angular.module('eventing', [
                             lastSampleTime: new Date().valueOf()
                         };
 			ApplicationService.public.getAnnotations().then(function(response) {self.annotationList = response.data});
-			var deprecatedMap = new Map();
+            var deprecatedMap = new Map();
+            var overloadedMap = new Map();
 			for(var app of self.annotationList) {
-			       deprecatedMap[app.name] = (app.deprecatedNames ? app.deprecatedNames : [""]) .join(", ");
+                   deprecatedMap[app.name] = (app.deprecatedNames ? app.deprecatedNames : [""]) .join(", ");
+                   overloadedMap[app.name] = (app.overloadedNames ? app.overloadedNames : [""]) .join(", ");
 			}
 
                         for (var rspApp of response.apps ? response.apps : []) {
@@ -103,7 +105,8 @@ angular.module('eventing', [
                                 // add to update list to process later e.g. a remote add
                                 self.needAppList.add(rspApp.name);
                             } else {
-				self.appList[rspApp.name].deprecatedNames = deprecatedMap[rspApp.name] ? deprecatedMap[rspApp.name] : "";
+                                self.appList[rspApp.name].deprecatedNames = deprecatedMap[rspApp.name] ? deprecatedMap[rspApp.name] : "";
+                                self.appList[rspApp.name].overloadedNames = overloadedMap[rspApp.name] ? overloadedMap[rspApp.name] : "";
                                 rspAppList.add(rspApp.name);
                                 self.appList[rspApp.name].status = rspApp.composite_status;
 
@@ -1394,10 +1397,16 @@ angular.module('eventing', [
                                     ApplicationService.server.showWarningAlert('Deploy Or Resume for changes to take effect!');
 
                                     app.deprecatedNames = "";
-                                    response.data.info.split(";").filter(msg => msg.includes("Warning")).forEach(function(msg){
+                                    app.overloadedNames = "";
+                                    response.data.info.split(";").filter(msg => msg.includes("Deprecated:")).forEach(function(msg){
                                         var fnNames = JSON.parse(msg.split(":")[1].trim());
-                                        ApplicationService.server.showWarningAlert('Warning: The Function uses following deprecated API(s) - ' + fnNames.join(","));
+                                        ApplicationService.server.showWarningAlert('Warning: The Function uses following deprecated API(s) - ' + fnNames.join(", "));
                                         app.deprecatedNames = fnNames;
+                                    });
+                                    response.data.info.split(";").filter(msg => msg.includes("Overloaded:")).forEach(function(msg){
+                                        var fnNames = JSON.parse(msg.split(":")[1].trim());
+                                        ApplicationService.server.showWarningAlert('Warning: The Function tries to overload following builtin API(s) - ' + fnNames.join(", "));
+                                        app.overloadedNames = fnNames;
                                     });
 
                                     self.disableCancelButton = self.disableSaveButton = true;

@@ -263,6 +263,7 @@ type appStatus struct {
 type annotation struct {
 	Name            string   `json:"name"`
 	DeprecatedNames []string `json:"deprecatedNames",omitempty`
+	OverloadedNames []string `json:"overloadedNames",omitempty`
 }
 
 type appStatusResponse struct {

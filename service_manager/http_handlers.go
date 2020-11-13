@@ -1588,6 +1588,7 @@ func (m *ServiceMgr) getAnnotations(w http.ResponseWriter, r *http.Request) {
 		respObj := annotation{}
 		respObj.Name = app.Name
 		respObj.DeprecatedNames = parser.ListDeprecatedFunctions(app.AppHandlers)
+		respObj.OverloadedNames = parser.ListOverloadedFunctions(app.AppHandlers)
 		respData = append(respData, respObj)
 	}
 	data, err := json.Marshal(respData)
@@ -1740,9 +1741,14 @@ func (m *ServiceMgr) saveTempStoreHandler(w http.ResponseWriter, r *http.Request
 
 	info := m.saveTempStore(app)
 	deprecatedFnsList := parser.ListDeprecatedFunctions(app.AppHandlers)
+	overloadedFnsList := parser.ListOverloadedFunctions(app.AppHandlers)
 	if len(deprecatedFnsList) > 0 {
 		jsonList, _ := json.Marshal(deprecatedFnsList)
-		info.Info = fmt.Sprintf("%s; Warning: %s", info.Info, jsonList)
+		info.Info = fmt.Sprintf("%s; Deprecated: %s", info.Info, jsonList)
+	}
+	if len(overloadedFnsList) > 0 {
+		jsonList, _ := json.Marshal(overloadedFnsList)
+		info.Info = fmt.Sprintf("%s; Overloaded: %s", info.Info, jsonList)
 	}
 	m.sendRuntimeInfo(w, info)
 }

@@ -46,6 +46,10 @@ var requiredFunctions = map[string]struct{}{"OnUpdate": struct{}{},
 var n1qlQueryUse = regexp.MustCompile(
 	`N1qlQuery([[:space:]]*)\(`)
 
+var functionOverload = regexp.MustCompile(
+	`(function([[:space:]]+)(createTimer|cancelTimer|curl|log|crc64|N1QL|N1qlQuery|couchbase)([[:space:]]*)\()` +
+		`|(((createTimer|cancelTimer|curl|log|crc64|N1QL|N1qlQuery|couchbase)([[:space:]]*\.[[:space:]]*[0-9a-zA-Z$_]+)?)[[:space:]]*=)`)
+
 func stripComments(str string) string {
 	return cleanse(str,
 		false, // keepComment
@@ -329,6 +333,28 @@ func ListDeprecatedFunctions(input string) []string {
 	listOfFns := []string{}
 	if n1qlQueryUse.MatchString(bare) {
 		listOfFns = append(listOfFns, "N1qlQuery")
+	}
+	return listOfFns
+}
+
+func ListOverloadedFunctions(input string) []string {
+	bare := stripAll(input)
+	listOfFns := []string{}
+	// Below list contains all the APIs that can be accessed from the JS source.
+	// Any attempt to overwrite them will display a warning to the user.
+	// In future, whenever we expose more APIs we need to maintain this and
+	// alter the regex in "var functionOverload" in the definition section of this file
+	// and add the name of the function to the below list.
+	builtIns := []string{"createTimer", "cancelTimer", "curl",
+		"log", "crc64", "N1QL", "N1qlQuery", "couchbase",
+		"couchbase.get", "couchbase.insert", "couchbase.upsert",
+		"couchbase.replace", "couchbase.delete",
+		"couchbase.increment", "couchbase.decrement"}
+	matches := strings.Join(functionOverload.FindAllString(bare, -1), ",")
+	for _, item := range builtIns {
+		if strings.Contains(matches, item) {
+			listOfFns = append(listOfFns, item)
+		}
 	}
 	return listOfFns
 }
