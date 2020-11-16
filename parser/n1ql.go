@@ -41,6 +41,11 @@ func (parseInfo *ParseInfo) FlattenParseInfo(urlValues *url.Values) {
 func Parse(query string) (info *ParseInfo, alg algebra.Statement) {
 	info = &ParseInfo{IsValid: true, IsSelectQuery: false, IsDmlQuery: true}
 
+	ns := make(map[string]interface{}, 2)
+	ns["default"] = true
+	ns["system"] = true
+	n1ql.SetNamespaces(ns)
+
 	alg, err := n1ql.ParseStatement(query)
 	if err != nil {
 		info.IsValid = false

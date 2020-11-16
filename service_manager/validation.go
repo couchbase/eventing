@@ -62,7 +62,7 @@ func (m *ServiceMgr) validateAppRecursion(app *application) (info *runtimeInfo) 
 			dest := ConstructKeyspace(pinfo.PInfo.KeyspaceName)
 			if dest == source {
 				info.Code = m.statusCodes.errInterBucketRecursion.Code
-				info.Info = fmt.Sprintf("Function: %s N1QL dml to source bucket %s", app.Name, pinfo.PInfo.KeyspaceName)
+				info.Info = fmt.Sprintf("Function: %s N1QL DML to source keyspace %s", app.Name, pinfo.PInfo.KeyspaceName)
 				logging.Errorf("%s %s", logPrefix, info.Info)
 				return
 			}
