@@ -868,3 +868,115 @@ func populateUint(fmtStr, appName, key string, stats []byte, cStats map[string]u
 	}
 	return append(stats, []byte(str)...)
 }
+
+func filterQueryMap(filterString string, include bool) (map[string]bool, error) {
+	filterMap := make(map[string]bool)
+	filters := strings.Split(filterString, ",")
+	for _, keyspace := range filters {
+		key := strings.Split(keyspace, ".")
+		if len(key) > 0 && len(key) < 4 {
+			filterMap[keyspace] = include
+			continue
+		}
+		return nil, fmt.Errorf("Malformed input filter %s", keyspace)
+	}
+	return filterMap, nil
+}
+
+func getRestoreMap(r *http.Request) (map[string]common.Keyspace, error) {
+	remap := make(map[string]common.Keyspace)
+	remapStr := r.FormValue("remap")
+	if len(remapStr) == 0 {
+		return remap, nil
+	}
+
+	remaps := strings.Split(remapStr, ",")
+	for _, rm := range remaps {
+
+		rmp := strings.Split(rm, ":")
+		if len(rmp) > 2 || len(rmp) < 2 {
+			return nil, fmt.Errorf("Malformed input. Missing source/target in remap %v", remapStr)
+		}
+
+		source := rmp[0]
+		target := rmp[1]
+
+		src := strings.Split(source, ".")
+		tgt := strings.Split(target, ".")
+
+		if len(src) != len(tgt) {
+			return nil, fmt.Errorf("Malformed input. source and target in remap should be at same level %v", remapStr)
+		}
+
+		switch len(src) {
+		case 3:
+			remap[source] = common.Keyspace{BucketName: tgt[0], ScopeName: tgt[1], CollectionName: tgt[2]}
+
+		case 2:
+			remap[source] = common.Keyspace{BucketName: tgt[0], ScopeName: tgt[1]}
+
+		case 1:
+			remap[source] = common.Keyspace{BucketName: tgt[0]}
+		default:
+			return nil, fmt.Errorf("Malformed input remap %v", remapStr)
+		}
+	}
+
+	return remap, nil
+}
+
+func applyFilter(app application, filterMap map[string]bool, filterType string) bool {
+	if filterType == "" {
+		return true
+	}
+
+	deploymentConfig := app.DeploymentConfig
+	if val, ok := contains(filterMap, deploymentConfig.SourceBucket, deploymentConfig.SourceScope, deploymentConfig.SourceCollection); ok {
+		return val
+	}
+
+	if val, ok := contains(filterMap, deploymentConfig.MetadataBucket, deploymentConfig.MetadataScope, deploymentConfig.MetadataCollection); ok {
+		return val
+	}
+
+	for _, keyspace := range deploymentConfig.Buckets {
+		if val, ok := contains(filterMap, keyspace.BucketName, keyspace.ScopeName, keyspace.CollectionName); ok {
+			return val
+		}
+	}
+
+	if filterType == "include" {
+		return false
+	}
+	return true
+}
+
+func remapContains(remap map[string]common.Keyspace, bucket, scope, collection string) (common.Keyspace, int, bool) {
+	if val, ok := remap[fmt.Sprintf("%s.%s.%s", bucket, scope, collection)]; ok {
+		return val, 3, true
+	}
+	if val, ok := remap[fmt.Sprintf("%s.%s", bucket, scope)]; ok {
+		return val, 2, true
+	}
+
+	if val, ok := remap[fmt.Sprintf("%s", bucket)]; ok {
+		return val, 1, true
+	}
+
+	return common.Keyspace{}, 0, false
+}
+
+func contains(filterMap map[string]bool, bucket, scope, collection string) (val, ok bool) {
+	if val, ok = filterMap[fmt.Sprintf("%s.%s.%s", bucket, scope, collection)]; ok {
+		return
+	}
+	if val, ok = filterMap[fmt.Sprintf("%s.%s", bucket, scope)]; ok {
+		return
+	}
+
+	if val, ok = filterMap[fmt.Sprintf("%s", bucket)]; ok {
+		return
+	}
+
+	return
+}
