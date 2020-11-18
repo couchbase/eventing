@@ -473,10 +473,13 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
 
                         switch (operation) {
                             case 'deploy':
-                            case 'resume':
                                 appClone.settings.deployment_status = true;
                                 appClone.settings.processing_status = true;
                                 return ApplicationService.public.deployApp(appClone);
+                            case 'resume':
+                                appClone.settings.deployment_status = true;
+                                appClone.settings.processing_status = true;
+                                return ApplicationService.public.updateSettings(appClone);
                             case 'pause':
                                 appClone.settings.deployment_status = true;
                                 appClone.settings.processing_status = false;
@@ -1124,7 +1127,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                             ApplicationService.tempStore.saveApp(app)
                                 .then(function(response) {
                                     ApplicationService.server.showSuccessAlert('Code saved successfully!');
-                                    ApplicationService.server.showWarningAlert('Deploy for changes to take effect!');
+                                    ApplicationService.server.showWarningAlert('Deploy Or Resume for changes to take effect!');
 
                                     self.disableCancelButton = self.disableSaveButton = true;
                                     self.disableDeployButton = false;

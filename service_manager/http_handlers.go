@@ -1428,6 +1428,11 @@ func (m *ServiceMgr) setSettings(appName string, data []byte, force bool) (info 
 				return
 			}
 
+			if info = m.validateApplication(&app); info.Code != m.statusCodes.ok.Code {
+				logging.Errorf("%s Function: %s recursion error %d: %s", logPrefix, app.Name, info.Code, info.Info)
+				return
+			}
+
 			// Write to primary store in case of deployment
 			if !m.checkIfDeployedAndRunning(appName) {
 				info = m.savePrimaryStore(&app)
@@ -2067,14 +2072,6 @@ func (m *ServiceMgr) savePrimaryStore(app *application) (info *runtimeInfo) {
 		return
 	}
 
-	mkvErr := util.MetakvSet(settingsPath, mData, nil)
-	if mkvErr != nil {
-		info.Code = m.statusCodes.errSetSettingsPs.Code
-		info.Info = fmt.Sprintf("Function: %s failed to store updated settings in metakv, err: %v", app.Name, mkvErr)
-		logging.Errorf("%s %s", logPrefix, info.Info)
-		return
-	}
-
 	//Delete stale entry
 	err = util.DeleteStaleAppContent(metakvAppsPath, app.Name)
 	if err != nil {
@@ -2095,6 +2092,14 @@ func (m *ServiceMgr) savePrimaryStore(app *application) (info *runtimeInfo) {
 	if err != nil {
 		info.Code = m.statusCodes.errGetConfig.Code
 		info.Info = fmt.Sprintf("Function: %s failed to determine warnings, err : %v", app.Name, err)
+		return
+	}
+
+	mkvErr := util.MetakvSet(settingsPath, mData, nil)
+	if mkvErr != nil {
+		info.Code = m.statusCodes.errSetSettingsPs.Code
+		info.Info = fmt.Sprintf("Function: %s failed to store updated settings in metakv, err: %v", app.Name, mkvErr)
+		logging.Errorf("%s %s", logPrefix, info.Info)
 		return
 	}
 

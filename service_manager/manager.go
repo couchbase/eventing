@@ -260,7 +260,7 @@ func (m *ServiceMgr) initService() {
 	go func(m *ServiceMgr) {
 		cancelCh := make(chan struct{})
 		for {
-			err := metakv.RunObserveChildren(metakvChecksumPath, m.primaryStoreChangeCallback, cancelCh)
+			err := metakv.RunObserveChildren(metakvChecksumPath, m.primaryStoreCsumPathCallback, cancelCh)
 			if err != nil {
 				logging.Errorf("%s metakv observe error for primary store, err: %v. Retrying...", logPrefix, err)
 				time.Sleep(2 * time.Second)
@@ -271,7 +271,7 @@ func (m *ServiceMgr) initService() {
 	go func(m *ServiceMgr) {
 		cancelCh := make(chan struct{})
 		for {
-			err := metakv.RunObserveChildren(metakvTempAppsPath, m.tempStoreChangeCallback, cancelCh)
+			err := metakv.RunObserveChildren(metakvTempAppsPath, m.tempStoreAppsPathCallback, cancelCh)
 			if err != nil {
 				logging.Errorf("%s metakv observe error for temp store, err: %v. Retrying...", logPrefix, err)
 				time.Sleep(2 * time.Second)
@@ -292,8 +292,8 @@ func (m *ServiceMgr) initService() {
 	go m.watchFailoverEvents()
 }
 
-func (m *ServiceMgr) primaryStoreChangeCallback(path string, value []byte, rev interface{}) error {
-	logPrefix := "ServiceMgr::primaryStoreChangeCallback"
+func (m *ServiceMgr) primaryStoreCsumPathCallback(path string, value []byte, rev interface{}) error {
+	logPrefix := "ServiceMgr::primaryStoreCsumPathCallback"
 
 	logging.Infof("%s path: %s encoded value size: %d", logPrefix, path, len(value))
 
@@ -327,6 +327,9 @@ func (m *ServiceMgr) primaryStoreChangeCallback(path string, value []byte, rev i
 					logPrefix, fnName, source, pinfo.PInfo.KeyspaceName)
 				destinations[pinfo.PInfo.KeyspaceName] = struct{}{}
 			}
+
+			logging.Infof("%s inserting edges into graph for function: %v, source: %v destinations: %v", logPrefix, fnName, source, destinations)
+
 			if len(destinations) > 0 {
 				m.graph.insertEdges(fnName, source, destinations)
 			}
@@ -359,8 +362,8 @@ func (m *ServiceMgr) primaryStoreChangeCallback(path string, value []byte, rev i
 	return nil
 }
 
-func (m *ServiceMgr) tempStoreChangeCallback(path string, value []byte, rev interface{}) error {
-	logPrefix := "ServiceMgr::tempStoreChangeCallback"
+func (m *ServiceMgr) tempStoreAppsPathCallback(path string, value []byte, rev interface{}) error {
+	logPrefix := "ServiceMgr::tempStoreAppsPathCallback"
 
 	logging.Infof("%s path: %s encoded value size: %d", logPrefix, path, len(value))
 
@@ -435,9 +438,13 @@ func (m *ServiceMgr) settingChangeCallback(path string, value []byte, rev interf
 		return nil
 	}
 
+	logging.Infof("%s deploymentStatus: %v, processingStatus: %v", logPrefix, deploymentStatus, processingStatus)
 	source, _ := m.getSourceAndDestinationsFromDepCfg(&cfg)
 	if processingStatus == false {
 		m.graph.removeEdges(functionName)
+	} else if deploymentStatus == true && processingStatus == true {
+		logging.Infof("%s calling UpdateBucketGraphFromMetakv", logPrefix)
+		m.UpdateBucketGraphFromMetakv(functionName)
 	}
 
 	//Update BucketFunctionMap
