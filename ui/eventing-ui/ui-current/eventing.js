@@ -1271,7 +1271,7 @@ angular.module('eventing', [
             var config = require("ace/config");
             $scope.searchInCode = function() {
                 config.loadModule("ace/ext/cb-searchbox",
-                function(e) {if ($scope.editor) e.Search($scope.editor, true, true)});
+                function(e) {if ($scope.editor) e.Search($scope.editor, !self.editorDisabled, true)});
               }
 
             self.handler = app.appcode;
