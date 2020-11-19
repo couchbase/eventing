@@ -3739,6 +3739,7 @@ func (m *ServiceMgr) restoreAppList(apps *[]application, filterMap map[string]bo
 func (m *ServiceMgr) filterAppList(apps []application, filterMap map[string]bool, filterType string, backup bool) []application {
 	filteredFns := make([]application, 0)
 	for _, app := range apps {
+		m.addDefaultDeploymentConfig(&app)
 		if applyFilter(app, filterMap, filterType) {
 			if backup {
 				for i := range app.DeploymentConfig.Curl {
