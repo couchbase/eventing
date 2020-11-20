@@ -2072,6 +2072,14 @@ func (m *ServiceMgr) savePrimaryStore(app *application) (info *runtimeInfo) {
 		return
 	}
 
+	mkvErr := util.MetakvSet(settingsPath, mData, nil)
+	if mkvErr != nil {
+		info.Code = m.statusCodes.errSetSettingsPs.Code
+		info.Info = fmt.Sprintf("Function: %s failed to store updated settings in metakv, err: %v", app.Name, mkvErr)
+		logging.Errorf("%s %s", logPrefix, info.Info)
+		return
+	}
+
 	//Delete stale entry
 	err = util.DeleteStaleAppContent(metakvAppsPath, app.Name)
 	if err != nil {
@@ -2092,14 +2100,6 @@ func (m *ServiceMgr) savePrimaryStore(app *application) (info *runtimeInfo) {
 	if err != nil {
 		info.Code = m.statusCodes.errGetConfig.Code
 		info.Info = fmt.Sprintf("Function: %s failed to determine warnings, err : %v", app.Name, err)
-		return
-	}
-
-	mkvErr := util.MetakvSet(settingsPath, mData, nil)
-	if mkvErr != nil {
-		info.Code = m.statusCodes.errSetSettingsPs.Code
-		info.Info = fmt.Sprintf("Function: %s failed to store updated settings in metakv, err: %v", app.Name, mkvErr)
-		logging.Errorf("%s %s", logPrefix, info.Info)
 		return
 	}
 
