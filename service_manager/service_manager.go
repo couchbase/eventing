@@ -111,6 +111,10 @@ func (m *ServiceMgr) PrepareTopologyChange(change service.TopologyChange) error 
 	hostaddress := net.JoinHostPort(util.Localhost(), m.restPort)
 	cic, err := util.FetchClusterInfoClient(hostaddress)
 	if err != nil {
+		if change.Type == service.TopologyChangeTypeRebalance {
+			m.isBalanced = false
+		}
+		logging.Infof("%s failed: %v", logPrefix, err)
 		return err
 	}
 	cinfo := cic.GetClusterInfoCache()
@@ -119,6 +123,7 @@ func (m *ServiceMgr) PrepareTopologyChange(change service.TopologyChange) error 
 	if change.Type == service.TopologyChangeTypeRebalance {
 		err = m.checkTopologyChangeReadiness(change.Type)
 		if err != nil {
+			m.isBalanced = false
 			logging.Infof("%s failed: %v", logPrefix, err)
 			return err
 		}
@@ -160,7 +165,8 @@ func (m *ServiceMgr) PrepareTopologyChange(change service.TopologyChange) error 
 		m.SetFailoverStatus(change.ID)
 	}
 
-	logging.Infof("%s completed: %v", logPrefix, err)
+	m.isBalanced = true
+	logging.Infof("%s completed, err: %v, isBalanced: %v", logPrefix, err, m.isBalanced)
 	return nil
 }
 
@@ -198,7 +204,7 @@ func (m *ServiceMgr) StartTopologyChange(change service.TopologyChange) error {
 	switch change.Type {
 	case service.TopologyChangeTypeFailover:
 		util.Retry(util.NewFixedBackoff(time.Second), nil, storeKeepNodesCallback, m.keepNodeUUIDs)
-		logging.Infof("%s failover completed", logPrefix)
+		logging.Infof("%s failover completed, isBalanced: %v", logPrefix, m.isBalanced)
 
 	case service.TopologyChangeTypeRebalance:
 		util.Retry(util.NewFixedBackoff(time.Second), nil, storeKeepNodesCallback, m.keepNodeUUIDs)
@@ -217,4 +223,3 @@ func (m *ServiceMgr) StartTopologyChange(change service.TopologyChange) error {
 
 	return nil
 }
-

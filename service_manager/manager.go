@@ -24,6 +24,16 @@ import (
 	"github.com/couchbase/eventing/util"
 )
 
+func NewState() state {
+	return state{
+		rev:           0,
+		servers:       make([]service.NodeID, 0),
+		isBalanced:    true, // Default value of isBalanced should be true we replan vb distribution for all functions on process startup
+		rebalanceID:   "",
+		rebalanceTask: nil,
+	}
+}
+
 //NewServiceMgr creates handle for ServiceMgr, which implements cbauth service.Manager
 func NewServiceMgr(config util.Config, rebalanceRunning bool, superSup common.EventingSuperSup) *ServiceMgr {
 
@@ -41,16 +51,11 @@ func NewServiceMgr(config util.Config, rebalanceRunning bool, superSup common.Ev
 		failoverMu:        &sync.RWMutex{},
 		mu:                mu,
 		servers:           make([]service.NodeID, 0),
-		state: state{
-			rebalanceID:   "",
-			rebalanceTask: nil,
-			rev:           0,
-			servers:       make([]service.NodeID, 0),
-		},
-		statsWritten: true,
-		stopTracerCh: make(chan struct{}, 1),
-		superSup:     superSup,
-		finch:        make(chan bool),
+		state:             NewState(),
+		statsWritten:      true,
+		stopTracerCh:      make(chan struct{}, 1),
+		superSup:          superSup,
+		finch:             make(chan bool),
 	}
 
 	mgr.config.Store(config)
@@ -594,7 +599,7 @@ func (m *ServiceMgr) stateToTopology(s state) *service.Topology {
 
 	topology.Rev = encodeRev(s.rev)
 	topology.Nodes = append([]service.NodeID(nil), m.servers...)
-	topology.IsBalanced = true
+	topology.IsBalanced = m.isBalanced
 	topology.Messages = nil
 
 	return topology
@@ -642,7 +647,7 @@ func (m *ServiceMgr) cancelRunningRebalanceTaskLocked(task *service.Task) error 
 	logPrefix := "ServiceMgr::cancelRunningRebalanceTaskLocked"
 
 	m.rebalancer.cancel()
-	m.onRebalanceDoneLocked(nil)
+	m.onRebalanceDoneLocked(nil, true)
 
 	util.Retry(util.NewFixedBackoff(time.Second), nil, stopRebalanceCallback, m.rebalancer, task.ID)
 
@@ -723,11 +728,12 @@ func (m *ServiceMgr) rebalanceProgressCallback(progress float64, cancel <-chan s
 
 func (m *ServiceMgr) rebalanceDoneCallback(err error, cancel <-chan struct{}) {
 	m.runRebalanceCallback(cancel, func() {
-		m.onRebalanceDoneLocked(err)
+		m.onRebalanceDoneLocked(err, false)
 	})
 }
 
-func (m *ServiceMgr) onRebalanceDoneLocked(err error) {
+func (m *ServiceMgr) onRebalanceDoneLocked(err error, cancelRebalance bool) {
+	logPrefix := "ServiceMgr::onRebalanceDoneLocked"
 	newTask := (*service.Task)(nil)
 	if err != nil {
 		ctx := m.rebalanceCtx
@@ -746,7 +752,13 @@ func (m *ServiceMgr) onRebalanceDoneLocked(err error) {
 				"rebalanceId": ctx.change.ID,
 			},
 		}
+		m.isBalanced = false
+	} else if cancelRebalance == true {
+		m.isBalanced = false
+	} else {
+		m.isBalanced = true
 	}
+	logging.Infof("%s updated isBalanced: %v", logPrefix, m.isBalanced)
 
 	m.rebalancer = nil
 	m.rebalanceCtx = nil
