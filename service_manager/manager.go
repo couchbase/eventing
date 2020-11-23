@@ -20,7 +20,6 @@ import (
 	"github.com/couchbase/cbauth/service"
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/logging"
-	"github.com/couchbase/eventing/parser"
 	"github.com/couchbase/eventing/util"
 )
 
@@ -328,45 +327,6 @@ func (m *ServiceMgr) primaryStoreCsumPathCallback(path string, value []byte, rev
 		app := m.parseFunctionPayload(data, fnName)
 		m.fnsInPrimaryStore[fnName] = app.DeploymentConfig
 		logging.Infof("%s Added function: %s to fnsInPrimaryStore", logPrefix, fnName)
-
-		if val, ok := app.Settings["processing_status"].(bool); ok && val {
-			source, destinations := m.getSourceAndDestinationsFromDepCfg(&app.DeploymentConfig)
-
-			//Find keyspace names from N1QL statements in handler code and add edges
-			_, pinfos := parser.TranspileQueries(app.AppHandlers, "")
-			for _, pinfo := range pinfos {
-				if pinfo.PInfo.KeyspaceName != "" {
-					dest := ConstructKeyspace(pinfo.PInfo.KeyspaceName)
-					logging.Infof("%s Adding allowed edge label %s, source %s to destination %s",
-						logPrefix, fnName, source, pinfo.PInfo.KeyspaceName)
-					destinations[dest] = struct{}{}
-				}
-			}
-
-			logging.Infof("%s inserting edges into graph for function: %v, source: %v destinations: %v", logPrefix, fnName, source, destinations)
-
-			if len(destinations) > 0 {
-				m.graph.insertEdges(fnName, source, destinations)
-			}
-		}
-
-		//Update BucketFunctionMap
-		source := common.Keyspace{BucketName: app.DeploymentConfig.SourceBucket,
-			ScopeName:      app.DeploymentConfig.SourceScope,
-			CollectionName: app.DeploymentConfig.SourceCollection,
-		}
-		functions, ok := m.bucketFunctionMap[source]
-		if !ok {
-			functions = make(map[string]functionInfo)
-			m.bucketFunctionMap[source] = functions
-		}
-		funtionType := "notsbm"
-		if m.isSrcMutationEnabled(&app.DeploymentConfig) {
-			funtionType = "sbm"
-		}
-
-		deployed := app.Settings["deployment_status"].(bool)
-		functions[app.Name] = functionInfo{fnName: app.Name, fnType: funtionType, fnDeployed: deployed}
 	} else {
 		cfg := m.fnsInPrimaryStore[fnName]
 		m.graph.removeEdges(fnName)
