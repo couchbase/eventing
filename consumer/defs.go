@@ -239,8 +239,6 @@ type Consumer struct {
 	lcbInstCapacity int
 	n1qlConsistency string
 
-	socketTimeout time.Duration
-
 	dcpStreamBoundary common.DcpStreamBoundary
 
 	// Map that needed to short circuits failover log to dcp stream request routine

@@ -248,12 +248,6 @@ func createFunction(deploymentStatus, processingStatus bool, id int, s *commonSe
 		settings["dcp_stream_boundary"] = s.streamBoundary
 	}
 
-	if s.deadlineTimeout == 0 {
-		settings["deadline_timeout"] = deadlineTimeout
-	} else {
-		settings["deadline_timeout"] = s.deadlineTimeout
-	}
-
 	if s.executionTimeout == 0 {
 		settings["execution_timeout"] = executionTimeout
 	} else {

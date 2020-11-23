@@ -19,7 +19,6 @@
 |dcp_gen_chan_size|10000|Capacity of queue that buffers dcp related control messages|
 |dcp_num_connections|1|Num of dcp connections to open per eventing-consumer per Data service node|
 |dcp_stream_boundary|everything|Feed boundary for Function|
-|deadline_timeout|62s|Socket timeout for communication b/w eventing-producer and eventing-consumer|
 |enable_applog_rotation|true|To enable/disable function log file rotation|
 |execution_timeout|60s|Timeout for execution of Javascript handler code|
 |feedback_batch_size|100|Batch size for messages being written from eventing-consumer to eventing-producer|

@@ -97,7 +97,6 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		signalConnectedCh:               make(chan struct{}, 1),
 		signalFeedbackConnectedCh:       make(chan struct{}, 1),
 		signalSettingsChangeCh:          make(chan struct{}, 1),
-		socketTimeout:                   time.Duration(hConfig.SocketTimeout) * time.Second,
 		socketWriteBatchSize:            hConfig.SocketWriteBatchSize,
 		socketWriteLoopStopAckCh:        make(chan struct{}, 1),
 		socketWriteLoopStopCh:           make(chan struct{}, 1),

@@ -76,7 +76,6 @@ const (
 	workerCount              = 3
 	numTimerPartitions       = 128
 
-	deadlineTimeout  = 6
 	executionTimeout = 5
 
 	bucketCacheSize = 64 * 1024 * 1024
@@ -127,7 +126,6 @@ type commonSettings struct {
 	aliasSources             []string
 	curlBindings             []common.Curl
 	batchSize                int
-	deadlineTimeout          int
 	executeTimerRoutineCount int
 	executionTimeout         int
 	lcbInstCap               int

@@ -12,7 +12,6 @@ func TestCacheGet(t *testing.T) {
 		aliasSources:       []string{dstBucket, srcBucket},
 		aliasHandles:       []string{"dst_bucket", "src_bucket"},
 		srcMutationEnabled: true,
-		deadlineTimeout:    70,
 		executionTimeout:   60,
 	}
 	testPumpDoc(itemCount, itemCount, dstBucket, false,
@@ -25,7 +24,6 @@ func TestCacheRYOW(t *testing.T) {
 		aliasSources:       []string{dstBucket, srcBucket},
 		aliasHandles:       []string{"dst_bucket", "src_bucket"},
 		srcMutationEnabled: true,
-		deadlineTimeout:    70,
 		executionTimeout:   60,
 	}
 	testPumpDoc(itemCount, itemCount, dstBucket, false,
@@ -38,7 +36,6 @@ func TestCacheExpiry(t *testing.T) {
 		aliasSources:       []string{dstBucket, srcBucket},
 		aliasHandles:       []string{"dst_bucket", "src_bucket"},
 		srcMutationEnabled: true,
-		deadlineTimeout:    70,
 		executionTimeout:   60,
 	}
 	testPumpDoc(itemCount, 2*itemCount, dstBucket, false,
@@ -52,7 +49,6 @@ func TestCacheOverflow(t *testing.T) {
 		aliasHandles:       []string{"dst_bucket", "src_bucket"},
 		srcMutationEnabled: true,
 		bucketCacheAge:     60 * 60 * 1000,
-		deadlineTimeout:    70,
 		executionTimeout:   60,
 		workerCount:        1,
 	}
@@ -66,7 +62,6 @@ func TestCacheExpiryCustom(t *testing.T) {
 		aliasSources:       []string{dstBucket, srcBucket},
 		aliasHandles:       []string{"dst_bucket", "src_bucket"},
 		srcMutationEnabled: true,
-		deadlineTimeout:    70,
 		executionTimeout:   60,
 		bucketCacheAge:     60 * 60 * 1000,
 	}
@@ -80,7 +75,6 @@ func TestCacheOverflowCustom(t *testing.T) {
 		aliasSources:       []string{dstBucket, srcBucket},
 		aliasHandles:       []string{"dst_bucket", "src_bucket"},
 		srcMutationEnabled: true,
-		deadlineTimeout:    70,
 		executionTimeout:   60,
 		bucketCacheSize:    10 * 1024 * 1024 * 1024,
 		bucketCacheAge:     60 * 60 * 1000,

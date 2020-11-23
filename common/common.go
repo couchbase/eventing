@@ -390,7 +390,6 @@ type HandlerConfig struct {
 	N1qlConsistency          string
 	LogLevel                 string
 	SocketWriteBatchSize     int
-	SocketTimeout            int
 	SourceKeyspace           *Keyspace
 	StatsLogInterval         int
 	StreamBoundary           DcpStreamBoundary
