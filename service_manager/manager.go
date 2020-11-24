@@ -630,6 +630,8 @@ func stateToTaskList(s state) *service.TaskList {
 }
 
 func (m *ServiceMgr) stateToTopology(s state) *service.Topology {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	topology := &service.Topology{}
 
 	topology.Rev = encodeRev(s.rev)
