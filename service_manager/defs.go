@@ -173,6 +173,7 @@ type state struct {
 	rebalanceTask *service.Task
 	rev           uint64
 	servers       []service.NodeID
+	isBalanced    bool
 }
 
 type cleanup struct {

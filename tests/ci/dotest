@@ -70,7 +70,7 @@ collect_logs() {
        $WORKSPACE/test.log \
        $WORKSPACE/stats.log \
        $WORKSPACE/run.log \
-    -type f -exec sh -c '> {}' \;
+    -type f -exec sh -c '> {}' \; 2>/dev/null
 }
 
 error_email() {
@@ -191,7 +191,7 @@ cd $WORKSPACE/goproj/src/github.com/couchbase/query/parser/n1ql
 git ls-files -s n1ql.nex n1ql.y > ~/n1ql_parser.maybe
 test -f ~/n1ql_parser.good || cp ~/n1ql_parser.maybe ~/n1ql_parser.good
 msg="FAIL(manual): N1QL grammer appears to have changed recently. Review and if OK, run: cp ~/n1ql_parser.maybe ~/n1ql_parser.good"
-diff ~/n1ql_parser.good ~/n1ql_parser.maybe || echo "$msg" >> /tmp/fail.log
+diff -q ~/n1ql_parser.good ~/n1ql_parser.maybe || echo "$msg" >> $WORKSPACE/test-full.log
 
 # Verify results
 > /tmp/fail.log

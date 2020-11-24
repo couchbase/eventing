@@ -1427,6 +1427,11 @@ func (m *ServiceMgr) setSettings(appName string, data []byte) (info *runtimeInfo
 				return
 			}
 
+			if info = m.validateApplication(&app); info.Code != m.statusCodes.ok.Code {
+				logging.Errorf("%s Function: %s recursion error %d: %s", logPrefix, app.Name, info.Code, info.Info)
+				return
+			}
+
 			// Write to primary store in case of deployment
 			if !m.checkIfDeployedAndRunning(appName) {
 				info = m.savePrimaryStore(&app)
@@ -3734,6 +3739,7 @@ func (m *ServiceMgr) restoreAppList(apps *[]application, filterMap map[string]bo
 func (m *ServiceMgr) filterAppList(apps []application, filterMap map[string]bool, filterType string, backup bool) []application {
 	filteredFns := make([]application, 0)
 	for _, app := range apps {
+		m.addDefaultDeploymentConfig(&app)
 		if applyFilter(app, filterMap, filterType) {
 			if backup {
 				for i := range app.DeploymentConfig.Curl {

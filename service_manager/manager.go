@@ -24,6 +24,16 @@ import (
 	"github.com/couchbase/eventing/util"
 )
 
+func NewState() state {
+	return state{
+		rev:           0,
+		servers:       make([]service.NodeID, 0),
+		isBalanced:    true, // Default value of isBalanced should be true we replan vb distribution for all functions on process startup
+		rebalanceID:   "",
+		rebalanceTask: nil,
+	}
+}
+
 //NewServiceMgr creates handle for ServiceMgr, which implements cbauth service.Manager
 func NewServiceMgr(config util.Config, rebalanceRunning bool, superSup common.EventingSuperSup) *ServiceMgr {
 
@@ -41,16 +51,11 @@ func NewServiceMgr(config util.Config, rebalanceRunning bool, superSup common.Ev
 		failoverMu:        &sync.RWMutex{},
 		mu:                mu,
 		servers:           make([]service.NodeID, 0),
-		state: state{
-			rebalanceID:   "",
-			rebalanceTask: nil,
-			rev:           0,
-			servers:       make([]service.NodeID, 0),
-		},
-		statsWritten: true,
-		stopTracerCh: make(chan struct{}, 1),
-		superSup:     superSup,
-		finch:        make(chan bool),
+		state:             NewState(),
+		statsWritten:      true,
+		stopTracerCh:      make(chan struct{}, 1),
+		superSup:          superSup,
+		finch:             make(chan bool),
 	}
 
 	mgr.config.Store(config)
@@ -267,7 +272,7 @@ func (m *ServiceMgr) initService() {
 	go func(m *ServiceMgr) {
 		cancelCh := make(chan struct{})
 		for {
-			err := metakv.RunObserveChildren(metakvChecksumPath, m.primaryStoreChangeCallback, cancelCh)
+			err := metakv.RunObserveChildren(metakvChecksumPath, m.primaryStoreCsumPathCallback, cancelCh)
 			if err != nil {
 				logging.Errorf("%s metakv observe error for primary store, err: %v. Retrying...", logPrefix, err)
 				time.Sleep(2 * time.Second)
@@ -278,7 +283,7 @@ func (m *ServiceMgr) initService() {
 	go func(m *ServiceMgr) {
 		cancelCh := make(chan struct{})
 		for {
-			err := metakv.RunObserveChildren(metakvTempAppsPath, m.tempStoreChangeCallback, cancelCh)
+			err := metakv.RunObserveChildren(metakvTempAppsPath, m.tempStoreAppsPathCallback, cancelCh)
 			if err != nil {
 				logging.Errorf("%s metakv observe error for temp store, err: %v. Retrying...", logPrefix, err)
 				time.Sleep(2 * time.Second)
@@ -299,8 +304,8 @@ func (m *ServiceMgr) initService() {
 	go m.watchFailoverEvents()
 }
 
-func (m *ServiceMgr) primaryStoreChangeCallback(path string, value []byte, rev interface{}) error {
-	logPrefix := "ServiceMgr::primaryStoreChangeCallback"
+func (m *ServiceMgr) primaryStoreCsumPathCallback(path string, value []byte, rev interface{}) error {
+	logPrefix := "ServiceMgr::primaryStoreCsumPathCallback"
 
 	logging.Infof("%s path: %s encoded value size: %d", logPrefix, path, len(value))
 
@@ -337,6 +342,9 @@ func (m *ServiceMgr) primaryStoreChangeCallback(path string, value []byte, rev i
 					destinations[dest] = struct{}{}
 				}
 			}
+
+			logging.Infof("%s inserting edges into graph for function: %v, source: %v destinations: %v", logPrefix, fnName, source, destinations)
+
 			if len(destinations) > 0 {
 				m.graph.insertEdges(fnName, source, destinations)
 			}
@@ -378,8 +386,8 @@ func (m *ServiceMgr) primaryStoreChangeCallback(path string, value []byte, rev i
 	return nil
 }
 
-func (m *ServiceMgr) tempStoreChangeCallback(path string, value []byte, rev interface{}) error {
-	logPrefix := "ServiceMgr::tempStoreChangeCallback"
+func (m *ServiceMgr) tempStoreAppsPathCallback(path string, value []byte, rev interface{}) error {
+	logPrefix := "ServiceMgr::tempStoreAppsPathCallback"
 
 	logging.Infof("%s path: %s encoded value size: %d", logPrefix, path, len(value))
 
@@ -458,9 +466,13 @@ func (m *ServiceMgr) settingChangeCallback(path string, value []byte, rev interf
 		return nil
 	}
 
+	logging.Infof("%s deploymentStatus: %v, processingStatus: %v", logPrefix, deploymentStatus, processingStatus)
 	source, _ := m.getSourceAndDestinationsFromDepCfg(&cfg)
 	if processingStatus == false {
 		m.graph.removeEdges(functionName)
+	} else if deploymentStatus == true && processingStatus == true {
+		logging.Infof("%s calling UpdateBucketGraphFromMetakv", logPrefix)
+		m.UpdateBucketGraphFromMetakv(functionName)
 	}
 
 	//Update BucketFunctionMap
@@ -622,7 +634,7 @@ func (m *ServiceMgr) stateToTopology(s state) *service.Topology {
 
 	topology.Rev = encodeRev(s.rev)
 	topology.Nodes = append([]service.NodeID(nil), m.servers...)
-	topology.IsBalanced = true
+	topology.IsBalanced = m.isBalanced
 	topology.Messages = nil
 
 	return topology
@@ -670,7 +682,7 @@ func (m *ServiceMgr) cancelRunningRebalanceTaskLocked(task *service.Task) error 
 	logPrefix := "ServiceMgr::cancelRunningRebalanceTaskLocked"
 
 	m.rebalancer.cancel()
-	m.onRebalanceDoneLocked(nil)
+	m.onRebalanceDoneLocked(nil, true)
 
 	util.Retry(util.NewFixedBackoff(time.Second), nil, stopRebalanceCallback, m.rebalancer, task.ID)
 
@@ -751,11 +763,12 @@ func (m *ServiceMgr) rebalanceProgressCallback(progress float64, cancel <-chan s
 
 func (m *ServiceMgr) rebalanceDoneCallback(err error, cancel <-chan struct{}) {
 	m.runRebalanceCallback(cancel, func() {
-		m.onRebalanceDoneLocked(err)
+		m.onRebalanceDoneLocked(err, false)
 	})
 }
 
-func (m *ServiceMgr) onRebalanceDoneLocked(err error) {
+func (m *ServiceMgr) onRebalanceDoneLocked(err error, cancelRebalance bool) {
+	logPrefix := "ServiceMgr::onRebalanceDoneLocked"
 	newTask := (*service.Task)(nil)
 	if err != nil {
 		ctx := m.rebalanceCtx
@@ -774,7 +787,13 @@ func (m *ServiceMgr) onRebalanceDoneLocked(err error) {
 				"rebalanceId": ctx.change.ID,
 			},
 		}
+		m.isBalanced = false
+	} else if cancelRebalance == true {
+		m.isBalanced = false
+	} else {
+		m.isBalanced = true
 	}
+	logging.Infof("%s updated isBalanced: %v", logPrefix, m.isBalanced)
 
 	m.rebalancer = nil
 	m.rebalanceCtx = nil

@@ -345,7 +345,7 @@ func (m *ServiceMgr) isAppDeployable(app *application) bool {
 		return true
 	}
 	for _, appName := range m.superSup.DeployedAppList() {
-		if appName == app.Name {
+		if appName == app.Name || m.superSup.GetAppState(appName) != common.AppStateEnabled {
 			continue
 		}
 		data, err := util.ReadAppContent(metakvAppsPath, metakvChecksumPath, appName)
@@ -411,7 +411,7 @@ func (m *ServiceMgr) UpdateBucketGraphFromMetakv(functionName string) error {
 	logPrefix := "ServiceMgr::UpdateBucketGraphFromMektakv"
 	appData, err := util.ReadAppContent(metakvAppsPath, metakvChecksumPath, functionName)
 	if err != nil {
-		logging.Errorf("%s Function read from metakv failed, err: %v", logPrefix, err)
+		logging.Errorf("%s Function: %v read from metakv failed, err: %v", logPrefix, functionName, err)
 		return err
 	}
 	app := m.parseFunctionPayload(appData, functionName)
@@ -423,6 +423,8 @@ func (m *ServiceMgr) UpdateBucketGraphFromMetakv(functionName string) error {
 			destinations[dest] = struct{}{}
 		}
 	}
+
+	logging.Infof("%s inserting edges into graph for function: %v, source: %v destinations: %v", logPrefix, functionName, source, destinations)
 	if len(destinations) != 0 {
 		m.graph.insertEdges(functionName, source, destinations)
 	}

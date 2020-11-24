@@ -39,8 +39,6 @@ func (r *rebalancer) doRebalance() {
 	defer close(r.done)
 
 	r.gatherProgress()
-
-	r.cb.done(nil, r.c)
 }
 
 func (r *rebalancer) storeRebalanceProgress(progress *common.RebalanceProgress) error {
@@ -78,10 +76,13 @@ func (r *rebalancer) gatherProgress() {
 		} else if len(errMap) == 1 && len(r.keepNodes) == 1 {
 			logging.Warnf("%s Failed to capture rebalance progress, initProgress: %v errMap dump: %rm",
 				logPrefix, p, errMap)
+			r.cb.progress(1.0, r.c)
+			r.cb.done(nil, r.c)
 			return
 		} else if p.VbsOwnedPerPlan == 0 && p.VbsRemainingToShuffle == 0 {
 			logging.Infof("%s Rebalance completed", logPrefix)
 			r.cb.progress(1.0, r.c)
+			r.cb.done(nil, r.c)
 			return
 		}
 	}
@@ -114,6 +115,8 @@ retryRebProgress:
 	} else if len(errMap) == 1 && len(r.keepNodes) == 1 {
 		logging.Warnf("%s Failed to capture rebalance progress, initProgress: %v errMap dump: %rm",
 			logPrefix, initProgress, errMap)
+		r.cb.progress(1.0, r.c)
+		r.cb.done(nil, r.c)
 		return
 	}
 	logging.Infof("%s initProgress dump: %rm", logPrefix, initProgress)
@@ -208,6 +211,7 @@ retryRebProgress:
 
 			if progress == 1.0 {
 				progressTicker.Stop()
+				r.cb.done(nil, r.c)
 				return
 			}
 

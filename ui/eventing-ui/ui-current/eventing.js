@@ -517,10 +517,13 @@ angular.module('eventing', [
 
                         switch (operation) {
                             case 'deploy':
-                            case 'resume':
                                 appClone.settings.deployment_status = true;
                                 appClone.settings.processing_status = true;
                                 return ApplicationService.public.deployApp(appClone);
+                            case 'resume':
+                                appClone.settings.deployment_status = true;
+                                appClone.settings.processing_status = true;
+                                return ApplicationService.public.updateSettings(appClone);
                             case 'pause':
                                 appClone.settings.deployment_status = true;
                                 appClone.settings.processing_status = false;
@@ -1271,7 +1274,7 @@ angular.module('eventing', [
             var config = require("ace/config");
             $scope.searchInCode = function() {
                 config.loadModule("ace/ext/cb-searchbox",
-                function(e) {if ($scope.editor) e.Search($scope.editor, true, true)});
+                function(e) {if ($scope.editor) e.Search($scope.editor, !self.editorDisabled, true)});
               }
 
             self.handler = app.appcode;
@@ -1398,7 +1401,7 @@ angular.module('eventing', [
                             ApplicationService.tempStore.saveApp(app)
                                 .then(function(response) {
                                     ApplicationService.server.showSuccessAlert('Code saved successfully!');
-                                    ApplicationService.server.showWarningAlert('Deploy for changes to take effect!');
+                                    ApplicationService.server.showWarningAlert('Deploy Or Resume for changes to take effect!');
 
                                     app.deprecatedNames = "";
                                     response.data.info.split(";").filter(msg => msg.includes("Warning")).forEach(function(msg){
