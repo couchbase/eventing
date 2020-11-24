@@ -101,8 +101,11 @@ func (wc *appLogCloser) manageLogFiles() {
 	logPrefix := "manageLogFiles:" + wc.path
 	if err := os.Rename(wc.path, fmt.Sprintf("%s.%d", wc.path, wc.highIndex+1)); err != nil {
 		logging.Errorf("%s: File Rename() failed err: %v", logPrefix, err)
-		return
+
+		// If the current active log file is renamed from outside, this attempt to rename will fail.
+		// We will simply move on with life, to go create the next file - not much else can be done anyways.
 	}
+
 	wc.highIndex++
 	fp, err := openFile(wc.path, wc.perm)
 	if err != nil {
@@ -112,8 +115,8 @@ func (wc *appLogCloser) manageLogFiles() {
 	w := bufio.NewWriter(fp)
 	oldFptr := (*filePtr)(atomic.LoadPointer(&wc.filePtr))
 	oldFptr.lock.Lock()
-	atomic.StorePointer(&wc.filePtr, unsafe.Pointer(&filePtr{ptr: fp, wptr: w}))
 	atomic.StoreInt64(&wc.size, 0)
+	atomic.StorePointer(&wc.filePtr, unsafe.Pointer(&filePtr{ptr: fp, wptr: w}))
 	oldFptr.wptr.Flush()
 	if err = oldFptr.ptr.Close(); err != nil {
 		logging.Errorf("%s: File Close() failed err: %v", logPrefix, err)
