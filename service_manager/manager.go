@@ -319,6 +319,8 @@ func (m *ServiceMgr) primaryStoreCsumPathCallback(path string, value []byte, rev
 
 	if len(value) > 0 {
 		//Read application from metakv
+		//NOTE WELL: Please do not access settings from this callback. While saving to primary store, we write app->csum->settings, in that order
+		//So by the time we hit this code, settings are likely not available or stale, so, do not access them
 		data, err := util.ReadAppContent(metakvAppsPath, metakvChecksumPath, fnName)
 		if err != nil {
 			logging.Errorf("%s Reading function: %s from metakv failed, err: %v", logPrefix, fnName, err)
@@ -431,7 +433,6 @@ func (m *ServiceMgr) settingChangeCallback(path string, value []byte, rev interf
 	if processingStatus == false {
 		m.graph.removeEdges(functionName)
 	} else if deploymentStatus == true && processingStatus == true {
-		logging.Infof("%s calling UpdateBucketGraphFromMetakv", logPrefix)
 		m.UpdateBucketGraphFromMetakv(functionName)
 	}
 
