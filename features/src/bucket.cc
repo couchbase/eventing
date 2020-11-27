@@ -204,6 +204,11 @@ Bucket::Get(const std::string &key) {
     ++lcb_retry_failure;
     return {nullptr, std::make_unique<lcb_STATUS>(err_code), nullptr};
   }
+
+  BucketCache::Fetch().Change(
+      BucketCache::MakeKey(bucket_name_, scope_name_, collection_name_, key),
+      result);
+
   return {nullptr, std::make_unique<lcb_STATUS>(err_code),
           std::make_unique<Result>(std::move(result))};
 }
@@ -245,6 +250,11 @@ Bucket::GetWithMeta(const std::string &key) {
     ++lcb_retry_failure;
     return {nullptr, std::make_unique<lcb_STATUS>(err_code), nullptr};
   }
+
+  BucketCache::Fetch().Change(
+      BucketCache::MakeKey(bucket_name_, scope_name_, collection_name_, key),
+      result);
+
   return {nullptr, std::make_unique<lcb_STATUS>(err_code),
           std::make_unique<Result>(std::move(result))};
 }
@@ -353,6 +363,9 @@ Bucket::SetWithXattr(const std::string &key, const char *value,
             nullptr, nullptr};
   }
 
+  BucketCache::Fetch().Invalidate(
+      BucketCache::MakeKey(bucket_name_, scope_name_, collection_name_, key));
+
   lcb_SUBDOCSPECS *specs;
   lcb_subdocspecs_create(&specs, 4);
   auto function_instance_id = GetFunctionInstanceID(isolate_);
@@ -412,6 +425,9 @@ Bucket::SetWithoutXattr(const std::string &key, const char *value,
             nullptr, nullptr};
   }
 
+  BucketCache::Fetch().Invalidate(
+      BucketCache::MakeKey(bucket_name_, scope_name_, collection_name_, key));
+
   lcb_CMDSTORE *cmd;
   lcb_cmdstore_create(&cmd, op_type);
   lcb_cmdstore_expiry(cmd, expiry);
@@ -440,6 +456,9 @@ Bucket::DeleteWithXattr(const std::string &key, uint64_t cas) {
     return {std::make_unique<std::string>("Connection is not initialized"),
             nullptr, nullptr};
   }
+
+  BucketCache::Fetch().Invalidate(
+      BucketCache::MakeKey(bucket_name_, scope_name_, collection_name_, key));
 
   lcb_SUBDOCSPECS *specs;
   lcb_subdocspecs_create(&specs, 4);
@@ -497,6 +516,9 @@ Bucket::DeleteWithoutXattr(const std::string &key, uint64_t cas) {
     return {std::make_unique<std::string>("Connection is not initialized"),
             nullptr, nullptr};
   }
+
+  BucketCache::Fetch().Invalidate(
+      BucketCache::MakeKey(bucket_name_, scope_name_, collection_name_, key));
 
   lcb_CMDREMOVE *cmd;
   lcb_cmdremove_create(&cmd);

@@ -77,7 +77,7 @@ goflags:=\
 
 $(workdir)/cc/eventing/%.o: %.cc
 	mkdir -p $(dir $(workdir)/cc/eventing/$<)
-	$(ccache) g++ -std=c++1z -c $(includes) $(cflags) -o $@ $<
+	$(ccache) g++ -std=c++1z -ggdb -Og -c $(includes) $(cflags) -o $@ $<
 
 gen/version/version.cc: util/version.in
 	make realclean

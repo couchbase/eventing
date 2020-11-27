@@ -161,6 +161,8 @@ typedef struct handler_config_s {
   bool skip_lcb_bootstrap;
   bool using_timer;
   int64_t timer_context_size;
+  int64_t bucket_cache_size;
+  int64_t bucket_cache_age;
   std::string n1ql_consistency;
   std::vector<std::string> handler_headers;
   std::vector<std::string> handler_footers;
@@ -383,7 +385,7 @@ private:
   std::atomic<bool> stop_timer_scan_;
   std::unordered_set<int64_t> partitions_;
   std::shared_ptr<BucketFactory> bucket_factory_;
-  std::vector<BucketBinding> bucket_bindings_;
+  std::list<BucketBinding> bucket_bindings_;
   std::vector<std::string> handler_headers_;
   std::vector<std::string> handler_footers_;
 };

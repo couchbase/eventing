@@ -933,6 +933,14 @@ func (m *ServiceMgr) validateSettings(appName string, settings map[string]interf
 		return
 	}
 
+	if info = m.validatePositiveInteger("bucket_cache_size", settings); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
+	if info = m.validatePositiveInteger("bucket_cache_age", settings); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
 	// Rebalance related configurations
 	if info = m.validatePositiveInteger("vb_ownership_giveup_routine_count", settings); info.Code != m.statusCodes.ok.Code {
 		return

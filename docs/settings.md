@@ -37,3 +37,6 @@
 |worker_feedback_queue_cap|500|Capacity of timer feedback queue on eventing-consumer|
 |worker_queue_cap|100000|Capacity of queue for main loop queue on eventing-consumer|
 |allow_interbucket_recursion|false|Allow deployment of handlers with inter bucket/inter handler recursion|
+|bucket_cache_size|64MB|Size to which bucket document cache can grow to before eviction begins|
+|bucket_cache_age|1000|Age in milliseconds after which a cached bucket document is considered stale|
+

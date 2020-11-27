@@ -23,6 +23,10 @@ struct MetaData {
   uint32_t expiry;
 };
 
+struct OptionsData {
+  bool cache;
+};
+
 struct MetaInfo {
   MetaInfo() : is_valid(false) {}
   MetaInfo(bool is_valid) : is_valid(is_valid) {}
@@ -34,6 +38,19 @@ struct MetaInfo {
   bool is_valid;
   std::string msg;
   MetaData meta;
+};
+
+struct OptionsInfo {
+  OptionsInfo() : is_valid(false) {}
+  OptionsInfo(bool is_valid) : is_valid(is_valid) {}
+  OptionsInfo(bool is_valid, std::string msg)
+      : is_valid(is_valid), msg(std::move(msg)) {}
+  OptionsInfo(bool is_valid, OptionsData meta)
+      : is_valid(is_valid), options(std::move(meta)) {}
+
+  bool is_valid;
+  std::string msg;
+  OptionsData options;
 };
 
 struct EpochInfo {
@@ -60,8 +77,11 @@ public:
 
 private:
   EpochInfo Epoch(const v8::Local<v8::Value> &date_val);
+
   MetaInfo ExtractMetaInfo(v8::Local<v8::Value> meta_object,
                            bool cas_check = false, bool expiry_check = false);
+
+  OptionsInfo ExtractOptionsInfo(v8::Local<v8::Value> options_object);
 
   Info ResponseSuccessObject(std::unique_ptr<Result> const &result,
                              v8::Local<v8::Object> &response_obj,
@@ -119,6 +139,7 @@ private:
   const char *success_str_;
   const char *json_str_;
   const char *invalid_counter_str_;
+  const char *cache_str_;
 };
 
 #endif

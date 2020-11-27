@@ -178,12 +178,7 @@ void SubDocumentLookupCallback(lcb_INSTANCE *instance, int cbtype,
           }
         }
       } else {
-        if (result->datatype & 1) {
           result->value.assign(cValue, nValue);
-        } else {
-          result->binary = cValue;
-          result->byteLength = nValue;
-        }
       }
     }
   }

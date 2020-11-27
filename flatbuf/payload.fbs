@@ -50,6 +50,9 @@ table Payload {
 
   src_mutation:bool; // Allow source bucket mutations
   num_timer_partitions:int; // Timer partitions are configurable using this.
+
+  bucket_cache_size:int64; // Bucket cache size
+  bucket_cache_age:int64; // Bucket cache max age
 }
 
 root_type Payload;

@@ -250,6 +250,18 @@ func (p *Producer) parseDepcfg() error {
 		p.handlerConfig.LcbRetryCount = 0
 	}
 
+	if val, ok := settings["bucket_cache_size"]; ok {
+		p.handlerConfig.BucketCacheSize = int64(val.(float64))
+	} else {
+		p.handlerConfig.BucketCacheSize = 64 * 1024 * 1024
+	}
+
+	if val, ok := settings["bucket_cache_age"]; ok {
+		p.handlerConfig.BucketCacheAge = int64(val.(float64))
+	} else {
+		p.handlerConfig.BucketCacheAge = 1000
+	}
+
 	// Metastore related configuration
 
 	if val, ok := settings["timer_context_size"]; ok {

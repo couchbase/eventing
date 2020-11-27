@@ -26,8 +26,6 @@ struct Result {
   uint32_t exptime{0};
   int64_t subdoc_counter{0};
   uint64_t counter{0};
-  const void *binary{0};
-  size_t byteLength;
 };
 
 constexpr int def_lcb_retry_count = 6;
