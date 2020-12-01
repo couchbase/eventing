@@ -11,9 +11,8 @@ import (
 	"sync/atomic"
 	"time"
 
-        "github.com/couchbase/cbauth/service"
+	"github.com/couchbase/cbauth/service"
 	"github.com/couchbase/eventing/common"
-	"github.com/couchbase/eventing/dcp"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/producer"
 	"github.com/couchbase/eventing/service_manager"
@@ -42,7 +41,7 @@ func NewSuperSupervisor(adminPort AdminPortConfig, eventingDir, kvPort, restPort
 		numVbuckets:                numVbuckets,
 		producerSupervisorTokenMap: make(map[common.EventingProducer]suptree.ServiceToken),
 		restPort:                   restPort,
-		retryCount:                 -1,
+		retryCount:                 60,
 		runningProducers:           make(map[string]common.EventingProducer),
 		runningProducersRWMutex:    &sync.RWMutex{},
 		supCmdCh:                   make(chan supCmdMsg, 10),
@@ -53,8 +52,7 @@ func NewSuperSupervisor(adminPort AdminPortConfig, eventingDir, kvPort, restPort
 	s.appRWMutex = &sync.RWMutex{}
 	s.appListRWMutex = &sync.RWMutex{}
 	s.mu = &sync.RWMutex{}
-	s.buckets = make(map[string]*couchbase.Bucket)
-	s.bucketsCount = make(map[string]uint)
+	s.buckets = make(map[string]*bucketWatchStruct)
 	s.bucketsRWMutex = &sync.RWMutex{}
 	s.superSup.ServeBackground("SuperSupervisor")
 
@@ -279,8 +277,11 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 						}
 					}
 
-					s.spawnApp(appName, cTimers)
-
+					err = s.spawnApp(appName, cTimers)
+					if err != nil {
+						logging.Errorf("%s [%d] Function: %s spawning error: %v", logPrefix, s.runningFnsCount(), appName, err)
+						return nil
+					}
 					s.appRWMutex.Lock()
 					s.appDeploymentStatus[appName] = deploymentStatus
 					s.appProcessingStatus[appName] = processingStatus
@@ -333,8 +334,8 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 
 						p.PauseProducer()
 						p.NotifySupervisor()
-						s.UnwatchBucket(p.SourceBucket())
-						s.UnwatchBucket(p.MetadataBucket())
+						s.UnwatchBucket(p.SourceBucket(), appName)
+						s.UnwatchBucket(p.MetadataBucket(), appName)
 						logging.Infof("%s [%d] Function: %s Cleaned up running Eventing.Producer instance", logPrefix, s.runningFnsCount(), appName)
 
 					}
@@ -482,14 +483,19 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(path string, value []byte,
 					s.bootstrappingApps[appName] = time.Now().String()
 					s.appListRWMutex.Unlock()
 
-					s.spawnApp(appName, false)
+					err = s.spawnApp(appName, false)
+					if err != nil {
+						logging.Errorf("%s [%d] Function: %s spawning error: %v", logPrefix, s.runningFnsCount(), appName, err)
+						continue
+					}
+
 					s.appRWMutex.Lock()
 					s.appDeploymentStatus[appName] = deploymentStatus
 					s.appProcessingStatus[appName] = processingStatus
 					s.appRWMutex.Unlock()
 					err = s.serviceMgr.UpdateBucketGraphFromMetakv(appName)
 					if err != nil {
-						return nil
+						logging.Errorf("%s [%d] Function: %s UpdateBucketGraphFromMetakv error: %v", logPrefix, s.runningFnsCount(), appName, err)
 					}
 					if eventingProducer, ok := s.runningFns()[appName]; ok {
 						eventingProducer.SignalBootstrapFinish()
@@ -635,8 +641,21 @@ func (s *SuperSupervisor) AppsRetryCallback(path string, value []byte, rev inter
 	return nil
 }
 
-func (s *SuperSupervisor) spawnApp(appName string, cleanupTimers bool) {
+func (s *SuperSupervisor) spawnApp(appName string, cleanupTimers bool) error {
 	logPrefix := "SuperSupervisor::spawnApp"
+
+	source, metadata, err := s.getSourceAndMetaBucket(appName)
+	if err != nil {
+		return err
+	}
+	err = s.WatchBucket(source, appName)
+	if err != nil {
+		return err
+	}
+	err = s.WatchBucket(metadata, appName)
+	if err != nil {
+		return err
+	}
 
 	metakvAppHostPortsPath := fmt.Sprintf("%s%s/", metakvProducerHostPortsPath, appName)
 
@@ -657,6 +676,7 @@ func (s *SuperSupervisor) spawnApp(appName string, cleanupTimers bool) {
 	p.NotifyPrepareTopologyChange(s.ejectNodes, s.keepNodes, service.TopologyChangeTypeRebalance)
 
 	s.updateQuotaForRunningFns()
+	return nil
 }
 
 // HandleSupCmdMsg handles control commands like app (re)deploy, settings update
@@ -758,15 +778,21 @@ func (s *SuperSupervisor) CleanupProducer(appName string, skipMetaCleanup bool, 
 		p.StopRunningConsumers()
 		p.CleanupUDSs()
 
-		s.UnwatchBucket(p.SourceBucket())
-		s.UnwatchBucket(p.MetadataBucket())
-
 		if !skipMetaCleanup {
 			p.CleanupMetadataBucket(false)
 		}
 
+		s.UnwatchBucket(p.SourceBucket(), appName)
+		s.UnwatchBucket(p.MetadataBucket(), appName)
+
 		if updateMetakv {
 			util.Retry(util.NewExponentialBackoff(), &s.retryCount, undeployFunctionCallback, s, appName)
+		}
+	} else {
+		source, metadata, err := s.getSourceAndMetaBucket(appName)
+		if err == nil {
+			s.UnwatchBucket(source, appName)
+			s.UnwatchBucket(metadata, appName)
 		}
 	}
 

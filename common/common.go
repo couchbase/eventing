@@ -277,7 +277,7 @@ type EventingSuperSup interface {
 	GetLcbExceptionsStats(appName string) map[string]uint64
 	GetLocallyDeployedApps() map[string]string
 	GetMetaStoreStats(appName string) map[string]uint64
-	GetBucket(bucketName string) (*couchbase.Bucket, error)
+	GetBucket(bucketName, appName string) (*couchbase.Bucket, error)
 	GetSeqsProcessed(appName string) map[int]int64
 	InternalVbDistributionStats(appName string) map[string]string
 	KillAllConsumers()
@@ -286,7 +286,7 @@ type EventingSuperSup interface {
 	PlannerStats(appName string) []*PlannerNodeVbMapping
 	RebalanceStatus() bool
 	RebalanceTaskProgress(appName string) (*RebalanceProgress, error)
-	UnwatchBucket(bucketName string)
+	UnwatchBucket(bucketName, appName string)
 	RemoveProducerToken(appName string)
 	RestPort() string
 	SignalStopDebugger(appName string) error

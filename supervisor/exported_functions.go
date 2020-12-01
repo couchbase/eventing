@@ -2,7 +2,6 @@ package supervisor
 
 import (
 	"fmt"
-	"net"
 	"time"
 	"sync/atomic"
 
@@ -10,7 +9,6 @@ import (
 	"github.com/couchbase/eventing/dcp"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/timers"
-	"github.com/couchbase/eventing/util"
 )
 
 // ClearEventStats flushes event processing stats
@@ -611,47 +609,36 @@ func (s *SuperSupervisor) GetAppLog(fnName string, sz int64) []string {
 
 }
 
-func (s *SuperSupervisor) watchBucketWithLock(bucketName string) error {
-	if _, ok := s.buckets[bucketName]; !ok {
-		hostPortAddr := net.JoinHostPort(util.Localhost(), s.restPort)
-		b, err := util.ConnectBucket(hostPortAddr, "default", bucketName)
-		if err != nil {
-			logging.Errorf("Could not connect to bucket %s", bucketName)
-			return err
-		} else {
-			s.buckets[bucketName] = b
-		}
-	}
-	s.bucketsCount[bucketName]++
-	return nil
+func (s *SuperSupervisor) WatchBucket(bucketName, appName string) error {
+	return s.watchBucketWithLock(bucketName, appName)
 }
 
 // UnwatchBucket removes the bucket from supervisor
-func (s *SuperSupervisor) UnwatchBucket(bucketName string) {
+//TODO: Only unwatch bucket to which app register to watch
+func (s *SuperSupervisor) UnwatchBucket(bucketName, appName string) {
 	s.bucketsRWMutex.Lock()
 	defer s.bucketsRWMutex.Unlock()
-	if _, ok := s.buckets[bucketName]; ok {
-		s.bucketsCount[bucketName]--
-		if s.bucketsCount[bucketName] == 0 {
-			delete(s.buckets, bucketName)
+	if bucketWatch, ok := s.buckets[bucketName]; ok {
+		if _, ok := bucketWatch.apps[appName]; ok {
+			delete(bucketWatch.apps, appName)
+			if len(bucketWatch.apps) == 0 {
+				bucketWatch.Close()
+				delete(s.buckets, bucketName)
+			}
 		}
 	}
 }
 
 // GetBucket returns the bucket to the caller
-func (s *SuperSupervisor) GetBucket(bucketName string) (*couchbase.Bucket, error) {
+func (s *SuperSupervisor) GetBucket(bucketName, appName string) (*couchbase.Bucket, error) {
 	s.bucketsRWMutex.Lock()
 	defer s.bucketsRWMutex.Unlock()
-	if _, ok := s.buckets[bucketName]; ok {
-		return s.buckets[bucketName], nil
+	if bucketWatch, ok := s.buckets[bucketName]; ok {
+		if _, ok := bucketWatch.apps[appName]; !ok {
+			return nil, fmt.Errorf("Function: %s is no longer watching bucket: %s", appName, bucketName)
+		}
+		return bucketWatch.b, nil
 	}
 
-	if err := s.watchBucketWithLock(bucketName); err != nil {
-		return nil, err
-	}
-
-	if err := s.buckets[bucketName].Refresh(); err != nil {
-		return nil, err
-	}
-	return s.buckets[bucketName], nil
+	return nil, fmt.Errorf("Function: %s requested bucket: %s is not in watch list", appName, bucketName)
 }

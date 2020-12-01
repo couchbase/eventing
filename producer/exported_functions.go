@@ -612,13 +612,11 @@ func (p *Producer) cleanupMetadataImpl(id int, vbsToCleanup []uint16, undeployWG
 		return err
 	}
 
-	var b *couchbase.Bucket
-	var dcpFeed *couchbase.DcpFeed
-	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, commonConnectBucketOpCallback, p, &b)
-	if err == common.ErrRetryTimeout {
-		logging.Errorf("%s [%s:%d:id_%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers(), id)
+	b, err := p.superSup.GetBucket(p.metadatabucket, p.appName)
+	if err != nil {
 		return err
 	}
+	var dcpFeed *couchbase.DcpFeed
 
 	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, cleanupMetadataCallback, p, &b, &dcpFeed, id)
 	if err == common.ErrRetryTimeout {

@@ -121,8 +121,19 @@ func (s *SuperSupervisor) getStatuses(data []byte) (bool, bool, bool, map[string
 	return pStatus, dStatus, cTimers, settings, nil
 }
 
-func (s *SuperSupervisor) getSourceAndMetaBucketNodeCount(appName string) (sourceNodeCount int, metaNodeCount int, err error) {
-	logPrefix := "SuperSupervisor::getSourceAndMetaBucketNodeCount"
+func (s *SuperSupervisor) getSourceAndMetaBucketNodeCount(appName string) (int, int, error) {
+	source, meta, err := s.getSourceAndMetaBucket(appName)
+	if err != nil {
+		return 0, 0, err
+	}
+	hostAddress := net.JoinHostPort(util.Localhost(), s.restPort)
+	sourceNodeCount := util.CountActiveKVNodes(source, hostAddress)
+	metaNodeCount := util.CountActiveKVNodes(meta, hostAddress)
+	return sourceNodeCount, metaNodeCount, nil
+}
+
+func (s *SuperSupervisor) getSourceAndMetaBucket(appName string) (source string, meta string, err error) {
+	logPrefix := "SuperSupervisor::getSourceAndMetaBucket"
 	var appData []byte
 	err = util.Retry(util.NewFixedBackoff(time.Second), nil, metakvAppCallback, s, MetakvAppsPath, MetakvChecksumPath, appName, &appData)
 	if err == common.ErrRetryTimeout {
@@ -131,11 +142,8 @@ func (s *SuperSupervisor) getSourceAndMetaBucketNodeCount(appName string) (sourc
 	}
 	config := cfg.GetRootAsConfig(appData, 0)
 	depcfg := config.DepCfg(new(cfg.DepCfg))
-	source := string(depcfg.SourceBucket())
-	meta := string(depcfg.MetadataBucket())
-	hostAddress := net.JoinHostPort(util.Localhost(), s.restPort)
-	sourceNodeCount = util.CountActiveKVNodes(source, hostAddress)
-	metaNodeCount = util.CountActiveKVNodes(meta, hostAddress)
+	source = string(depcfg.SourceBucket())
+	meta = string(depcfg.MetadataBucket())
 	return
 }
 
@@ -191,6 +199,24 @@ func parseNano(n uint64) string {
 	}
 
 	return strconv.Itoa(int(n)) + suffix
+}
+
+func (s *SuperSupervisor) watchBucketWithLock(bucketName, appName string) error {
+	logPrefix := "Supervisor::watchBucketWithLock"
+	bucketWatch, ok := s.buckets[bucketName]
+	if !ok {
+		bucketWatch = &bucketWatchStruct{}
+		err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &s.retryCount, commonConnectBucketOpCallback, &bucketWatch.b, bucketName, s.restPort)
+		if err != nil {
+			logging.Errorf("%s: Could not connect to bucket %s err: %v", logPrefix, bucketName, err)
+			return err
+		}
+		bucketWatch.apps = make(map[string]struct{})
+		s.buckets[bucketName] = bucketWatch
+	}
+	bucketWatch.apps[appName] = struct{}{}
+
+	return nil
 }
 
 func (s *SuperSupervisor) bucketRefresh() error {
@@ -279,4 +305,12 @@ func (s *SuperSupervisor) getConfig() (c common.Config) {
 		}
 	}
 	return
+}
+
+func (bw *bucketWatchStruct) Refresh() error {
+	return bw.b.Refresh()
+}
+
+func (bw *bucketWatchStruct) Close() {
+	bw.b.Close()
 }

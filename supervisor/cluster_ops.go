@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/couchbase/cbauth"
+	"github.com/couchbase/eventing/dcp"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
 )
@@ -114,4 +115,23 @@ var undeployFunctionCallback = func(args ...interface{}) error {
 
 	logging.Infof("%s [%d] Function: %s response from server: %s resp: %rs", logPrefix, s.runningFnsCount(), appName, string(content), resp)
 	return nil
+}
+
+var commonConnectBucketOpCallback = func(args ...interface{}) error {
+	logPrefix := "Supervisor::commonConnectBucketOpCallback"
+	b := args[0].(**couchbase.Bucket)
+	bucketName := args[1].(string)
+	restPort := args[2].(string)
+
+	hostPortAddr := net.JoinHostPort(util.Localhost(), restPort)
+
+	var err error
+	*b, err = util.ConnectBucket(hostPortAddr, "default", bucketName)
+	if err != nil {
+		logging.Errorf("%s: Unable to connect to bucket: %s err: %v", logPrefix, bucketName, err)
+	} else {
+		logging.Infof("%s: Connected to bucket: %s", logPrefix, bucketName)
+	}
+
+	return err
 }

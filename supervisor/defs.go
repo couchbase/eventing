@@ -2,6 +2,7 @@ package supervisor
 
 import (
 	"sync"
+	"time"
 
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/dcp"
@@ -41,6 +42,9 @@ const (
 	numVbuckets = 1024
 )
 
+//TODO: move it to common package
+const bucketOpRetryInterval = time.Duration(1000) * time.Millisecond
+
 const (
 	supCmdType int8 = iota
 	cmdAppDelete
@@ -60,6 +64,11 @@ type AdminPortConfig struct {
 	SslPort      string
 	CertFile     string
 	KeyFile      string
+}
+
+type bucketWatchStruct struct {
+	b    *couchbase.Bucket
+	apps map[string]struct{}
 }
 
 // SuperSupervisor is responsible for managing/supervising all producer instances
@@ -82,8 +91,7 @@ type SuperSupervisor struct {
 	bucketsRWMutex          *sync.RWMutex
 	servicesNotifierRetryTm uint
 	finch                   chan bool
-	buckets                 map[string]*couchbase.Bucket // Access controlled by bucketsRWMutex
-	bucketsCount            map[string]uint              // Access controlled by bucketsRWMutex
+	buckets                 map[string]*bucketWatchStruct // Access controlled by bucketsRWMutex
 	isRebalanceOngoing      int32
 
 	appRWMutex *sync.RWMutex
