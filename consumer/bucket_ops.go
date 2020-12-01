@@ -3,7 +3,6 @@ package consumer
 import (
 	"errors"
 	"fmt"
-	"net"
 	"runtime/debug"
 	"strconv"
 	"strings"
@@ -94,38 +93,6 @@ var gocbConnectMetaBucketCallback = func(args ...interface{}) error {
 		logPrefix, c.workerName, c.producer.LenRunningConsumers(), c.producer.MetadataBucket(), connStr)
 
 	return nil
-}
-
-var commonConnectBucketOpCallback = func(args ...interface{}) error {
-	logPrefix := "Consumer::commonConnectBucketOpCallback"
-
-	c := args[0].(*Consumer)
-	b := args[1].(**couchbase.Bucket)
-
-	if atomic.LoadUint32(&c.isTerminateRunning) == 1 {
-		logging.Tracef("%s [%s:%s:%d] Exiting as worker is terminating",
-			logPrefix, c.workerName, c.tcpPort, c.Pid())
-		return nil
-	}
-
-	hostPortAddr := net.JoinHostPort(util.Localhost(), c.producer.GetNsServerPort())
-
-	c.cbBucketRWMutex.Lock()
-	defer c.cbBucketRWMutex.Unlock()
-
-	var err error
-	*b, _, err = util.ConnectBucket(hostPortAddr, "default", c.sourceKeyspace.BucketName)
-	if err != nil {
-		logging.Errorf("%s [%s:%d] Connect to bucket: %s failed isTerminateRunning: %d , err: %v",
-			logPrefix, c.workerName, c.producer.LenRunningConsumers(), c.sourceKeyspace.BucketName,
-			atomic.LoadUint32(&c.isTerminateRunning), err)
-	} else {
-		logging.Infof("%s [%s:%d] Connected to bucket: %s isTerminateRunning: %d",
-			logPrefix, c.workerName, c.producer.LenRunningConsumers(), c.sourceKeyspace.BucketName,
-			atomic.LoadUint32(&c.isTerminateRunning))
-	}
-
-	return err
 }
 
 var setOpCallback = func(args ...interface{}) error {
@@ -746,7 +713,7 @@ var getFailoverLogOpCallback = func(args ...interface{}) error {
 	defer c.cbBucketRWMutex.Unlock()
 
 	var err error
-	c.cbBucket, err = c.superSup.GetBucket(c.cbBucket.Name)
+	c.cbBucket, err = c.superSup.GetBucket(c.sourceKeyspace.BucketName, c.app.AppName)
 	if err != nil {
 		logging.Errorf("%s [%s:%s:%d] Failed to refresh bucket handle, err: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
@@ -779,7 +746,7 @@ var getEFFailoverLogOpAllVbucketsCallback = func(args ...interface{}) error {
 	defer c.cbBucketRWMutex.Unlock()
 
 	var err error
-	c.cbBucket, err = c.superSup.GetBucket(c.cbBucket.Name)
+	c.cbBucket, err = c.superSup.GetBucket(c.sourceKeyspace.BucketName, c.app.AppName)
 	if err != nil {
 		logging.Errorf("%s [%s:%s:%d] vb: %d failed to refresh vbmap, err: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, err)
@@ -812,10 +779,10 @@ var startDCPFeedOpCallback = func(args ...interface{}) error {
 	defer c.cbBucketRWMutex.Unlock()
 
 	var err error
-	c.cbBucket, err = c.superSup.GetBucket(c.cbBucket.Name)
+	c.cbBucket, err = c.superSup.GetBucket(c.sourceKeyspace.BucketName, c.app.AppName)
 	if err != nil {
 		logging.Errorf("%s [%s:%s:%d] Bucket: %s kv node: %rs failed to refresh vbmap, err: %v",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), c.cbBucket.Name, kvHostPort, err)
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), c.sourceKeyspace.BucketName, kvHostPort, err)
 		return err
 	}
 
@@ -824,11 +791,11 @@ var startDCPFeedOpCallback = func(args ...interface{}) error {
 
 	if err != nil {
 		logging.Errorf("%s [%s:%s:%d] Failed to start dcp feed for bucket: %v from kv node: %rs, err: %v",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), c.cbBucket.Name, kvHostPort, err)
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), c.sourceKeyspace.BucketName, kvHostPort, err)
 		return err
 	}
 	logging.Infof("%s [%s:%s:%d] Started up dcp feed for bucket: %v from kv node: %rs",
-		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.cbBucket.Name, kvHostPort)
+		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.sourceKeyspace.BucketName, kvHostPort)
 
 	// Lock not needed as caller already has grabbed write lock
 	c.kvHostDcpFeedMap[kvHostPort] = dcpFeed
@@ -875,7 +842,7 @@ var populateDcpFeedVbEntriesCallback = func(args ...interface{}) error {
 			defer c.cbBucketRWMutex.Unlock()
 
 			var err error
-			c.cbBucket, err = c.superSup.GetBucket(c.cbBucket.Name)
+			c.cbBucket, err = c.superSup.GetBucket(c.sourceKeyspace.BucketName, c.app.AppName)
 			if err != nil {
 				logging.Errorf("%s [%s:%s:%d] feed: %s failed to refresh vbmap, err: %v",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), feedName.Raw(), err)
