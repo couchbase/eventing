@@ -654,6 +654,7 @@ func (s *SuperSupervisor) spawnApp(appName string, cleanupTimers bool) error {
 	}
 	err = s.WatchBucket(metadata, appName)
 	if err != nil {
+		s.UnwatchBucket(source, appName)
 		return err
 	}
 
