@@ -349,7 +349,7 @@ Bucket::CounterWithXattr(const std::string &key, lcb_CAS cas, lcb_U32 expiry, st
 }
 
 std::tuple<Error, std::unique_ptr<lcb_error_t>, std::unique_ptr<Result>>
-Bucket::SetWithXattr(const std::string &key, const void* value, int value_length,
+Bucket::SetWithXattr(const std::string &key, const std::string &value,
                      lcb_U32 op_type, lcb_U32 expiry, lcb_CAS cas) {
   if (!is_connected_) {
     return {std::make_unique<std::string>("Connection is not initialized"),
@@ -392,7 +392,7 @@ Bucket::SetWithXattr(const std::string &key, const void* value, int value_length
   lcb_SDSPEC doc_spec = {0};
   doc_spec.sdcmd = LCB_SDCMD_SET_FULLDOC;
   LCB_SDSPEC_SET_PATH(&doc_spec, "", 0);
-  LCB_SDSPEC_SET_VALUE(&doc_spec, value, value_length);
+  LCB_SDSPEC_SET_VALUE(&doc_spec, value.data(), value.size());
 
   std::vector<lcb_SDSPEC> specs = {function_id_spec, dcp_seqno_spec,
                                    value_crc32_spec, doc_spec};
@@ -417,7 +417,7 @@ Bucket::SetWithXattr(const std::string &key, const void* value, int value_length
 }
 
 std::tuple<Error, std::unique_ptr<lcb_error_t>, std::unique_ptr<Result>>
-Bucket::SetWithoutXattr(const std::string &key, const void* value, int value_length,
+Bucket::SetWithoutXattr(const std::string &key, const std::string &value,
                         lcb_storage_t op_type, lcb_U32 expiry, lcb_CAS cas, lcb_U32 doc_type) {
   if (!is_connected_) {
     return {std::make_unique<std::string>("Connection is not initialized"),
@@ -426,7 +426,7 @@ Bucket::SetWithoutXattr(const std::string &key, const void* value, int value_len
 
   lcb_CMDSTORE cmd = {0};
   LCB_CMD_SET_KEY(&cmd, key.c_str(), key.length());
-  LCB_CMD_SET_VALUE(&cmd, value, value_length);
+  LCB_CMD_SET_VALUE(&cmd, value.data(), value.size());
   cmd.operation = op_type;
   cmd.exptime = expiry;
   cmd.cas = cas;
@@ -540,6 +540,7 @@ void BucketBinding::BucketGet<v8::Local<v8::Name>>(
   auto isolate = info.GetIsolate();
   auto isolate_data = UnwrapData(isolate);
   auto js_exception = isolate_data->js_exception;
+  auto utils = isolate_data->utils;
   std::lock_guard<std::mutex> guard(isolate_data->termination_lock_);
   if (!isolate_data->is_executing_) {
     return;
@@ -578,11 +579,20 @@ void BucketBinding::BucketGet<v8::Local<v8::Name>>(
     return;
   }
 
-  v8::Local<v8::Value> value_json;
-  TO_LOCAL(v8::JSON::Parse(context, v8Str(isolate, result->value)),
-           &value_json);
-  // TODO : Log here or throw exception if JSON parse fails
-  info.GetReturnValue().Set(value_json);
+  v8::Local<v8::Value> doc;
+  // doc is json type
+  if (result->datatype & JSON_DOC) {
+    if (!(TO_LOCAL(v8::JSON::Parse(context, v8Str(isolate, result->value)),
+                   &doc))) {
+      js_exception->ThrowEventingError("Unable to parse response body as JSON");
+      return;
+    }
+  } else {
+    doc = utils->ToArrayBuffer(static_cast<void *>(result->value.data()),
+                               result->value.length());
+  }
+
+  info.GetReturnValue().Set(doc);
 }
 
 // Performs the lcb related calls when bucket object is accessed
@@ -592,6 +602,9 @@ void BucketBinding::BucketSet<v8::Local<v8::Name>>(
     const v8::PropertyCallbackInfo<v8::Value> &info) {
   auto isolate = info.GetIsolate();
   auto js_exception = UnwrapData(isolate)->js_exception;
+  std::string value_str;
+
+  v8::Local<v8::ArrayBuffer> array_buf;
   std::lock_guard<std::mutex> guard(UnwrapData(isolate)->termination_lock_);
   if (!UnwrapData(isolate)->is_executing_) {
     return;
@@ -615,7 +628,14 @@ void BucketBinding::BucketSet<v8::Local<v8::Name>>(
   // TODO : Do not cast to v8::String, just use name directly
   v8::String::Utf8Value utf8_key(isolate, name.As<v8::String>());
   std::string key(*utf8_key);
-  auto value = JSONStringify(isolate, value_obj);
+  if (value_obj->IsArrayBuffer()) {
+    array_buf = value_obj.As<v8::ArrayBuffer>();
+    auto contents = array_buf->GetContents();
+    value_str.assign(static_cast<const char *>(contents.Data()),
+                     contents.ByteLength());
+  } else {
+    value_str = JSONStringify(isolate, value_obj);
+  }
 
   auto bucket = UnwrapInternalField<Bucket>(info.Holder(),
                                             InternalFields::kBucketInstance);
@@ -623,7 +643,7 @@ void BucketBinding::BucketSet<v8::Local<v8::Name>>(
       UnwrapInternalField<bool>(info.Holder(), InternalFields::kIsSourceBucket);
 
   auto [error, err_code, result] =
-      BucketSet(key, value, *is_source_bucket, bucket);
+      BucketSet(key, value_str, *is_source_bucket, bucket);
   if (error != nullptr) {
     js_exception->ThrowEventingError(*error);
     return;
@@ -780,11 +800,10 @@ void BucketBinding::BucketDelete<uint32_t>(
 std::tuple<Error, std::unique_ptr<lcb_error_t>, std::unique_ptr<Result>>
 BucketBinding::BucketSet(const std::string &key, const std::string &value,
                          bool is_source_bucket, Bucket *bucket) {
-  const char* data = value.c_str();
   if (is_source_bucket) {
-    return bucket->SetWithXattr(key, data, strlen(data));
+    return bucket->SetWithXattr(key, value);
   }
-  return bucket->SetWithoutXattr(key, data, strlen(data));
+  return bucket->SetWithoutXattr(key, value);
 }
 
 std::tuple<Error, std::unique_ptr<lcb_error_t>, std::unique_ptr<Result>>

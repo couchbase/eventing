@@ -59,12 +59,12 @@ public:
   Get(const std::string &key);
 
   std::tuple<Error, std::unique_ptr<lcb_error_t>, std::unique_ptr<Result>>
-  SetWithXattr(const std::string &key, const void* value, int value_length,
+  SetWithXattr(const std::string &key, const std::string &value,
                lcb_U32 op_type = LCB_CMDSUBDOC_F_UPSERT_DOC, lcb_U32 expiry = 0,
                lcb_CAS cas = 0);
 
   std::tuple<Error, std::unique_ptr<lcb_error_t>, std::unique_ptr<Result>>
-  SetWithoutXattr(const std::string &key, const void* value, int value_length,
+  SetWithoutXattr(const std::string &key, const std::string &value,
                   lcb_storage_t op_type = LCB_SET, lcb_U32 expiry = 0, lcb_CAS cas = 0,
                   lcb_U32 doc_type = 0x2000000);
 

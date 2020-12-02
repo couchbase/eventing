@@ -72,6 +72,7 @@ void GetCallback(lcb_t instance, int, const lcb_RESPBASE *rb) {
     lcb_breakout(instance);
   }
   result->cas = resp->cas;
+  result->datatype = resp->datatype;
 
   if (resp->rc == LCB_SUCCESS) {
     result->value.assign(reinterpret_cast<const char *>(resp->value),
@@ -157,21 +158,16 @@ void SubDocumentLookupCallback(lcb_t instance, int cbtype, const lcb_RESPBASE *r
         auto json = nlohmann::json::parse(reinterpret_cast<const char *>(resp_item.value));
         auto values = json.get<std::vector<std::string>>();
         for (const auto &type : values) {
-          if(type == "json"){
-            result->datatype = result->datatype | 1;
+          if (type == "json") {
+            result->datatype = result->datatype | JSON_DOC;
           }
-          if(type == "xattr") {
-            result->datatype = result->datatype | 4;
+          if (type == "xattr") {
+            result->datatype = result->datatype | XATTR_DOC;
           }
         }
       } else {
-        if(result->datatype & 1) {
-          result->value.assign(reinterpret_cast<const char *>(resp_item.value),
+      	 result->value.assign(reinterpret_cast<const char *>(resp_item.value),
                            static_cast<int>(resp_item.nvalue));
-        } else {
-          result->binary = resp_item.value;
-          result->byteLength = static_cast<size_t>(resp_item.nvalue);
-        }
       }
       index++;
     }

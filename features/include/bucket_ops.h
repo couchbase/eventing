@@ -81,7 +81,7 @@ private:
   Counter(const std::string &key, lcb_CAS cas, lcb_U32 expiry, std::string delta, bool is_source_bucket, Bucket *bucket);
 
   std::tuple<Error, std::unique_ptr<lcb_error_t>, std::unique_ptr<Result>>
-  Set(const std::string &key, const void* value, int value_length, lcb_storage_t op_type, lcb_U32 expiry,
+  Set(const std::string &key, const std::string &value, lcb_storage_t op_type, lcb_U32 expiry,
                               lcb_CAS cas, lcb_U32 doc_type, bool is_source_bucket, Bucket *bucket);
 
   std::tuple<Error, std::unique_ptr<lcb_error_t>, std::unique_ptr<Result>>
@@ -110,6 +110,7 @@ private:
   const char *error_str_;
   const char *success_str_;
   const char *json_str_;
+  const char *binary_str_;
   const char *invalid_counter_str_;
 };
 

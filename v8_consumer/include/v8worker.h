@@ -231,7 +231,8 @@ public:
   void RouteMessage();
   void TaskDurationWatcher();
 
-  int SendUpdate(const std::string &value, const std::string &meta);
+  int SendUpdate(const std::string &value, const std::string &meta,
+                 bool is_binary);
   int SendDelete(const std::string &value, const std::string &meta);
   void SendTimer(std::string callback, std::string timer_ctx);
   std::string Compile(std::string handler);

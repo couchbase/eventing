@@ -24,9 +24,10 @@ struct Result {
   std::string value;
   uint32_t exptime{0};
   int64_t counter{0};
-  const void *binary{0};
-  size_t byteLength;
 };
+
+const uint8_t JSON_DOC = 1;
+const uint8_t XATTR_DOC = 4;
 
 constexpr int def_lcb_retry_count = 6;
 constexpr int def_lcb_retry_timeout = 0;

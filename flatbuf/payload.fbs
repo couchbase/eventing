@@ -49,6 +49,7 @@ table Payload {
   lcb_retry_count:int;
 
   num_timer_partitions:int; // Timer partitions are configurable using this.
+  is_binary:bool; //dcp mutation value is binary or json
 }
 
 root_type Payload;
