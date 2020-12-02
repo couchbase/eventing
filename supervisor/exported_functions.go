@@ -631,20 +631,12 @@ func (s *SuperSupervisor) GetBucket(bucketName, appName string) (*couchbase.Buck
 	defer s.bucketsRWMutex.Unlock()
 	if bucketWatch, ok := s.buckets[bucketName]; ok {
 		if _, ok := bucketWatch.apps[appName]; !ok {
-			// add this into bucketWatch group
-			bucketWatch.apps[appName] = struct{}{}
+			return nil, fmt.Errorf("Function: %s is no longer watching bucket: %s", appName, bucketName)
 		}
 		return bucketWatch.b, nil
 	}
 
-	if err := s.watchBucketWithLock(bucketName, appName); err != nil {
-		return nil, err
-	}
-
-	if err := s.buckets[bucketName].Refresh(); err != nil {
-		return nil, err
-	}
-	return s.buckets[bucketName].b, nil
+	return nil, fmt.Errorf("Function: %s requested bucket: %s is not in watch list", appName, bucketName)
 }
 
 func (s *SuperSupervisor) IncWorkerRespawnedCount() {

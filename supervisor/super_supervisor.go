@@ -792,6 +792,12 @@ func (s *SuperSupervisor) CleanupProducer(appName string, skipMetaCleanup bool, 
 		if updateMetakv {
 			util.Retry(util.NewExponentialBackoff(), &s.retryCount, undeployFunctionCallback, s, appName)
 		}
+	} else {
+		source, metadata, err := s.getSourceAndMetaBucket(appName)
+		if err == nil {
+			s.UnwatchBucket(source, appName)
+			s.UnwatchBucket(metadata, appName)
+		}
 	}
 
 	return nil
