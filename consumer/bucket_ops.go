@@ -742,6 +742,12 @@ var getEFFailoverLogOpAllVbucketsCallback = func(args ...interface{}) error {
 		vbs = append(vbs, uint16(vb))
 	}
 
+	if atomic.LoadUint32(&c.isTerminateRunning) == 1 {
+		logging.Tracef("%s [%s:%s:%d] Exiting as worker is terminating",
+			logPrefix, c.workerName, c.tcpPort, c.Pid())
+		return nil
+	}
+
 	c.cbBucketRWMutex.Lock()
 	defer c.cbBucketRWMutex.Unlock()
 
@@ -817,6 +823,12 @@ var populateDcpFeedVbEntriesCallback = func(args ...interface{}) error {
 	}()
 
 	kvHostDcpFeedMap := make(map[string]*couchbase.DcpFeed)
+
+	if atomic.LoadUint32(&c.isTerminateRunning) == 1 {
+		logging.Tracef("%s [%s:%s:%d] Exiting as worker is terminating",
+			logPrefix, c.workerName, c.tcpPort, c.Pid())
+		return nil
+	}
 
 	c.hostDcpFeedRWMutex.RLock()
 	for kvHost, dcpFeed := range c.kvHostDcpFeedMap {
