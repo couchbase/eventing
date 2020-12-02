@@ -81,10 +81,10 @@ func (c *Consumer) processDCPEvents() {
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key), e.Datatype)
 
 				switch e.Datatype {
-				case dcpDatatypeJSON:
+				case dcpDatatypeJSON, dcpDatatypeBinary:
 					c.dcpMutationCounter++
 					c.sendEvent(e)
-				case dcpDatatypeJSONXattr:
+				case dcpDatatypeJSONXattr, dcpDatatypeBinXattr:
 					xattrLen := binary.BigEndian.Uint32(e.Value[0:4])
 					if c.producer.SrcMutation() {
 						if isRecursive, err := c.isRecursiveDCPEvent(e, functionInstanceID); err == nil && isRecursive == true {

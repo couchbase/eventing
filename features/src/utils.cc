@@ -439,7 +439,7 @@ ConnStrInfo Utils::GetConnectionString(const std::string &bucket) const {
   return conn_info;
 }
 
-v8::Local<v8::ArrayBuffer> Utils::ToArrayBuffer(void *buffer,
+v8::Local<v8::ArrayBuffer> Utils::ToArrayBuffer(const void *buffer,
                                                 std::size_t size) {
   v8::EscapableHandleScope handle_scope(isolate_);
 

@@ -2084,3 +2084,40 @@ func TestJSExpiryDate(t *testing.T) {
 	dumpStats()
 	flushFunctionAndBucket(functionName)
 }
+
+func TestBinaryDoc(t *testing.T) {
+	functionName := t.Name()
+	itemCount := 32
+	jsFileName := "binarydoc"
+	time.Sleep(time.Second * 5)
+
+	pumpBucketOpsSrc(opsType{count: itemCount}, dstBucket, &rateLimit{})
+	createAndDeployFunction(functionName, jsFileName, &commonSettings{srcMutationEnabled: true})
+	defer func() {
+		dumpStats()
+		flushFunctionAndBucket(functionName)
+	}()
+
+	pumpBucketOps(opsType{count: itemCount, isBinary: true}, &rateLimit{})
+	eventCount := verifyBucketCount(0, statsLookupRetryCounter, dstBucket)
+	if eventCount != 0 {
+		t.Error("For", "TestBinaryDoc",
+			"expected", 0,
+			"got", eventCount,
+		)
+		return
+	}
+
+	log.Printf("Deleting source bucket docs now")
+	//TODO: Setting delete to true in ops will mutate the documents and then delete the documents.
+	// This behaviour is different when we set the limit.
+	pumpBucketOps(opsType{delete: true}, &rateLimit{count: itemCount, limit: true, opsPSec: 1})
+	eventCount = verifyBucketCount(itemCount, statsLookupRetryCounter, dstBucket)
+	if eventCount != itemCount {
+		t.Error("For", "TestBinaryDoc",
+			"expected", 0,
+			"got", eventCount,
+		)
+		return
+	}
+}

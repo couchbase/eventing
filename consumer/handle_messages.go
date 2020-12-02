@@ -428,6 +428,12 @@ func (c *Consumer) sendDcpEvent(e *memcached.DcpEvent, sendToDebugger bool) {
 		SeqNo:   e.Seqno,
 	}
 
+	isBinary := e.Datatype == dcpDatatypeBinary || e.Datatype == dcpDatatypeBinXattr
+	if isBinary {
+		m.Type = "binary"
+	} else {
+		m.Type = "json"
+	}
 	metadata, err := json.Marshal(&m)
 
 	if err != nil {
@@ -442,7 +448,7 @@ func (c *Consumer) sendDcpEvent(e *memcached.DcpEvent, sendToDebugger bool) {
 	var hBuilder, pBuilder *flatbuffers.Builder
 	if e.Opcode == mcd.DCP_MUTATION {
 		dcpHeader, hBuilder = c.makeDcpMutationHeader(partition, string(metadata))
-		payload, pBuilder = c.makeDcpPayload(e.Key, e.Value)
+		payload, pBuilder = c.makeDcpPayload(e.Key, e.Value, isBinary)
 	} else if e.Opcode == mcd.DCP_DELETION || e.Opcode == mcd.DCP_EXPIRATION {
 		optionMap := map[string]interface{}{
 			"expired": e.Opcode == mcd.DCP_EXPIRATION,
@@ -455,7 +461,7 @@ func (c *Consumer) sendDcpEvent(e *memcached.DcpEvent, sendToDebugger bool) {
 		}
 
 		dcpHeader, hBuilder = c.makeDcpDeletionHeader(partition, string(metadata))
-		payload, pBuilder = c.makeDcpPayload(e.Key, options)
+		payload, pBuilder = c.makeDcpPayload(e.Key, options, false)
 	}
 
 	msg := &msgToTransmit{

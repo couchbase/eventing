@@ -53,6 +53,7 @@ table Payload {
 
   bucket_cache_size:int64; // Bucket cache size
   bucket_cache_age:int64; // Bucket cache max age
+  is_binary:bool; //dcp mutation value is binary or json
 }
 
 root_type Payload;

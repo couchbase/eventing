@@ -29,7 +29,7 @@ BucketOps::BucketOps(v8::Isolate *isolate,
   cas_str_ = "cas";
   key_str_ = "id";
   expiry_str_ = "expiry_date";
-  data_type_str_ = "data_type";
+  data_type_str_ = "datatype";
   key_not_found_str_ = "key_not_found";
   cas_mismatch_str_ = "cas_mismatch";
   key_exist_str_ = "key_already_exists";
@@ -40,6 +40,7 @@ BucketOps::BucketOps(v8::Isolate *isolate,
   error_str_ = "error";
   success_str_ = "success";
   json_str_ = "json";
+  binary_str_ = "binary";
   error_str_ = "error";
   invalid_counter_str_ = "not_number";
 }
@@ -139,7 +140,7 @@ Info BucketOps::SetDocBody(std::unique_ptr<Result> const &result,
   v8::Local<v8::Value> doc;
 
   // doc is json type
-  if (result->datatype & 1) {
+  if (result->datatype & JSON_DOC) {
     if (!TO_LOCAL(v8::JSON::Parse(context, v8Str(isolate_, result->value)),
                   &doc)) {
       return {true, "Unable to parse response body as JSON"};
@@ -190,13 +191,16 @@ Info BucketOps::SetMetaObject(std::unique_ptr<Result> const &result,
     }
   }
 
-  if (result->datatype & 1) {
-    if (!TO(meta_obj->Set(context, v8Str(isolate_, data_type_str_),
-                          v8Str(isolate_, json_str_)),
-            &success) ||
-        !success) {
-      return {true, "Unable to set expiration value in metaObject"};
-    }
+  auto datatype = json_str_;
+  if (!(result->datatype & JSON_DOC)) {
+    datatype = binary_str_;
+  }
+
+  if (!TO(meta_obj->Set(context, v8Str(isolate_, data_type_str_),
+                        v8Str(isolate_, datatype)),
+          &success) ||
+      !success) {
+    return {true, "Unable to set datatype value in metaObject"};
   }
 
   if (!TO(response_obj->Set(context, v8Str(isolate_, meta_str_), meta_obj),
@@ -402,7 +406,7 @@ BucketOps::Counter(const std::string &key, uint64_t cas, lcb_U32 expiry,
 }
 
 std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
-BucketOps::Set(const std::string &key, const char *value, int value_length,
+BucketOps::Set(const std::string &key, const std::string &value,
                lcb_STORE_OPERATION op_type, lcb_U32 expiry, uint64_t cas,
                lcb_U32 doc_type, bool is_source_bucket, Bucket *bucket) {
   if (is_source_bucket) {
@@ -413,11 +417,9 @@ BucketOps::Set(const std::string &key, const char *value, int value_length,
       cmd_flag = LCB_SUBDOC_STORE_INSERT;
     }
 
-    return bucket->SetWithXattr(key, value, value_length, cmd_flag, expiry,
-                                cas);
+    return bucket->SetWithXattr(key, value, cmd_flag, expiry, cas);
   }
-  return bucket->SetWithoutXattr(key, value, value_length, op_type, expiry, cas,
-                                 doc_type);
+  return bucket->SetWithoutXattr(key, value, op_type, expiry, cas, doc_type);
 }
 
 std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
@@ -425,23 +427,19 @@ BucketOps::BucketSet(const std::string &key, v8::Local<v8::Value> value,
                      lcb_STORE_OPERATION op_type, lcb_U32 expiry, uint64_t cas,
                      bool is_source_bucket, Bucket *bucket) {
   v8::HandleScope scope(isolate_);
-
+  std::string value_str;
+  lcb_U32 doc_type = 0x00000000;
   if (value->IsArrayBuffer()) {
     auto array_buf = value.As<v8::ArrayBuffer>();
     auto contents = array_buf->GetContents();
-    auto data = static_cast<const char *>(contents.Data());
-    int data_length = contents.ByteLength();
-    lcb_U32 doc_type = 0x00000000;
-    return Set(key, data, data_length, op_type, expiry, cas, doc_type,
-               is_source_bucket, bucket);
+    value_str.assign(static_cast<const char *>(contents.Data()),
+                     contents.ByteLength());
+  } else {
+    value_str = JSONStringify(isolate_, value);
+    doc_type = 0x2000000;
   }
-
-  auto json_value = JSONStringify(isolate_, value);
-  const char *data = json_value.c_str();
-  int data_length = strlen(data);
-  lcb_U32 doc_type = 0x2000000;
-  return Set(key, data, data_length, op_type, expiry, cas, doc_type,
-             is_source_bucket, bucket);
+  return Set(key, value_str, op_type, expiry, cas, doc_type, is_source_bucket,
+             bucket);
 }
 
 void BucketOps::CounterOps(v8::FunctionCallbackInfo<v8::Value> args,

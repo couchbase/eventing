@@ -287,14 +287,17 @@ func (c *Consumer) makeVbMapPayload(assgnedVbs []uint16) (encodedPayload []byte,
 	return
 }
 
-func (c *Consumer) makeDcpPayload(key, value []byte) (encodedPayload []byte, builder *flatbuffers.Builder) {
+func (c *Consumer) makeDcpPayload(key, value []byte, isBinary bool) (encodedPayload []byte, builder *flatbuffers.Builder) {
 	builder = c.getBuilder()
 
+	binary := make([]byte, 1)
+	flatbuffers.WriteBool(binary, isBinary)
 	keyPos := builder.CreateByteString(key)
 	valPos := builder.CreateByteString(value)
 
 	payload.PayloadStart(builder)
 
+	payload.PayloadAddIsBinary(builder, binary[0])
 	payload.PayloadAddKey(builder, keyPos)
 	payload.PayloadAddValue(builder, valPos)
 
