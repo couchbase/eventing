@@ -12,10 +12,6 @@ import (
 	"strings"
 )
 
-type ParsedStatements struct {
-	stmts []string
-}
-
 var maybe_n1ql = regexp.MustCompile(
 	`(?iU)` +
 		`((?:alter|build|create|` +
@@ -28,9 +24,6 @@ var maybe_n1ql = regexp.MustCompile(
 
 var spaced_line = regexp.MustCompile(
 	`^([[:space:]]*)((?U).*)([[:space:]]*)$`)
-
-var commented_line = regexp.MustCompile(
-	`//(.*)(\n|$)`)
 
 var esc_lt = regexp.MustCompile(
 	`([^\\])\\x3C`)
@@ -53,52 +46,105 @@ var requiredFunctions = map[string]struct{}{"OnUpdate": struct{}{},
 var n1qlQueryUse = regexp.MustCompile(
 	`N1qlQuery([[:space:]]*)\(`)
 
-func cleanse(str string) string {
-	washed := []byte(str)
-	for esc, sub, pos := "", "", 0; pos < len(str); pos++ {
+func stripComments(str string) string {
+	return cleanse(str,
+		false, // keepComment
+		true,  // keepQuoted
+		true,  // keepSpecial
+		true,  // keepSpace
+		false) // keepAlignment
+}
+
+func stripAll(str string) string {
+	return cleanse(str,
+		false, // keepComment
+		false, // keepQuoted
+		false, // keepSpecial
+		false, // keepSpace
+		true)  // keepAlignment
+}
+
+func cleanse(str string, keepComment, keepQuoted, keepSpecial, keepSpace, keepAlignment bool) string {
+	washed := strings.Builder{}
+	isComment, isQuoted, isSpecial, isSpace := false, false, false, false
+	add := func(data interface{}) {
+		var val string
+		switch typed := data.(type) {
+		case string:
+			val = typed
+		case byte:
+			val = string([]byte{typed})
+		case []byte:
+			val = string(typed)
+		default:
+			panic("unknown type")
+		}
+		if isComment && !keepComment ||
+			isSpecial && !keepSpecial ||
+			isQuoted && !keepQuoted ||
+			isSpace && !keepSpace {
+			if keepAlignment {
+				washed.WriteString(strings.Repeat(" ", len(val)))
+			}
+			return
+		}
+		washed.WriteString(val)
+	}
+
+	for esc, pos := "", 0; pos < len(str); pos++ {
 		switch {
 		case str[pos] == '\\' && pos < len(str)-1:
 			// backquote
-			washed[pos], washed[pos+1] = ' ', ' '
+			isSpecial = true
+			add(str[pos : pos+2])
+			isSpecial = false
 			pos++
 		case len(esc) > 0:
 			// currently escaping. check for end
-			washed[pos] = ' '
+			add(str[pos])
 			end := pos + len(esc)
 			if end > len(str) {
 				end = len(str)
 			}
-			sub = str[pos:end]
+			sub := str[pos:end]
 			if sub == esc {
 				for b := 1; b < len(esc); b++ {
-					washed[pos+b] = ' '
+					add(str[pos+b])
 					pos++
 				}
 				esc = ""
+				isComment, isQuoted = false, false
 			}
 		case strings.IndexByte("\"'`", str[pos]) >= 0:
 			// escape quote begin
-			washed[pos] = ' '
+			isQuoted = true
+			add(str[pos])
 			esc = string(str[pos])
 		case strings.HasPrefix(str[pos:], "/*"):
-			// escape multi-line comment begin
-			washed[pos], washed[pos+1] = ' ', ' '
+			// escape multi-line comment first
+			isComment = true
+			add(str[pos : pos+2])
 			pos++
 			esc = "*/"
 		case strings.HasPrefix(str[pos:], "//"):
-			// escape single-line comment begin
-			washed[pos], washed[pos+1] = ' ', ' '
+			// escape single-line comment next
+			isComment = true
+			add(str[pos : pos+2])
 			pos++
 			esc = "\n"
 		case strings.IndexByte("\t\n\v\f\r", str[pos]) >= 0:
-			// replace whitespace with plain space. do this last
-			washed[pos] = ' '
+			// handle whitespace last
+			isSpace = true
+			add(str[pos])
+			isSpace = false
+		default:
+			add(str[pos])
 		}
 	}
-	return string(washed)
+	return washed.String()
 }
 
-func JSEscapeString(str string) string {
+func jsEscapeString(str string) string {
 	res := template.JSEscapeString(str)
 	// undo escaped '<' and '>' as it is hard to read and we're not in html
 	res = esc_lt.ReplaceAllString(res, `$1<`)
@@ -106,14 +152,7 @@ func JSEscapeString(str string) string {
 	return res
 }
 
-type Match struct {
-	Begin  int
-	End    int
-	Params string
-	Info   NamedParamsInfo
-}
-
-func WrapQuery(query string, params string, n1ql_params string) string {
+func wrapQuery(query string, params string, n1ql_params string) string {
 	lines := strings.Split(query, "\n")
 	js_lines := []string{}
 	for i, line := range lines {
@@ -122,11 +161,11 @@ func WrapQuery(query string, params string, n1ql_params string) string {
 		if i < len(lines)-1 {
 			nl = `\n`
 		}
-		body := commented_line.ReplaceAllString(split[2], " -- $1$2")
+		body := stripComments(split[2])
 		js_lines = append(js_lines,
 			fmt.Sprintf(`%s'%s%s'%s`,
 				split[1],
-				JSEscapeString(body),
+				jsEscapeString(body),
 				nl,
 				split[3]))
 	}
@@ -150,13 +189,20 @@ func WrapQuery(query string, params string, n1ql_params string) string {
 	return result
 }
 
-func FindQueries(input string) []Match {
-	matches := []Match{}
-	bare := cleanse(input)
+type queryMatch struct {
+	begin  int
+	end    int
+	params string
+	info   NamedParamsInfo
+}
+
+func findQueries(input string) []queryMatch {
+	matches := []queryMatch{}
+	bare := stripAll(input)
 	posns := maybe_n1ql.FindAllStringSubmatchIndex(bare, -1)
 	for _, pos := range posns {
 		query := input[pos[2]:pos[3]]
-		query = commented_line.ReplaceAllString(query, " -- $1$2")
+		query = stripComments(query)
 		info := GetNamedParams(query)
 		if !info.PInfo.IsValid {
 			continue
@@ -167,15 +213,16 @@ func FindQueries(input string) []Match {
 			if i > 0 {
 				params += `, `
 			}
-			safe_entry := JSEscapeString(entry)
+			safe_entry := jsEscapeString(entry)
 			params += fmt.Sprintf(`'$%s':%s`, safe_entry, safe_entry)
 		}
 		params += "}"
-		m := Match{}
-		m.Begin = pos[2]
-		m.End = pos[3]
-		m.Params = params
-		m.Info = *info
+		m := queryMatch{
+			begin:  pos[2],
+			end:    pos[3],
+			params: params,
+			info:   *info,
+		}
 		matches = append(matches, m)
 	}
 	return matches
@@ -185,24 +232,28 @@ func TranspileQueries(input string, n1ql_params string) (result string, info []N
 	result = ""
 	info = []NamedParamsInfo{}
 
-	matches := FindQueries(input)
+	matches := findQueries(input)
 	sort.SliceStable(matches, func(i, j int) bool {
-		return matches[i].Begin < matches[j].Begin
+		return matches[i].begin < matches[j].begin
 	})
 	pos := 0
 	for _, match := range matches {
-		result += input[pos:match.Begin]
-		result += WrapQuery(input[match.Begin:match.End], match.Params, n1ql_params)
-		pos = match.End
-		info = append(info, match.Info)
+		result += input[pos:match.begin]
+		result += wrapQuery(input[match.begin:match.end], match.params, n1ql_params)
+		pos = match.end
+		info = append(info, match.info)
 	}
 	result += input[pos:]
 	return
 }
 
-func GetStatements(input string) *ParsedStatements {
-	js := cleanse(input)
-	parsed := &ParsedStatements{}
+type parsedStatements struct {
+	stmts []string
+}
+
+func GetStatements(input string) *parsedStatements {
+	js := stripAll(input)
+	parsed := &parsedStatements{}
 	start := 0
 	for pos := 0; pos < len(js); pos++ {
 		if js[pos] == '{' || js[pos] == '}' || js[pos] == ';' {
@@ -223,7 +274,7 @@ func GetStatements(input string) *ParsedStatements {
 	return parsed
 }
 
-func (parsed *ParsedStatements) ValidateGlobals() (bool, error) {
+func (parsed *parsedStatements) ValidateGlobals() (bool, error) {
 	depth := 0
 	for _, stmt := range parsed.stmts {
 		switch stmt {
@@ -244,7 +295,7 @@ func (parsed *ParsedStatements) ValidateGlobals() (bool, error) {
 	return true, nil
 }
 
-func (parsed *ParsedStatements) ValidateExports() (bool, error) {
+func (parsed *parsedStatements) ValidateExports() (bool, error) {
 	depth := 0
 	for _, stmt := range parsed.stmts {
 		switch stmt {
@@ -269,12 +320,12 @@ func (parsed *ParsedStatements) ValidateExports() (bool, error) {
 }
 
 func UsingTimer(input string) bool {
-	bare := cleanse(input)
+	bare := stripAll(input)
 	return timer_use.MatchString(bare)
 }
 
 func ListDeprecatedFunctions(input string) []string {
-	bare := cleanse(input)
+	bare := stripAll(input)
 	listOfFns := []string{}
 	if n1qlQueryUse.MatchString(bare) {
 		listOfFns = append(listOfFns, "N1qlQuery")
