@@ -8,6 +8,7 @@ import (
 	"runtime"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/couchbase/eventing/common"
@@ -211,7 +212,7 @@ func (s *SuperSupervisor) bucketRefresh() error {
 	s.bucketsRWMutex.Lock()
 	defer s.bucketsRWMutex.Unlock()
 	for bucketName := range s.buckets {
-		if err := s.buckets[bucketName].Refresh(); err != nil {
+		if err := s.buckets[bucketName].Refresh(s.retryCount, s.restPort); err != nil {
 			return err
 		}
 	}
@@ -295,8 +296,20 @@ func (s *SuperSupervisor) getConfig() (c common.Config) {
 	return
 }
 
-func (bw *bucketWatchStruct) Refresh() error {
-	return bw.b.Refresh()
+func (bw *bucketWatchStruct) Refresh(retryCount int64, restPort string) error {
+	logPrefix := "bucketWatchStruct:Refresh"
+	err := bw.b.Refresh()
+
+	if err != nil {
+		if strings.Contains(err.Error(), "Bucket uuid does not match") {
+			logging.Errorf("%s Bucket: %s out of sync. refreshing...", logPrefix, bw.b.Name)
+			err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &retryCount, commonConnectBucketOpCallback, &bw.b, bw.b.Name, restPort)
+			if err != nil {
+				logging.Errorf("%s: Could not connect to bucket %s err: %v", logPrefix, bw.b.Name, err)
+			}
+		}
+	}
+	return err
 }
 
 func (bw *bucketWatchStruct) Close() {
