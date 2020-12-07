@@ -97,7 +97,6 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		signalConnectedCh:               make(chan struct{}, 1),
 		signalFeedbackConnectedCh:       make(chan struct{}, 1),
 		signalSettingsChangeCh:          make(chan struct{}, 1),
-		socketTimeout:                   time.Duration(hConfig.SocketTimeout) * time.Second,
 		socketWriteBatchSize:            hConfig.SocketWriteBatchSize,
 		socketWriteLoopStopAckCh:        make(chan struct{}, 1),
 		socketWriteLoopStopCh:           make(chan struct{}, 1),
@@ -195,9 +194,8 @@ func (c *Consumer) Serve() {
 		return
 	}
 
-	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, commonConnectBucketOpCallback, c, &c.cbBucket)
-	if err == common.ErrRetryTimeout {
-		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+	c.cbBucket, err = c.superSup.GetBucket(c.sourceKeyspace.BucketName, c.app.AppName)
+	if err != nil {
 		return
 	}
 
@@ -419,11 +417,6 @@ func (c *Consumer) Stop(context string) {
 
 	logging.Infof("%s [%s:%s:%d] Sent signal over channel to stop timer routines",
 		logPrefix, c.workerName, c.tcpPort, c.Pid())
-
-	// Closing bucket feed handle after sending message on stopReqStreamProcessCh
-	if c.cbBucket != nil {
-		c.cbBucket.Close()
-	}
 
 	if c.updateStatsTicker != nil {
 		c.updateStatsTicker.Stop()

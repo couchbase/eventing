@@ -727,11 +727,6 @@ angular.module('eventing', [
                         creationScope.appModel.settings.deployment_status = false;
                         creationScope.appModel.settings.dcp_stream_boundary = "everything";
 
-                        // Deadline timeout must be greater and execution timeout.
-                        if (creationScope.appModel.settings.hasOwnProperty('execution_timeout')) {
-                            creationScope.appModel.settings.deadline_timeout = creationScope.appModel.settings.execution_timeout + 2;
-                        }
-
                         ApplicationService.local.createApp(creationScope.appModel);
                         return $state.transitionTo('app.admin.eventing.handler', {
                             appName: creationScope.appModel.appname,
@@ -1206,11 +1201,6 @@ angular.module('eventing', [
                 if (JSON.stringify(appModel.depcfg) !== JSON.stringify(config)) {
                     $scope.appModel.depcfg = config;
                     ApplicationService.server.showWarningAlert('Bindings changed. Deploy or Resume function for changes to take effect.');
-                }
-
-                // Deadline timeout must be greater than execution timeout.
-                if ($scope.appModel.settings.hasOwnProperty('execution_timeout')) {
-                    $scope.appModel.settings.deadline_timeout = $scope.appModel.settings.execution_timeout + 2;
                 }
 
                 // Update local changes.

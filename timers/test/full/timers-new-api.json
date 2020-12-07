@@ -14,7 +14,6 @@
 	"appname": "timers-new-api",
 	"settings": {
 		"dcp_stream_boundary": "everything",
-		"deadline_timeout": 62,
 		"deployment_status": true,
 		"description": "",
 		"execution_timeout": 60,

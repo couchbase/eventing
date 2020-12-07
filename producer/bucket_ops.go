@@ -13,27 +13,6 @@ import (
 	"time"
 )
 
-var commonConnectBucketOpCallback = func(args ...interface{}) error {
-	logPrefix := "Producer::commonConnectBucketOpCallback"
-
-	p := args[0].(*Producer)
-	b := args[1].(**couchbase.Bucket)
-
-	hostPortAddr := net.JoinHostPort(util.Localhost(), p.GetNsServerPort())
-
-	var err error
-	*b, _, err = util.ConnectBucket(hostPortAddr, "default", p.metadataKeyspace.BucketName)
-	if err != nil {
-		logging.Errorf("%s [%s:%d] Connect to bucket: %s failed, err: %v",
-			logPrefix, p.appName, p.LenRunningConsumers(), p.metadataKeyspace.BucketName, err)
-	} else {
-		logging.Infof("%s [%s:%d] Connected to bucket: %s",
-			logPrefix, p.appName, p.LenRunningConsumers(), p.metadataKeyspace.BucketName)
-	}
-
-	return err
-}
-
 var getFailoverLogOpCallback = func(args ...interface{}) error {
 	logPrefix := "Producer::getFailoverLogOpCallback"
 
@@ -64,7 +43,7 @@ var cleanupMetadataCallback = func(args ...interface{}) error {
 	feedName := couchbase.NewDcpFeedName(fmt.Sprintf("%s_%s_%d_undeploy", p.uuid, p.appName, workerID))
 
 	var err error
-	(*b), err = p.superSup.GetBucket((*b).Name)
+	(*b), err = p.superSup.GetBucket(p.metadataKeyspace.BucketName, p.appName)
 	if err != nil {
 		logging.Errorf("%s [%s:%d] Failed to refresh vb map for bucket: %s, err: %v",
 			logPrefix, p.appName, p.LenRunningConsumers(), p.metadataKeyspace.BucketName, err)

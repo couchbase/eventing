@@ -30,7 +30,6 @@
     "appname": "EmailOnDelay",
     "settings": {
       "dcp_stream_boundary": "everything",
-      "deadline_timeout": 62,
       "deployment_status": false,
       "description": "Send an email when a package misses promised delivery date",
       "execution_timeout": 60,

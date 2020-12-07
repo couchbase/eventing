@@ -18,7 +18,6 @@ func testFlexReset(handler string, t *testing.T) {
 	pumpBucketOps(opsType{count: itemCount}, &rateLimit{})
 	createAndDeployFunction(functionName, handler, &commonSettings{
 		lcbInstCap:       2,
-		deadlineTimeout:  70,
 		executionTimeout: 60,
 	})
 	waitForDeployToFinish(functionName)
@@ -199,7 +198,6 @@ func TestN1QLGraceLowTimeOut(t *testing.T) {
 	pumpBucketOpsSrc(opsType{count: 30000}, "hello-world", &rateLimit{})
 
 	createAndDeployFunction(functionName, handler, &commonSettings{
-		deadlineTimeout:  60,
 		executionTimeout: 17,
 		streamBoundary:   "from_now",
 		aliasSources:     []string{dstBucket},
@@ -261,7 +259,6 @@ func TestN1QLGraceSufficientTimeOut(t *testing.T) {
 	pumpBucketOpsSrc(opsType{count: 30000}, "hello-world", &rateLimit{})
 
 	createAndDeployFunction(functionName, handler, &commonSettings{
-		deadlineTimeout:  60,
 		executionTimeout: 55,
 		streamBoundary:   "from_now",
 		aliasSources:     []string{dstBucket},

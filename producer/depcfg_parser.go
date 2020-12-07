@@ -138,12 +138,6 @@ func (p *Producer) parseDepcfg() error {
 		}
 	}
 
-	if val, ok := settings["deadline_timeout"]; ok {
-		p.handlerConfig.SocketTimeout = int(val.(float64))
-	} else {
-		p.handlerConfig.SocketTimeout = p.handlerConfig.ExecutionTimeout + 2
-	}
-
 	if val, ok := settings["execution_timeout"]; ok {
 		p.handlerConfig.ExecutionTimeout = int(val.(float64))
 	} else {

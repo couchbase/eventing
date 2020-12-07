@@ -585,7 +585,6 @@ func (c *Consumer) initConsumer(appName string) {
 	c.msgProcessedRWMutex = &sync.RWMutex{}
 	c.sendMsgBufferRWMutex = &sync.RWMutex{}
 	c.app = &common.AppConfig{AppName: appName}
-	c.socketTimeout = 1 * time.Second
 
 	c.v8WorkerMessagesProcessed = make(map[string]uint64)
 

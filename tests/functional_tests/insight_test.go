@@ -19,8 +19,7 @@ func TestCodeInsight(t *testing.T) {
 
 	pumpBucketOps(opsType{count: itemCount}, &rateLimit{})
 	createAndDeployFunction(functionName, handler, &commonSettings{
-		lcbInstCap:      2,
-		deadlineTimeout: 15,
+		lcbInstCap: 2,
 	})
 	waitForDeployToFinish(functionName)
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)

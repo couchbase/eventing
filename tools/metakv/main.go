@@ -47,7 +47,6 @@ func main() {
 	settings["lcb_inst_capacity"] = 5
 	settings["n1ql_consistency"] = "request"
 	settings["enable_recursive_mutation"] = false
-	settings["deadline_timeout"] = 2
 	settings["execution_timeout"] = 1
 	settings["processing_status"] = true
 
