@@ -48,6 +48,7 @@ func NewServiceMgr(config util.Config, rebalanceRunning bool, superSup common.Ev
 		fnMu:              &sync.RWMutex{},
 		failoverMu:        &sync.RWMutex{},
 		mu:                mu,
+		rebalancerMutex:   &sync.RWMutex{},
 		servers:           make([]service.NodeID, 0),
 		state:             NewState(),
 		statsWritten:      true,
@@ -646,7 +647,7 @@ func (m *ServiceMgr) cancelRunningRebalanceTaskLocked(task *service.Task) error 
 	m.rebalancer.cancel()
 	m.onRebalanceDoneLocked(nil, true)
 
-	util.Retry(util.NewFixedBackoff(time.Second), nil, stopRebalanceCallback, m.rebalancer, task.ID)
+	util.Retry(util.NewFixedBackoff(time.Second), nil, stopRebalanceCallback, task.ID)
 
 	logging.Infof("%s Updated rebalance token: %s in metakv as part of stopping ongoing rebalance", logPrefix, task.ID)
 
@@ -757,7 +758,9 @@ func (m *ServiceMgr) onRebalanceDoneLocked(err error, cancelRebalance bool) {
 	}
 	logging.Infof("%s updated isBalanced: %v", logPrefix, m.isBalanced)
 
+	m.rebalancerMutex.Lock()
 	m.rebalancer = nil
+	m.rebalancerMutex.Unlock()
 	m.rebalanceCtx = nil
 
 	m.updateStateLocked(func(s *state) {

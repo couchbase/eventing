@@ -79,16 +79,15 @@ var storeKeepNodesCallback = func(args ...interface{}) error {
 var stopRebalanceCallback = func(args ...interface{}) error {
 	logPrefix := "rebalancer::stopRebalanceCallback"
 
-	r := args[0].(*rebalancer)
-	taskID := args[1].(string)
+	taskID := args[0].(string)
 
 	logging.Infof("%s Updating metakv to signify rebalance cancellation", logPrefix)
 
 	path := metakvRebalanceTokenPath + taskID
 	err := util.MetakvSet(path, []byte(stopRebalance), nil)
 	if err != nil {
-		logging.Errorf("%s Failed to update rebalance token: %v in metakv as part of cancelling rebalance, err: %v",
-			logPrefix, r.change.ID, err)
+		logging.Errorf("%s Failed to update rebalance token for task: %v in metakv as part of cancelling rebalance, err: %v",
+			logPrefix, taskID, err)
 		return err
 	}
 
