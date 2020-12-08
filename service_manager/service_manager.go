@@ -179,11 +179,13 @@ func (m *ServiceMgr) StartTopologyChange(change service.TopologyChange) error {
 
 	logging.Infof("%s change: %#v", logPrefix, change)
 
+	m.rebalancerMutex.RLock()
 	if m.state.rebalanceID != change.ID || m.rebalancer != nil {
 		logging.Errorf("%s Returning errConflict, rebalanceID: %v change id: %v rebalancer dump: %#v",
 			logPrefix, m.state.rebalanceID, change.ID, m.rebalancer)
 		return service.ErrConflict
 	}
+	m.rebalancerMutex.RUnlock()
 
 	if change.CurrentTopologyRev != nil {
 		haveRev := decodeRev(change.CurrentTopologyRev)
@@ -215,7 +217,10 @@ func (m *ServiceMgr) StartTopologyChange(change service.TopologyChange) error {
 
 		rebalancer := newRebalancer(m.adminHTTPPort, change, m.rebalanceDoneCallback, m.rebalanceProgressCallback,
 			m.keepNodeUUIDs, len(m.fnsInPrimaryStore))
+
+		m.rebalancerMutex.Lock()
 		m.rebalancer = rebalancer
+		m.rebalancerMutex.Unlock()
 
 	default:
 		return service.ErrNotSupported
