@@ -42,12 +42,13 @@ func TestCacheExpiry(t *testing.T) {
 		"cache_expiry", setting, t)
 }
 
-func TestCacheOverflow(t *testing.T) {
+func NoTestCacheOverflow(t *testing.T) {
 	itemCount := 5
 	setting := &commonSettings{
 		aliasSources:       []string{dstBucket, srcBucket},
 		aliasHandles:       []string{"dst_bucket", "src_bucket"},
 		srcMutationEnabled: true,
+		bucketCacheSize:    32 * 1024 * 1024,
 		bucketCacheAge:     60 * 60 * 1000,
 		executionTimeout:   60,
 		workerCount:        1,
