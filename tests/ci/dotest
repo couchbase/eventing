@@ -98,7 +98,7 @@ error_exit() {
   collect_logs
   stop_cluster
   for patch_id in `cat ~/gerrit.list`; do
-    ssh review.couchbase.org gerrit query change:${patch_id%,*} AND reviewer:self | grep -qs 'rowCount: 0' && continue
+    ssh review.couchbase.org gerrit query change:${patch_id%,*} AND reviewer:self AND status:open | grep -qs 'rowCount: 0' && continue
     ssh review.couchbase.org gerrit review --code-review 0 -m "'MAYBE FAIL $MODE. See https://$CINAME.northscale.in/eventing-$TS.fail.html'" $patch_id
   done
   error_email "Testing Failed: $1\n$2"
@@ -219,7 +219,7 @@ for file in *.maybe; do
 done
 
 for patch_id in `cat ~/gerrit.list`; do
-  ssh review.couchbase.org gerrit query change:${patch_id%,*} AND reviewer:self | grep -qs 'rowCount: 0' && continue
+  ssh review.couchbase.org gerrit query change:${patch_id%,*} AND reviewer:self AND status:open | grep -qs 'rowCount: 0' && continue
   ssh review.couchbase.org gerrit review --code-review 1 -m "'PASS $MODE. See https://$CINAME.northscale.in/eventing-$TS.pass.html'" $patch_id
 done
 
