@@ -19,7 +19,9 @@
       </div>
       <div ng-show="summaryCtrl.workerCount > 2 * summaryCtrl.cpuCount">
         <div class="alert alert-warning">
-          <p>There are {{summaryCtrl.workerCount}} eventing workers configured to run on {{summaryCtrl.cpuCount}} cores. A sizing exercise is recommended.</p>
+          <p>There are {{summaryCtrl.workerCount}} eventing workers configured
+            to run on {{summaryCtrl.cpuCount}} cores. A sizing exercise is
+            recommended.</p>
         </div>
       </div>
     </mn-element-cargo>
@@ -30,14 +32,14 @@
         <span class="cbui-table-cell">status</span>
         <span class="cbui-table-cell"></span>
       </div>
-      <section
-        class="has-hover"
+      <section class="has-hover"
         ng-repeat="(appname, app) in summaryCtrl.appList"
         ng-class="['dynamic_' + app.uiState]"
         ng-click="app.toggleActionsVisibility()">
         <div class="cbui-tablerow">
           <span class="cbui-table-cell cbui-tablerow-title">{{appname}}</span>
-          <span class="cbui-table-cell cbui-tablerow-title">{{app.depcfg.source_bucket}}.{{app.depcfg.source_scope}}.{{app.depcfg.source_collection}}</span>
+          <span
+            class="cbui-table-cell cbui-tablerow-title">{{app.depcfg.source_bucket}}.{{app.depcfg.source_scope}}.{{app.depcfg.source_collection}}</span>
           <span class="cbui-table-cell row flex-left">
             <div class="fix-width-1 margin-right-3">
               {{app.status === 'deployed' || app.status === 'undeployed' || app.status === 'paused' ? app.status : app.status + '...'}}
@@ -48,134 +50,171 @@
               ng-hide="app.warnings && app.warnings.length === 0">
               {{app.warnings ? 'Warnings(' + app.warnings.length + ')' : ''}}
             </a>
-          <a ng-click="$event.stopPropagation();summaryCtrl.openAppLog(appname);"
-             ng-hide="app.status !== 'deployed' && app.status !== 'deploying'"
-             style="padding-right: 8px;">
-          Log
-          </a>
-          <a ng-click="$event.stopPropagation();summaryCtrl.openSettings(appname);">
-          Settings
-          </a>
+            <a ng-click="$event.stopPropagation();summaryCtrl.openAppLog(appname);"
+              ng-hide="app.status !== 'deployed' && app.status !== 'deploying'"
+              style="padding-right: 8px;">
+              Log
+            </a>
+            <a
+              ng-click="$event.stopPropagation();summaryCtrl.openSettings(appname);">
+              Settings
+            </a>
           </span>
         </div>
-        <div class="cbui-tablerow-expanded"
-             ng-if="app.actionsVisible">
+        <div class="cbui-tablerow-expanded" ng-if="app.actionsVisible">
           <p class="width-6">{{app.settings.description}}</p>
-          <p class="width-6 error field-error" ng-show="app.overloadedNames">Function tries to overload following builtin API(s): {{app.overloadedNames}}</p>
-          <p class="width-6 error field-error" ng-show="app.deprecatedNames">Function uses deprecated API(s): {{app.deprecatedNames}}</p>
+          <p class="width-6 error field-error" ng-show="app.overloadedNames">
+            Function tries to overload following builtin API(s):
+            {{app.overloadedNames}}</p>
+          <p class="width-6 error field-error" ng-show="app.deprecatedNames">
+            Function uses deprecated API(s): {{app.deprecatedNames}}</p>
           <div class="width-12">
-	    <table style="border-collapse:collapse;padding:0px;margin:0px"  border="0" cellpadding="0" cellspacing="0">
-	      <tr>
-		<td class="text-smaller" align="left" style="padding:0px;color:#555;">
-		  <div ng-show="app.status !== 'undeployed'" ng-if="app.cluster_stats.show">
-                    <table style="border-collapse:collapse;padding:0px;margin:0px;width:260px"  border="0" cellpadding="0" cellspacing="0">
+            <table style="border-collapse:collapse;padding:0px;margin:0px"
+              border="0" cellpadding="0" cellspacing="0">
+              <tr>
+                <td class="text-smaller" align="left"
+                  style="padding:0px;color:#555;">
+                  <div ng-show="app.status !== 'undeployed'"
+                    ng-if="app.cluster_stats.show">
+                    <table
+                      style="border-collapse:collapse;padding:0px;margin:0px;width:260px"
+                      border="0" cellpadding="0" cellspacing="0">
                       <tr>
-                        <td colspan="5" style="border-collapse:collapse;padding:0px;margin:0px;width:260px;text-decoration: underline">
+                        <td colspan="5"
+                          style="border-collapse:collapse;padding:0px;margin:0px;width:260px;text-decoration: underline">
                           Deployment Statistics
                         </td>
                       </tr>
                       <tr>
-                        <td style="border-collapse:collapse;padding:0px;margin:0px;width:60px">
+                        <td
+                          style="border-collapse:collapse;padding:0px;margin:0px;width:60px">
                           success:
                         </td>
-                        <td style="border-collapse:collapse;padding:0px;margin:0px;width:60px" align="right">
+                        <td
+                          style="border-collapse:collapse;padding:0px;margin:0px;width:60px"
+                          align="right">
                           {{app.cluster_stats.success}}
                         </td>
-                        <td style="border-collapse:collapse;padding:0px;margin:0px;width:20px" align="right">
+                        <td
+                          style="border-collapse:collapse;padding:0px;margin:0px;width:20px"
+                          align="right">
                           &nbsp; &nbsp;
                         </td>
-                        <td style="border-collapse:collapse;padding:0px;margin:0px;width:60px">
+                        <td
+                          style="border-collapse:collapse;padding:0px;margin:0px;width:60px">
                           backlog:
                         </td>
-                        <td style="border-collapse:collapse;padding:0px;margin:0px;width:60px" align="right">
+                        <td
+                          style="border-collapse:collapse;padding:0px;margin:0px;width:60px"
+                          align="right">
                           {{app.cluster_stats.backlog}}
                         </td>
                       </tr>
                       <tr>
-                        <td style="border-collapse:collapse;padding:0px;margin:0px">
+                        <td
+                          style="border-collapse:collapse;padding:0px;margin:0px">
                           timeout:
                         </td>
-                        <td style="border-collapse:collapse;padding:0px;margin:0px" align="right">
-                          <div style="                display: inline-block;" ng-if="app.cluster_stats.timeout_gt_zero == false"> {{app.cluster_stats.timeout}} </div>
-                          <div style="color: #CC0000; display: inline-block;" ng-if="app.cluster_stats.timeout_gt_zero == true "> {{app.cluster_stats.timeout}} </div>
+                        <td
+                          style="border-collapse:collapse;padding:0px;margin:0px"
+                          align="right">
+                          <div style="                display: inline-block;"
+                            ng-if="app.cluster_stats.timeout_gt_zero == false">
+                            {{app.cluster_stats.timeout}} </div>
+                          <div style="color: #CC0000; display: inline-block;"
+                            ng-if="app.cluster_stats.timeout_gt_zero == true ">
+                            {{app.cluster_stats.timeout}} </div>
                         </td>
-                        <td style="border-collapse:collapse;padding:0px;margin:0px" align="right">
+                        <td
+                          style="border-collapse:collapse;padding:0px;margin:0px"
+                          align="right">
                           &nbsp; &nbsp;
                         </td>
-                        <td style="border-collapse:collapse;padding:0px;margin:0px">
+                        <td
+                          style="border-collapse:collapse;padding:0px;margin:0px">
                           failure:
                         </td>
-                        <td style="border-collapse:collapse;padding:0px;margin:0px" align="right">
-                          <div style="                display: inline-block;" ng-if="app.cluster_stats.failure_gt_zero == false"> {{app.cluster_stats.failure}} </div>
-                          <div style="color: #CC0000; display: inline-block;" ng-if="app.cluster_stats.failure_gt_zero == true "> {{app.cluster_stats.failure}} </div>
+                        <td
+                          style="border-collapse:collapse;padding:0px;margin:0px"
+                          align="right">
+                          <div style="                display: inline-block;"
+                            ng-if="app.cluster_stats.failure_gt_zero == false">
+                            {{app.cluster_stats.failure}} </div>
+                          <div style="color: #CC0000; display: inline-block;"
+                            ng-if="app.cluster_stats.failure_gt_zero == true ">
+                            {{app.cluster_stats.failure}} </div>
                         </td>
                       </tr>
                     </table>
-		  </div>
-		</td>
-		<td align="right" style="padding:0px;">
-	          <button
-	            class="outline"
-	            ng-click="$event.stopPropagation();summaryCtrl.deleteApp(app.appname)"
-	            ng-disabled="app.settings.processing_status || app.settings.deployment_status || app.uiState === 'healthy'">
-	            Delete
-	          </button>
-	          <button
-	            class="outline"
-	            ng-click="$event.stopPropagation();summaryCtrl.exportApp(app.appname)">
-	            Export
-	          </button>
-	          <button
-	            class="outline"
-	            ng-disabled="app.status === 'deploying' || app.status === 'undeploying' || app.status === 'pausing'"
-	            ng-click="$event.stopPropagation();summaryCtrl.toggleDeployment(app)">
-	            {{app.getDeploymentStatus(true)}}
-	          </button>
-	          <button
-	            class="outline"
-	            ng-disabled="app.status === 'deploying' || app.status === 'undeploying' || app.status === 'undeployed' || app.status === 'pausing'"
-	            ng-click="$event.stopPropagation();summaryCtrl.toggleProcessing(app)">
-		      {{app.getProcessingStatus(true)}}
-	          </button>
+                  </div>
+                </td>
+                <td align="right" style="padding:0px;">
+                  <button class="outline"
+                    ng-click="$event.stopPropagation();summaryCtrl.deleteApp(app.appname)"
+                    ng-disabled="app.settings.processing_status || app.settings.deployment_status || app.uiState === 'healthy'">
+                    Delete
+                  </button>
+                  <button class="outline"
+                    ng-click="$event.stopPropagation();summaryCtrl.exportApp(app.appname)">
+                    Export
+                  </button>
+                  <button class="outline"
+                    ng-disabled="app.status === 'deploying' || app.status === 'undeploying' || app.status === 'pausing'"
+                    ng-click="$event.stopPropagation();summaryCtrl.toggleDeployment(app)">
+                    {{app.getDeploymentStatus(true)}}
+                  </button>
+                  <button class="outline"
+                    ng-disabled="app.status === 'deploying' || app.status === 'undeploying' || app.status === 'undeployed' || app.status === 'pausing'"
+                    ng-click="$event.stopPropagation();summaryCtrl.toggleProcessing(app)">
+                    {{app.getProcessingStatus(true)}}
+                  </button>
                   <button
                     ui-sref="app.admin.eventing.handler({appName:app.appname})"
                     ng-disabled="summaryCtrl.disableEditButton"
                     ng-click="$event.stopPropagation();">
-                      {{app.status === 'deployed' || app.status === 'deploying' ? 'View JavaScript' : 'Edit JavaScript'}}
+                    {{app.status === 'deployed' || app.status === 'deploying' ? 'View JavaScript' : 'Edit JavaScript'}}
                   </button>
-		</td>
-	      </tr>
-	    </table>
-	  </div>
+                </td>
+              </tr>
+            </table>
+          </div>
         </div>
       </section>
     </div>
     <div ng-if="summaryCtrl.isAppListEmpty()">
-      <p class="zero-content">No Functions running currently. Import or use ADD above to begin.</p>
+      <p class="zero-content">No Functions running currently. Import or use ADD
+        above to begin.</p>
     </div>
   </div>
   <div ng-if="summaryCtrl.errorState">
-    <p class="zero-content">Cannot connect. Eventing may be starting up. Please retry after some time.</p>
+    <p class="zero-content">Cannot connect. Eventing may be starting up. Please
+      retry after some time.</p>
   </div>
   <div ng-if="summaryCtrl.errorCode && summaryCtrl.errorCode == 403">
-    <p class="error">User does not have sufficient privileges to access eventing UI.</p>
+    <p class="error">User does not have sufficient privileges to access eventing
+      UI.</p>
   </div>
 </div>
 <div ng-if="!summaryCtrl.isEventingRunning">
-  <p>The eventing interface is only available on Couchbase clusters running the eventing service.</p>
-  <p ng-if="summaryCtrl.serverNodes.length === 0" class="error">No Eventing nodes were found on this cluster.</p>
+  <p>The eventing interface is only available on Couchbase clusters running the
+    eventing service.</p>
+  <p ng-if="summaryCtrl.serverNodes.length === 0" class="error">No Eventing
+    nodes were found on this cluster.</p>
   <div ng-if="summaryCtrl.serverNodes.length">
     <p>The eventing service was found on the following nodes:</p>
     <div class="indent-1" ng-repeat="url in summaryCtrl.serverNodes">
-    <a href="{{url}}">{{url}}</a>
+      <a href="{{url}}">{{url}}</a>
     </div>
     <div class="row flex-left margin-top-1">
       <p class="text-small fix-width-7">
         <span class="icon fa-warning orange-3"></span>
-        Note that the above links are provided as a convenience. They may not work
-        if you are accessing the Web Console via a web proxy or if Couchbase Server
+        Note that the above links are provided as a convenience. They may not
+        work
+        if you are accessing the Web Console via a web proxy or if Couchbase
+        Server
         has been deployed in a split horizon DNS environment, with public and
-        private hostnames and IPs. In the event the links don't work, log directly into the node.
+        private hostnames and IPs. In the event the links don't work, log
+        directly into the node.
       </p>
     </div>
   </div>
