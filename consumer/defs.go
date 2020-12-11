@@ -375,6 +375,8 @@ type Consumer struct {
 	notifyWorker          uint32
 	bucketCacheSize       int64
 	bucketCacheAge        int64
+
+	binaryDocAllowed bool
 }
 
 // For V8 worker spawned for debugging purpose

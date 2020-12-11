@@ -41,7 +41,7 @@ func (m *ServiceMgr) checkIfDeployed(appName string) bool {
 }
 
 func (m *ServiceMgr) checkIfDeployedAndRunning(appName string) bool {
-	mhVersion := eventingVerMap["mad-hatter"]
+	mhVersion := common.CouchbaseVerMap["mad-hatter"]
 	if m.compareEventingVersion(mhVersion) {
 		logPrefix := "ServiceMgr::CheckIfDeployedAndRunning"
 		bootstrapStatus, err := util.GetAggBootstrapAppStatus(net.JoinHostPort(util.Localhost(), m.adminHTTPPort), appName)
@@ -63,7 +63,7 @@ func (m *ServiceMgr) checkIfDeployedAndRunning(appName string) bool {
 }
 
 func (m *ServiceMgr) checkCompressHandler() bool {
-	mhVersion := eventingVerMap["mad-hatter"]
+	mhVersion := common.CouchbaseVerMap["mad-hatter"]
 	config, info := m.getConfig()
 	if info.Code != m.statusCodes.ok.Code {
 		return m.compareEventingVersion(mhVersion)
@@ -778,7 +778,7 @@ func (m *ServiceMgr) checkTopologyChangeReadiness(changeType service.TopologyCha
 		logging.Infof("%s Querying nodes: %rs for bootstrap status", logPrefix, nodeAddrs)
 
 		// Fail rebalance if some apps are undergoing bootstrap
-		mhVersion := eventingVerMap["mad-hatter"]
+		mhVersion := common.CouchbaseVerMap["mad-hatter"]
 		if !m.compareEventingVersion(mhVersion) {
 			appsBootstrapping, err := util.GetAggBootstrappingApps("/getBootstrappingApps", nodeAddrs)
 			logging.Infof("%s Status of app bootstrap across all Eventing nodes: %v", logPrefix, appsBootstrapping)

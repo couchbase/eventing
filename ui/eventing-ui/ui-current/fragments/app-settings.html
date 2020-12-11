@@ -223,9 +223,10 @@
           </span>
           <select ng-model="appModel.settings.language_compatibility"
             ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
-            ng-init="appModel.settings.language_compatibility = appModel.settings.language_compatibility ? appModel.settings.language_compatibility : '6.5.0'">
+            ng-init="appModel.settings.language_compatibility = appModel.settings.language_compatibility ? appModel.settings.language_compatibility : '6.6.2'">
             <option value="6.0.0">6.0.0</option>
-            <option value="6.5.0" selected>6.5.0</option>
+            <option value="6.5.0">6.5.0</option>
+            <option value="6.6.2" selected>6.6.2</option>
           </select>
         </div>
         <div class="formrow indent-1"

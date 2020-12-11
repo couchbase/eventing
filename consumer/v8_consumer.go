@@ -141,6 +141,7 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		workerVbucketMapRWMutex:         &sync.RWMutex{},
 	}
 
+	consumer.binaryDocAllowed = consumer.checkBinaryDocAllowed()
 	consumer.builderPool = &sync.Pool{
 		New: func() interface{} {
 			return flatbuffers.NewBuilder(0)

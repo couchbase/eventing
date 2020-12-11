@@ -704,7 +704,7 @@ func (m *ServiceMgr) getAppList() (map[string]int, map[string]int, map[string]in
 		}
 	}
 
-	mhVersion := eventingVerMap["mad-hatter"]
+	mhVersion := common.CouchbaseVerMap["mad-hatter"]
 	if m.compareEventingVersion(mhVersion) {
 		aggPausingApps := make(map[string]map[string]string)
 		util.Retry(util.NewFixedBackoff(time.Second), nil, getPausingAppsCallback, &aggPausingApps, nodeAddrs)
@@ -1253,7 +1253,7 @@ func (m *ServiceMgr) setSettings(appName string, data []byte) (info *runtimeInfo
 	_, procStatExists := settings["processing_status"]
 	_, depStatExists := settings["deployment_status"]
 
-	mhVersion := eventingVerMap["mad-hatter"]
+	mhVersion := common.CouchbaseVerMap["mad-hatter"]
 
 	if procStatExists || depStatExists {
 		if m.compareEventingVersion(mhVersion) {
@@ -1326,8 +1326,8 @@ func (m *ServiceMgr) setSettings(appName string, data []byte) (info *runtimeInfo
 		if deploymentStatus && !processingStatus {
 			if !m.compareEventingVersion(mhVersion) {
 				info.Code = m.statusCodes.errClusterVersion.Code
-				info.Info = fmt.Sprintf("All eventing nodes in the cluster must be on version %d.%d or higher for pausing function execution",
-					mhVersion.major, mhVersion.minor)
+				info.Info = fmt.Sprintf("All eventing nodes in the cluster must be on version %s or higher for pausing function execution",
+					mhVersion)
 				logging.Warnf("%s Version compat check failed: %s", logPrefix, info.Info)
 				return
 			}
@@ -1358,8 +1358,8 @@ func (m *ServiceMgr) setSettings(appName string, data []byte) (info *runtimeInfo
 
 		if filterFeedBoundary(settings) == common.DcpFromPrior && !m.compareEventingVersion(mhVersion) {
 			info.Code = m.statusCodes.errClusterVersion.Code
-			info.Info = fmt.Sprintf("All eventing nodes in cluster must be on version %d.%d or higher for resuming function execution",
-				mhVersion.major, mhVersion.minor)
+			info.Info = fmt.Sprintf("All eventing nodes in cluster must be on version %s or higher for resuming function execution",
+				mhVersion)
 			logging.Warnf("%s Version compat check failed: %s", logPrefix, info.Info)
 			return
 		}
@@ -2023,11 +2023,11 @@ func (m *ServiceMgr) savePrimaryStore(app *application) (info *runtimeInfo) {
 		return
 	}
 
-	mhVersion := eventingVerMap["mad-hatter"]
+	mhVersion := common.CouchbaseVerMap["mad-hatter"]
 	if filterFeedBoundary(app.Settings) == common.DcpFromPrior && !m.compareEventingVersion(mhVersion) {
 		info.Code = m.statusCodes.errClusterVersion.Code
-		info.Info = fmt.Sprintf("All eventing nodes in the cluster must be on version %d.%d or higher for using 'from prior' deployment feed boundary",
-			mhVersion.major, mhVersion.minor)
+		info.Info = fmt.Sprintf("All eventing nodes in the cluster must be on version %s or higher for using 'from prior' deployment feed boundary",
+			mhVersion)
 		logging.Warnf("%s Version compat check failed: %s", logPrefix, info.Info)
 		return
 	}
@@ -2056,8 +2056,8 @@ func (m *ServiceMgr) savePrimaryStore(app *application) (info *runtimeInfo) {
 	srcMutationEnabled := m.isSrcMutationEnabled(&app.DeploymentConfig)
 	if srcMutationEnabled && !m.compareEventingVersion(mhVersion) {
 		info.Code = m.statusCodes.errClusterVersion.Code
-		info.Info = fmt.Sprintf("All eventing nodes in the cluster must be on version %d.%d or higher for allowing mutations against source bucket",
-			mhVersion.major, mhVersion.minor)
+		info.Info = fmt.Sprintf("All eventing nodes in the cluster must be on version %s or higher for allowing mutations against source bucket",
+			mhVersion)
 		logging.Warnf("%s Version compat check failed: %s", logPrefix, info.Info)
 		return
 	}
@@ -3311,7 +3311,7 @@ func (m *ServiceMgr) statusHandlerImpl(appName string) (response interface{}, in
 			status.NumBootstrappingNodes = num
 		}
 
-		mhVersion := eventingVerMap["mad-hatter"]
+		mhVersion := common.CouchbaseVerMap["mad-hatter"]
 		if m.compareEventingVersion(mhVersion) {
 			bootstrapStatus, err := util.GetAggBootstrapAppStatus(net.JoinHostPort(util.Localhost(), m.adminHTTPPort), status.Name)
 			if err != nil {
