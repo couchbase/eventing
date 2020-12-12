@@ -137,75 +137,154 @@ var snippet_outputs = []string{
 		  '\"request\":\"GET\"});', {});`,
 }
 
-var script_inputs = []string{
-	`var goo = 23`,
-	`// var foo = 23`,
-	`function hello() {
-		var a = 23;
-	}`,
-	`function there() { var baz }`,
-	``,
-	`{var foo=createTimer\n();'}`,
-	`{createTimer();`,
-	`var foo = 23
-	function foo() {}`,
-	"\xbd\xb2\x3d\xbc",
-	`function OnUpdate() { createTimer()}`,
-	`function\nOnDelete() {}`,
-	`function OnUpdate           (){}`,
-	`// function OnDelete(`,
-	`function test() {} function OnUpdate() {}`,
+const template = `
+  function OnUpdate() {
+  }
+`
+
+type parserTestCase struct {
+	input string
+	valid bool
+	timer bool
 }
 
-var script_allowed = []bool{
-	false,
-	true,
-	true,
-	true,
-	true,
-	true,
-	true,
-	false,
-	false,
-	true,
-	true,
-	true,
-	true,
-	true,
-}
-
-var script_required = []bool{
-	false,
-	false,
-	false,
-	false,
-	false,
-	false,
-	false,
-	false,
-	false,
-	true,
-	true,
-	true,
-	false,
-	true,
-}
-
-var script_timers = []bool{
-	false,
-	false,
-	false,
-	false,
-	false,
-	true,
-	true,
-	false,
-	false,
-	true,
-	false,
-	false,
-	false,
-	false,
+var script_data = []parserTestCase{
+	parserTestCase{
+		input: `var goo = 23` + template,
+		valid: false,
+		timer: false,
+	},
+	parserTestCase{
+		input: `// var foo = 23` + template,
+		valid: true,
+		timer: false,
+	},
+	parserTestCase{
+		input: ` function hello() {
+						var a = 23;
+					}` + template,
+		valid: true,
+		timer: false,
+	},
+	parserTestCase{
+		input: `function there() { var baz }` + template,
+		valid: true,
+		timer: false,
+	},
+	parserTestCase{
+		input: ``,
+		valid: false,
+		timer: false,
+	},
+	parserTestCase{
+		input: `{var foo=createTimer\n();}` + template,
+		valid: true,
+		timer: true,
+	},
+	parserTestCase{
+		input: `{createTimer();` + template,
+		valid: false,
+		timer: true,
+	},
+	parserTestCase{
+		input: ` var foo = 23
+					function foo() {}` + template,
+		valid: false,
+		timer: false,
+	},
+	parserTestCase{
+		input: "\xbd\xb2\x3d\xbc" + template,
+		valid: false,
+		timer: false,
+	},
+	parserTestCase{
+		input: `function OnUpdate () { createTimer()}`,
+		valid: true,
+		timer: true,
+	},
+	parserTestCase{
+		input: `function\nOnDelete() {}`,
+		valid: true,
+		timer: false,
+	},
+	parserTestCase{
+		input: `function OnUpdate           (){}`,
+		valid: true,
+		timer: false,
+	},
+	parserTestCase{
+		input: `// function OnDelete(`,
+		valid: false,
+		timer: false,
+	},
+	parserTestCase{
+		input: `function test() {} function OnUpdate() {}`,
+		valid: true,
+		timer: false,
+	},
+	parserTestCase{
+		input: `"function OnUpdate () {}"`,
+		valid: false,
+		timer: false,
+	},
+	parserTestCase{
+		input: `/*function OnUpdate () {}*/function OnUpdate() {}`,
+		valid: true,
+		timer: false,
+	},
+	parserTestCase{
+		input: `function OnUpdate () {} function OnUpdate () {}`,
+		valid: false,
+		timer: false,
+	},
+	parserTestCase{
+		input: `var goo = 23`,
+		valid: false,
+		timer: false,
+	},
+	parserTestCase{
+		input: `// var foo = 23`,
+		valid: false,
+		timer: false,
+	},
+	parserTestCase{
+		input: ` function hello() {
+						var a = 23;
+					}`,
+		valid: false,
+		timer: false,
+	},
+	parserTestCase{
+		input: `function there() { var baz }`,
+		valid: false,
+		timer: false,
+	},
+	parserTestCase{
+		input: ``,
+		valid: false,
+		timer: false,
+	},
+	parserTestCase{
+		input: `{var foo=createTimer\n();'}`,
+		valid: false,
+		timer: true,
+	},
+	parserTestCase{
+		input: `{createTimer();`,
+		valid: false,
+		timer: true,
+	},
+	parserTestCase{
+		input: `var foo = 23
+        function foo() {}`,
+		valid: false,
+		timer: false,
+	},
+	parserTestCase{
+		input: "\xbd\xb2\x3d\xbc",
+		valid: false,
+		timer: false,
+	},
 }
 
 func TestParserTransform(t *testing.T) {
@@ -218,22 +297,18 @@ func TestParserTransform(t *testing.T) {
 }
 
 func TestParserDetect(t *testing.T) {
-	for i := 0; i < len(script_inputs); i++ {
-		parsed := parser.GetStatements(script_inputs[i])
-		globals, err := parsed.ValidateGlobals()
-		if globals != script_allowed[i] {
-			t.Errorf("Mismatch global check:%s\nExpected:%v\nGot:%v\nError:%v\n", script_inputs[i], script_allowed[i], globals, err)
+	for i := 0; i < len(script_data); i++ {
+		parsed := parser.GetStatements(script_data[i].input)
+		err := parsed.ValidateStructure()
+		allowed := (err == nil)
+		if allowed != script_data[i].valid {
+			t.Errorf("Mismatch structure check:%s\nExpected:%v\nGot:%v\nError:%v\n", script_data[i].input, script_data[i].valid, allowed, err)
 		}
 
-		if exports, err := parsed.ValidateExports(); exports != script_required[i] {
-			t.Errorf("Mismatch exports check:%s\nExpected:%v\nGot:%v\nError:%v\n", script_inputs[i], script_allowed[i], exports, err)
+		timers := parser.UsingTimer(script_data[i].input)
+		if timers != script_data[i].timer {
+			t.Errorf("Mismatch timer check:%s\nExpected:%v\nGot:%v\n", script_data[i].input, script_data[i].timer, timers)
 		}
-
-		timers := parser.UsingTimer(script_inputs[i])
-		if timers != script_timers[i] {
-			t.Errorf("Mismatch timer check:%s\nExpected:%v\nGot:%v\n", script_inputs[i], script_timers[i], timers)
-		}
-
 	}
 }
 

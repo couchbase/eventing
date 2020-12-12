@@ -278,8 +278,8 @@ func GetStatements(input string) *parsedStatements {
 	return parsed
 }
 
-func (parsed *parsedStatements) ValidateGlobals() (bool, error) {
-	depth := 0
+func (parsed *parsedStatements) ValidateStructure() error {
+	depth, onDeletes, onUpdates := 0, 0, 0
 	for _, stmt := range parsed.stmts {
 		switch stmt {
 		case "{":
@@ -287,40 +287,45 @@ func (parsed *parsedStatements) ValidateGlobals() (bool, error) {
 		case "}":
 			depth--
 		default:
-			if depth <= 0 && !strings.HasPrefix(stmt, "function") {
+			if depth > 0 {
+				continue
+			}
+			function := function_name.FindStringSubmatch(stmt)
+			if len(function) > 1 {
+				functionName := function[1]
+				if functionName == "OnUpdate" {
+					onUpdates++
+				}
+				if functionName == "OnDelete" {
+					onDeletes++
+				}
+			}
+			if !strings.HasPrefix(stmt, "function") {
 				msg := fmt.Sprintf("Only functions allowed in global space, but found: %s", stmt)
 				if !printable_stmt.MatchString(stmt) {
 					msg += fmt.Sprintf(" bytes: %v", []byte(stmt))
 				}
-				return false, errors.New(msg)
+				return errors.New(msg)
 			}
 		}
 	}
-	return true, nil
-}
 
-func (parsed *parsedStatements) ValidateExports() (bool, error) {
-	depth := 0
-	for _, stmt := range parsed.stmts {
-		switch stmt {
-		case "{":
-			depth++
-		case "}":
-			depth--
-		default:
-			if depth <= 0 {
-				function := function_name.FindStringSubmatch(stmt)
-				if len(function) >= 2 {
-					functionName := strings.TrimSpace(function[1])
-					if _, ok := requiredFunctions[functionName]; ok {
-						return true, nil
-					}
-				}
-			}
-		}
+	if onUpdates == 0 && onDeletes == 0 {
+		err := errors.New("handler must have at least OnUpdate() or OnDelete() function")
+		return err
 	}
-	msg := fmt.Sprintf("Handler code is missing OnUpdate() and OnDelete() functions. At least one of them is needed to deploy the handler")
-	return false, errors.New(msg)
+
+	if onUpdates > 1 {
+		err := errors.New("handler cannot have multiple OnUpdate() functions")
+		return err
+	}
+
+	if onDeletes > 1 {
+		err := errors.New("handler code cannot have multiple OnDelete() functions")
+		return err
+	}
+
+	return nil
 }
 
 func UsingTimer(input string) bool {
