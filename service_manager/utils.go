@@ -41,7 +41,7 @@ func (m *ServiceMgr) checkIfDeployed(appName string) bool {
 }
 
 func (m *ServiceMgr) checkIfDeployedAndRunning(appName string) bool {
-	mhVersion := eventingVerMap["mad-hatter"]
+	mhVersion := common.CouchbaseVerMap["mad-hatter"]
 	if m.compareEventingVersion(mhVersion) {
 		logPrefix := "ServiceMgr::CheckIfDeployedAndRunning"
 		bootstrapStatus, err := util.GetAggBootstrapAppStatus(net.JoinHostPort(util.Localhost(), m.adminHTTPPort), appName)
@@ -63,7 +63,7 @@ func (m *ServiceMgr) checkIfDeployedAndRunning(appName string) bool {
 }
 
 func (m *ServiceMgr) checkCompressHandler() bool {
-	mhVersion := eventingVerMap["mad-hatter"]
+	mhVersion := common.CouchbaseVerMap["mad-hatter"]
 	config, info := m.getConfig()
 	if info.Code != m.statusCodes.ok.Code {
 		return m.compareEventingVersion(mhVersion)
@@ -241,6 +241,10 @@ func (m *ServiceMgr) unmarshalApp(r *http.Request) (app application, info *runti
 		return
 	}
 
+	if app.Settings == nil {
+		app.Settings = make(map[string]interface{}, 1)
+	}
+
 	info.Code = m.statusCodes.ok.Code
 	info.Info = "OK"
 	return
@@ -271,6 +275,12 @@ func (m *ServiceMgr) unmarshalAppList(w http.ResponseWriter, r *http.Request) (a
 		info.Info = fmt.Sprintf("Failed to unmarshal payload err: %v", err)
 		logging.Errorf("%s %s", logPrefix, info.Info)
 		return
+	}
+
+	for _, app := range *appList {
+		if app.Settings == nil {
+			app.Settings = make(map[string]interface{}, 1)
+		}
 	}
 
 	info.Code = m.statusCodes.ok.Code
@@ -768,7 +778,7 @@ func (m *ServiceMgr) checkTopologyChangeReadiness(changeType service.TopologyCha
 		logging.Infof("%s Querying nodes: %rs for bootstrap status", logPrefix, nodeAddrs)
 
 		// Fail rebalance if some apps are undergoing bootstrap
-		mhVersion := eventingVerMap["mad-hatter"]
+		mhVersion := common.CouchbaseVerMap["mad-hatter"]
 		if !m.compareEventingVersion(mhVersion) {
 			appsBootstrapping, err := util.GetAggBootstrappingApps("/getBootstrappingApps", nodeAddrs)
 			logging.Infof("%s Status of app bootstrap across all Eventing nodes: %v", logPrefix, appsBootstrapping)
@@ -815,6 +825,36 @@ func (m *ServiceMgr) CheckLifeCycleOpsDuringRebalance() bool {
 		return true
 	}
 	return false
+}
+
+func (m *ServiceMgr) MaybeEnforceFunctionSchema(app application) *runtimeInfo {
+	info := &runtimeInfo{}
+	if appData, err := json.Marshal(app); err == nil && app.EnforceSchema == true {
+		schemaErr := parser.ValidateHandlerSchema(appData)
+		if schemaErr != nil {
+			info.Code = m.statusCodes.errInvalidConfig.Code
+			info.Info = fmt.Sprintf("Invalid function configuration, err: %v", schemaErr)
+			logging.Errorf("%s\n", info.Info)
+			return info
+		}
+	}
+	info.Code = m.statusCodes.ok.Code
+	info.Info = fmt.Sprint("Success")
+	return info
+}
+
+func (m *ServiceMgr) MaybeEnforceSettingsSchema(data []byte) *runtimeInfo {
+	info := &runtimeInfo{}
+	schemaErr := parser.ValidateSettingsSchema(data)
+	if schemaErr != nil {
+		info.Code = m.statusCodes.errInvalidConfig.Code
+		info.Info = fmt.Sprintf("Invalid settings configuration, err: %v", schemaErr)
+		logging.Errorf("%s\n", info.Info)
+		return info
+	}
+	info.Code = m.statusCodes.ok.Code
+	info.Info = fmt.Sprint("Success")
+	return info
 }
 
 func ConstructKeyspace(keyspace string) common.Keyspace {

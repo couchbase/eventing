@@ -45,8 +45,8 @@
     "language_compatibility": {
       "type": "string",
       "description": "eventing language version this handler assumes in terms of syntax and behavior",
-      "enum": ["6.0.0", "6.5.0"],
-      "default": "6.5.0"
+      "enum": ["6.6.2", "6.0.0", "6.5.0"],
+      "default": "6.6.2"
     },
     "lcb_inst_capacity": {
       "type": "integer",

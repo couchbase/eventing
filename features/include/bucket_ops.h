@@ -106,7 +106,7 @@ private:
           bool is_source_bucket, Bucket *bucket);
 
   std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
-  Set(const std::string &key, const char *value, int value_length,
+  Set(const std::string &key, const std::string &value,
       lcb_STORE_OPERATION op_type, lcb_U32 expiry, uint64_t cas,
       lcb_U32 doc_type, bool is_source_bucket, Bucket *bucket);
 
@@ -138,6 +138,7 @@ private:
   const char *error_str_;
   const char *success_str_;
   const char *json_str_;
+  const char *binary_str_;
   const char *invalid_counter_str_;
   const char *cache_str_;
 };

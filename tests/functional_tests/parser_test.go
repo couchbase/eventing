@@ -4,8 +4,9 @@ package eventing
 
 import (
 	"fmt"
-	"github.com/couchbase/eventing/parser"
 	"testing"
+
+	"github.com/couchbase/eventing/parser"
 )
 
 var snippet_inputs = []string{
@@ -68,6 +69,8 @@ var snippet_inputs = []string{
 		something=nothing and // or // exists // any
 		nosuchthing = /* annoying comment */ "nosuchvalue"; // ending comment`,
 	`DELETE from dst_bucket.scope_1.coll_4 USE KEYS "newDocID2";`,
+	`var curl=SELECT CURL("http://localhost:8091/pools/default/buckets",{"header":"authorization: Basic HelloWorldAbcdefghijklmnopqrstuvwxyz==",
+		  "request":"GET"});`,
 }
 
 var snippet_outputs = []string{
@@ -114,7 +117,7 @@ var snippet_outputs = []string{
 	"var bar = N1QL('select * from beerbkt where arg = $foo and bar = `$bar`;', {'$foo':foo});",
 	"var bar = N1QL('select * from beerbkt where\\n' +\n'arg = $foo and bar = `$bar`;', {'$foo':foo});",
 	`var bar = select /* hello *`,
-	`var bar = N1QL('select * /**/ from foo;', {});`,
+	`var bar = N1QL('select *  from foo;', {});`,
 	`	var foo = 23;
 		var bar = N1QL('select * from beerbkt where arg = $foo and bar = $bar and xx = 23;', {'$bar':bar, '$foo':foo});
 		var origin = "BLR"
@@ -124,12 +127,14 @@ var snippet_outputs = []string{
 		var bar = N1QL('UPSERT INTO gamesim (KEY, VALUE) VALUES (\'reskey\', $val);', {'$val':val});
 		var upsert_query5 = N1QL('UPSERT INTO eventing-bucket-1 (KEY, VALUE) VALUES ($docId5, \'Hello World5\');', {'$docId5':docId5}, {'consistency' : 'request'});
 	`,
-	`var bar = N1QL('select * from beerbkt where -- opening comment\n' +
-		' -- another comment\n' +
-		'/* yet another comment */\n' +
-		'something=nothing and  --  or // exists // any\n' +
-		'nosuchthing = /* annoying comment */ \"nosuchvalue\";', {}); // ending comment`,
+	`var bar = N1QL('select * from beerbkt where\n' +
+		'\n' +
+		'\n' +
+		'something=nothing and \n' +
+		'nosuchthing =  \"nosuchvalue\";', {}); // ending comment`,
 	`N1QL('DELETE from dst_bucket.scope_1.coll_4 USE KEYS \"newDocID2\";', {});`,
+	`var curl=N1QL('SELECT CURL(\"http://localhost:8091/pools/default/buckets\",{\"header\":\"authorization: Basic HelloWorldAbcdefghijklmnopqrstuvwxyz==\",\n' +
+		  '\"request\":\"GET\"});', {});`,
 }
 
 var script_inputs = []string{

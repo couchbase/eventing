@@ -1753,6 +1753,10 @@ func EncodeAppPayload(app *cm.Application) []byte {
 	appCode := builder.CreateString(app.AppHandlers)
 	aName := builder.CreateString(app.Name)
 	fiid := builder.CreateString(app.FunctionInstanceID)
+	schema := byte(0x0)
+	if app.EnforceSchema {
+		schema = byte(0x1)
+	}
 
 	cfg.ConfigStart(builder)
 	cfg.ConfigAddAppCode(builder, appCode)
@@ -1762,6 +1766,7 @@ func EncodeAppPayload(app *cm.Application) []byte {
 	cfg.ConfigAddCurl(builder, curlBindingsVector)
 	cfg.ConfigAddAccess(builder, access)
 	cfg.ConfigAddFunctionInstanceID(builder, fiid)
+	cfg.ConfigAddEnforceSchema(builder, schema)
 
 	config := cfg.ConfigEnd(builder)
 
@@ -1779,6 +1784,11 @@ func ParseFunctionPayload(data []byte, fnName string) cm.Application {
 	app.Name = string(config.AppName())
 	app.FunctionID = uint32(config.HandlerUUID())
 	app.FunctionInstanceID = string(config.FunctionInstanceID())
+	if config.EnforceSchema() == byte(0x1) {
+		app.EnforceSchema = true
+	} else {
+		app.EnforceSchema = false
+	}
 
 	d := new(cfg.DepCfg)
 	depcfg := new(cm.DepCfg)

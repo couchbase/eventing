@@ -1,7 +1,6 @@
 package servicemanager
 
 import (
-	"errors"
 	"math"
 	"runtime"
 	"sync"
@@ -58,8 +57,6 @@ const (
 )
 
 var (
-	errInvalidVersion = errors.New("invalid eventing version")
-
 	funtionTypes = map[string]struct{}{
 		"sbm":    struct{}{},
 		"notsbm": struct{}{},
@@ -185,6 +182,7 @@ type application struct {
 	AppHandlers        string                 `json:"appcode"`
 	DeploymentConfig   depCfg                 `json:"depcfg"`
 	EventingVersion    string                 `json:"version"`
+	EnforceSchema      bool                   `json:"enforce_schema"`
 	FunctionID         uint32                 `json:"handleruuid"`
 	FunctionInstanceID string                 `json:"function_instance_id"`
 	Name               string                 `json:"appname"`
@@ -260,8 +258,9 @@ type appStatus struct {
 }
 
 type annotation struct {
-	Name		      string   `json:"name"`
-	DeprecatedNames       []string `json:"deprecatedNames",omitempty`
+	Name            string   `json:"name"`
+	DeprecatedNames []string `json:"deprecatedNames",omitempty`
+	OverloadedNames []string `json:"overloadedNames",omitempty`
 }
 
 type appStatusResponse struct {
@@ -272,31 +271,4 @@ type appStatusResponse struct {
 type singleAppStatusResponse struct {
 	App              appStatus `json:"app"`
 	NumEventingNodes int       `json:"num_eventing_nodes"`
-}
-
-type eventingVer struct {
-	major        int
-	minor        int
-	mpVersion    int
-	build        int
-	isEnterprise bool
-}
-
-var eventingVerMap = map[string]eventingVer{
-	"vulcan": eventingVer{major: 5,
-		minor:        5,
-		mpVersion:    0,
-		build:        0,
-		isEnterprise: true},
-	"alice": eventingVer{
-		major:        6,
-		minor:        0,
-		mpVersion:    0,
-		build:        0,
-		isEnterprise: true},
-	"mad-hatter": eventingVer{major: 6,
-		minor:        5,
-		mpVersion:    0,
-		build:        0,
-		isEnterprise: true},
 }

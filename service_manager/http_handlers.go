@@ -704,7 +704,7 @@ func (m *ServiceMgr) getAppList() (map[string]int, map[string]int, map[string]in
 		}
 	}
 
-	mhVersion := eventingVerMap["mad-hatter"]
+	mhVersion := common.CouchbaseVerMap["mad-hatter"]
 	if m.compareEventingVersion(mhVersion) {
 		aggPausingApps := make(map[string]map[string]string)
 		util.Retry(util.NewFixedBackoff(time.Second), nil, getPausingAppsCallback, &aggPausingApps, nodeAddrs)
@@ -1253,7 +1253,7 @@ func (m *ServiceMgr) setSettings(appName string, data []byte) (info *runtimeInfo
 	_, procStatExists := settings["processing_status"]
 	_, depStatExists := settings["deployment_status"]
 
-	mhVersion := eventingVerMap["mad-hatter"]
+	mhVersion := common.CouchbaseVerMap["mad-hatter"]
 
 	if procStatExists || depStatExists {
 		if m.compareEventingVersion(mhVersion) {
@@ -1326,8 +1326,8 @@ func (m *ServiceMgr) setSettings(appName string, data []byte) (info *runtimeInfo
 		if deploymentStatus && !processingStatus {
 			if !m.compareEventingVersion(mhVersion) {
 				info.Code = m.statusCodes.errClusterVersion.Code
-				info.Info = fmt.Sprintf("All eventing nodes in the cluster must be on version %d.%d or higher for pausing function execution",
-					mhVersion.major, mhVersion.minor)
+				info.Info = fmt.Sprintf("All eventing nodes in the cluster must be on version %s or higher for pausing function execution",
+					mhVersion)
 				logging.Warnf("%s Version compat check failed: %s", logPrefix, info.Info)
 				return
 			}
@@ -1358,8 +1358,8 @@ func (m *ServiceMgr) setSettings(appName string, data []byte) (info *runtimeInfo
 
 		if filterFeedBoundary(settings) == common.DcpFromPrior && !m.compareEventingVersion(mhVersion) {
 			info.Code = m.statusCodes.errClusterVersion.Code
-			info.Info = fmt.Sprintf("All eventing nodes in cluster must be on version %d.%d or higher for resuming function execution",
-				mhVersion.major, mhVersion.minor)
+			info.Info = fmt.Sprintf("All eventing nodes in cluster must be on version %s or higher for resuming function execution",
+				mhVersion)
 			logging.Warnf("%s Version compat check failed: %s", logPrefix, info.Info)
 			return
 		}
@@ -1487,6 +1487,11 @@ func (m *ServiceMgr) parseFunctionPayload(data []byte, fnName string) applicatio
 	app.Name = string(config.AppName())
 	app.FunctionID = uint32(config.HandlerUUID())
 	app.FunctionInstanceID = string(config.FunctionInstanceID())
+	if config.EnforceSchema() == byte(0x1) {
+		app.EnforceSchema = true
+	} else {
+		app.EnforceSchema = false
+	}
 
 	d := new(cfg.DepCfg)
 	depcfg := new(depCfg)
@@ -1583,6 +1588,7 @@ func (m *ServiceMgr) getAnnotations(w http.ResponseWriter, r *http.Request) {
 		respObj := annotation{}
 		respObj.Name = app.Name
 		respObj.DeprecatedNames = parser.ListDeprecatedFunctions(app.AppHandlers)
+		respObj.OverloadedNames = parser.ListOverloadedFunctions(app.AppHandlers)
 		respData = append(respData, respObj)
 	}
 	data, err := json.Marshal(respData)
@@ -1735,9 +1741,14 @@ func (m *ServiceMgr) saveTempStoreHandler(w http.ResponseWriter, r *http.Request
 
 	info := m.saveTempStore(app)
 	deprecatedFnsList := parser.ListDeprecatedFunctions(app.AppHandlers)
+	overloadedFnsList := parser.ListOverloadedFunctions(app.AppHandlers)
 	if len(deprecatedFnsList) > 0 {
 		jsonList, _ := json.Marshal(deprecatedFnsList)
-		info.Info = fmt.Sprintf("%s; Warning: %s", info.Info, jsonList)
+		info.Info = fmt.Sprintf("%s; Deprecated: %s", info.Info, jsonList)
+	}
+	if len(overloadedFnsList) > 0 {
+		jsonList, _ := json.Marshal(overloadedFnsList)
+		info.Info = fmt.Sprintf("%s; Overloaded: %s", info.Info, jsonList)
 	}
 	m.sendRuntimeInfo(w, info)
 }
@@ -1944,6 +1955,10 @@ func (m *ServiceMgr) encodeAppPayload(app *application) []byte {
 	appCode := builder.CreateString(app.AppHandlers)
 	aName := builder.CreateString(app.Name)
 	fiid := builder.CreateString(app.FunctionInstanceID)
+	schema := byte(0x0)
+	if app.EnforceSchema {
+		schema = byte(0x1)
+	}
 
 	cfg.ConfigStart(builder)
 	cfg.ConfigAddAppCode(builder, appCode)
@@ -1953,6 +1968,7 @@ func (m *ServiceMgr) encodeAppPayload(app *application) []byte {
 	cfg.ConfigAddCurl(builder, curlBindingsVector)
 	cfg.ConfigAddAccess(builder, access)
 	cfg.ConfigAddFunctionInstanceID(builder, fiid)
+	cfg.ConfigAddEnforceSchema(builder, schema)
 
 	config := cfg.ConfigEnd(builder)
 
@@ -2007,11 +2023,11 @@ func (m *ServiceMgr) savePrimaryStore(app *application) (info *runtimeInfo) {
 		return
 	}
 
-	mhVersion := eventingVerMap["mad-hatter"]
+	mhVersion := common.CouchbaseVerMap["mad-hatter"]
 	if filterFeedBoundary(app.Settings) == common.DcpFromPrior && !m.compareEventingVersion(mhVersion) {
 		info.Code = m.statusCodes.errClusterVersion.Code
-		info.Info = fmt.Sprintf("All eventing nodes in the cluster must be on version %d.%d or higher for using 'from prior' deployment feed boundary",
-			mhVersion.major, mhVersion.minor)
+		info.Info = fmt.Sprintf("All eventing nodes in the cluster must be on version %s or higher for using 'from prior' deployment feed boundary",
+			mhVersion)
 		logging.Warnf("%s Version compat check failed: %s", logPrefix, info.Info)
 		return
 	}
@@ -2040,8 +2056,8 @@ func (m *ServiceMgr) savePrimaryStore(app *application) (info *runtimeInfo) {
 	srcMutationEnabled := m.isSrcMutationEnabled(&app.DeploymentConfig)
 	if srcMutationEnabled && !m.compareEventingVersion(mhVersion) {
 		info.Code = m.statusCodes.errClusterVersion.Code
-		info.Info = fmt.Sprintf("All eventing nodes in the cluster must be on version %d.%d or higher for allowing mutations against source bucket",
-			mhVersion.major, mhVersion.minor)
+		info.Info = fmt.Sprintf("All eventing nodes in the cluster must be on version %s or higher for allowing mutations against source bucket",
+			mhVersion)
 		logging.Warnf("%s Version compat check failed: %s", logPrefix, info.Info)
 		return
 	}
@@ -2738,6 +2754,20 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
+			app, info := m.getTempStore(appName)
+			if info.Code != m.statusCodes.ok.Code {
+				m.sendErrorInfo(w, info)
+				return
+			}
+
+			if app.EnforceSchema == true {
+				m.MaybeEnforceSettingsSchema(data)
+				if info.Code != m.statusCodes.ok.Code {
+					m.sendErrorInfo(w, info)
+					return
+				}
+			}
+
 			var settings map[string]interface{}
 			err = json.Unmarshal(data, &settings)
 			if err != nil {
@@ -2901,6 +2931,20 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
+		app, info := m.getTempStore(appName)
+		if info.Code != m.statusCodes.ok.Code {
+			m.sendErrorInfo(w, info)
+			return
+		}
+
+		if app.EnforceSchema == true {
+			m.MaybeEnforceSettingsSchema(data)
+			if info.Code != m.statusCodes.ok.Code {
+				m.sendErrorInfo(w, info)
+				return
+			}
+		}
+
 		settings["deployment_status"] = true
 		settings["processing_status"] = true
 
@@ -2985,6 +3029,12 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 			audit.Log(auditevent.CreateFunction, r, appName)
 
 			app, info := m.unmarshalApp(r)
+			if info.Code != m.statusCodes.ok.Code {
+				m.sendErrorInfo(w, info)
+				return
+			}
+
+			info = m.MaybeEnforceFunctionSchema(app)
 			if info.Code != m.statusCodes.ok.Code {
 				m.sendErrorInfo(w, info)
 				return
@@ -3082,6 +3132,15 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 				m.sendErrorInfo(w, info)
 				return
 			}
+
+			for _, app := range *appList {
+				info = m.MaybeEnforceFunctionSchema(app)
+				if info.Code != m.statusCodes.ok.Code {
+					m.sendErrorInfo(w, info)
+					return
+				}
+			}
+
 			var isMixedMode bool
 			if isMixedMode, info = m.isMixedModeCluster(); info.Code != m.statusCodes.ok.Code {
 				m.sendErrorInfo(w, info)
@@ -3252,7 +3311,7 @@ func (m *ServiceMgr) statusHandlerImpl(appName string) (response interface{}, in
 			status.NumBootstrappingNodes = num
 		}
 
-		mhVersion := eventingVerMap["mad-hatter"]
+		mhVersion := common.CouchbaseVerMap["mad-hatter"]
 		if m.compareEventingVersion(mhVersion) {
 			bootstrapStatus, err := util.GetAggBootstrapAppStatus(net.JoinHostPort(util.Localhost(), m.adminHTTPPort), status.Name)
 			if err != nil {
@@ -3558,6 +3617,15 @@ func (m *ServiceMgr) importHandler(w http.ResponseWriter, r *http.Request) {
 		m.sendErrorInfo(w, info)
 		return
 	}
+
+	for _, app := range *appList {
+		info = m.MaybeEnforceFunctionSchema(app)
+		if info.Code != m.statusCodes.ok.Code {
+			m.sendErrorInfo(w, info)
+			return
+		}
+	}
+
 	var isMixedMode bool
 	if isMixedMode, info = m.isMixedModeCluster(); info.Code != m.statusCodes.ok.Code {
 		m.sendErrorInfo(w, info)
@@ -3664,6 +3732,14 @@ func (m *ServiceMgr) backupHandler(w http.ResponseWriter, r *http.Request) {
 		if info.Code != m.statusCodes.ok.Code {
 			m.sendErrorInfo(w, info)
 			return
+		}
+
+		for _, app := range *appList {
+			info = m.MaybeEnforceFunctionSchema(app)
+			if info.Code != m.statusCodes.ok.Code {
+				m.sendErrorInfo(w, info)
+				return
+			}
 		}
 
 		remap, err := getRestoreMap(r)

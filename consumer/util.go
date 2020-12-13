@@ -5,6 +5,7 @@ import (
 	"hash/crc32"
 	"strconv"
 
+	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/dcp/transport/client"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
@@ -101,4 +102,10 @@ func (c *Consumer) purgeVbStreamRequested(logPrefix string, vb uint16) {
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
 	}
 	c.vbsStreamRRWMutex.Unlock()
+}
+
+func (c *Consumer) checkBinaryDocAllowed() bool {
+	langCompatibility, _ := common.FrameCouchbaseVersionShort(c.languageCompatibility)
+	binDocSupportVersion := common.CouchbaseVerMap["6.6.2"]
+	return langCompatibility.Compare(binDocSupportVersion)
 }

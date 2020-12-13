@@ -11,6 +11,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/couchbase/eventing/parser"
 	"github.com/mitchellh/go-ps"
 )
 
@@ -171,7 +172,7 @@ func createAndDeployLargeFunction(appName, hFileName string, settings *commonSet
 		return
 	}
 
-	err = ValidateHandlerSchema(data)
+	err = parser.ValidateHandlerSchema(data)
 	if err != nil {
 		panic(fmt.Sprintf("handler failed schema: %v, data: %s", err, data))
 	}
@@ -365,7 +366,7 @@ func setSettings(fnName string, deploymentStatus, processingStatus bool, s *comm
 		return res, err
 	}
 
-	err = ValidateSettingsSchema(data)
+	err = parser.ValidateSettingsSchema(data)
 	if err != nil {
 		panic(fmt.Sprintf("settings failed schema: %v, data: %s", err, data))
 	}

@@ -2,15 +2,18 @@
   width: 100%;
   background-color: inherit;
 }
+
 .functions-editor-wrapper {
   background-color: #f6f7f9;
   padding-top: 1rem;
 }
+
 .functions-editor * {
   line-height: 1.4rem !important;
   font-size: 14px !important;
 }
+
 .ace_tooltip {
-    word-wrap: break-word !important;
-    white-space: pre-wrap !important;
+  word-wrap: break-word !important;
+  white-space: pre-wrap !important;
 }

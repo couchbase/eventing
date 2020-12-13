@@ -24,6 +24,7 @@ type opsType struct {
 	writeXattrs bool
 	xattrPrefix string
 	startIndex  int
+	isBinary    bool
 }
 
 func pumpBucketOps(ops opsType, rate *rateLimit) {
@@ -169,18 +170,24 @@ func pumpBucketOpsSrc(ops opsType, srcBucket string, rate *rateLimit) {
 	}
 	defer bucket.Close()
 
+	bin := []byte{1, 2, 3, 4, 0, 5, 6, 0, 7}
 	u := user{
 		Email:     "kingarthur@couchbase.com",
 		Interests: []string{"Holy Grail", "African Swallows"},
 	}
 
+	// TODO: if ops.delete is set then only delete the item else only insert the item.
 	if !rate.limit {
 		for i := 0; i < ops.count; i++ {
 			u.ID = i + ops.startIndex
 			if !ops.writeXattrs {
 
 			retryOp1:
-				_, err := bucket.Upsert(fmt.Sprintf("doc_id_%d", i+ops.startIndex), u, uint32(ops.expiry))
+				if ops.isBinary {
+					_, err = bucket.Upsert(fmt.Sprintf("doc_id_%d", i+ops.startIndex), bin, uint32(ops.expiry))
+				} else {
+					_, err = bucket.Upsert(fmt.Sprintf("doc_id_%d", i+ops.startIndex), u, uint32(ops.expiry))
+				}
 				if err != nil {
 					time.Sleep(time.Second)
 					goto retryOp1
@@ -230,7 +237,11 @@ func pumpBucketOpsSrc(ops opsType, srcBucket string, rate *rateLimit) {
 					if !ops.writeXattrs {
 
 					retryOp5:
-						_, err := bucket.Upsert(fmt.Sprintf("doc_id_%d", i+ops.startIndex), u, uint32(ops.expiry))
+						if ops.isBinary {
+							_, err = bucket.Upsert(fmt.Sprintf("doc_id_%d", i+ops.startIndex), bin, uint32(ops.expiry))
+						} else {
+							_, err = bucket.Upsert(fmt.Sprintf("doc_id_%d", i+ops.startIndex), u, uint32(ops.expiry))
+						}
 						if err != nil {
 							time.Sleep(time.Second)
 							goto retryOp5

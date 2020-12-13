@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/couchbase/eventing/parser"
 )
 
 func testEnoent(itemCount int, handler string, settings *commonSettings, t *testing.T) {
@@ -158,7 +160,7 @@ func TestImportExport(t *testing.T) {
 		t.Errorf("Unable to export Functions %v, err : %v\n", exportFunctionsURL, err)
 		return
 	}
-	err = ValidateHandlerListSchema(exportResponse)
+	err = parser.ValidateHandlerListSchema(exportResponse)
 	if err != nil {
 		t.Errorf("Unable to validate export: %v, data: %s", err, exportResponse)
 	}
@@ -168,7 +170,7 @@ func TestImportExport(t *testing.T) {
 
 	_, err = makeRequest("POST", strings.NewReader(string(exportResponse)), importFunctionsURL)
 	if err != nil {
-		t.Errorf("Unable import Functions, err : %v\n", err)
+		t.Errorf("Unable import Functions,  err : %v\n", err)
 		return
 	}
 
@@ -181,7 +183,7 @@ func TestImportExport(t *testing.T) {
 		return
 	}
 
-	err = ValidateHandlerListSchema(response)
+	err = parser.ValidateHandlerListSchema(response)
 	if err != nil {
 		t.Errorf("Unable to validate re-export: %v, data: %s", err, exportResponse)
 	}
@@ -2081,4 +2083,41 @@ func TestJSExpiryDate(t *testing.T) {
 
 	dumpStats()
 	flushFunctionAndBucket(functionName)
+}
+
+func TestBinaryDoc(t *testing.T) {
+	functionName := t.Name()
+	itemCount := 32
+	jsFileName := "binarydoc"
+	time.Sleep(time.Second * 5)
+
+	pumpBucketOpsSrc(opsType{count: itemCount}, dstBucket, &rateLimit{})
+	createAndDeployFunction(functionName, jsFileName, &commonSettings{srcMutationEnabled: true, languageCompatibility: "6.6.2"})
+	defer func() {
+		dumpStats()
+		flushFunctionAndBucket(functionName)
+	}()
+
+	pumpBucketOps(opsType{count: itemCount, isBinary: true}, &rateLimit{})
+	eventCount := verifyBucketCount(0, statsLookupRetryCounter, dstBucket)
+	if eventCount != 0 {
+		t.Error("For", "TestBinaryDoc",
+			"expected", 0,
+			"got", eventCount,
+		)
+		return
+	}
+
+	log.Printf("Deleting source bucket docs now")
+	//TODO: Setting delete to true in ops will mutate the documents and then delete the documents.
+	// This behaviour is different when we set the limit.
+	pumpBucketOps(opsType{delete: true}, &rateLimit{count: itemCount, limit: true, opsPSec: 1})
+	eventCount = verifyBucketCount(itemCount, statsLookupRetryCounter, dstBucket)
+	if eventCount != itemCount {
+		t.Error("For", "TestBinaryDoc",
+			"expected", 0,
+			"got", eventCount,
+		)
+		return
+	}
 }

@@ -130,7 +130,8 @@ public:
   UrlDecode
   UrlDecodeAsKeyValue(const std::string &data,
                       std::unordered_map<std::string, std::string> &kv);
-  v8::Local<v8::ArrayBuffer> ToArrayBuffer(void *buffer, std::size_t size);
+  v8::Local<v8::ArrayBuffer> ToArrayBuffer(const void *buffer,
+                                           std::size_t size);
   bool IsFuncGlobal(const v8::Local<v8::Value> &func);
   std::string TrimBack(const std::string &s,
                        const char *ws = " \t\n\r\f\v") const;

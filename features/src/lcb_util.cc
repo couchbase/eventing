@@ -72,6 +72,7 @@ void GetCallback(lcb_INSTANCE *instance, int, const lcb_RESPBASE *rb) {
     lcb_breakout(instance);
   }
   lcb_respget_cas(resp, &result->cas);
+  lcb_respget_datatype(resp, &result->datatype);
 
   if (result->rc == LCB_SUCCESS) {
     const char *value;
@@ -171,10 +172,10 @@ void SubDocumentLookupCallback(lcb_INSTANCE *instance, int cbtype,
         auto values = json.get<std::vector<std::string>>();
         for (const auto &type : values) {
           if (type == "json") {
-            result->datatype = result->datatype | 1;
+            result->datatype = result->datatype | JSON_DOC;
           }
           if (type == "xattr") {
-            result->datatype = result->datatype | 4;
+            result->datatype = result->datatype | XATTR_DOC;
           }
         }
       } else {

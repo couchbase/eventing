@@ -25,9 +25,16 @@ const (
 )
 
 const (
-	dcpDatatypeJSON      = uint8(1)
-	dcpDatatypeJSONXattr = uint8(5)
-	includeXATTRs        = uint32(4)
+	dcpDatatypeBinary uint8 = iota
+	dcpDatatypeJSON
+	dcpDatatypeBinCompressed
+	dcpDatatypeJsonCompressed
+	dcpDatatypeBinXattr
+	dcpDatatypeJSONXattr
+)
+
+const (
+	includeXATTRs = uint32(4)
 )
 
 const (
@@ -97,6 +104,7 @@ type dcpMetadata struct {
 	Flag    uint32 `json:"flags"`
 	Vbucket uint16 `json:"vb"`
 	SeqNo   uint64 `json:"seq"`
+	Type    string `json:"datatype"`
 }
 
 type vbSeqNo struct {
@@ -367,6 +375,8 @@ type Consumer struct {
 	notifyWorker          uint32
 	bucketCacheSize       int64
 	bucketCacheAge        int64
+
+	binaryDocAllowed bool
 }
 
 // For V8 worker spawned for debugging purpose

@@ -673,7 +673,7 @@ void V8Worker::HandleMutationEvent(const std::unique_ptr<WorkerMessage> &msg) {
 
   const auto doc = flatbuf::payload::GetPayload(
       static_cast<const void *>(msg->payload.payload.c_str()));
-  SendUpdate(doc->value()->str(), msg->header.metadata);
+  SendUpdate(doc->value()->str(), msg->header.metadata, doc->is_binary());
 }
 
 std::tuple<int, uint64_t, bool>
@@ -753,7 +753,8 @@ void V8Worker::UpdateCurlLatencyHistogram(const Time::time_point &start) {
   curl_latency_stats_->Add(ns.count() / 1000);
 }
 
-int V8Worker::SendUpdate(const std::string &value, const std::string &meta) {
+int V8Worker::SendUpdate(const std::string &value, const std::string &meta,
+                         bool is_binary) {
   const auto start_time = Time::now();
 
   v8::Locker locker(isolate_);
@@ -767,9 +768,15 @@ int V8Worker::SendUpdate(const std::string &value, const std::string &meta) {
   v8::TryCatch try_catch(isolate_);
 
   v8::Local<v8::Value> args[2];
-  if (!TO_LOCAL(v8::JSON::Parse(context, v8Str(isolate_, value)), &args[0])) {
-    return kToLocalFailed;
+  if (is_binary) {
+    auto utils = UnwrapData(isolate_)->utils;
+    args[0] = utils->ToArrayBuffer(value.c_str(), value.length());
+  } else {
+    if (!TO_LOCAL(v8::JSON::Parse(context, v8Str(isolate_, value)), &args[0])) {
+      return kToLocalFailed;
+    }
   }
+
   if (!TO_LOCAL(v8::JSON::Parse(context, v8Str(isolate_, meta)), &args[1])) {
     return kToLocalFailed;
   }
