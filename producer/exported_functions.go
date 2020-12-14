@@ -184,7 +184,7 @@ func (p *Producer) IsEventingNodeAlive(eventingHostPortAddr, nodeUUID string) bo
 	}
 
 	// To assist in the case of hostname update
-	if util.Contains(nodeUUID, p.eventingNodeUUIDs) || util.Contains(nodeUUID, p.eventingNodeUUIDs) {
+	if util.Contains(nodeUUID, p.eventingNodeUUIDs) {
 		return true
 	}
 
