@@ -335,7 +335,6 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 						p.PauseProducer()
 						p.NotifySupervisor()
 						s.UnwatchBucket(p.SourceBucket(), appName)
-						s.UnwatchBucket(p.MetadataBucket(), appName)
 						logging.Infof("%s [%d] Function: %s Cleaned up running Eventing.Producer instance", logPrefix, s.runningFnsCount(), appName)
 
 					}
