@@ -467,7 +467,7 @@ angular.module('eventing', [
               ],
               scopeInBucket: ['ApplicationService',
                 function(ApplicationService) {
-                  return ApplicationService.server.getBucketCollections;
+                  return ApplicationService.server.getBucketScopes;
                 }
               ]
             }
@@ -781,7 +781,7 @@ angular.module('eventing', [
               ],
               scopeInBucket: ['ApplicationService',
                 function(ApplicationService) {
-                  return ApplicationService.server.getBucketCollections;
+                  return ApplicationService.server.getBucketScopes;
                 }
               ]
             }
@@ -1226,7 +1226,7 @@ angular.module('eventing', [
       };
 
       self.populateScope = function(bucketName, index) {
-        ApplicationService.server.getBucketCollections(bucketName).then(
+        ApplicationService.server.getBucketScopes(bucketName).then(
           function(response) {
             var scopes = [];
             self.responses[index] = response.data.scopes;
@@ -2068,9 +2068,9 @@ angular.module('eventing', [
                   errResponse);
               });
           },
-          getBucketCollections: function(bucket) {
+          getBucketScopes: function(bucket) {
             var poolDefault = mnPoolDefault.latestValue().value;
-            var uri = "/pools/default/buckets/" + bucket + "/collections/"
+            var uri = "/pools/default/buckets/" + bucket + "/scopes/"
             return $http.get(uri)
           },
           isEventingRunning: function() {

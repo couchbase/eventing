@@ -104,6 +104,7 @@ type ServiceMgr struct {
 	nodeInfo         *service.NodeInfo
 	rebalanceCtx     *rebalanceContext
 	rebalancer       *rebalancer
+	rebalancerMutex  *sync.RWMutex
 	rebalanceRunning bool
 
 	restPort string

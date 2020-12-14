@@ -3487,6 +3487,7 @@ func (m *ServiceMgr) populateStats(fullStats bool) []stats {
 			ls["100"] = percentileN(latencyStats, 100)
 			stats.LatencyPercentileStats = ls
 
+			m.rebalancerMutex.RLock()
 			if m.rebalancer != nil {
 				rebalanceStats := make(map[string]interface{})
 				rebalanceStats["is_leader"] = true
@@ -3499,6 +3500,7 @@ func (m *ServiceMgr) populateStats(fullStats bool) []stats {
 
 				stats.RebalanceStats = rebalanceStats
 			}
+			m.rebalancerMutex.RUnlock()
 
 			if fullStats {
 				checkpointBlobDump, err := m.superSup.CheckpointBlobDump(app.Name)

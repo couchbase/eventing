@@ -587,7 +587,7 @@ loop:
 		manifest := &collections.CollectionManifest{}
 
 		if version >= collections.COLLECTION_SUPPORTED_VERSION {
-			err = p.client.parseURLResponse("pools/default/buckets/"+b.Name+"/collections", manifest)
+			err = p.client.parseURLResponse("pools/default/buckets/"+b.Name+"/scopes", manifest)
 			if err != nil {
 				// bucket list is out of sync with cluster bucket list
 				// bucket might have got deleted.
