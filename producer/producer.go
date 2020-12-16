@@ -1008,6 +1008,10 @@ func (p *Producer) resumeProducer() error {
 	if err != nil {
 		return fmt.Errorf("Failure parsing depcfg, err: %v", err)
 	}
+
+	// Producer automatically sets the stream boundary and ignores the existing value
+	p.handlerConfig.StreamBoundary = common.DcpFromPrior
+
 	p.appLogWriter, err = openAppLog(p.appLogPath, 0640, p.appLogMaxSize, p.appLogMaxFiles)
 	if err != nil {
 		return fmt.Errorf("Failure opening application log writer handle, err: %v", err)

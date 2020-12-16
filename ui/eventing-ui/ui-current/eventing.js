@@ -511,7 +511,7 @@ angular.module('eventing', [
         var appClone = app.clone();
         scope.settings = {};
         scope.settings.changeFeedBoundary = app.settings
-          .default_stream_boundary;
+          .dcp_stream_boundary;
 
         $uibModal.open({
             templateUrl: '../_p/ui/event/ui-current/dialogs/app-actions.html',
@@ -552,7 +552,6 @@ angular.module('eventing', [
                     }
                   });
                 }
-                appClone.settings.dcp_stream_boundary = "from_prior";
                 break;
             }
 
@@ -795,8 +794,6 @@ angular.module('eventing', [
             // undeployed state with feed bondary "everything" ("from_prior" is not legal)
             creationScope.appModel.settings.processing_status = false;
             creationScope.appModel.settings.deployment_status = false;
-            creationScope.appModel.settings.dcp_stream_boundary =
-              "everything";
 
             ApplicationService.local.createApp(creationScope.appModel);
             return $state.transitionTo('app.admin.eventing.handler', {
@@ -1168,7 +1165,8 @@ angular.module('eventing', [
     function($q, $timeout, $scope, ApplicationService, FormValidationService,
       appName, bucketsResolve, savedApps, isAppDeployed, isAppPaused,
       logFileLocation) {
-      var self = this, appModel = ApplicationService.local.getAppByName(appName);
+      var self = this;
+      var appModel = ApplicationService.local.getAppByName(appName);
 
       self.isDialog = false;
       self.showSuccessAlert = false;
@@ -2430,7 +2428,7 @@ angular.module('eventing', [
           form.timer_context_size.$error.isnan = isNaN(form
             .timer_context_size.$viewValue) || (form.timer_context_size
             .$viewValue == null);
-          form.default_stream_boundary.$error = form.default_stream_boundary
+          form.dcp_stream_boundary.$error = form.dcp_stream_boundary
             .$viewValue === '';
 
           return form.appname.$error.required ||
@@ -2452,7 +2450,7 @@ angular.module('eventing', [
             formCtrl.sourceCollections.indexOf(form.source_collection.$viewValue) === -1 ||
             form.appname.$error.appnameInvalid || bindingError ||
             hostnameError ||
-            form.default_stream_boundary.$error || constantLiteralError;
+            form.dcp_stream_boundary.$error || constantLiteralError;
         }
       }
     }
