@@ -181,6 +181,7 @@ ApplicationModel.prototype.initializeDefaults = function() {
     this.settings.n1ql_consistency = 'none';
     this.version = getVersion();
     this.settings.timer_context_size = 1024;
+    this.settings.dcp_stream_boundary = 'everything';
 };
 
 // Prettifies the JavaScript code.

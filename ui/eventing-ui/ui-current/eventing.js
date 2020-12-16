@@ -428,7 +428,8 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                 var appClone = app.clone();
                 scope.settings = {};
                 scope.settings.cleanupTimers = false;
-                scope.settings.changeFeedBoundary = 'everything';
+                scope.settings.changeFeedBoundary = app.settings
+                .dcp_stream_boundary;
 
                 $uibModal.open({
                         templateUrl: '../_p/ui/event/ui-current/dialogs/app-actions.html',
@@ -467,7 +468,6 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                                         }
                                     });
                                 }
-                                appClone.settings.dcp_stream_boundary = "from_prior";
                                 break;
                         }
 
@@ -677,7 +677,6 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         // undeployed state with feed bondary "everything" ("from_prior" is not legal)
                         creationScope.appModel.settings.processing_status = false;
                         creationScope.appModel.settings.deployment_status = false;
-                        creationScope.appModel.settings.dcp_stream_boundary = "everything";
 
                         // Deadline timeout must be greater and execution timeout.
                         if (creationScope.appModel.settings.hasOwnProperty('execution_timeout')) {
@@ -1843,6 +1842,8 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
 
                     form.timer_context_size.$error.isnan = isNaN(form.timer_context_size.$viewValue) || (form.timer_context_size.$viewValue == null);
 
+                    form.dcp_stream_boundary.$error = form.dcp_stream_boundary.$viewValue === '';
+
                     return form.appname.$error.required ||
                         form.appname.$error.appExists ||
                         form.worker_count.$error.required ||
@@ -1856,7 +1857,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         form.timer_context_size.$error.isnan ||
                         formCtrl.sourceBuckets.indexOf(form.source_bucket.$viewValue) === -1 ||
                         formCtrl.metadataBuckets.indexOf(form.metadata_bucket.$viewValue) === -1 ||
-                        form.appname.$error.appnameInvalid || bindingError || hostnameError;
+                        form.appname.$error.appnameInvalid || bindingError || hostnameError || form.dcp_stream_boundary.$error;
                 }
             }
         }

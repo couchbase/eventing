@@ -845,25 +845,25 @@ func CompareSlices(s1, s2 []uint16) bool {
 
 func CompareStringSlices(s1, s2 []string) bool {
 
-        if s1 == nil && s2 == nil {
-                return true
-        }
+	if s1 == nil && s2 == nil {
+		return true
+	}
 
-        if s1 == nil || s2 == nil {
-                return false
-        }
+	if s1 == nil || s2 == nil {
+		return false
+	}
 
-        if len(s1) != len(s2) {
-                return false
-        }
+	if len(s1) != len(s2) {
+		return false
+	}
 
-        for i := range s1 {
-                if s1[i] != s2[i] {
-                        return false
-                }
-        }
+	for i := range s1 {
+		if s1[i] != s2[i] {
+			return false
+		}
+	}
 
-        return true
+	return true
 }
 
 func VbsSliceDiff(X, Y []uint16) []uint16 {
@@ -1688,6 +1688,12 @@ func EncodeAppPayload(app *cm.Application) []byte {
 	aName := builder.CreateString(app.Name)
 	fiid := builder.CreateString(app.FunctionInstanceID)
 
+	if app.Metainfo == nil {
+		app.Metainfo = make(map[string]interface{})
+		app.Metainfo["lifecycle_state"] = ""
+	}
+	lifecycleState := builder.CreateString(app.Metainfo["lifecycle_state"].(string))
+
 	cfg.ConfigStart(builder)
 	cfg.ConfigAddId(builder, uint32(app.ID))
 	cfg.ConfigAddAppCode(builder, appCode)
@@ -1697,6 +1703,7 @@ func EncodeAppPayload(app *cm.Application) []byte {
 	cfg.ConfigAddCurl(builder, curlBindingsVector)
 	cfg.ConfigAddAccess(builder, access)
 	cfg.ConfigAddFunctionInstanceID(builder, fiid)
+	cfg.ConfigAddLifecycleState(builder, lifecycleState)
 
 	udtp := byte(0x0)
 	if app.UsingTimer {
@@ -1734,6 +1741,9 @@ func ParseFunctionPayload(data []byte, fnName string) cm.Application {
 	if config.SrcMutationEnabled() == (0x1) {
 		app.SrcMutationEnabled = true
 	}
+	lifecycleState := string(config.LifecycleState())
+	app.Metainfo = make(map[string]interface{})
+	app.Metainfo["lifecycle_state"] = lifecycleState
 
 	d := new(cfg.DepCfg)
 	depcfg := new(cm.DepCfg)

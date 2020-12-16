@@ -82,6 +82,24 @@
                 ng-show="formCtrl.createAppForm.appname.$error.appnameInvalid">
           Function name can only start with characters in range A-Z, a-z, 0-9 and can only contain characters in range A-Z, a-z, 0-9, underscore and hyphen.
         </div>
+        <label class="inline">Deployment Feed Boundary</label>
+        <span class="fa-stack icon-info"
+          uib-tooltip="The preferred Deployment time Feed Boundary for the function."
+          tooltip-placement="right">
+          <span class="icon fa-circle-thin fa-stack-2x"></span>
+          <span class="icon fa-info fa-stack-1x"></span>
+        </span>
+        <select name="dcp_stream_boundary"
+          ng-init="appModel.settings.dcp_stream_boundary = appModel.settings.dcp_stream_boundary ?
+            ( appModel.settings.dcp_stream_boundary === 'from_prior' ? 'everything' : appModel.settings.dcp_stream_boundary ) : 'everything'"
+          ng-model="appModel.settings.dcp_stream_boundary">
+          <option value="everything">Everything</option>
+          <option value="from_now">From now</option>
+        </select>
+        <div class="error field-error"
+          ng-show="appModel.settings.dcp_stream_boundary === '' ">
+          Please specify a deployment time feed boundary
+        </div>
       </div>
       <div class="formrow">
         <label>Description</label>

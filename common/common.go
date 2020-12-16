@@ -4,8 +4,8 @@ import (
 	"errors"
 	"net"
 
-	"github.com/couchbase/eventing/dcp"
-        "github.com/couchbase/cbauth/service"
+	"github.com/couchbase/cbauth/service"
+	couchbase "github.com/couchbase/eventing/dcp"
 )
 
 type DcpStreamBoundary string
@@ -43,7 +43,7 @@ const (
 )
 
 type TopologyChangeMsg struct {
-	CType ChangeType
+	CType     ChangeType
 	MsgSource string
 }
 
@@ -85,6 +85,7 @@ type Application struct {
 	Settings           map[string]interface{} `json:"settings"`
 	UsingTimer         bool                   `json:"using_timer"`
 	SrcMutationEnabled bool                   `json:"src_mutation"`
+	Metainfo           map[string]interface{} `json:"metainfo,omitempty"`
 }
 
 type DepCfg struct {

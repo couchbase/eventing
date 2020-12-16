@@ -181,6 +181,7 @@ type application struct {
 	Settings           map[string]interface{} `json:"settings"`
 	UsingTimer         bool                   `json:"using_timer"`
 	SrcMutationEnabled bool                   `json:"src_mutation"`
+	Metainfo           map[string]interface{} `json:"metainfo,omitempty"`
 }
 
 type depCfg struct {
