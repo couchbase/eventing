@@ -610,6 +610,8 @@ func (s *SuperSupervisor) GetAppLog(fnName string, sz int64) []string {
 }
 
 func (s *SuperSupervisor) WatchBucket(bucketName, appName string) error {
+	s.bucketsRWMutex.Lock()
+	defer s.bucketsRWMutex.Unlock()
 	return s.watchBucketWithLock(bucketName, appName)
 }
 
