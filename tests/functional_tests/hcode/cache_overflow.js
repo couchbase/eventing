@@ -35,7 +35,7 @@ function OnUpdate(doc, meta) {
 
     // if everything is old, cache did not overflow
     if (!ok) {
-      log("Test failed, all 90MB docs cached despite cache size of 64MB");
+      log("Test failed, all 90MB docs cached despite cache size of 32MB");
       return;
     }
 

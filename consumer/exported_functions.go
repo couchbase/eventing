@@ -392,18 +392,11 @@ func (c *Consumer) SpawnCompilationWorker(appCode, appContent, appName, eventing
 	logPrefix := "Consumer::SpawnCompilationWorker"
 
 	parsed := parser.GetStatements(appCode)
-	if validated, err := parsed.ValidateGlobals(); !validated {
-		logging.Errorf("%s [%s:%s:%d] Compilation worker: Only function definition is allowed in global scope %v",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
-		return &common.CompileStatus{CompileSuccess: false,
-			Description: fmt.Sprintf("%v", err)}, nil
-	}
 
-	if validated, err := parsed.ValidateExports(); !validated {
-		logging.Errorf("%s [%s:%s:%d] Compilation worker: Handler code missing OnUpdate and OnDelete %v",
+	if err := parsed.ValidateStructure(); err != nil {
+		logging.Errorf("%s [%s:%s:%d] Compilation worker: Invalid handler structure: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
-		return &common.CompileStatus{CompileSuccess: false,
-			Description: fmt.Sprintf("%v", err)}, nil
+		return &common.CompileStatus{CompileSuccess: false, Description: fmt.Sprintf("%v", err)}, nil
 	}
 
 	listener, err := net.Listen("tcp", net.JoinHostPort(util.Localhost(), "0"))
