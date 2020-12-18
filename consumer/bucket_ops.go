@@ -836,7 +836,7 @@ var populateDcpFeedVbEntriesCallback = func(args ...interface{}) error {
 		// a specific kv node(via GETSEQ opcode) and post that closing the feed.
 		// Can't do it on existing *couchbase.DcpFeed where STREAMREQ calls
 		// are made.
-		feedName := couchbase.NewDcpFeedName(c.HostPortAddr() + "_" + kvHost + "_" + c.workerName + "_GetSeqNos")
+		feedName := couchbase.NewDcpFeedName(c.workerName + "_GetSeqNos" + "_" + kvHost + "_" + c.HostPortAddr())
 		var feed *couchbase.DcpFeed
 
 		startFeed := func() error {

@@ -810,8 +810,7 @@ func (c *Consumer) dcpRequestStreamHandle(vb uint16, vbBlob *vbucketKVBlob, star
 	c.hostDcpFeedRWMutex.Lock()
 	dcpFeed, ok := c.kvHostDcpFeedMap[vbKvAddr]
 	if !ok {
-		feedName := couchbase.NewDcpFeedName(c.HostPortAddr() + "_" + vbKvAddr + "_" + c.workerName)
-
+		feedName := couchbase.NewDcpFeedName(c.workerName + "_" + vbKvAddr + "_" + c.HostPortAddr())
 		var operr error
 		err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, startDCPFeedOpCallback, c, feedName, vbKvAddr, &operr)
 		if err == common.ErrRetryTimeout {
