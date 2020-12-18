@@ -68,9 +68,9 @@ func (f *DcpFeedName) Raw() string {
 func NewDcpFeedName(name string) DcpFeedName {
 	seq := atomic.AddInt64(&feedCounter, 1)
 	id := fmt.Sprintf("%v:%v-%v:%v", "eventing", feedPrefix, seq, name)
-	if len(id) > 250 {
-		logging.Warnf("Feed name too long. Will truncated to 250 chars: %v", id)
-		id = id[:250]
+	if len(id) > 200 {
+		logging.Warnf("Feed name too long. Will truncated to 200 chars: %v", id)
+		id = id[:200]
 	}
 	return DcpFeedName{name: id}
 }
