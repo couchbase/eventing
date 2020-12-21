@@ -32,7 +32,6 @@ import (
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/parser"
 	"github.com/couchbase/eventing/util"
-	"github.com/google/flatbuffers/go"
 )
 
 func (m *ServiceMgr) startTracing(w http.ResponseWriter, r *http.Request) {
@@ -1867,122 +1866,6 @@ func (m *ServiceMgr) checkRebalanceStatus() (info *runtimeInfo) {
 	return
 }
 
-func (m *ServiceMgr) encodeAppPayload(app *application) []byte {
-	builder := flatbuffers.NewBuilder(0)
-
-	var curlBindings []flatbuffers.UOffsetT
-	for i := 0; i < len(app.DeploymentConfig.Curl); i++ {
-		authTypeEncoded := builder.CreateString(app.DeploymentConfig.Curl[i].AuthType)
-		hostnameEncoded := builder.CreateString(app.DeploymentConfig.Curl[i].Hostname)
-		valueEncoded := builder.CreateString(app.DeploymentConfig.Curl[i].Value)
-		passwordEncoded := builder.CreateString(app.DeploymentConfig.Curl[i].Password)
-		usernameEncoded := builder.CreateString(app.DeploymentConfig.Curl[i].Username)
-		bearerKeyEncoded := builder.CreateString(app.DeploymentConfig.Curl[i].BearerKey)
-		cookiesEncoded := byte(0x0)
-		if app.DeploymentConfig.Curl[i].AllowCookies {
-			cookiesEncoded = byte(0x1)
-		}
-		validateSSLCertificateEncoded := byte(0x0)
-		if app.DeploymentConfig.Curl[i].ValidateSSLCertificate {
-			validateSSLCertificateEncoded = byte(0x1)
-		}
-
-		cfg.CurlStart(builder)
-		cfg.CurlAddAuthType(builder, authTypeEncoded)
-		cfg.CurlAddHostname(builder, hostnameEncoded)
-		cfg.CurlAddValue(builder, valueEncoded)
-		cfg.CurlAddPassword(builder, passwordEncoded)
-		cfg.CurlAddUsername(builder, usernameEncoded)
-		cfg.CurlAddBearerKey(builder, bearerKeyEncoded)
-		cfg.CurlAddAllowCookies(builder, cookiesEncoded)
-		cfg.CurlAddValidateSSLCertificate(builder, validateSSLCertificateEncoded)
-		curlBindingsEnd := cfg.CurlEnd(builder)
-
-		curlBindings = append(curlBindings, curlBindingsEnd)
-	}
-
-	cfg.ConfigStartCurlVector(builder, len(curlBindings))
-	for i := 0; i < len(curlBindings); i++ {
-		builder.PrependUOffsetT(curlBindings[i])
-	}
-	curlBindingsVector := builder.EndVector(len(curlBindings))
-
-	var bNames []flatbuffers.UOffsetT
-	var bucketAccess []flatbuffers.UOffsetT
-	for i := 0; i < len(app.DeploymentConfig.Buckets); i++ {
-		alias := builder.CreateString(app.DeploymentConfig.Buckets[i].Alias)
-		bName := builder.CreateString(app.DeploymentConfig.Buckets[i].BucketName)
-		bAccess := builder.CreateString(app.DeploymentConfig.Buckets[i].Access)
-		sName := builder.CreateString(app.DeploymentConfig.Buckets[i].ScopeName)
-		cName := builder.CreateString(app.DeploymentConfig.Buckets[i].CollectionName)
-
-		cfg.BucketStart(builder)
-		cfg.BucketAddAlias(builder, alias)
-		cfg.BucketAddBucketName(builder, bName)
-		cfg.BucketAddScopeName(builder, sName)
-		cfg.BucketAddCollectionName(builder, cName)
-		csBucket := cfg.BucketEnd(builder)
-
-		bNames = append(bNames, csBucket)
-		bucketAccess = append(bucketAccess, bAccess)
-	}
-
-	cfg.ConfigStartAccessVector(builder, len(bucketAccess))
-	for i := 0; i < len(bucketAccess); i++ {
-		builder.PrependUOffsetT(bucketAccess[i])
-	}
-	access := builder.EndVector(len(bucketAccess))
-
-	cfg.DepCfgStartBucketsVector(builder, len(bNames))
-	for i := 0; i < len(bNames); i++ {
-		builder.PrependUOffsetT(bNames[i])
-	}
-	buckets := builder.EndVector(len(bNames))
-
-	metaBucket := builder.CreateString(app.DeploymentConfig.MetadataBucket)
-	sourceBucket := builder.CreateString(app.DeploymentConfig.SourceBucket)
-	metadataCollection := builder.CreateString(app.DeploymentConfig.MetadataCollection)
-	metadataScope := builder.CreateString(app.DeploymentConfig.MetadataScope)
-	sourceScope := builder.CreateString(app.DeploymentConfig.SourceScope)
-	sourceCollection := builder.CreateString(app.DeploymentConfig.SourceCollection)
-
-	cfg.DepCfgStart(builder)
-	cfg.DepCfgAddBuckets(builder, buckets)
-
-	cfg.DepCfgAddMetadataBucket(builder, metaBucket)
-	cfg.DepCfgAddSourceBucket(builder, sourceBucket)
-	cfg.DepCfgAddMetadataCollection(builder, metadataCollection)
-	cfg.DepCfgAddSourceCollection(builder, sourceCollection)
-	cfg.DepCfgAddSourceScope(builder, sourceScope)
-	cfg.DepCfgAddMetadataScope(builder, metadataScope)
-
-	depcfg := cfg.DepCfgEnd(builder)
-
-	appCode := builder.CreateString(app.AppHandlers)
-	aName := builder.CreateString(app.Name)
-	fiid := builder.CreateString(app.FunctionInstanceID)
-	schema := byte(0x0)
-	if app.EnforceSchema {
-		schema = byte(0x1)
-	}
-
-	cfg.ConfigStart(builder)
-	cfg.ConfigAddAppCode(builder, appCode)
-	cfg.ConfigAddAppName(builder, aName)
-	cfg.ConfigAddDepCfg(builder, depcfg)
-	cfg.ConfigAddHandlerUUID(builder, app.FunctionID)
-	cfg.ConfigAddCurl(builder, curlBindingsVector)
-	cfg.ConfigAddAccess(builder, access)
-	cfg.ConfigAddFunctionInstanceID(builder, fiid)
-	cfg.ConfigAddEnforceSchema(builder, schema)
-
-	config := cfg.ConfigEnd(builder)
-
-	builder.Finish(config)
-
-	return builder.FinishedBytes()
-}
-
 func filterFeedBoundary(settings map[string]interface{}) common.DcpStreamBoundary {
 	if val, ok := settings["dcp_stream_boundary"]; ok {
 		if boundary, bOk := val.(string); bOk {
@@ -2082,7 +1965,8 @@ func (m *ServiceMgr) savePrimaryStore(app *application) (info *runtimeInfo) {
 
 	logging.Infof("%v Function UUID: %v for function name: %v stored in primary store", logPrefix, app.FunctionID, app.Name)
 
-	appContent := m.encodeAppPayload(app)
+	preparedApplication, _ := applicationAdapter(app)
+	appContent := util.EncodeAppPayload(&preparedApplication)
 
 	compressPayload := m.checkCompressHandler()
 	payload, err := util.MaybeCompress(appContent, compressPayload)
@@ -2122,7 +2006,8 @@ func (m *ServiceMgr) savePrimaryStore(app *application) (info *runtimeInfo) {
 		return
 	}
 
-	appContent = m.encodeAppPayload(app)
+	preparedApp, _ := applicationAdapter(app)
+	appContent = util.EncodeAppPayload(&preparedApp)
 	settingsPath := metakvAppSettingsPath + app.Name
 	settings := app.Settings
 

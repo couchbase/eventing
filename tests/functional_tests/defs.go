@@ -109,10 +109,11 @@ type application struct {
 }
 
 type depCfg struct {
-	Curl           []common.Curl `json:"curl,omitempty"`
-	Buckets        []bucket      `json:"buckets,omitempty"`
-	MetadataBucket string        `json:"metadata_bucket"`
-	SourceBucket   string        `json:"source_bucket"`
+	Curl           []common.Curl     `json:"curl,omitempty"`
+	Constants      []common.Constant `json:"constants,omitempty"`
+	Buckets        []bucket          `json:"buckets,omitempty"`
+	MetadataBucket string            `json:"metadata_bucket"`
+	SourceBucket   string            `json:"source_bucket"`
 }
 
 type bucket struct {
@@ -125,6 +126,7 @@ type commonSettings struct {
 	aliasHandles             []string
 	aliasSources             []string
 	curlBindings             []common.Curl
+	constantBindings         []common.Constant
 	batchSize                int
 	executeTimerRoutineCount int
 	executionTimeout         int

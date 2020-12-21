@@ -66,6 +66,14 @@ deployment_config *ParseDeployment(const char *app_code) {
     }
   }
 
+  auto constant_bindings = app_cfg->constants();
+  if (constant_bindings != nullptr) {
+    for (flatbuffers::uoffset_t i = 0; i < constant_bindings->size(); i++) {
+      config->constant_bindings.push_back(
+          {constant_bindings->Get(i)->value()->str(),
+           constant_bindings->Get(i)->literal()->str()});
+    }
+  }
   return config;
 }
 

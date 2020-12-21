@@ -315,6 +315,7 @@
             <option value="" disabled selected>binding type</option>
             <option value="alias">bucket alias</option>
             <option value="url">URL alias</option>
+            <option value="constant"> Constant alias</option>
           </select>
 
           <!-- ALIAS binding ALIAS & BUCKET NAME, PERMISSIONS ------------------------ -->
@@ -379,6 +380,26 @@
               </select>
             </div>
           </div>
+          <!-- Constant Bindings -------------------------------------------------------->
+          <span class="padding-right-half flex-grow-1 margin-bottom-half"
+            ng-if="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].type === 'constant'">
+            <input type="text"
+              ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].value"
+              ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
+              placeholder="alias name...">
+            <div class="error field-error"
+              ng-show="formCtrl.createAppForm.appname.$error.bindingsValidList[$index]">
+              Alias Name can only contain characters in range A-Z, a-z, 0-9, _
+              and $ and it should not be a JavaScript keyword.
+            </div>
+          </span>
+          <span class="padding-right-half flex-grow-1 margin-bottom-half"
+            ng-if="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].type === 'constant'">
+            <input type="text"
+              ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].literal"
+              ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
+              placeholder="value...">
+          </span>
 
 
           <!-- URL binding ALIAS NAME, HOSTNAME, ALLOW COOKIES, AUTH TYPE ------------ -->

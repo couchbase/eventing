@@ -92,14 +92,15 @@ type Application struct {
 }
 
 type DepCfg struct {
-	Buckets            []Bucket `json:"buckets,omitempty"`
-	Curl               []Curl   `json:"curl,omitempty"`
-	SourceBucket       string   `json:"source_bucket"`
-	SourceScope        string   `json:"source_scope"`
-	SourceCollection   string   `json:"source_collection"`
-	MetadataBucket     string   `json:"metadata_bucket"`
-	MetadataScope      string   `json:"metadata_scope"`
-	MetadataCollection string   `json:"metadata_collection"`
+	Buckets            []Bucket   `json:"buckets,omitempty"`
+	Curl               []Curl     `json:"curl,omitempty"`
+	Constants          []Constant `json:"constants,omitempty"`
+	SourceBucket       string     `json:"source_bucket"`
+	SourceScope        string     `json:"source_scope"`
+	SourceCollection   string     `json:"source_collection"`
+	MetadataBucket     string     `json:"metadata_bucket"`
+	MetadataScope      string     `json:"metadata_scope"`
+	MetadataCollection string     `json:"metadata_collection"`
 }
 
 type Bucket struct {
@@ -119,6 +120,11 @@ type Curl struct {
 	BearerKey              string `json:"bearer_key"`
 	AllowCookies           bool   `json:"allow_cookies"`
 	ValidateSSLCertificate bool   `json:"validate_ssl_certificate"`
+}
+
+type Constant struct {
+	Value   string `json:"value"`
+	Literal string `json:"literal"`
 }
 
 type Credential struct {

@@ -132,6 +132,46 @@ void V8Worker::InstallCurlBindings(
   }
 }
 
+void V8Worker::InstallConstantBindings(
+    const std::vector<std::pair<std::string, std::string>> constant_bindings)
+    const {
+
+  v8::Locker locker(isolate_);
+  v8::Isolate::Scope isolate_scope(isolate_);
+  v8::HandleScope handle_scope(isolate_);
+
+  auto context = context_.Get(isolate_);
+  v8::Context::Scope context_scope(context);
+
+  v8::TryCatch try_catch(isolate_);
+  v8::Local<v8::String> script_name = v8Str(isolate_, "constants.js");
+  std::ostringstream oss;
+  for (auto item : constant_bindings) {
+    oss << "const " << item.first << " = " << item.second << ";\n";
+  }
+
+  std::string injection_code = oss.str();
+  auto injection_source =
+      v8::String::NewFromUtf8(isolate_, injection_code.c_str())
+          .ToLocalChecked();
+  v8::ScriptOrigin origin(script_name);
+  v8::Local<v8::Script> compiled_script;
+
+  if (!TO_LOCAL(v8::Script::Compile(context, injection_source, &origin),
+                &compiled_script)) {
+    assert(try_catch.HasCaught());
+    LOG(logError) << "Exception logged:"
+                  << ExceptionString(isolate_, context, &try_catch)
+                  << std::endl;
+  }
+
+  v8::Local<v8::Value> result_wrapper;
+  if (!TO_LOCAL(compiled_script->Run(context), &result_wrapper)) {
+    LOG(logError) << "Unable to inject constant bindings into the script"
+                  << std::endl;
+  }
+}
+
 void V8Worker::InstallBucketBindings(
     const std::unordered_map<
         std::string, std::unordered_map<std::string, std::vector<std::string>>>
@@ -275,6 +315,7 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
 
   InitializeIsolateData(server_settings, h_config);
   InstallCurlBindings(config->curl_bindings);
+  InstallConstantBindings(config->constant_bindings);
   InitializeCurlBindingValues(config->curl_bindings);
 
   bucket_factory_ = std::make_shared<BucketFactory>(isolate_, context);

@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/parser"
 )
 
@@ -2120,4 +2121,35 @@ func TestBinaryDoc(t *testing.T) {
 		)
 		return
 	}
+}
+
+func TestConstantBindings(t *testing.T) {
+	functionName := t.Name()
+	itemCount := 1000
+	expectedCount := 6000
+
+	handler := "constant_bindings"
+	flushFunctionAndBucket(functionName)
+	createAndDeployFunction(functionName, handler, &commonSettings{
+		constantBindings: []common.Constant{
+			common.Constant{Value: "string_binding", Literal: "\"binding1\""},
+			common.Constant{Value: "num_binding", Literal: "3"},
+			common.Constant{Value: "function_binding", Literal: "function(op1, op2) {return op1+op2;}"},
+			common.Constant{Value: "array_binding", Literal: "[1, 3, \"five\", 7]"},
+			common.Constant{Value: "json_binding", Literal: "{\"key\": \"value\", \"key2\":145}"},
+			common.Constant{Value: "float_binding", Literal: "6.5"},
+		},
+	})
+
+	pumpBucketOps(opsType{count: itemCount}, &rateLimit{})
+	eventCount := verifyBucketCount(expectedCount, statsLookupRetryCounter, dstBucket)
+	if expectedCount != eventCount {
+		t.Error("For", "TestConstantBindings",
+			"expected", expectedCount,
+			"got", eventCount,
+		)
+	}
+
+	dumpStats()
+	flushFunctionAndBucket(functionName)
 }

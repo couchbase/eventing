@@ -191,14 +191,15 @@ type application struct {
 }
 
 type depCfg struct {
-	Buckets            []bucket      `json:"buckets,omitempty"`
-	Curl               []common.Curl `json:"curl,omitempty"`
-	SourceBucket       string        `json:"source_bucket"`
-	SourceScope        string        `json:"source_scope"`
-	SourceCollection   string        `json:"source_collection"`
-	MetadataBucket     string        `json:"metadata_bucket"`
-	MetadataScope      string        `json:"metadata_scope"`
-	MetadataCollection string        `json:"metadata_collection"`
+	Buckets            []bucket          `json:"buckets,omitempty"`
+	Curl               []common.Curl     `json:"curl,omitempty"`
+	Constants          []common.Constant `json:"constants,omitempty"`
+	SourceBucket       string            `json:"source_bucket"`
+	SourceScope        string            `json:"source_scope"`
+	SourceCollection   string            `json:"source_collection"`
+	MetadataBucket     string            `json:"metadata_bucket"`
+	MetadataScope      string            `json:"metadata_scope"`
+	MetadataCollection string            `json:"metadata_collection"`
 }
 
 type bucket struct {

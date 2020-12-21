@@ -344,6 +344,9 @@ private:
   v8::Local<v8::Object> NewCouchbaseNameSpace();
   v8::Local<v8::ObjectTemplate> NewGlobalObj() const;
   void InstallCurlBindings(const std::vector<CurlBinding> &curl_bindings) const;
+  void InstallConstantBindings(
+      const std::vector<std::pair<std::string, std::string>> constant_bindings)
+      const;
   void InstallBucketBindings(
       const std::unordered_map<
           std::string,

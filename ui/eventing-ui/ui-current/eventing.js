@@ -84,9 +84,9 @@ angular.module('eventing', [
             var rspAppList = new Set(); // appname in UI
             var updAppList = new Set(); // appname not in UI
             var rspAppStat =
-          new Map(); // composite_status by appname (in UI and not in UI)
+              new Map(); // composite_status by appname (in UI and not in UI)
             var uiIsStale =
-            false; // if we need to reload somehting new App or state change
+              false; // if we need to reload somehting new App or state change
             var statsConfig = {
               haveDeployedOrDeploying: false,
               metaDataBucket: "",
@@ -268,7 +268,7 @@ angular.module('eventing', [
           })
           .catch(function(errResponse) {
             console.error('Unable to get deployed stats count',
-            errResponse);
+              errResponse);
             return;
           });
       }
@@ -353,7 +353,7 @@ angular.module('eventing', [
         // display to the user (and/or log) how many Apps were reloaded and why
         var msg = 'Eventing: resync fetching ' + appsToFetch.size +
           ' full ' + ((appsToFetch.size == 1) ? 'definition' :
-          'definitions') +
+            'definitions') +
           ' (missing ' + missingAppCnt + ', state-update ' + stateUpdCnt +
           ')';
         ApplicationService.server.showWarningAlert(msg);
@@ -598,7 +598,7 @@ angular.module('eventing', [
 
             ApplicationService.server.showSuccessAlert(
               `${app.appname} will ${operation} ${warnings ? 'with warnings' : ''}`
-              );
+            );
 
             // since the UI is changing state update the count
             fetchWorkerCount();
@@ -610,13 +610,13 @@ angular.module('eventing', [
               app.compilationInfo = info;
               ApplicationService.server.showErrorAlert(
                 `${operation} failed: Syntax error (${info.line_number}, ${info.column_number}) - ${info.description}`
-                );
+              );
             } else if (errResponse.data && (errResponse.data.name ===
                 'ERR_CLUSTER_VERSION')) {
               var data = errResponse.data;
               ApplicationService.server.showErrorAlert(
                 `${operation} failed: ${data.description} - ${data.runtime_info.info}`
-                );
+              );
             } else {
               let info = errResponse.data.runtime_info;
               ApplicationService.server.showErrorAlert(
@@ -641,10 +641,10 @@ angular.module('eventing', [
             if (!(app.appname in response.data)) {
               ApplicationService.server.showErrorAlert(
                 `Function "${app.appname}" may be undergoing bootstrap. Please try later.`
-                );
+              );
               return $q.reject(
                 `Unable to undeploy "${app.appname}". Possibly, bootstrap in progress`
-                );
+              );
             }
 
             return ApplicationService.public.undeployApp(app.appname);
@@ -699,7 +699,7 @@ angular.module('eventing', [
           .catch(function(errResponse) {
             ApplicationService.server.showErrorAlert(
               `Failed to export the function due to "${errResponse.data.description}"`
-              );
+            );
             console.error(errResponse);
           });
       };
@@ -865,7 +865,7 @@ angular.module('eventing', [
           if (file[0].type != 'application/json') {
             ApplicationService.server.showErrorAlert(
               'Imported file format is not JSON, please verify the file being imported'
-              );
+            );
             return;
           }
           var reader = new FileReader();
@@ -899,7 +899,7 @@ angular.module('eventing', [
             } catch (error) {
               ApplicationService.server.showErrorAlert(
                 'The imported JSON file is not supported. Please check the format.'
-                );
+              );
               console.error('Failed to load config:', error);
             }
           };
@@ -1047,7 +1047,7 @@ angular.module('eventing', [
         self.collections.push([]);
         self.responses.push([]);
         self.populateScope(self.sourceBuckets[0], self.responses.length -
-        1);
+          1);
       };
 
       self.Remove = function(index) {
@@ -1182,7 +1182,7 @@ angular.module('eventing', [
       appModel.depcfg.buckets = appModel.depcfg.buckets ? appModel.depcfg
         .buckets : [];
       self.bindings = ApplicationService.getBindingFromConfig(appModel
-      .depcfg);
+        .depcfg);
       self.scopes = [];
       self.collections = [];
       self.responses = [];
@@ -1300,7 +1300,7 @@ angular.module('eventing', [
           $scope.appModel.depcfg = config;
           ApplicationService.server.showWarningAlert(
             'Bindings changed. Deploy or Resume function for changes to take effect.'
-            );
+          );
         }
 
         // Update local changes.
@@ -1331,7 +1331,7 @@ angular.module('eventing', [
           })
           .catch(function(errResponse) {
             console.error('Unable to get deployed apps list',
-            errResponse);
+              errResponse);
           });
 
         closeDialog('ok');
@@ -1373,8 +1373,10 @@ angular.module('eventing', [
       var config = require("ace/config");
       $scope.searchInCode = function() {
         config.loadModule("ace/ext/cb-searchbox",
-          function(e) { if ($scope.editor) e.Search($scope.editor, !self
-              .editorDisabled, true) });
+          function(e) {
+            if ($scope.editor) e.Search($scope.editor, !self
+              .editorDisabled, true)
+          });
       }
 
       self.handler = app.appcode;
@@ -1431,7 +1433,7 @@ angular.module('eventing', [
                 Object.keys(insight.lines).forEach(function(pos) {
                   var info = insight.lines[pos];
                   var srcline = parseInt(pos) -
-                  1; // ace is 0 indexed, v8 is 1 indexed
+                    1; // ace is 0 indexed, v8 is 1 indexed
                   var msg, type;
                   if (info.error_count > 0) {
                     msg = info.error_msg;
@@ -1466,7 +1468,7 @@ angular.module('eventing', [
             event) {
             ApplicationService.server.showWarningAlert(
               'The function is deployed. Please undeploy or pause the function in order to edit'
-              );
+            );
           };
           editor.keyBinding.addKeyboardHandler(keyboardDisable);
         }
@@ -1508,7 +1510,7 @@ angular.module('eventing', [
               self.warning = false;
               ApplicationService.server.showErrorAlert(
                 'Changes cannot be saved. Function can be edited only when it is undeployed or paused'
-                );
+              );
             } else {
               ApplicationService.tempStore.saveApp(app)
                 .then(function(response) {
@@ -1522,7 +1524,7 @@ angular.module('eventing', [
                   response.data.info.split(";").filter(msg => msg
                     .includes("Deprecated:")).forEach(function(msg) {
                     var fnNames = JSON.parse(msg.split(":")[1]
-                    .trim());
+                      .trim());
                     ApplicationService.server.showWarningAlert(
                       'Warning: The Function uses following deprecated API(s) - ' +
                       fnNames.join(", "));
@@ -1531,7 +1533,7 @@ angular.module('eventing', [
                   response.data.info.split(";").filter(msg => msg
                     .includes("Overloaded:")).forEach(function(msg) {
                     var fnNames = JSON.parse(msg.split(":")[1]
-                    .trim());
+                      .trim());
                     ApplicationService.server.showWarningAlert(
                       'Warning: The Function tries to overload following builtin API(s) - ' +
                       fnNames.join(", "));
@@ -1578,7 +1580,7 @@ angular.module('eventing', [
             if (!(app.appname in response.data)) {
               ApplicationService.server.showErrorAlert(
                 `Function ${app.appname} may be undergoing bootstrap. Please try later.`
-                );
+              );
               return;
             }
             return ApplicationService.public.getConfig();
@@ -1587,7 +1589,7 @@ angular.module('eventing', [
             if (!response.data.enable_debugger) {
               ApplicationService.server.showErrorAlert(
                 'Unable to start debugger as it is disabled. Please enable it under Eventing Settings'
-                );
+              );
               return;
             }
             return ApplicationService.server.getDefaultPool();
@@ -1625,7 +1627,7 @@ angular.module('eventing', [
                   // Poll till we get the URL for debugging.
                   function getDebugUrl() {
                     console.log('Fetching debug url for ' + app
-                    .appname);
+                      .appname);
                     ApplicationService.debug.getUrl(app.appname)
                       .then(function(response) {
                         var responseCode = ApplicationService.status
@@ -1683,7 +1685,7 @@ angular.module('eventing', [
                   ApplicationService.server.showErrorAlert(
                     'Unexpected error occurred. Please try again.');
                   console.error('Failed to start debugger',
-                  errResponse);
+                    errResponse);
                 });
             }
 
@@ -1716,7 +1718,7 @@ angular.module('eventing', [
         if (self.warning) {
           if (confirm(
               "Unsaved changes exist, and will be discarded if you leave this page. Are you sure?"
-              )) {
+            )) {
             self.warning = false;
             return true;
           } else {
@@ -1963,7 +1965,7 @@ angular.module('eventing', [
         primaryStore: {
           deleteApp: function(appName) {
             return $http.get('/_p/event/deleteApplication/?name=' +
-            appName);
+              appName);
           },
           getDeployedApps: function() {
             return $http.get('/_p/event/getDeployedApps');
@@ -2238,7 +2240,6 @@ angular.module('eventing', [
           return false;
         }
 
-
         if (_.indexOf(n1qlReservedWords, value.toLowerCase()) !== -1) {
           return false;
         }
@@ -2271,8 +2272,10 @@ angular.module('eventing', [
             bindingError,
             hostnameValid,
             hostnameError,
+            constantLiteralError,
             bindingsValidList = [],
             hostnameValidList = [],
+            constantLiteralInvalidList = [],
             form = formCtrl.createAppForm;
 
           for (var binding of bindings) {
@@ -2295,6 +2298,12 @@ angular.module('eventing', [
             }
             if (hostnameValid === false) {
               hostnameError = true;
+            }
+            if (binding.type === "constant" && binding.literal === "") {
+              constantLiteralError = true;
+              constantLiteralInvalidList.push(constantLiteralError)
+            } else {
+              constantLiteralInvalidList.push(false)
             }
           }
 
@@ -2331,11 +2340,12 @@ angular.module('eventing', [
             form.timer_context_size.$error.max ||
             form.timer_context_size.$error.isnan ||
             formCtrl.sourceBuckets.indexOf(form.source_bucket
-            .$viewValue) === -1 ||
+              .$viewValue) === -1 ||
             formCtrl.metadataBuckets.indexOf(form.metadata_bucket
               .$viewValue) === -1 ||
             form.appname.$error.appnameInvalid || bindingError ||
-            hostnameError || form.default_stream_boundary.$error;
+            hostnameError ||
+            form.default_stream_boundary.$error || constantLiteralError;
         }
       }
     }
