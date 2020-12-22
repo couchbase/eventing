@@ -458,6 +458,11 @@ func (m *ServiceMgr) validateBucketBindings(bindings []bucket, existingAliases m
 			return
 		}
 
+		if info = m.validateBucketExists(binding.BucketName); info.Code != m.statusCodes.ok.Code {
+			info.Info = fmt.Sprintf("Bucket: %s used for binding: %s doesn't exist", binding.BucketName, binding.Alias)
+			return
+		}
+
 		//Check for the uniqueness of alias name
 		if _, exists := existingAliases[binding.Alias]; exists {
 			info.Info = fmt.Sprintf("Bucket alias %s is not unique", binding.Alias)
