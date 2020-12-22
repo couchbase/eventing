@@ -212,8 +212,7 @@ Query::Helper::GetErrorCodes(const std::string &error) {
   std::stringstream msg;
 
   v8::Local<v8::Value> error_val;
-  if (!TO_LOCAL(v8::JSON::Parse(isolate_, v8Str(isolate_, error)),
-                &error_val)) {
+  if (!TO_LOCAL(v8::JSON::Parse(context, v8Str(isolate_, error)), &error_val)) {
     msg << "Unable to parse error JSON : " << RU(error);
     return {true, msg.str()};
   }
@@ -408,9 +407,12 @@ Query::Options::Extractor::~Extractor() {
   }
 
   auto is_prepared = false;
-  if (!TO(is_prepared_val->BooleanValue(context), &is_prepared)) {
+  try {
+    is_prepared = is_prepared_val->BooleanValue(isolate_);
+  } catch (...) {
     return {true, "Unable to cast isPrepared to boolean"};
   }
+
   is_prepared_out.reset(new bool(is_prepared));
   return {false};
 }

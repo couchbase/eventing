@@ -67,24 +67,24 @@ v8::Local<v8::Object> V8Worker::NewCouchbaseNameSpace() {
   v8::Local<v8::FunctionTemplate> function_template =
       v8::FunctionTemplate::New(isolate_);
   function_template->SetClassName(
-      v8::String::NewFromUtf8(isolate_, "couchbase"));
+      v8::String::NewFromUtf8(isolate_, "couchbase").ToLocalChecked());
 
   v8::Local<v8::ObjectTemplate> proto_t =
       function_template->PrototypeTemplate();
 
-  proto_t->Set(v8::String::NewFromUtf8(isolate_, "get"),
+  proto_t->Set(v8::String::NewFromUtf8(isolate_, "get").ToLocalChecked(),
                v8::FunctionTemplate::New(isolate_, BucketOps::GetOp));
-  proto_t->Set(v8::String::NewFromUtf8(isolate_, "insert"),
+  proto_t->Set(v8::String::NewFromUtf8(isolate_, "insert").ToLocalChecked(),
                v8::FunctionTemplate::New(isolate_, BucketOps::InsertOp));
-  proto_t->Set(v8::String::NewFromUtf8(isolate_, "upsert"),
+  proto_t->Set(v8::String::NewFromUtf8(isolate_, "upsert").ToLocalChecked(),
                v8::FunctionTemplate::New(isolate_, BucketOps::UpsertOp));
-  proto_t->Set(v8::String::NewFromUtf8(isolate_, "replace"),
+  proto_t->Set(v8::String::NewFromUtf8(isolate_, "replace").ToLocalChecked(),
                v8::FunctionTemplate::New(isolate_, BucketOps::ReplaceOp));
-  proto_t->Set(v8::String::NewFromUtf8(isolate_, "delete"),
+  proto_t->Set(v8::String::NewFromUtf8(isolate_, "delete").ToLocalChecked(),
                v8::FunctionTemplate::New(isolate_, BucketOps::DeleteOp));
-  proto_t->Set(v8::String::NewFromUtf8(isolate_, "increment"),
+  proto_t->Set(v8::String::NewFromUtf8(isolate_, "increment").ToLocalChecked(),
                v8::FunctionTemplate::New(isolate_, BucketOps::IncrementOp));
-  proto_t->Set(v8::String::NewFromUtf8(isolate_, "decrement"),
+  proto_t->Set(v8::String::NewFromUtf8(isolate_, "decrement").ToLocalChecked(),
                v8::FunctionTemplate::New(isolate_, BucketOps::DecrementOp));
 
   auto context = context_.Get(isolate_);
@@ -101,22 +101,23 @@ v8::Local<v8::ObjectTemplate> V8Worker::NewGlobalObj() const {
 
   auto global = v8::ObjectTemplate::New(isolate_);
 
-  global->Set(v8::String::NewFromUtf8(isolate_, "curl"),
+  global->Set(v8::String::NewFromUtf8(isolate_, "curl").ToLocalChecked(),
               v8::FunctionTemplate::New(isolate_, CurlFunction));
-  global->Set(v8::String::NewFromUtf8(isolate_, "log"),
+  global->Set(v8::String::NewFromUtf8(isolate_, "log").ToLocalChecked(),
               v8::FunctionTemplate::New(isolate_, Log));
-  global->Set(v8::String::NewFromUtf8(isolate_, "createTimer"),
+  global->Set(v8::String::NewFromUtf8(isolate_, "createTimer").ToLocalChecked(),
               v8::FunctionTemplate::New(isolate_, CreateTimer));
-  global->Set(v8::String::NewFromUtf8(isolate_, "cancelTimer"),
+  global->Set(v8::String::NewFromUtf8(isolate_, "cancelTimer").ToLocalChecked(),
               v8::FunctionTemplate::New(isolate_, CancelTimer));
-  global->Set(v8::String::NewFromUtf8(isolate_, "crc64"),
+  global->Set(v8::String::NewFromUtf8(isolate_, "crc64").ToLocalChecked(),
               v8::FunctionTemplate::New(isolate_, Crc64Function));
-  global->Set(v8::String::NewFromUtf8(isolate_, "N1QL"),
+  global->Set(v8::String::NewFromUtf8(isolate_, "N1QL").ToLocalChecked(),
               v8::FunctionTemplate::New(isolate_, QueryFunction));
 
   for (const auto &type_name : exception_type_names_) {
-    global->Set(v8::String::NewFromUtf8(isolate_, type_name.c_str()),
-                v8::FunctionTemplate::New(isolate_, CustomErrorCtor));
+    global->Set(
+        v8::String::NewFromUtf8(isolate_, type_name.c_str()).ToLocalChecked(),
+        v8::FunctionTemplate::New(isolate_, CustomErrorCtor));
   }
   return handle_scope.Escape(global);
 }
@@ -393,7 +394,7 @@ bool V8Worker::DebugExecute(const char *func_name, v8::Local<v8::Value> *args,
 
   // Replace the usual log function with console.log
   auto global = context->Global();
-  global->Set(v8Str(isolate_, "log"), console_log_func);
+  CHECK_SUCCESS(global->Set(context, v8Str(isolate_, "log"), console_log_func));
 
   auto source = v8Str(isolate_, script_to_execute_);
   v8::Local<v8::Script> script;
@@ -406,8 +407,8 @@ bool V8Worker::DebugExecute(const char *func_name, v8::Local<v8::Value> *args,
     return false;
   }
 
-  auto func_ref = global->Get(v8Str(isolate_, func_name));
-  auto func = func_ref.As<v8::Function>();
+  auto func_ref = global->Get(context, v8Str(isolate_, func_name));
+  auto func = v8::Local<v8::Function>::Cast(func_ref.ToLocalChecked());
   RetryWithFixedBackoff(std::numeric_limits<int>::max(), 10,
                         IsTerminatingRetriable, IsExecutionTerminating,
                         isolate_);
@@ -514,7 +515,8 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
   })";
 
   auto wrapper_source =
-      v8::String::NewFromUtf8(isolate_, wrapper_function.c_str());
+      v8::String::NewFromUtf8(isolate_, wrapper_function.c_str())
+          .ToLocalChecked();
   v8::ScriptOrigin origin(script_name);
   v8::Local<v8::Script> compiled_script;
 
@@ -782,12 +784,12 @@ int V8Worker::SendUpdate(const std::string &value, const std::string &meta,
   }
 
   auto js_meta = args[1].As<v8::Object>();
-  auto dcp_expiry =
-      js_meta->Get(v8Str(isolate_, "expiration"))->ToNumber(context);
+  auto dcp_expiry = v8::Local<v8::Number>::Cast(
+      js_meta->Get(context, v8Str(isolate_, "expiration")).ToLocalChecked());
   if (!dcp_expiry.IsEmpty()) {
-    auto expiry = dcp_expiry.ToLocalChecked()->Value() * 1000;
+    auto expiry = dcp_expiry->Value() * 1000;
     if (expiry != 0) {
-      auto js_expiry = v8::Date::New(isolate_, expiry);
+      auto js_expiry = v8::Date::New(context, expiry).ToLocalChecked();
       auto r = js_meta->Set(context, v8Str(isolate_, "expiry_date"), js_expiry);
       if (!r.FromMaybe(true)) {
         LOG(logWarning) << "Create expiry_date failed in OnUpdate" << std::endl;
@@ -819,10 +821,14 @@ int V8Worker::SendUpdate(const std::string &value, const std::string &meta,
                         IsTerminatingRetriable, IsExecutionTerminating,
                         isolate_);
 
+  v8::Handle<v8::Value> result;
   auto on_doc_update = on_update_.Get(isolate_);
   execute_start_time_ = Time::now();
   UnwrapData(isolate_)->is_executing_ = true;
-  on_doc_update->Call(context->Global(), 2, args);
+  if (!TO_LOCAL(on_doc_update->Call(context, context->Global(), 2, args),
+                &result)) {
+    LOG(logError) << "Error executing on_doc_update \n";
+  }
   UnwrapData(isolate_)->is_executing_ = false;
   auto query_mgr = UnwrapData(isolate_)->query_mgr;
   query_mgr->ClearQueries();
@@ -865,12 +871,12 @@ int V8Worker::SendDelete(const std::string &options, const std::string &meta) {
 
   // DCP always sends 0 as expiration. Until that changes, below won't run
   auto js_meta = args[0].As<v8::Object>();
-  auto dcp_expiry =
-      js_meta->Get(v8Str(isolate_, "expiration"))->ToNumber(context);
+  auto dcp_expiry = v8::Local<v8::Number>::Cast(
+      js_meta->Get(context, v8Str(isolate_, "expiration")).ToLocalChecked());
   if (!dcp_expiry.IsEmpty()) {
-    auto expiry = dcp_expiry.ToLocalChecked()->Value() * 1000;
+    auto expiry = dcp_expiry->Value() * 1000;
     if (expiry != 0) {
-      auto js_expiry = v8::Date::New(isolate_, expiry);
+      auto js_expiry = v8::Date::New(context, expiry).ToLocalChecked();
       auto r = js_meta->Set(context, v8Str(isolate_, "expiry_date"), js_expiry);
       if (!r.FromMaybe(true)) {
         LOG(logWarning) << "Create expiry_date failed in OnDelete" << std::endl;
@@ -898,10 +904,14 @@ int V8Worker::SendDelete(const std::string &options, const std::string &meta) {
                         IsTerminatingRetriable, IsExecutionTerminating,
                         isolate_);
 
+  v8::Handle<v8::Value> result;
   auto on_doc_delete = on_delete_.Get(isolate_);
   execute_start_time_ = Time::now();
   UnwrapData(isolate_)->is_executing_ = true;
-  on_doc_delete->Call(context->Global(), 2, args);
+  if (!TO_LOCAL(on_doc_delete->Call(context, context->Global(), 2, args),
+                &result)) {
+    LOG(logError) << "Error running the on_doc_delete \n";
+  }
   UnwrapData(isolate_)->is_executing_ = false;
   auto query_mgr = UnwrapData(isolate_)->query_mgr;
   query_mgr->ClearQueries();
@@ -952,6 +962,7 @@ void V8Worker::SendTimer(std::string callback, std::string timer_ctx) {
     return;
   }
   auto callback_func = callback_func_val.As<v8::Function>();
+  v8::Handle<v8::Value> result;
 
   if (try_catch.HasCaught()) {
     auto emsg = ExceptionString(isolate_, context, &try_catch);
@@ -973,7 +984,10 @@ void V8Worker::SendTimer(std::string callback, std::string timer_ctx) {
                         isolate_);
   execute_start_time_ = Time::now();
   UnwrapData(isolate_)->is_executing_ = true;
-  callback_func->Call(callback_func_val, 1, arg);
+  if (!TO_LOCAL(callback_func->Call(context, callback_func_val, 1, arg),
+                &result)) {
+    LOG(logError) << "Error executing the callback function \n";
+  }
   UnwrapData(isolate_)->is_executing_ = false;
 
   auto query_mgr = UnwrapData(isolate_)->query_mgr;

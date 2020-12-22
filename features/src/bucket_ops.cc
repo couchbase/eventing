@@ -184,7 +184,7 @@ Info BucketOps::SetMetaObject(std::unique_ptr<Result> const &result,
   if (result->exptime) {
     double expiry = static_cast<double>(result->exptime) * 1000;
     if (!TO(meta_obj->Set(context, v8Str(isolate_, expiry_str_),
-                          v8::Date::New(isolate_, expiry)),
+                          v8::Date::New(context, expiry).ToLocalChecked()),
             &success) ||
         !success) {
       return {true, "Unable to set expiration value in metaObject"};
@@ -268,7 +268,7 @@ MetaInfo BucketOps::ExtractMetaInfo(v8::Local<v8::Value> meta_object,
   }
 
   v8::Local<v8::Value> key;
-  if (req_obj->Has(v8Str(isolate_, key_str_))) {
+  if (req_obj->Has(context, v8Str(isolate_, key_str_)).FromJust()) {
     if (!TO_LOCAL(req_obj->Get(context, v8Str(isolate_, key_str_)), &key)) {
       return {false, "error in reading document key from 2nd argument"};
     }
@@ -286,7 +286,7 @@ MetaInfo BucketOps::ExtractMetaInfo(v8::Local<v8::Value> meta_object,
     return {false, "document key cannot be empty"};
   }
 
-  if (cas_check && req_obj->Has(v8Str(isolate_, cas_str_))) {
+  if (cas_check && req_obj->Has(context, v8Str(isolate_, cas_str_)).FromJust()) {
     v8::Local<v8::Value> cas;
     if (!TO_LOCAL(req_obj->Get(context, v8Str(isolate_, cas_str_)), &cas)) {
       return {false, "error in reading cas"};
@@ -298,7 +298,7 @@ MetaInfo BucketOps::ExtractMetaInfo(v8::Local<v8::Value> meta_object,
     meta.cas = std::strtoull(cas_value.c_str(), nullptr, 10);
   }
 
-  if (expiry_check && req_obj->Has(v8Str(isolate_, expiry_str_))) {
+  if (expiry_check && req_obj->Has(context, v8Str(isolate_, expiry_str_)).FromJust()) {
     v8::Local<v8::Value> expiry;
     if (!TO_LOCAL(req_obj->Get(context, v8Str(isolate_, expiry_str_)),
                   &expiry)) {
@@ -334,7 +334,7 @@ OptionsInfo BucketOps::ExtractOptionsInfo(v8::Local<v8::Value> options_object) {
     return {false, "error in casting options object to Object"};
   }
 
-  if (req_obj->Has(v8Str(isolate_, cache_str_))) {
+  if (req_obj->Has(context, v8Str(isolate_, cache_str_)).FromJust()) {
     v8::Local<v8::Value> cache;
     if (!TO_LOCAL(req_obj->Get(context, v8Str(isolate_, cache_str_)), &cache)) {
       return {false, "error reading 'cache' parameter in options"};
