@@ -2,7 +2,6 @@ package servicemanager
 
 import (
 	"bytes"
-	"net"
 	"os"
 	"time"
 
@@ -107,21 +106,8 @@ func (m *ServiceMgr) PrepareTopologyChange(change service.TopologyChange) error 
 
 	logging.Infof("%s change: %#v", logPrefix, change)
 
-	// refresh cluster info to ensure we use latest
-	hostaddress := net.JoinHostPort(util.Localhost(), m.restPort)
-	cic, err := util.FetchClusterInfoClient(hostaddress)
-	if err != nil {
-		if change.Type == service.TopologyChangeTypeRebalance {
-			m.isBalanced = false
-		}
-		logging.Infof("%s failed: %v", logPrefix, err)
-		return err
-	}
-	cinfo := cic.GetClusterInfoCache()
-	cinfo.FetchWithLock()
-
 	if change.Type == service.TopologyChangeTypeRebalance {
-		err = m.checkTopologyChangeReadiness(change.Type)
+		err := m.checkLocalTopologyChangeReadiness()
 		if err != nil {
 			m.isBalanced = false
 			logging.Infof("%s failed: %v", logPrefix, err)
@@ -166,7 +152,7 @@ func (m *ServiceMgr) PrepareTopologyChange(change service.TopologyChange) error 
 	}
 
 	m.isBalanced = true
-	logging.Infof("%s completed, err: %v, isBalanced: %v", logPrefix, err, m.isBalanced)
+	logging.Infof("%s completed, isBalanced: %v", logPrefix, m.isBalanced)
 	return nil
 }
 

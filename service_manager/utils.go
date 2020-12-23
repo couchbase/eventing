@@ -769,3 +769,17 @@ func (m *ServiceMgr) getTempStoreAppNames() []string {
 
 	return appsNames
 }
+
+func (m *ServiceMgr) checkLocalTopologyChangeReadiness() error {
+	bootstrapAppList := m.superSup.BootstrapAppList()
+	if len(bootstrapAppList) > 0 {
+		return fmt.Errorf("Some apps are deploying or resuming on nodeId: %s Apps: %v", m.nodeInfo.NodeID, bootstrapAppList)
+	}
+
+	pausingApps := m.superSup.PausingAppList()
+	if len(pausingApps) > 0 {
+		return fmt.Errorf("Some apps are being paused on nodId: %s Apps: %v", m.nodeInfo.NodeID, pausingApps)
+	}
+
+	return nil
+}
