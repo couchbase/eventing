@@ -99,7 +99,7 @@ var undeployFunctionCallback = func(args ...interface{}) error {
 	}
 
 	client := util.NewClient(5 * time.Second)
-	url := fmt.Sprintf("http://%s:%s/setSettings/?name=%s", util.Localhost(), s.adminPort.HTTPPort, appName)
+	url := fmt.Sprintf("http://%s:%s/setSettings/?name=%s&force=true", util.Localhost(), s.adminPort.HTTPPort, appName)
 	resp, err := client.Post(url, "application/json", bytes.NewBuffer(data))
 	if err != nil {
 		logging.Errorf("%s [%d] Function: %s failed to send http request", logPrefix, s.runningFnsCount(), appName)

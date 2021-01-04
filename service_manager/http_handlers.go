@@ -1162,6 +1162,10 @@ func (m *ServiceMgr) setSettingsHandler(w http.ResponseWriter, r *http.Request) 
 
 	params := r.URL.Query()
 	appName := params["name"][0]
+	var force bool
+	if f, ok := params["force"]; ok && f[0] == "true" {
+		force = true
+	}
 
 	audit.Log(auditevent.SetSettings, r, appName)
 	data, err := ioutil.ReadAll(r.Body)
@@ -1183,7 +1187,7 @@ func (m *ServiceMgr) setSettingsHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if info := m.setSettings(appName, data); info.Code != m.statusCodes.ok.Code {
+	if info := m.setSettings(appName, data, force); info.Code != m.statusCodes.ok.Code {
 		m.sendErrorInfo(w, info)
 		return
 	}
@@ -1208,7 +1212,7 @@ func (m *ServiceMgr) getSettings(appName string) (*map[string]interface{}, *runt
 	return &app.Settings, &info
 }
 
-func (m *ServiceMgr) setSettings(appName string, data []byte) (info *runtimeInfo) {
+func (m *ServiceMgr) setSettings(appName string, data []byte, force bool) (info *runtimeInfo) {
 	logPrefix := "ServiceMgr::setSettings"
 
 	info = &runtimeInfo{}
@@ -1269,10 +1273,12 @@ func (m *ServiceMgr) setSettings(appName string, data []byte) (info *runtimeInfo
 			}
 		}
 
-		if lifeCycleOpsInfo := m.checkLifeCycleOpsDuringRebalance(); lifeCycleOpsInfo.Code != m.statusCodes.ok.Code {
-			info.Code = lifeCycleOpsInfo.Code
-			info.Info = lifeCycleOpsInfo.Info
-			return
+		if !force {
+			if lifeCycleOpsInfo := m.checkLifeCycleOpsDuringRebalance(); lifeCycleOpsInfo.Code != m.statusCodes.ok.Code {
+				info.Code = lifeCycleOpsInfo.Code
+				info.Info = lifeCycleOpsInfo.Info
+				return
+			}
 		}
 	}
 
@@ -2692,7 +2698,7 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
-			if info = m.setSettings(appName, data); info.Code != m.statusCodes.ok.Code {
+			if info = m.setSettings(appName, data, false); info.Code != m.statusCodes.ok.Code {
 				m.sendErrorInfo(w, info)
 				return
 			}
@@ -2726,7 +2732,7 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if info = m.setSettings(appName, data); info.Code != m.statusCodes.ok.Code {
+		if info = m.setSettings(appName, data, false); info.Code != m.statusCodes.ok.Code {
 			m.sendErrorInfo(w, info)
 			return
 		}
@@ -2757,7 +2763,7 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if info = m.setSettings(appName, data); info.Code != m.statusCodes.ok.Code {
+		if info = m.setSettings(appName, data, false); info.Code != m.statusCodes.ok.Code {
 			m.sendErrorInfo(w, info)
 			return
 		}
@@ -2823,7 +2829,7 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if info = m.setSettings(appName, data); info.Code != m.statusCodes.ok.Code {
+		if info = m.setSettings(appName, data, false); info.Code != m.statusCodes.ok.Code {
 			m.sendErrorInfo(w, info)
 			return
 		}
@@ -2853,7 +2859,7 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if info = m.setSettings(appName, data); info.Code != m.statusCodes.ok.Code {
+		if info = m.setSettings(appName, data, false); info.Code != m.statusCodes.ok.Code {
 			m.sendErrorInfo(w, info)
 			return
 		}
