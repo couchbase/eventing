@@ -1383,8 +1383,8 @@ angular.module('eventing', [
         "Displays a URL that connects the Chrome Dev-Tools with the application handler. Code must be deployed and debugger must be enabled in the settings in order to debug";
       self.disableCancelButton = true;
       self.disableSaveButton = true;
-      self.editorDisabled = app.settings.deployment_status && app.settings
-        .processing_status;
+      self.editorDisabled = app.status === "pausing" || app.status === "deployed" ||
+        app.status === "deploying" || app.status === "undeploying";
 
       $state.current.data.title = app.appname;
 

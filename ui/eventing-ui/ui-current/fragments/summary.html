@@ -172,7 +172,7 @@
                     ui-sref="app.admin.eventing.handler({appName:app.appname})"
                     ng-disabled="summaryCtrl.disableEditButton"
                     ng-click="$event.stopPropagation();">
-                    {{app.status === 'deployed' || app.status === 'deploying' ? 'View JavaScript' : 'Edit JavaScript'}}
+                    {{app.status === 'deployed' || app.status === 'deploying' || app.status === 'pausing' || app.status === 'undeploying' ? 'View JavaScript' : 'Edit JavaScript'}}
                   </button>
                 </td>
               </tr>
