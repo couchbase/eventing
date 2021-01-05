@@ -5,9 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
-	"strconv"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -23,15 +20,16 @@ type filePtr struct {
 }
 
 type appLogCloser struct {
-	path      string
-	filePtr   unsafe.Pointer //Stores file pointer
-	perm      os.FileMode
-	maxSize   int64
-	maxFiles  int64
-	size      int64
-	lowIndex  int64
-	highIndex int64
-	exitCh    chan struct{}
+	path    string
+	filePtr unsafe.Pointer //Stores file pointer
+	perm    os.FileMode
+
+	maxSize  int64
+	maxFiles int64
+
+	size int64
+
+	exitCh chan struct{}
 }
 
 // Returns locked, Caller must unlock
@@ -80,54 +78,73 @@ func (wc *appLogCloser) Tail(sz int64) ([]byte, error) {
 func (wc *appLogCloser) Close() error {
 	fptr := (*filePtr)(atomic.LoadPointer(&wc.filePtr))
 	wc.exitCh <- struct{}{}
+	fptr.lock.Lock()
+	defer fptr.lock.Unlock()
+
 	if fptr.ptr == nil {
 		return nil
 	}
-	fptr.lock.Lock()
 	fptr.wptr.Flush()
 	err := fptr.ptr.Close()
-	fptr.lock.Unlock()
+	fptr.ptr = nil
 	return err
 }
 
 func (wc *appLogCloser) Flush() {
 	fptr := (*filePtr)(atomic.LoadPointer(&wc.filePtr))
 	fptr.lock.Lock()
+	defer fptr.lock.Unlock()
+
+	if fptr.ptr == nil {
+		return
+	}
+
 	fptr.wptr.Flush()
-	fptr.lock.Unlock()
 }
 
 func (wc *appLogCloser) manageLogFiles() {
-	logPrefix := "manageLogFiles:" + wc.path
-	if err := os.Rename(wc.path, fmt.Sprintf("%s.%d", wc.path, wc.highIndex+1)); err != nil {
-		logging.Errorf("%s: File Rename() failed err: %v", logPrefix, err)
+	logPrefix := "manageLogFiles: " + wc.path
+
+	// Rotate every existing numbered log file to the next higher number; last one goes away
+	for fileIndex := atomic.LoadInt64(&wc.maxFiles); fileIndex > 1; fileIndex-- {
+
+		srcFileName := fmt.Sprintf("%s.%d", wc.path, fileIndex-1)
+		dstFileName := fmt.Sprintf("%s.%d", wc.path, fileIndex)
+
+		if err := os.Rename(srcFileName, dstFileName); err != nil && !os.IsNotExist(err) {
+			logging.Errorf("%s: File Rename(%v, %v) failed err: %v", logPrefix, srcFileName, dstFileName, err)
+		}
+	}
+
+	// rotate current log file to lowest numbered file
+	rotatedLogFile := fmt.Sprintf("%s.1", wc.path)
+	if err := os.Rename(wc.path, rotatedLogFile); err != nil && !os.IsNotExist(err) {
+		logging.Errorf("%s: File Rename(%v, %v) failed err: %v", logPrefix, wc.path, rotatedLogFile, err)
 
 		// If the current active log file is renamed from outside, this attempt to rename will fail.
 		// We will simply move on with life, to go create the next file - not much else can be done anyways.
 	}
 
-	wc.highIndex++
-	fp, err := openFile(wc.path, wc.perm)
-	if err != nil {
-		logging.Errorf("%s: File Open() failed err: %v", logPrefix, err)
-		return
-	}
-	w := bufio.NewWriter(fp)
-	oldFptr := (*filePtr)(atomic.LoadPointer(&wc.filePtr))
-	oldFptr.lock.Lock()
-	atomic.StoreInt64(&wc.size, 0)
-	atomic.StorePointer(&wc.filePtr, unsafe.Pointer(&filePtr{ptr: fp, wptr: w}))
-	oldFptr.wptr.Flush()
-	if err = oldFptr.ptr.Close(); err != nil {
-		logging.Errorf("%s: File Close() failed err: %v", logPrefix, err)
-	}
-	oldFptr.ptr = nil
-	oldFptr.lock.Unlock()
-	for ; wc.lowIndex+wc.maxFiles <= wc.highIndex; wc.lowIndex++ {
-		if err = os.Remove(fmt.Sprintf("%s.%d", wc.path, wc.lowIndex)); err != nil {
-			logging.Errorf("%s: File Remove() failed err: %v", logPrefix, err)
+	func() {
+		fp, err := openFile(wc.path, wc.perm)
+		if err != nil {
+			logging.Errorf("%s: File Open(%v) failed err: %v", logPrefix, wc.path, err)
+			return
 		}
-	}
+
+		w := bufio.NewWriter(fp)
+		oldFptr := (*filePtr)(atomic.LoadPointer(&wc.filePtr))
+		oldFptr.lock.Lock()
+		defer oldFptr.lock.Unlock()
+
+		atomic.StoreInt64(&wc.size, 0)
+		atomic.StorePointer(&wc.filePtr, unsafe.Pointer(&filePtr{ptr: fp, wptr: w}))
+		oldFptr.wptr.Flush()
+		if err = oldFptr.ptr.Close(); err != nil {
+			logging.Errorf("%s: File Close() failed err: %v", logPrefix, err)
+		}
+		oldFptr.ptr = nil
+	}()
 }
 
 func (wc *appLogCloser) cleanupTask() {
@@ -137,7 +154,7 @@ func (wc *appLogCloser) cleanupTask() {
 			return
 		default:
 		}
-		if wc.maxSize <= atomic.LoadInt64(&wc.size) {
+		if atomic.LoadInt64(&wc.size) > atomic.LoadInt64(&wc.maxSize) {
 			wc.manageLogFiles()
 		} else {
 			wc.Flush()
@@ -148,30 +165,6 @@ func (wc *appLogCloser) cleanupTask() {
 
 func (wc *appLogCloser) init() {
 	go wc.cleanupTask()
-}
-
-func getFileIndexRange(path string) (lowIndex, highIndex int64) {
-	lowIndex = 1
-	highIndex = 0
-
-	files, err := filepath.Glob(path + ".*")
-	if err != nil || len(files) == 0 {
-		return
-	}
-	first := true
-	for _, file := range files {
-		tokens := strings.Split(file, ".")
-		if index, err := strconv.ParseInt(tokens[len(tokens)-1], 10, 64); err == nil {
-			if first || index < lowIndex {
-				lowIndex = index
-			}
-			if first || index > highIndex {
-				highIndex = index
-			}
-			first = false
-		}
-	}
-	return
 }
 
 func openAppLog(path string, perm os.FileMode, maxSize, maxFiles int64) (*appLogCloser, error) {
@@ -202,24 +195,39 @@ func openAppLog(path string, perm os.FileMode, maxSize, maxFiles int64) (*appLog
 		return nil, err
 	}
 	w := bufio.NewWriter(file)
-	low, high := getFileIndexRange(path)
 
 	logger := &appLogCloser{
-		path:      path,
-		filePtr:   unsafe.Pointer(&filePtr{ptr: file, wptr: w}),
-		perm:      perm,
-		maxSize:   maxSize,
-		maxFiles:  maxFiles,
-		size:      size,
-		lowIndex:  low,
-		highIndex: high,
-		exitCh:    make(chan struct{}, 1),
+		path:     path,
+		filePtr:  unsafe.Pointer(&filePtr{ptr: file, wptr: w}),
+		perm:     perm,
+		maxSize:  maxSize,
+		maxFiles: maxFiles,
+		size:     size,
+		exitCh:   make(chan struct{}, 1),
 	}
 	logger.init()
 	return logger, nil
 }
 
 func updateApplogSetting(wc *appLogCloser, maxFileCount, maxFileSize int64) {
-	wc.maxFiles = maxFileCount
-	wc.maxSize = maxFileSize
+
+	if maxFileCount < atomic.LoadInt64(&wc.maxFiles) {
+
+		// Cleanup existing log files to abide by the new / reduced max-files limit.
+		go cleanupExtraLogFiles(wc.path, maxFileCount+1, atomic.LoadInt64(&wc.maxFiles))
+	}
+
+	atomic.StoreInt64(&wc.maxFiles, maxFileCount)
+	atomic.StoreInt64(&wc.maxSize, maxFileSize)
+}
+
+func cleanupExtraLogFiles(filenamePrefix string, beginFileIndex, endFileIndex int64) {
+	for fileIndex := beginFileIndex; fileIndex <= endFileIndex; fileIndex++ {
+
+		fileName := fmt.Sprintf("%s.%d", filenamePrefix, fileIndex)
+
+		if err := os.Remove(fileName); err != nil && !os.IsNotExist(err) {
+			logging.Errorf("cleanupExtraLogFiles: File Remove(%v) failed err: %v", fileName, err)
+		}
+	}
 }

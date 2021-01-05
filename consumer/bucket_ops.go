@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/couchbase/eventing/common"
-	"github.com/couchbase/eventing/dcp"
+	couchbase "github.com/couchbase/eventing/dcp"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
 	"github.com/couchbase/gocb/v2"
@@ -847,7 +847,7 @@ var populateDcpFeedVbEntriesCallback = func(args ...interface{}) error {
 		// a specific kv node(via GETSEQ opcode) and post that closing the feed.
 		// Can't do it on existing *couchbase.DcpFeed where STREAMREQ calls
 		// are made.
-		feedName := couchbase.NewDcpFeedName(c.HostPortAddr() + "_" + kvHost + "_" + c.workerName + "_GetSeqNos")
+		feedName := couchbase.NewDcpFeedName(c.workerName + "_GetSeqNos" + "_" + kvHost + "_" + c.HostPortAddr())
 
 		refreshMap := func() error {
 			c.cbBucketRWMutex.Lock()
