@@ -151,7 +151,7 @@
                 <td align="right" style="padding:0px;">
                   <button class="outline"
                     ng-click="$event.stopPropagation();summaryCtrl.deleteApp(app.appname)"
-                    ng-disabled="app.settings.processing_status || app.settings.deployment_status || app.uiState === 'healthy'">
+                    ng-disabled=" app.status !== 'undeployed' || app.uiState === 'healthy'">
                     Delete
                   </button>
                   <button class="outline"
@@ -172,7 +172,7 @@
                     ui-sref="app.admin.eventing.handler({appName:app.appname})"
                     ng-disabled="summaryCtrl.disableEditButton"
                     ng-click="$event.stopPropagation();">
-                    {{app.status === 'deployed' || app.status === 'deploying' ? 'View JavaScript' : 'Edit JavaScript'}}
+                    {{app.status === 'deployed' || app.status === 'deploying' || app.status === 'pausing' || app.status === 'undeploying' ? 'View JavaScript' : 'Edit JavaScript'}}
                   </button>
                 </td>
               </tr>
