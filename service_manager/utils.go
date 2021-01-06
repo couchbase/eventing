@@ -916,6 +916,27 @@ func ConstructKeyspace(keyspace string) common.Keyspace {
 	}
 }
 
+func CheckIfAppKeyspacesAreSame(app1, app2 application) bool {
+
+	srcKeyspace1 := common.Keyspace{BucketName: app1.DeploymentConfig.SourceBucket,
+		ScopeName:      app1.DeploymentConfig.SourceScope,
+		CollectionName: app1.DeploymentConfig.SourceCollection}
+
+	metaKeyspace1 := common.Keyspace{BucketName: app1.DeploymentConfig.MetadataBucket,
+		ScopeName:      app1.DeploymentConfig.MetadataScope,
+		CollectionName: app1.DeploymentConfig.MetadataCollection}
+
+	srcKeyspace2 := common.Keyspace{BucketName: app2.DeploymentConfig.SourceBucket,
+		ScopeName:      app2.DeploymentConfig.SourceScope,
+		CollectionName: app2.DeploymentConfig.SourceCollection}
+
+	metaKeyspace2 := common.Keyspace{BucketName: app2.DeploymentConfig.MetadataBucket,
+		ScopeName:      app2.DeploymentConfig.MetadataScope,
+		CollectionName: app2.DeploymentConfig.MetadataCollection}
+
+	return srcKeyspace1 == srcKeyspace2 && metaKeyspace1 == metaKeyspace2
+}
+
 func trim(right string, i int) (string, string) {
 	var left string
 

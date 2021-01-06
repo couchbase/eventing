@@ -2960,6 +2960,16 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
+			appInStore, rInfo := m.getTempStore(appName)
+			if rInfo.Code == m.statusCodes.ok.Code && m.superSup.GetAppState(appName) != common.AppStateUndeployed {
+				if !CheckIfAppKeyspacesAreSame(appInStore, app) {
+					info.Code = m.statusCodes.errInvalidConfig.Code
+					info.Info = "Source and Meta Keyspaces can only be changed when the function is in undeployed state."
+					m.sendErrorInfo(w, info)
+					return
+				}
+			}
+
 			// Reject the request if there is a mismatch of app name in URL and body
 			if app.Name != appName {
 				info.Code = m.statusCodes.errAppNameMismatch.Code

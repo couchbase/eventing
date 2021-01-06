@@ -1165,8 +1165,7 @@ angular.module('eventing', [
     function($q, $timeout, $scope, ApplicationService, FormValidationService,
       appName, bucketsResolve, savedApps, isAppDeployed, isAppPaused,
       logFileLocation) {
-      var self = this,
-        appModel = ApplicationService.local.getAppByName(appName);
+      var self = this, appModel = ApplicationService.local.getAppByName(appName);
 
       self.isDialog = false;
       self.showSuccessAlert = false;
@@ -1175,6 +1174,7 @@ angular.module('eventing', [
       self.isAppPaused = isAppPaused;
       self.logFileLocation = logFileLocation;
       self.sourceAndBindingSame = false;
+      self.bucketDetails = ApplicationService.server.getBucketScopes;
 
       // Need to initialize buckets if they are empty,
       // otherwise self.saveSettings() would compare 'null' with '[]'.
@@ -1298,12 +1298,15 @@ angular.module('eventing', [
         var config = JSON.parse(JSON.stringify(appModel.depcfg));
         Object.assign(config, ApplicationService.convertBindingToConfig(self
           .bindings));
+        self.copyNamespace(config, $scope.appModel.depcfg);
 
         if (JSON.stringify(appModel.depcfg) !== JSON.stringify(config)) {
           $scope.appModel.depcfg = config;
+          ApplicationService.tempStore.saveApp($scope.appModel);
+          ApplicationService.local.saveApp(new Application($scope.appModel));
           ApplicationService.server.showWarningAlert(
-            'Bindings changed. Deploy or Resume function for changes to take effect.'
-          );
+            'Bindings/Settings changed. Deploy or Resume function for changes to take effect.'
+            );
         }
 
         // Update local changes.
@@ -1344,6 +1347,81 @@ angular.module('eventing', [
         // TODO : Consider using appModel.clone()
         $scope.appModel = JSON.parse(JSON.stringify(appModel));
         dismissDialog('cancel');
+      };
+
+      self.copyNamespace = function(destinationConfig, sourceConfig) {
+        destinationConfig["source_bucket"]       = sourceConfig["source_bucket"];
+        destinationConfig["source_scope"]        = sourceConfig["source_scope"];
+        destinationConfig["source_collection"]   = sourceConfig["source_collection"];
+        destinationConfig["metadata_bucket"]     = sourceConfig["metadata_bucket"];
+        destinationConfig["metadata_scope"]      = sourceConfig["metadata_scope"];
+        destinationConfig["metadata_collection"] = sourceConfig["metadata_collection"];
+      };
+
+      self.srcMetaSameBucket = function(appModel) {
+        return appModel.depcfg.source_bucket === appModel.depcfg
+          .metadata_bucket &&
+          appModel.depcfg.source_scope === appModel.depcfg.metadata_scope &&
+          appModel.depcfg.source_collection === appModel.depcfg
+          .metadata_collection;
+      };
+
+      self.populateSourceScopes = function(bucketName) {
+        self.bucketDetails(bucketName).then(function(response) {
+          self.sourceResponses = response.data.scopes;
+          var scopes = [];
+          for (var scope of self.sourceResponses) {
+            scopes.push(scope.name);
+          }
+          self.sourceScopes = scopes;
+          self.populateSourceCollections($scope.appModel.depcfg
+            .source_scope);
+        });
+      };
+
+      self.populateSourceCollections = function(scopeName) {
+        var collections = [];
+        // This happens when the ng-init of collections is called before scope
+        if (self.sourceResponses === undefined) return;
+
+        for (var scope of self.sourceResponses) {
+          if (scope.name == scopeName) {
+            for (var collection of scope.collections) {
+              collections.push(collection.name);
+            }
+            break;
+          }
+        }
+        self.sourceCollections = collections;
+      };
+
+      self.populateMetadataScopes = function(bucketName) {
+        self.bucketDetails(bucketName).then(function(response) {
+          self.metadataResponses = response.data.scopes;
+          var scopes = [];
+          for (var scope of self.metadataResponses) {
+            scopes.push(scope.name);
+          }
+          self.metadataScopes = scopes;
+          self.populateMetadataCollections($scope.appModel.depcfg
+            .metadata_scope);
+        });
+      };
+
+      self.populateMetadataCollections = function(scopeName) {
+        var collections = [];
+
+        // This happens when the ng-init of collections is called before scope
+        if (self.metadataResponses === undefined) return;
+        for (var scope of self.metadataResponses) {
+          if (scope.name == scopeName) {
+            for (var collection of scope.collections) {
+              collections.push(collection.name);
+            }
+            break;
+          }
+        }
+        self.metadataCollections = collections;
       };
     }
   ])
@@ -1811,6 +1889,9 @@ angular.module('eventing', [
           },
           getAppByName: function(appName) {
             return appManager.getAppByName(appName);
+          },
+          saveApp: function(appModel) {
+              appManager.pushApp(appModel);
           }
         },
         public: {
@@ -2349,10 +2430,12 @@ angular.module('eventing', [
             form.timer_context_size.$error.min ||
             form.timer_context_size.$error.max ||
             form.timer_context_size.$error.isnan ||
-            formCtrl.sourceBuckets.indexOf(form.source_bucket
-              .$viewValue) === -1 ||
-            formCtrl.metadataBuckets.indexOf(form.metadata_bucket
-              .$viewValue) === -1 ||
+            formCtrl.metadataBuckets.indexOf(form.metadata_bucket.$viewValue) === -1 ||
+            formCtrl.metadataScopes.indexOf(form.metadata_scope.$viewValue) === -1 ||
+            formCtrl.metadataCollections.indexOf(form.metadata_collection.$viewValue) === -1 ||
+            formCtrl.sourceBuckets.indexOf(form.source_bucket.$viewValue) === -1 ||
+            formCtrl.sourceScopes.indexOf(form.source_scope.$viewValue) === -1 ||
+            formCtrl.sourceCollections.indexOf(form.source_collection.$viewValue) === -1 ||
             form.appname.$error.appnameInvalid || bindingError ||
             hostnameError ||
             form.default_stream_boundary.$error || constantLiteralError;
