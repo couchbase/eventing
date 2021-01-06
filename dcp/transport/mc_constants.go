@@ -199,6 +199,7 @@ func init() {
 	CommandNames[DCP_BUFFERACK] = "DCP_BUFFERACK"
 	CommandNames[DCP_CONTROL] = "DCP_CONTROL"
 	CommandNames[DCP_GET_SEQNO] = "DCP_GET_SEQNO"
+	CommandNames[DCP_SYSTEM_EVENT] = "DCP_SYSTEM_EVENT"
 
 	StatusNames = make(map[Status]string)
 	StatusNames[SUCCESS] = "SUCCESS"
