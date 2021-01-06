@@ -38,6 +38,7 @@ class CurlStats {
 public:
   CurlStats();
   void UpdateCounters(const std::string &request_type);
+  void UpdateOpResultCounters(const CURLcode &curl_code);
   inline void UpdateNon200Counter() { non_200_resp_counter_++; }
 
   inline std::int64_t GetCurlGetStat() const {
@@ -60,8 +61,20 @@ public:
     return curl_put_counter_.load();
   }
 
-  inline std::int64_t GetCurlFailureStat() const {
+  inline std::int64_t GetCurlNon200Stat() const {
     return non_200_resp_counter_.load();
+  }
+
+  inline std::int64_t GetCurlFailureStat() const {
+    return curl_failure_counter_.load();
+  }
+
+  inline std::int64_t GetCurlSuccessStat() const {
+    return curl_success_counter_.load();
+  }
+
+  inline std::int64_t GetCurlTimeoutStat() const {
+    return curl_timeout_counter_.load();
   }
 
 private:
@@ -71,6 +84,9 @@ private:
   std::atomic<std::int64_t> curl_head_counter_;
   std::atomic<std::int64_t> curl_put_counter_;
   std::atomic<std::int64_t> non_200_resp_counter_;
+  std::atomic<std::int64_t> curl_success_counter_;
+  std::atomic<std::int64_t> curl_failure_counter_;
+  std::atomic<std::int64_t> curl_timeout_counter_;
 };
 
 class CurlClient {
