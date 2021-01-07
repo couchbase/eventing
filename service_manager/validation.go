@@ -456,6 +456,11 @@ func (m *ServiceMgr) validateDeploymentConfig(deploymentConfig *depCfg) (info *r
 	if info = m.validateCurlBindings(deploymentConfig.Curl, aliasSet); info.Code != m.statusCodes.ok.Code {
 		return
 	}
+
+	if info = m.validateConstantBindings(deploymentConfig.Constants, aliasSet); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
 	info.Code = m.statusCodes.ok.Code
 	return
 }
@@ -525,6 +530,33 @@ func (m *ServiceMgr) validateCurlBindings(bindings []common.Curl, existingAliase
 
 		if _, exists := existingAliases[binding.Value]; exists {
 			info.Info = fmt.Sprintf("URL alias %s is not unique", binding.Value)
+			info.Code = m.statusCodes.errInvalidConfig.Code
+			return
+		}
+		existingAliases[binding.Value] = struct{}{}
+	}
+	info.Code = m.statusCodes.ok.Code
+	return
+}
+
+func (m *ServiceMgr) validateConstantBindings(bindings []common.Constant, existingAliases map[string]struct{}) (info *runtimeInfo) {
+	info = &runtimeInfo{}
+	info.Code = m.statusCodes.errInvalidConfig.Code
+
+	for _, binding := range bindings {
+		if info = m.validateNonEmpty(binding.Value, "Constant binding alias"); info.Code != m.statusCodes.ok.Code {
+			return
+		}
+		if info = m.validateNonEmpty(binding.Literal, "Constant binding literal"); info.Code != m.statusCodes.ok.Code {
+			return
+		}
+
+		if info = m.validateAliasName(binding.Value); info.Code != m.statusCodes.ok.Code {
+			return
+		}
+
+		if _, exists := existingAliases[binding.Value]; exists {
+			info.Info = fmt.Sprintf("Constant alias %s is not unique", binding.Value)
 			info.Code = m.statusCodes.errInvalidConfig.Code
 			return
 		}

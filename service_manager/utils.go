@@ -1037,3 +1037,16 @@ func contains(filterMap map[string]bool, bucket, scope, collection string) (val,
 
 	return
 }
+
+func applicationAdapter(app *application) (common.Application, error) {
+	content, err := json.Marshal(*app)
+	if err != nil {
+		return common.Application{}, err
+	}
+	appConverted := common.Application{}
+	errConversion := json.Unmarshal(content, &appConverted)
+	if errConversion != nil {
+		return appConverted, errConversion
+	}
+	return appConverted, nil
+}

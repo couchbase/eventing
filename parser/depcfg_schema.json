@@ -4,10 +4,7 @@
   "type": "object",
   "additionalProperties": false,
   "description": "deployment configuration",
-  "required": [
-    "metadata_bucket",
-    "source_bucket"
-  ],
+  "required": ["metadata_bucket", "source_bucket"],
   "properties": {
     "buckets": {
       "type": "array",
@@ -15,11 +12,7 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": [
-          "alias",
-          "bucket_name",
-          "access"
-        ],
+        "required": ["alias", "bucket_name", "access"],
         "properties": {
           "alias": {
             "type": "string",
@@ -54,10 +47,7 @@
           "access": {
             "type": "string",
             "description": "bucket access level (read or read+write)",
-            "enum": [
-              "r",
-              "rw"
-            ],
+            "enum": ["r", "rw"],
             "default": "rw"
           }
         }
@@ -94,12 +84,7 @@
           "auth_type": {
             "type": "string",
             "description": "http authentication method to use with this endpoint",
-            "enum": [
-              "no-auth",
-              "basic",
-              "bearer",
-              "digest"
-            ],
+            "enum": ["no-auth", "basic", "bearer", "digest"],
             "default": "no-auth"
           },
           "username": {
@@ -174,6 +159,29 @@
       "maxLength": 30,
       "pattern": "^[A-Za-z0-9_\\-][A-Za-z0-9_\\-\\%]*$",
       "default": "_default"
+    },
+    "constants": {
+      "type": "array",
+      "additionalItems": false,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["value", "literal"],
+        "properties": {
+          "value": {
+            "type": "string",
+            "description": "alias name of the constant binding",
+            "minLength": 1,
+            "maxLength": 20,
+            "pattern": "^[a-zA-Z_$][a-zA-Z0-9_$]*$"
+          },
+          "literal": {
+            "type": "string",
+            "description": "literal value bound to the alias name",
+            "minLength": 1
+          }
+        }
+      }
     }
   }
 }

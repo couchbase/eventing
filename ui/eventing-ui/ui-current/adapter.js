@@ -7,10 +7,11 @@ function Adapter() {}
 
 Adapter.prototype.convertBindingsToConfig = function(bindings) {
   // A binding is of the form -
-  // [{type:'', name:'', value:'', auth_type:'no-auth', allow_cookies:true, access:'r'}]
+  // [{type:'', name:'', value:'', literal: '', auth_type:'no-auth', allow_cookies:true, access:'r'}]
   var config = {
     buckets: [],
-    curl: []
+    curl: [],
+    constants: []
   };
   for (var binding of bindings) {
     if (binding.type === 'alias' && binding.name && binding.value) {
@@ -18,6 +19,10 @@ Adapter.prototype.convertBindingsToConfig = function(bindings) {
     }
     if (binding.type === 'url' && binding.hostname && binding.value) {
       config.curl.push(this.createCurlConfig(binding));
+    }
+    if (binding.type === "constant" && binding.literal !== "" && binding
+      .value) {
+      config.constants.push(this.createConstantConfig(binding))
     }
   }
   return config;
@@ -31,6 +36,10 @@ Adapter.prototype.convertConfigToBindings = function(config) {
   });
   (config.curl ? config.curl : []).forEach(function(curlConfig) {
     bindings.push(adapter.createCurlBinding(curlConfig));
+  });
+  (config.constants ? config.constants : []).forEach(function(
+  constantConfig) {
+    bindings.push(adapter.createConstantBinding(constantConfig));
   });
   return bindings;
 };
@@ -110,4 +119,20 @@ Adapter.prototype.createCurlBinding = function(config) {
       binding.auth_type = 'no-auth';
   }
   return binding;
+};
+
+
+Adapter.prototype.createConstantConfig = function(binding) {
+  var config = {};
+  config.value = binding.value;
+  config.literal = binding.literal;
+  return config;
+};
+
+Adapter.prototype.createConstantBinding = function(config) {
+  return {
+    type: "constant",
+    value: config.value,
+    literal: config.literal
+  };
 };

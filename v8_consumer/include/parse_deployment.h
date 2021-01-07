@@ -33,6 +33,7 @@ typedef struct deployment_config_s {
                      std::unordered_map<std::string, std::vector<std::string>>>
       component_configs;
   std::vector<CurlBinding> curl_bindings;
+  std::vector<std::pair<std::string, std::string>> constant_bindings;
 } deployment_config;
 
 deployment_config *ParseDeployment(const char *app_name);

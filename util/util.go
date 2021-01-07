@@ -1663,6 +1663,25 @@ func MaybeDecompress(payload []byte) ([]byte, error) {
 func EncodeAppPayload(app *cm.Application) []byte {
 	builder := flatbuffers.NewBuilder(0)
 
+	var constantBindings []flatbuffers.UOffsetT
+
+	for i := 0; i < len(app.DeploymentConfig.Constants); i++ {
+		ConstantValueEncoded := builder.CreateString(app.DeploymentConfig.Constants[i].Value)
+		ConstantLiteralEncoded := builder.CreateString(app.DeploymentConfig.Constants[i].Literal)
+		cfg.ConstantStart(builder)
+		cfg.ConstantAddValue(builder, ConstantValueEncoded)
+		cfg.ConstantAddLiteral(builder, ConstantLiteralEncoded)
+		constantBindingEnd := cfg.ConstantEnd(builder)
+		constantBindings = append(constantBindings, constantBindingEnd)
+	}
+
+	cfg.ConfigStartConstantsVector(builder, len(constantBindings))
+	for i := 0; i < len(constantBindings); i++ {
+		builder.PrependUOffsetT(constantBindings[i])
+	}
+
+	constantsBindingsVector := builder.EndVector(len(constantBindings))
+
 	var curlBindings []flatbuffers.UOffsetT
 	for i := 0; i < len(app.DeploymentConfig.Curl); i++ {
 		authTypeEncoded := builder.CreateString(app.DeploymentConfig.Curl[i].AuthType)
@@ -1764,6 +1783,7 @@ func EncodeAppPayload(app *cm.Application) []byte {
 	cfg.ConfigAddDepCfg(builder, depcfg)
 	cfg.ConfigAddHandlerUUID(builder, app.FunctionID)
 	cfg.ConfigAddCurl(builder, curlBindingsVector)
+	cfg.ConfigAddConstants(builder, constantsBindingsVector)
 	cfg.ConfigAddAccess(builder, access)
 	cfg.ConfigAddFunctionInstanceID(builder, fiid)
 	cfg.ConfigAddEnforceSchema(builder, schema)
@@ -1843,8 +1863,21 @@ func ParseFunctionPayload(data []byte, fnName string) cm.Application {
 		}
 	}
 
+	var constantBindings []cm.Constant
+	binding := new(cfg.Constant)
+	for i := 0; i < config.ConstantsLength(); i++ {
+		if config.Constants(binding, i) {
+			newBinding := cm.Constant{
+				Value:   string(binding.Value()),
+				Literal: string(binding.Literal()),
+			}
+			constantBindings = append(constantBindings, newBinding)
+		}
+	}
+
 	depcfg.Buckets = buckets
 	depcfg.Curl = curl
+	depcfg.Constants = constantBindings
 	app.DeploymentConfig = *depcfg
 
 	return app

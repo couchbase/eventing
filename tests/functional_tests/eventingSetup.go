@@ -205,6 +205,7 @@ func createFunction(deploymentStatus, processingStatus bool, id int, s *commonSe
 	dcfg.Buckets = aliases
 	dcfg.MetadataBucket = metadataBucket
 	dcfg.SourceBucket = sourceBucket
+	dcfg.Constants = s.constantBindings
 
 	var app application
 	app.Name = appName

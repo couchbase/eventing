@@ -12,6 +12,7 @@ table Config {
   access:[string];
   curl:[Curl];
   enforceSchema:bool;
+  constants:[Constant];
 }
 
 table DepCfg {
@@ -40,6 +41,11 @@ table Curl {
   bearerKey:string;
   allowCookies:bool;
   validateSSLCertificate:bool;
+}
+
+table Constant {
+  value: string;
+  literal: string;
 }
 
 root_type Config;
