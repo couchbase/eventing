@@ -2292,6 +2292,12 @@ angular.module('eventing', [
             if (bindingsValid === false) {
               bindingError = true;
             }
+
+            if (binding.type === 'alias' && bindingsValid === true) {
+              if (binding.name === null || binding.scope === null || binding.collection === null)
+                bindingError = true;
+            }
+
             if (binding.type === 'url' && binding.hostname !== undefined &&
               binding.hostname.length) {
               hostnameValid = isValidHostname(binding.hostname);
