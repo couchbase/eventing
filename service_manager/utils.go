@@ -320,20 +320,23 @@ func (m *ServiceMgr) checkLifeCycleOpsDuringRebalance() (info *runtimeInfo) {
 	return
 }
 
-func (m *ServiceMgr) getSourceBinding(cfg *depCfg) *bucket {
-	for _, binding := range cfg.Buckets {
-		if binding.BucketName == cfg.SourceBucket && binding.Access == "rw" {
-			return &binding
-		}
-	}
-	return nil
-}
-
 func (m *ServiceMgr) getSourceBindingFromFlatBuf(config *cfg.DepCfg, appdata *cfg.Config) *cfg.Bucket {
 	binding := new(cfg.Bucket)
+	sourceKeyspace := common.Keyspace{
+		BucketName:     string(config.SourceBucket()),
+		ScopeName:      string(config.SourceScope()),
+		CollectionName: string(config.SourceCollection()),
+	}
+
 	for idx := 0; idx < config.BucketsLength(); idx++ {
 		if config.Buckets(binding, idx) {
-			if string(binding.BucketName()) == string(config.SourceBucket()) && string(appdata.Access(idx)) == "rw" {
+			bind := common.Keyspace{
+				BucketName:     string(binding.BucketName()),
+				ScopeName:      string(binding.ScopeName()),
+				CollectionName: string(binding.CollectionName()),
+			}
+
+			if sourceKeyspace == bind && string(appdata.Access(idx)) == "rw" {
 				return binding
 			}
 		}
@@ -342,8 +345,18 @@ func (m *ServiceMgr) getSourceBindingFromFlatBuf(config *cfg.DepCfg, appdata *cf
 }
 
 func (m *ServiceMgr) isSrcMutationEnabled(cfg *depCfg) bool {
+	sourceKeyspace := common.Keyspace{
+		BucketName:     cfg.SourceBucket,
+		ScopeName:      cfg.SourceScope,
+		CollectionName: cfg.SourceCollection,
+	}
 	for _, binding := range cfg.Buckets {
-		if binding.BucketName == cfg.SourceBucket && binding.Access == "rw" {
+		bind := common.Keyspace{
+			BucketName:     binding.BucketName,
+			ScopeName:      binding.ScopeName,
+			CollectionName: binding.CollectionName,
+		}
+		if bind == sourceKeyspace && binding.Access == "rw" {
 			return true
 		}
 	}
@@ -351,10 +364,15 @@ func (m *ServiceMgr) isSrcMutationEnabled(cfg *depCfg) bool {
 }
 
 func (m *ServiceMgr) isAppDeployable(app *application) bool {
-	appSrcBinding := m.getSourceBinding(&app.DeploymentConfig)
-	if appSrcBinding == nil {
+	if !m.isSrcMutationEnabled(&app.DeploymentConfig) {
 		return true
 	}
+
+	sourceKeyspace := common.Keyspace{BucketName: app.DeploymentConfig.SourceBucket,
+		ScopeName:      app.DeploymentConfig.SourceScope,
+		CollectionName: app.DeploymentConfig.SourceCollection,
+	}
+
 	for _, appName := range m.superSup.DeployedAppList() {
 		if appName == app.Name || m.superSup.GetAppState(appName) != common.AppStateEnabled {
 			continue
@@ -366,7 +384,13 @@ func (m *ServiceMgr) isAppDeployable(app *application) bool {
 		appdata := cfg.GetRootAsConfig(data, 0)
 		config := new(cfg.DepCfg)
 		depcfg := appdata.DepCfg(config)
-		if app.DeploymentConfig.SourceBucket == string(depcfg.SourceBucket()) {
+
+		otherKeyspace := common.Keyspace{BucketName: string(depcfg.SourceBucket()),
+			ScopeName:      string(depcfg.SourceScope()),
+			CollectionName: string(depcfg.SourceCollection()),
+		}
+
+		if sourceKeyspace == otherKeyspace {
 			binding := m.getSourceBindingFromFlatBuf(depcfg, appdata)
 			if binding != nil {
 				return false
