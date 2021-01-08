@@ -57,7 +57,9 @@ std::string GetFailureStats() {
       timer_callback_missing_counter.load();
   fstats["delete_events_lost"] = delete_events_lost.load();
   fstats["timer_events_lost"] = timer_events_lost.load();
-  fstats["curl_non_200_response"] = Curl::GetStats().GetCurlFailureStat();
+  fstats["curl_non_200_response"] = Curl::GetStats().GetCurlNon200Stat();
+  fstats["curl_timeout_count"] = Curl::GetStats().GetCurlTimeoutStat();
+  fstats["curl_failure_count"] = Curl::GetStats().GetCurlFailureStat();
   fstats["timestamp"] = GetTimestampNow();
   return fstats.dump();
 }
@@ -107,6 +109,7 @@ std::string GetExecutionStats(const std::map<int16_t, V8Worker *> &workers) {
   estats["curl"]["delete"] = Curl::GetStats().GetCurlDeleteStat();
   estats["curl"]["head"] = Curl::GetStats().GetCurlHeadStat();
   estats["curl"]["put"] = Curl::GetStats().GetCurlPutStat();
+  estats["curl_success_count"] = Curl::GetStats().GetCurlSuccessStat();
   estats["timestamp"] = GetTimestampNow();
   estats["uv_msg_parse_failure"] = uv_msg_parse_failure.load();
   return estats.dump();
