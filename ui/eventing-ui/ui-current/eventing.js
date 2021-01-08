@@ -831,6 +831,8 @@ angular.module('eventing', [
         scope.bindings.push({
           type: '',
           name: '',
+          scope: '',
+          collection: '',
           value: '',
           access: 'r',
           auth_type: 'no-auth',
@@ -1038,6 +1040,8 @@ angular.module('eventing', [
         $scope.bindings.push({
           type: '',
           name: self.sourceBuckets[0],
+          scope: '_default',
+          collection: '_default',
           value: '',
           auth_type: 'no-auth',
           allow_cookies: true,
@@ -1110,14 +1114,9 @@ angular.module('eventing', [
 
       if (($scope.bindings.length > 0) && ($scope.bindings[0].name === '')) {
         $scope.bindings[0].name = bucketsResolve[0];
-        self.scopes.push([]);
-        self.collections.push([]);
-        self.responses.push([]);
-        self.populateScope(bucketsResolve[0], 0);
       }
 
       for (var binding in $scope.bindings) {
-        console.log(binding);
         self.scopes.push([]);
         self.collections.push([]);
         self.responses.push([]);
@@ -1274,6 +1273,8 @@ angular.module('eventing', [
         self.bindings.push({
           type: '',
           name: self.sourceBuckets[0],
+          scope: '_default',
+          collection: '_default',
           value: '',
           auth_type: 'no-auth',
           allow_cookies: true,
@@ -1282,6 +1283,8 @@ angular.module('eventing', [
         self.scopes.push([]);
         self.collections.push([]);
         self.responses.push([]);
+        self.populateScope(self.sourceBuckets[0], self.responses.length -
+          1);
       };
 
       self.Remove = function(index) {
@@ -1385,7 +1388,8 @@ angular.module('eventing', [
         "Displays a URL that connects the Chrome Dev-Tools with the application handler. Code must be deployed and debugger must be enabled in the settings in order to debug";
       self.disableCancelButton = true;
       self.disableSaveButton = true;
-      self.editorDisabled = app.status === "pausing" || app.status === "deployed" ||
+      self.editorDisabled = app.status === "pausing" || app.status ===
+        "deployed" ||
         app.status === "deploying" || app.status === "undeploying";
 
       $state.current.data.title = app.appname;
