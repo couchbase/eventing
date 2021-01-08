@@ -3553,8 +3553,11 @@ func (m *ServiceMgr) backupHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	req := strings.Split(url, "/")
+
 	// eventing only allows cluster level backup/restore
-	if len(req) > 4 {
+	// if req length is 5 then index 3 will contain backup info to backup just functions or queue
+	// req = ["","api","v1","functions","backup"]
+	if len(req) > 5 {
 		info.Code = m.statusCodes.errRequestedOpFailed.Code
 		info.Info = fmt.Sprintf("Only cluster level backup is allowed: request Url %s", url)
 		m.sendErrorInfo(w, info)

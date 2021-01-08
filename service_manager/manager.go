@@ -181,6 +181,7 @@ func (m *ServiceMgr) initService() {
 	mux.HandleFunc("/api/v1/import", m.importHandler)
 	mux.HandleFunc("/api/v1/import/", m.importHandler)
 	mux.HandleFunc("/api/v1/backup", m.backupHandler)
+	mux.HandleFunc("/api/v1/functions/backup", m.backupHandler)
 
 	mux.HandleFunc("/api/v1/list/functions", m.listFunctions)
 	mux.HandleFunc("/api/v1/list/functions/", m.listFunctions)
