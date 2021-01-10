@@ -331,7 +331,7 @@
               and $ and it should not be a JavaScript keyword.
             </div>
             <a class="grayblack-3 margin-left-1"
-              ng-show="!formCtrl.isAppDeployed"
+              ng-show="appModel.status == 'undeployed' || appModel.status == 'paused'"
               ng-click="formCtrl.Remove($index)">
               <span class="icon fa-close"></span>
             </a>
@@ -381,7 +381,7 @@
             </div>
           </div>
           <!-- Constant Bindings -------------------------------------------------------->
-          <span class="padding-right-half flex-grow-1 margin-bottom-half"
+          <span class="padding-right-half flex-grow-1"
             ng-if="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].type === 'constant'">
             <input type="text"
               ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].value"
@@ -393,12 +393,17 @@
               and $ and it should not be a JavaScript keyword.
             </div>
           </span>
-          <span class="padding-right-half flex-grow-1 margin-bottom-half"
+          <span class="row padding-right-half flex-grow-1 margin-bottom-half"
             ng-if="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].type === 'constant'">
             <input type="text"
               ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].literal"
               ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
               placeholder="value...">
+              <a class="grayblack-3 margin-left-1"
+                ng-show="appModel.status == 'undeployed' || appModel.status == 'paused'"
+                ng-click="formCtrl.Remove($index)">
+                <span class="icon fa-close"></span>
+              </a>
           </span>
 
 
@@ -426,7 +431,7 @@
               Hostname cannot be empty and must start with http:// or https://
             </div>
             <a class="grayblack-3 margin-left-1"
-              ng-show="!formCtrl.isAppDeployed"
+              ng-show="appModel.status == 'undeployed' || appModel.status == 'paused'"
               ng-click="formCtrl.Remove($index)">
               <span class="icon fa-close"></span>
             </a>
