@@ -2576,6 +2576,7 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 	functionsPause := regexp.MustCompile("^/api/v1/functions/(.*[^/])/pause/?$")
 	functionsResume := regexp.MustCompile("^/api/v1/functions/(.*[^/])/resume/?$")
 	functionsAppcode := regexp.MustCompile("^/api/v1/functions/(.*[^/])/appcode(/checksum)?/?$")
+	functionsConfig := regexp.MustCompile("^/api/v1/functions/(.*[^/])/config/?$")
 
 	if match := functionsNameRetry.FindStringSubmatch(r.URL.Path); len(match) != 0 {
 		appName := match[1]
@@ -2698,7 +2699,6 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 			fmt.Fprintf(w, "%s", string(response))
 
 		case "POST":
-
 			info := &runtimeInfo{}
 			appState := m.superSup.GetAppState(appName)
 			if appState == common.AppStateEnabled {
@@ -2744,6 +2744,97 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			runtimeInfo.Info = fmt.Sprintf("Function: %s appcode stored in the metakv.", appName)
+			m.sendRuntimeInfo(w, runtimeInfo)
+
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+	} else if match := functionsConfig.FindStringSubmatch(r.URL.Path); len(match) != 0 {
+		appName := match[1]
+		switch r.Method {
+		case "GET":
+			app, info := m.getTempStore(appName)
+			if info.Code != m.statusCodes.ok.Code {
+				m.sendErrorInfo(w, info)
+				return
+			}
+			response, err := json.MarshalIndent(app.DeploymentConfig, "", " ")
+			if err != nil {
+				info.Code = m.statusCodes.errMarshalResp.Code
+				info.Info = fmt.Sprintf("Failed to marshal config, err : %v", err)
+				logging.Errorf("%s %s", logPrefix, info.Info)
+				m.sendErrorInfo(w, info)
+				return
+			}
+
+			w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
+			fmt.Fprintf(w, "%s", string(response))
+
+		case "POST":
+			info := &runtimeInfo{}
+			appState := m.superSup.GetAppState(appName)
+			if appState == common.AppStateEnabled {
+				info.Code = m.statusCodes.errAppDeployed.Code
+				info.Info = fmt.Sprintf("Function: %s is in deployed state, config can only be updated when a function is either undeployed or paused", appName)
+				logging.Errorf("%s %s", logPrefix, info.Info)
+				m.sendErrorInfo(w, info)
+				return
+			}
+
+			data, err := ioutil.ReadAll(r.Body)
+			if err != nil {
+				info.Code = m.statusCodes.errReadReq.Code
+				info.Info = fmt.Sprintf("Failed to read request body, err: %v", err)
+				logging.Errorf("%s %s", logPrefix, info.Info)
+				m.sendErrorInfo(w, info)
+				return
+			}
+
+			app, info := m.getTempStore(appName)
+			appCopy := app
+			if info.Code != m.statusCodes.ok.Code {
+				m.sendErrorInfo(w, info)
+				return
+			}
+
+			config := depCfg{}
+			unmarshalErr := json.Unmarshal(data, &config)
+			if unmarshalErr != nil {
+				info.Code = m.statusCodes.errReadReq.Code
+				info.Info = fmt.Sprintf("Failed to Unmarshal request body, err: %v", err)
+				logging.Errorf("%s %s", logPrefix, info.Info)
+				m.sendErrorInfo(w, info)
+				return
+			}
+			app.DeploymentConfig = config
+
+			// Validate Recursion Checks and deployment configurations
+			if info = m.validateApplication(&app); info.Code != m.statusCodes.ok.Code {
+				m.sendErrorInfo(w, info)
+				return
+			}
+
+			// Don't allow the user to change the meta and source keyspaces
+			if appState == common.AppStatePaused {
+				app.Settings["dcp_stream_boundary"] = "from_prior"
+				if !CheckIfAppKeyspacesAreSame(appCopy, app) {
+					info.Code = m.statusCodes.errInvalidConfig.Code
+					info.Info = "Source and Meta Keyspaces can only be changed when the function is in undeployed state."
+					m.sendErrorInfo(w, info)
+					return
+				}
+			}
+
+			runtimeInfo := m.savePrimaryStore(&app)
+			if runtimeInfo.Code == m.statusCodes.ok.Code {
+				audit.Log(auditevent.SaveDraft, r, appName)
+				if tempInfo := m.saveTempStore(app); tempInfo.Code != m.statusCodes.ok.Code {
+					m.sendErrorInfo(w, tempInfo)
+					return
+				}
+			}
+			runtimeInfo.Info = fmt.Sprintf("Function: %s config stored in the metakv.", appName)
 			m.sendRuntimeInfo(w, runtimeInfo)
 
 		default:
