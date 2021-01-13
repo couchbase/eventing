@@ -815,6 +815,9 @@ angular.module('eventing', [
             if (responseCode) {
               return $q.reject(ApplicationService.status.getErrorMsg(
                 responseCode, response.data));
+            } else {
+              ApplicationService.server.showSuccessAlert(
+                'Operation successful. Update the code and save, or return back to Eventing summary page.');
             }
           })
           .catch(function(errResponse) { // Upon cancel.
