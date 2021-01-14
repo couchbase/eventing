@@ -17,3 +17,8 @@
   word-wrap: break-word !important;
   white-space: pre-wrap !important;
 }
+
+.log-message-row {
+  white-space: pre-wrap;
+}
+
