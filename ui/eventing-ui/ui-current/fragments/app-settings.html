@@ -28,19 +28,21 @@
           <span class="icon fa-info fa-stack-1x"></span>
         </span>
         <div class="row items-bottom">
-          <select ng-disabled="!formCtrl.isDialog"
+          <select ng-disabled="!(appModel.status == 'undeployed') && !formCtrl.isDialog"
             ng-model="appModel.depcfg.source_bucket"
+            ng-init="formCtrl.populateSourceScopes(appModel.depcfg.source_bucket)"
             ng-change="formCtrl.populateSourceScopes(appModel.depcfg.source_bucket)"
             ng-options="bucket for bucket in formCtrl.sourceBuckets"
             name="source_bucket" class="margin-right-quarter">
           </select>
-          <select ng-disabled="!formCtrl.isDialog"
+          <select ng-disabled="!(appModel.status == 'undeployed') && !formCtrl.isDialog"
             ng-model="appModel.depcfg.source_scope"
+            ng-init="formCtrl.populateSourceCollections(appModel.depcfg.source_scope)"
             ng-change="formCtrl.populateSourceCollections(appModel.depcfg.source_scope)"
             ng-options="scope for scope in formCtrl.sourceScopes"
             name="source_scope" class="margin-right-quarter">
           </select>
-          <select ng-disabled="!formCtrl.isDialog"
+          <select ng-disabled="!(appModel.status == 'undeployed') && !formCtrl.isDialog"
             ng-model="appModel.depcfg.source_collection"
             ng-options="collection for collection in formCtrl.sourceCollections"
             name="source_collection">
@@ -48,8 +50,8 @@
         </div>
 
         <div class="error field-error"
-          ng-show="formCtrl.sourceBuckets.indexOf(appModel.depcfg.source_bucket) === -1 &&
-                      formCtrl.sourceScopes.indexOf(appModel.depcfg.source_scope) === -1 &&
+          ng-show="formCtrl.sourceBuckets.indexOf(appModel.depcfg.source_bucket) === -1 ||
+                      formCtrl.sourceScopes.indexOf(appModel.depcfg.source_scope) === -1 ||
                       formCtrl.sourceCollections.indexOf(appModel.depcfg.source_collection) === -1">
           Please specify a source location for your function.
         </div>
@@ -68,19 +70,21 @@
         </span>
 
         <div class="row items-bottom">
-          <select ng-disabled="!formCtrl.isDialog"
+          <select ng-disabled="!(appModel.status == 'undeployed') && !formCtrl.isDialog"
             ng-model="appModel.depcfg.metadata_bucket"
+            ng-init="formCtrl.populateMetadataScopes(appModel.depcfg.metadata_bucket)"
             ng-change="formCtrl.populateMetadataScopes(appModel.depcfg.metadata_bucket)"
             ng-options="bucket for bucket in formCtrl.metadataBuckets"
             name="metadata_bucket" class="margin-right-quarter">
           </select>
-          <select ng-disabled="!formCtrl.isDialog"
+          <select ng-disabled="!(appModel.status == 'undeployed') && !formCtrl.isDialog"
             ng-model="appModel.depcfg.metadata_scope"
+            ng-init="formCtrl.populateMetadataCollections(appModel.depcfg.metadata_scope)"
             ng-change="formCtrl.populateMetadataCollections(appModel.depcfg.metadata_scope)"
             ng-options="scope for scope in formCtrl.metadataScopes"
             name="metadata_scope" class="margin-right-quarter">
           </select>
-          <select ng-disabled="!formCtrl.isDialog"
+          <select ng-disabled="!(appModel.status == 'undeployed') && !formCtrl.isDialog"
             ng-model="appModel.depcfg.metadata_collection"
             ng-options="collection for collection in formCtrl.metadataCollections"
             name="metadata_collection">
@@ -92,7 +96,9 @@
         </div>
 
         <div class="error field-error"
-          ng-show="formCtrl.metadataBuckets.indexOf(appModel.depcfg.metadata_bucket) === -1">
+          ng-show="formCtrl.metadataBuckets.indexOf(appModel.depcfg.metadata_bucket) === -1 ||
+                    formCtrl.metadataScopes.indexOf(appModel.depcfg.metadata_scope) === -1 ||
+                    formCtrl.metadataCollections.indexOf(appModel.depcfg.metadata_collection) === -1">
           Please specify a location to store Eventing data.
         </div>
         <small>
@@ -539,7 +545,7 @@
       </a>
       <button ng-if="!formCtrl.isDialog"
         ng-click="formCtrl.saveSettings($dismiss, $close)"
-        ng-disabled="formCtrl.isFormInvalid()">
+        ng-disabled="formCtrl.isFormInvalid() || formCtrl.srcMetaSameBucket(appModel)">
         Save
       </button>
   </form>
