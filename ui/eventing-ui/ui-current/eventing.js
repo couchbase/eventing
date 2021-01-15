@@ -1579,7 +1579,7 @@ angular.module('eventing', [
         }
       };
 
-      self.saveEdit = function() {
+      self.saveEdit = function(action) {
         app.appcode = self.handler;
         ApplicationService.public.status()
           .then(function(response) {
@@ -1597,6 +1597,8 @@ angular.module('eventing', [
                 'Changes cannot be saved. Function can be edited only when it is undeployed or paused'
               );
             } else {
+              var appSaved = true
+
               ApplicationService.tempStore.saveApp(app)
                 .then(function(response) {
                   ApplicationService.server.showSuccessAlert(
@@ -1633,10 +1635,18 @@ angular.module('eventing', [
                   delete app.compilationInfo;
                 })
                 .catch(function(errResponse) {
+                  appSaved = false
                   ApplicationService.server.showErrorAlert(
                     "Changes cannot be saved. Reason: " + errResponse
                     .data.runtime_info.info);
                   console.error(errResponse);
+                })
+                .finally(function(response) {
+                  if (appSaved && action == 'SaveAndReturnToEventingSummary') {
+                    self.warning = false;
+
+                    $state.go('app.admin.eventing.summary');
+                  }
                 });
             }
           })
@@ -1807,6 +1817,7 @@ angular.module('eventing', [
             return false;
           }
         }
+        return true;
       });
 
       window.onbeforeunload = function() {
