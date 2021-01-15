@@ -1630,11 +1630,7 @@ angular.module('eventing', [
                   self.disableDeployButton = false;
                   self.warning = false;
 
-                  // Optimistic that the user has fixed the errors
-                  // If not the errors will anyway show up when he deploys again
-                  self.aceEditor.clearMarkersAndAnnotations();
                   delete app.compilationInfo;
-                  console.log(response.data);
                 })
                 .catch(function(errResponse) {
                   ApplicationService.server.showErrorAlert(
