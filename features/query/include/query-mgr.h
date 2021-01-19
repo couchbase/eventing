@@ -45,7 +45,7 @@ public:
 private:
   v8::Isolate *isolate_;
   Connection::Pool conn_pool_;
-  std::unordered_map<lcb_INSTANCE *, std::unique_ptr<Iterator>> iterators_;
+  std::unordered_map<lcb_INSTANCE *, std::shared_ptr<Iterator>> iterators_;
 };
 } // namespace Query
 

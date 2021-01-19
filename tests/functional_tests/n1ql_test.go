@@ -147,6 +147,31 @@ func TestN1QLNestedForLoop(t *testing.T) {
 	flushFunctionAndBucket(functionName)
 }
 
+func TestN1QLAutoClose(t *testing.T) {
+	functionName := t.Name()
+	itemCount := 500
+	handler := "n1ql_auto_close"
+	flushFunctionAndBucket(functionName)
+	createAndDeployFunction(functionName, handler, &commonSettings{
+		executionTimeout: 60,
+		workerCount:      1,
+		lcbInstCap:       2,
+	})
+	waitForDeployToFinish(functionName)
+	pumpBucketOps(opsType{count: itemCount}, &rateLimit{})
+	expectedCount := itemCount
+	eventCount := verifyBucketOps(expectedCount, statsLookupRetryCounter*2)
+	if expectedCount != eventCount {
+		t.Error("For", "N1QLAutoClose",
+			"expected", expectedCount,
+			"got", eventCount,
+		)
+	}
+
+	dumpStats()
+	flushFunctionAndBucket(functionName)
+}
+
 func TestN1QLPosParams(t *testing.T) {
 	functionName := t.Name()
 	handler := "n1ql_pos_params"
@@ -182,7 +207,6 @@ func TestN1QLExhaustConnPool(t *testing.T) {
 			"got", eventCount,
 		)
 	}
-
 	dumpStats()
 	flushFunctionAndBucket(functionName)
 }

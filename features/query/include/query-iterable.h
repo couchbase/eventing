@@ -54,10 +54,11 @@ class Iterable : public IterableBase {
 public:
   struct Info : public ::Info {
     Info(bool is_fatal, std::string msg) : ::Info(is_fatal, std::move(msg)) {}
-    Info(Iterator *iterator, const v8::Local<v8::Value> &iterable)
+    Info(std::shared_ptr<Iterator> iterator,
+         const v8::Local<v8::Value> &iterable)
         : ::Info(false), iterator(iterator), iterable(iterable) {}
 
-    Iterator *iterator{nullptr};
+    std::shared_ptr<Iterator> iterator{nullptr};
     v8::Local<v8::Value> iterable;
   };
 
@@ -106,6 +107,16 @@ private:
   v8::Isolate *isolate_;
   v8::Persistent<v8::Context> context_{};
   v8::Persistent<v8::ObjectTemplate> template_{};
+};
+
+struct WrapStop {
+  explicit WrapStop(v8::Isolate *, std::shared_ptr<Query::Iterator>,
+                    v8::Local<v8::Value>);
+  v8::Persistent<v8::Value> value_;
+  std::shared_ptr<Query::Iterator> iterator_;
+  v8::Isolate *isolate_;
+  static void Callback(const v8::WeakCallbackInfo<WrapStop> &);
+  static void SecondCallback(const v8::WeakCallbackInfo<Query::WrapStop> &);
 };
 } // namespace Query
 
