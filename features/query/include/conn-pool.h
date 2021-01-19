@@ -51,6 +51,7 @@ public:
   void RefreshTopConnection();
 
 private:
+  void ScavengeIfNeeded();
   Connection::Info CreateConnection() const;
   Connection::Info FormatErrorAndDestroyConn(const std::string &message,
                                              lcb_t connection,

@@ -225,3 +225,42 @@ Query::IterableResult::~IterableResult() {
   context_.Reset();
   template_.Reset();
 }
+
+Query::WrapStop::WrapStop(v8::Isolate *isolate,
+                          std::shared_ptr<Query::Iterator> iter,
+                          v8::Local<v8::Value> val)
+    : value_(isolate, val), iterator_(iter), isolate_(isolate) {
+  // SetWeak method sets the Persistent handle up for garbage collection
+  // when the object goes out of scope. The callback is invoked when the handle
+  // is GCed
+  value_.SetWeak(this, Query::WrapStop::Callback,
+                 v8::WeakCallbackType::kParameter);
+}
+
+void Query::WrapStop::Callback(
+    const v8::WeakCallbackInfo<Query::WrapStop> &data) {
+  // Query WrapStop pointer is sent to the callback
+  auto wrapper = data.GetParameter();
+
+  // It is mandatory for the Callback to delete the data
+  v8::Locker locker(wrapper->isolate_);
+  if (!wrapper->value_.IsEmpty()) {
+    wrapper->value_.Reset();
+  }
+
+  // Queue a second pass callback on the same WrapStop
+  // The second pass callbacks are served after all the first callbacks
+  data.SetSecondPassCallback(Query::WrapStop::SecondCallback);
+}
+
+void Query::WrapStop::SecondCallback(
+    const v8::WeakCallbackInfo<Query::WrapStop> &data) {
+  // Query WrapStop pointer is sent to the second pass callback
+  auto wrapper = data.GetParameter();
+
+  // Close the iterator when the second pass callback is invoked
+  // Stop the Query only if it hasn't been stopped yet:
+  // Stop() is a NO-OP if iterator is already stoppped.
+  wrapper->iterator_->Stop();
+  delete wrapper;
+}

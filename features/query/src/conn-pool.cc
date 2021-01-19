@@ -90,7 +90,19 @@ Connection::Pool::FormatErrorAndDestroyConn(const std::string &message,
   return info;
 }
 
+void Connection::Pool::ScavengeIfNeeded() {
+  pool_sync_.lock();
+  auto low = pool_.empty() && current_size_ >= capacity_;
+  pool_sync_.unlock();
+  if (!low) {
+    return;
+  }
+  v8::Locker locker(isolate_);
+  isolate_->LowMemoryNotification();
+}
+
 Connection::Info Connection::Pool::GetConnection() {
+  ScavengeIfNeeded();
   std::lock_guard<std::mutex> lock(pool_sync_);
 
   if (pool_.empty()) {

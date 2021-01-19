@@ -37,20 +37,17 @@ Query::Iterable::Info Query::Manager::NewIterable(Query::Info query_info) {
   if (conn_info.is_fatal) {
     return {true, conn_info.msg};
   }
-
-  auto iterator = std::make_unique<Query::Iterator>(
+  auto iterator = std::make_shared<Query::Iterator>(
       std::move(query_info), conn_info.connection, isolate_);
   auto iterator_ptr = iterator.get();
-
   auto iterable = UnwrapData(isolate_)->query_iterable;
   auto info = iterable->NewObject(iterator_ptr);
   if (info.is_fatal) {
     conn_pool_.RestoreConnection(conn_info.connection);
     return {true, info.msg};
   }
-
-  iterators_[conn_info.connection] = std::move(iterator);
-  return {iterator_ptr, info.object};
+  iterators_[conn_info.connection] = iterator;
+  return {iterator, info.object};
 }
 
 void QueryFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
@@ -93,7 +90,7 @@ void QueryFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
       return;
     }
 
-    auto &iterator = it_info.iterator;
+    auto iterator = it_info.iterator;
     if (auto start_info = iterator->Start(); start_info.is_fatal) {
       if (!conn_refreshed && (start_info.is_retriable ||
                               start_info.is_lcb_special_error)) {
@@ -152,7 +149,9 @@ void QueryFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
       return;
     }
 
-    args.GetReturnValue().Set(it_info.iterable);
+    v8::Locker locker(isolate);
+    auto wrapper = new Query::WrapStop(isolate, iterator, it_info.iterable);
+    args.GetReturnValue().Set(wrapper->value_.Get(isolate));
     break;
   }
 }
