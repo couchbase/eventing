@@ -258,7 +258,12 @@ func (p *Producer) SignalBootstrapFinish() {
 
 // PauseProducer pauses the execution of Eventing.Producer and corresponding Eventing.Consumer instances
 func (p *Producer) PauseProducer() {
-	p.pauseProducerCh <- struct{}{}
+	p.stateChangeCh <- pause
+}
+
+// ResumeProducer after pausing
+func (p *Producer) ResumeProducer() {
+	p.stateChangeCh <- resume
 }
 
 // StopProducer cleans up resource handles

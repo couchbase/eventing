@@ -44,6 +44,13 @@ type startDebugBlob struct {
 	StartDebug bool `json:"start_debug"`
 }
 
+type state int
+
+const (
+	pause state = iota
+	resume
+)
+
 // Producer handle - one instance per app per eventing node
 type Producer struct {
 	appName                string
@@ -66,7 +73,7 @@ type Producer struct {
 	nsServerHostPort       string
 	numVbuckets            int
 	isPausing              bool
-	pauseProducerCh        chan struct{}
+	stateChangeCh          chan state
 	pollBucketInterval     time.Duration
 	pollBucketStopCh       chan struct{}
 	pollBucketTicker       *time.Ticker

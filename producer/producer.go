@@ -46,7 +46,7 @@ func NewProducer(appName, debuggerPort, eventingPort, eventingSSLPort, eventingD
 		nsServerPort:                 nsServerPort,
 		numVbuckets:                  numVbuckets,
 		isPausing:                    false,
-		pauseProducerCh:              make(chan struct{}, 1),
+		stateChangeCh:                make(chan state, 1),
 		plannerNodeMappingsRWMutex:   &sync.RWMutex{},
 		pollBucketStopCh:             make(chan struct{}, 1),
 		MemoryQuota:                  memoryQuota,
@@ -95,6 +95,7 @@ func (p *Producer) Serve() {
 		}
 	}()
 
+	// NOTE: Please check resumeProducer() code path changes if anything changes in serve code path
 	p.isBootstrapping = true
 	logging.Infof("%s [%s:%d] Bootstrapping status: %t", logPrefix, p.appName, p.LenRunningConsumers(), p.isBootstrapping)
 
@@ -302,63 +303,29 @@ func (p *Producer) Serve() {
 				p.updateAppLogSetting(settings)
 			}
 
-		case <-p.pauseProducerCh:
-
-			// This routine cleans up everything apart from metadataBucketHandle,
-			// which would be needed to clean up metadata bucket
-			logging.Infof("%s [%s:%d] Pausing processing", logPrefix, p.appName, p.LenRunningConsumers())
-			p.isPausing = true
-
-			for _, c := range p.getConsumers() {
-				c.PauseConsumer()
-				c.ResetBootstrapDone()
-				c.CloseAllRunningDcpFeeds()
+		case msg := <-p.stateChangeCh:
+			switch msg {
+			case pause:
+				logging.Infof("%s [%s:%d] Pausing processing", logPrefix, p.appName, p.LenRunningConsumers())
+				err = p.pauseProducer()
+				p.notifySupervisorCh <- struct{}{}
+				if err != nil {
+					//TODO: Need a way to return error to the routine waiting for notifySupervisorCh
+					logging.Errorf("%s [%s:%d] %v", logPrefix, p.appName, p.LenRunningConsumers(), err)
+					return
+				}
+				logging.Infof("%s [%s:%d] Function Paused", logPrefix, p.appName, p.LenRunningConsumers())
+			case resume:
+				logging.Infof("%s [%s] Resuming producer", logPrefix, p.appName)
+				err = p.resumeProducer()
+				p.notifySupervisorCh <- struct{}{}
+				if err != nil {
+					//TODO: Need a way to return error to the routine waiting for notifySupervisorCh
+					logging.Errorf("%s [%s:%d] %v", logPrefix, p.appName, p.LenRunningConsumers(), err)
+					return
+				}
+				logging.Infof("%s [%s:%d] Function Resumed", logPrefix, p.appName, p.LenRunningConsumers())
 			}
-
-			err = util.Retry(util.NewFixedBackoff(time.Second), &p.retryCount, checkIfQueuesAreDrained, p)
-			if err == common.ErrRetryTimeout {
-				logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
-				return
-			}
-
-			for _, c := range p.getConsumers() {
-				p.stopAndDeleteConsumer(c)
-			}
-
-			p.runningConsumersRWMutex.Lock()
-			p.runningConsumers = nil
-			p.runningConsumersRWMutex.Unlock()
-
-			p.workerNameConsumerMapRWMutex.Lock()
-			p.workerNameConsumerMap = make(map[string]common.EventingConsumer)
-			p.workerNameConsumerMapRWMutex.Unlock()
-
-			p.listenerRWMutex.Lock()
-			for _, listener := range p.consumerListeners {
-				listener.Close()
-			}
-			p.consumerListeners = make(map[common.EventingConsumer]net.Listener)
-
-			for _, listener := range p.feedbackListeners {
-				listener.Close()
-			}
-			p.feedbackListeners = make(map[common.EventingConsumer]net.Listener)
-			p.listenerRWMutex.Unlock()
-
-			if p.appLogWriter != nil {
-				p.appLogWriter.Close()
-			}
-
-			if !p.stopChClosed {
-				close(p.stopCh)
-				p.stopChClosed = true
-			}
-
-			logging.Infof("%s [%s:%d] Closed stop chan and app log writer handle",
-				logPrefix, p.appName, p.LenRunningConsumers())
-
-			p.isPausing = false
-			p.notifySupervisorCh <- struct{}{}
 
 		case <-p.stopProducerCh:
 			logging.Infof("%s [%s:%d] Explicitly asked to shutdown producer routine", logPrefix, p.appName, p.LenRunningConsumers())
@@ -950,4 +917,96 @@ func (p *Producer) getConsumers() []common.EventingConsumer {
 	}
 
 	return workers
+}
+
+// This routine cleans up everything apart from metadataHandle,
+// which would be needed to clean up metadata bucket
+func (p *Producer) pauseProducer() error {
+	p.isPausing = true
+
+	for _, c := range p.getConsumers() {
+		c.PauseConsumer()
+		c.ResetBootstrapDone()
+		c.CloseAllRunningDcpFeeds()
+	}
+
+	err := util.Retry(util.NewFixedBackoff(time.Second), &p.retryCount, checkIfQueuesAreDrained, p)
+	if err == common.ErrRetryTimeout {
+		return fmt.Errorf("Exiting due to timeout")
+	}
+
+	for _, c := range p.getConsumers() {
+		p.stopAndDeleteConsumer(c)
+	}
+
+	p.runningConsumersRWMutex.Lock()
+	p.runningConsumers = nil
+	p.runningConsumersRWMutex.Unlock()
+
+	p.workerNameConsumerMapRWMutex.Lock()
+	p.workerNameConsumerMap = make(map[string]common.EventingConsumer)
+	p.workerNameConsumerMapRWMutex.Unlock()
+
+	p.listenerRWMutex.Lock()
+	for _, listener := range p.consumerListeners {
+		listener.Close()
+	}
+	p.consumerListeners = make(map[common.EventingConsumer]net.Listener)
+
+	for _, listener := range p.feedbackListeners {
+		listener.Close()
+	}
+	p.feedbackListeners = make(map[common.EventingConsumer]net.Listener)
+	p.listenerRWMutex.Unlock()
+
+	if p.appLogWriter != nil {
+		p.appLogWriter.Close()
+	}
+
+	if !p.stopChClosed {
+		close(p.stopCh)
+		p.stopChClosed = true
+	}
+
+	p.isPausing = false
+	return nil
+}
+
+func (p *Producer) resumeProducer() error {
+	p.isBootstrapping = true
+	p.stopChClosed = false
+	p.stopCh = make(chan struct{}, 1)
+
+	err := p.parseDepcfg()
+	if err == common.ErrRetryTimeout {
+		return fmt.Errorf("Exiting due to timeout")
+	}
+
+	if err != nil {
+		return fmt.Errorf("Failure parsing depcfg, err: %v", err)
+	}
+	p.appLogWriter, err = openAppLog(p.appLogPath, 0640, p.appLogMaxSize, p.appLogMaxFiles)
+	if err != nil {
+		return fmt.Errorf("Failure opening application log writer handle, err: %v", err)
+	}
+
+	n1qlParams := "{ 'consistency': '" + p.handlerConfig.N1qlConsistency + "' }"
+	p.app.ParsedAppCode, _ = parser.TranspileQueries(p.app.AppCode, n1qlParams)
+	p.updateStatsTicker = time.NewTicker(time.Duration(p.handlerConfig.CheckpointInterval) * time.Millisecond)
+
+	p.isPlannerRunning = true
+	p.vbNodeWorkerMap()
+	p.initWorkerVbMap()
+	p.isPlannerRunning = false
+
+	p.startBucket()
+
+	p.bootstrapFinishCh <- struct{}{}
+
+	p.isBootstrapping = false
+	go p.updateStats()
+	for i := len(p.notifyInitCh); i < 2; i++ {
+		p.notifyInitCh <- struct{}{}
+	}
+	return nil
 }
