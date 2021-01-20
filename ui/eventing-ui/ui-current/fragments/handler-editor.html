@@ -49,7 +49,11 @@
         ng-disabled="formHandler.handlerEditor.$pristine || handlerCtrl.disableCancelButton">
         Cancel
       </a>
-      <button ng-click="handlerCtrl.saveEdit()"
+      <button ng-click="handlerCtrl.saveEdit('SaveAndReturnToEventingSummary')"
+        ng-disabled="formHandler.handlerEditor.$pristine || handlerCtrl.disableSaveButton">
+        Save and Return
+      </button>
+      <button ng-click="handlerCtrl.saveEdit('SaveAndRemain')"
         ng-disabled="formHandler.handlerEditor.$pristine || handlerCtrl.disableSaveButton">
         Save
       </button>
