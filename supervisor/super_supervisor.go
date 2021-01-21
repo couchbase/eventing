@@ -268,20 +268,28 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 						return err
 					}
 
+					resumed := false
 					if state == common.AppStatePaused {
 						if p, ok := s.runningFns()[appName]; ok {
-							logging.Infof("%s [%d] Function: %s stopping running producer instance", logPrefix, s.runningFnsCount(), appName)
-							p.StopProducer()
-							s.stopAndDeleteProducer(p)
+							err = s.WatchBucket(p.SourceBucket(), appName)
+							if err != nil {
+								return err
+							}
+
+							p.ResumeProducer()
 							p.NotifySupervisor()
+							resumed = true
 						}
 					}
 
-					err = s.spawnApp(appName)
-					if err != nil {
-						logging.Errorf("%s [%d] Function: %s spawning error: %v", logPrefix, s.runningFnsCount(), appName, err)
-						return nil
+					if !resumed {
+						err = s.spawnApp(appName)
+						if err != nil {
+							logging.Errorf("%s [%d] Function: %s spawning error: %v", logPrefix, s.runningFnsCount(), appName, err)
+							return nil
+						}
 					}
+
 					s.appRWMutex.Lock()
 					s.appDeploymentStatus[appName] = deploymentStatus
 					s.appProcessingStatus[appName] = processingStatus

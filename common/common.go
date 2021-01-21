@@ -186,6 +186,7 @@ type EventingProducer interface {
 	NsServerNodeCount() int
 	PauseProducer()
 	PlannerStats() []*PlannerNodeVbMapping
+	ResumeProducer()
 	RebalanceStatus() bool
 	RebalanceTaskProgress() *RebalanceProgress
 	RemoveConsumerToken(workerName string)
