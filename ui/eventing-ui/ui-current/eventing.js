@@ -2502,7 +2502,7 @@ angular.module('eventing', [
             ]
           },
           data: {
-            child: 'app.admin.eventing.summary'
+            parent: {name: 'Eventing', link: 'app.admin.eventing.summary'}
           }
         });
     }
