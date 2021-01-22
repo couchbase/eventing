@@ -58,9 +58,10 @@ timer::EpochInfo Timer::Epoch(const v8::Local<v8::Value> &date_val) {
   return {true, epoch};
 }
 
-bool Timer::CreateTimerImpl(const v8::FunctionCallbackInfo<v8::Value> &args) {
+TIMER_MSG
+Timer::CreateTimerImpl(const v8::FunctionCallbackInfo<v8::Value> &args) {
   if (!ValidateArgs(args)) {
-    return false;
+    return TIMER_MSG(false, "Unable to Validate Arguments");
   }
 
   v8::HandleScope handle_scope(isolate_);
@@ -68,9 +69,9 @@ bool Timer::CreateTimerImpl(const v8::FunctionCallbackInfo<v8::Value> &args) {
   auto js_exception = UnwrapData(isolate_)->js_exception;
   auto epoch_info = Epoch(args[1]);
   if (!epoch_info.is_valid) {
-    js_exception->ThrowEventingError(
-        "Unable to compute epoch for the given Date instance");
-    return false;
+    std::string err_msg = "Unable to compute epoch for the given Date instance";
+    js_exception->ThrowEventingError(err_msg);
+    return TIMER_MSG(false, err_msg);
   }
 
   auto utils = UnwrapData(isolate_)->utils;
@@ -92,19 +93,21 @@ bool Timer::CreateTimerImpl(const v8::FunctionCallbackInfo<v8::Value> &args) {
   FillTimerPartition(timer_info, v8worker->num_vbuckets_);
 
   if (timer_info.context.size() > static_cast<unsigned>(timer_context_size)) {
-    js_exception->ThrowEventingError(
+    std::string err_msg =
         "The context payload size is more than the configured size:" +
-        std::to_string(timer_context_size) + " bytes");
+        std::to_string(timer_context_size) + " bytes";
+    js_exception->ThrowEventingError(err_msg);
     timer_context_size_exceeded_counter++;
-    return false;
+    return TIMER_MSG(false, err_msg);
   }
   auto err = v8worker->SetTimer(timer_info);
   if (err != LCB_SUCCESS) {
     js_exception->ThrowKVError(v8worker->GetTimerLcbHandle(), err);
-    return false;
+    // TODO: Reformat this error with precise message
+    return TIMER_MSG(false, "Set Timer Failed with KV Error");
   }
   args.GetReturnValue().Set(v8Str(isolate_, timer_info.reference));
-  return true;
+  return TIMER_MSG(true, "Timer Creation Successfull");
 }
 
 bool Timer::CancelTimerImpl(const v8::FunctionCallbackInfo<v8::Value> &args) {
@@ -218,8 +221,13 @@ void CreateTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
   }
 
   auto timer = UnwrapData(isolate)->timer;
-  if (timer->CreateTimerImpl(args)) {
+  auto response = timer->CreateTimerImpl(args);
+  if (response.success) {
     ++timer_create_counter;
+  } else {
+    ++timer_create_failure;
+    LOG(logError) << "Timer Creation failed with message: " << response.message
+                  << "\n";
   }
 }
 
