@@ -18,6 +18,13 @@
 
 #include "timer_defs.h"
 
+struct TIMER_MSG {
+  TIMER_MSG(bool success, std::string message)
+      : success(success), message(message){};
+  bool success;
+  std::string message;
+};
+
 extern thread_local std::mt19937_64 rng;
 
 class Timer {
@@ -26,7 +33,7 @@ public:
         int32_t timer_reduction_ratio);
   virtual ~Timer();
 
-  bool CreateTimerImpl(const v8::FunctionCallbackInfo<v8::Value> &args);
+  TIMER_MSG CreateTimerImpl(const v8::FunctionCallbackInfo<v8::Value> &args);
   bool CancelTimerImpl(const v8::FunctionCallbackInfo<v8::Value> &args);
 
   uint16_t timer_mask_bits_{0};
