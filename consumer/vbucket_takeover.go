@@ -650,9 +650,6 @@ func (c *Consumer) CloseAllRunningDcpFeeds() {
 
 	for _, dcpFeed := range runningDcpFeeds {
 		func() {
-			c.cbBucketRWMutex.Lock()
-			defer c.cbBucketRWMutex.Unlock()
-
 			err := dcpFeed.Close()
 			if err != nil {
 				logging.Errorf("%s [%s:%s:%d] DCP feed: %s failed to close connection, err: %v",
