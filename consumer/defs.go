@@ -151,7 +151,6 @@ type Consumer struct {
 	aggDCPFeedMem                 int64
 	aggDCPFeedMemCap              int64
 	cbBucket                      *couchbase.Bucket
-	cbBucketRWMutex               *sync.RWMutex
 	checkpointInterval            time.Duration
 	cleanupTimers                 bool
 	compileInfo                   *common.CompileStatus

@@ -778,26 +778,7 @@ func (c *Consumer) dcpRequestStreamHandle(vb uint16, vbBlob *vbucketKVBlob, star
 		return nil
 	}
 
-	refreshMap := func() error {
-		c.cbBucketRWMutex.Lock()
-		defer c.cbBucketRWMutex.Unlock()
-
-		var err error
-		c.cbBucket, err = c.superSup.GetBucket(c.bucket, c.app.AppName)
-		if err != nil {
-			logging.Infof("%s [%s:%s:%d] vb: %d failed to refresh vbmap",
-				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
-			return err
-		}
-		return nil
-	}
-
-	err := refreshMap()
-	if err != nil {
-		return err
-	}
-
-	err = util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), c.retryCount, getKvVbMap, c)
+	err := util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), c.retryCount, getKvVbMap, c)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 		return err
@@ -859,11 +840,6 @@ func (c *Consumer) dcpRequestStreamHandle(vb uint16, vbBlob *vbucketKVBlob, star
 		return nil
 	}
 	c.vbsStreamRRWMutex.Unlock()
-
-	err = refreshMap()
-	if err != nil {
-		return err
-	}
 
 	if atomic.LoadUint32(&c.isTerminateRunning) == 1 {
 		return fmt.Errorf("function is terminating")

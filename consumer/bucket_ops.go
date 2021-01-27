@@ -697,17 +697,7 @@ var getFailoverLogOpCallback = func(args ...interface{}) error {
 		return nil
 	}
 
-	c.cbBucketRWMutex.Lock()
-	defer c.cbBucketRWMutex.Unlock()
-
 	var err error
-	c.cbBucket, err = c.superSup.GetBucket(c.bucket, c.app.AppName)
-	if err != nil {
-		logging.Errorf("%s [%s:%s:%d] Failed to refresh bucket handle, err: %v",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
-		return err
-	}
-
 	*flogs, err = c.cbBucket.GetFailoverLogs(0xABCD, c.vbnos, c.dcpConfig)
 	if err != nil {
 		logging.Errorf("%s [%s:%s:%d] Failed to get failover logs, err: %v",
@@ -736,17 +726,7 @@ var getEFFailoverLogOpAllVbucketsCallback = func(args ...interface{}) error {
 		return nil
 	}
 
-	c.cbBucketRWMutex.Lock()
-	defer c.cbBucketRWMutex.Unlock()
-
 	var err error
-	c.cbBucket, err = c.superSup.GetBucket(c.bucket, c.app.AppName)
-	if err != nil {
-		logging.Errorf("%s [%s:%s:%d] vb: %d failed to refresh vbmap, err: %v",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, err)
-		return err
-	}
-
 	*flogs, err = c.cbBucket.GetFailoverLogs(0xABCD, vbs, c.dcpConfig)
 	if err != nil {
 		logging.Errorf("%s [%s:%s:%d] vb: %d Failed to get failover logs, err: %v",
@@ -769,17 +749,7 @@ var startDCPFeedOpCallback = func(args ...interface{}) error {
 		return nil
 	}
 
-	c.cbBucketRWMutex.Lock()
-	defer c.cbBucketRWMutex.Unlock()
-
 	var err error
-	c.cbBucket, err = c.superSup.GetBucket(c.bucket, c.app.AppName)
-	if err != nil {
-		logging.Errorf("%s [%s:%s:%d] Bucket: %s kv node: %rs failed to refresh vbmap, err: %v",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), c.bucket, kvHostPort, err)
-		return err
-	}
-
 	dcpFeed, err := c.cbBucket.StartDcpFeedOver(
 		feedName, uint32(0), includeXATTRs, []string{kvHostPort}, 0xABCD, c.dcpConfig)
 
@@ -836,32 +806,9 @@ var populateDcpFeedVbEntriesCallback = func(args ...interface{}) error {
 		// Can't do it on existing *couchbase.DcpFeed where STREAMREQ calls
 		// are made.
 		feedName := couchbase.NewDcpFeedName(c.HostPortAddr() + "_" + kvHost + "_" + c.workerName + "_GetSeqNos")
-
-		refreshMap := func() error {
-			c.cbBucketRWMutex.Lock()
-			defer c.cbBucketRWMutex.Unlock()
-
-			var err error
-			c.cbBucket, err = c.superSup.GetBucket(c.bucket, c.app.AppName)
-			if err != nil {
-				logging.Errorf("%s [%s:%s:%d] feed: %s failed to refresh vbmap, err: %v",
-					logPrefix, c.workerName, c.tcpPort, c.Pid(), feedName.Raw(), err)
-				return err
-			}
-			return nil
-		}
-
-		err := refreshMap()
-		if err != nil {
-			return err
-		}
-
 		var feed *couchbase.DcpFeed
 
 		startFeed := func() error {
-			c.cbBucketRWMutex.Lock()
-			defer c.cbBucketRWMutex.Unlock()
-
 			var err error
 			feed, err = c.cbBucket.StartDcpFeedOver(
 				feedName, uint32(0), includeXATTRs, []string{kvHost}, 0xABCD, c.dcpConfig)
@@ -873,7 +820,7 @@ var populateDcpFeedVbEntriesCallback = func(args ...interface{}) error {
 			return nil
 		}
 
-		err = startFeed()
+		err := startFeed()
 		if err != nil {
 			return err
 		}

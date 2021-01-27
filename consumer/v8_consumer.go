@@ -38,7 +38,6 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		breakpadOn:                      pConfig.BreakpadOn,
 		bucket:                          hConfig.SourceBucket,
 		cbBucket:                        b,
-		cbBucketRWMutex:                 &sync.RWMutex{},
 		checkpointInterval:              time.Duration(hConfig.CheckpointInterval) * time.Millisecond,
 		idleCheckpointInterval:          time.Duration(hConfig.IdleCheckpointInterval) * time.Millisecond,
 		cleanupTimers:                   hConfig.CleanupTimers,
