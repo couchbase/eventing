@@ -359,6 +359,7 @@ func (c *Consumer) makeV8InitPayload(appName, debuggerPort, currHost, eventingDi
 	payload.PayloadAddLcbRetryCount(builder, int32(c.lcbRetryCount))
 	payload.PayloadAddSrcMutation(builder, smu[0])
 	payload.PayloadAddNumTimerPartitions(builder, int32(c.numTimerPartitions))
+	payload.PayloadAddCurlMaxAllowedRespSize(builder, int64(c.curlMaxAllowedRespSize))
 	payload.PayloadAddBucketCacheSize(builder, c.bucketCacheSize)
 	payload.PayloadAddBucketCacheAge(builder, c.bucketCacheAge)
 

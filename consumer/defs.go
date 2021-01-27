@@ -11,12 +11,12 @@ import (
 	"time"
 
 	"github.com/couchbase/eventing/common"
-	"github.com/couchbase/eventing/dcp"
+	couchbase "github.com/couchbase/eventing/dcp"
 	mcd "github.com/couchbase/eventing/dcp/transport"
 	cb "github.com/couchbase/eventing/dcp/transport/client"
 	"github.com/couchbase/eventing/suptree"
 	"github.com/couchbase/gocb/v2"
-	"github.com/google/flatbuffers/go"
+	flatbuffers "github.com/google/flatbuffers/go"
 )
 
 const (
@@ -191,6 +191,7 @@ type Consumer struct {
 	logLevel                      string
 	numVbuckets                   int
 	numTimerPartitions            int
+	curlMaxAllowedRespSize        int
 	nsServerPort                  string
 	reqStreamCh                   chan *streamRequestInfo
 	resetBootstrapDone            bool

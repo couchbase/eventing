@@ -5,7 +5,7 @@ import (
 	"net"
 
 	"github.com/couchbase/cbauth/service"
-	"github.com/couchbase/eventing/dcp"
+	couchbase "github.com/couchbase/eventing/dcp"
 )
 
 type DcpStreamBoundary string
@@ -412,6 +412,7 @@ type HandlerConfig struct {
 	BucketCacheSize          int64
 	BucketCacheAge           int64
 	NumTimerPartitions       int
+	CurlMaxAllowedRespSize   int
 }
 
 type ProcessConfig struct {

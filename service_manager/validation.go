@@ -871,6 +871,10 @@ func (m *ServiceMgr) validateSettings(appName string, settings map[string]interf
 		return
 	}
 
+	if info = m.validatePositiveInteger("curl_max_allowed_resp_size", settings); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
 	dcpStreamBoundaryValues := []string{"everything", "from_now", "from_prior"}
 	if info = m.validatePossibleValues("dcp_stream_boundary", settings, dcpStreamBoundaryValues); info.Code != m.statusCodes.ok.Code {
 		return

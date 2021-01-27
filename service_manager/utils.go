@@ -97,6 +97,7 @@ func (m *ServiceMgr) fillMissingWithDefaults(appName string, settings map[string
 	fillMissingDefault(app, settings, "n1ql_prepare_all", false)
 	fillMissingDefault(app, settings, "checkpoint_interval", float64(60000))
 	fillMissingDefault(app, settings, "cpp_worker_thread_count", float64(2))
+	fillMissingDefault(app, settings, "curl_max_allowed_resp_size", float64(100))
 	fillMissingDefault(app, settings, "execution_timeout", float64(60))
 	fillMissingDefault(app, settings, "feedback_batch_size", float64(100))
 	fillMissingDefault(app, settings, "feedback_read_buffer_size", float64(65536))

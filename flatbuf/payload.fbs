@@ -54,6 +54,8 @@ table Payload {
   bucket_cache_size:int64; // Bucket cache size
   bucket_cache_age:int64; // Bucket cache max age
   is_binary:bool; //dcp mutation value is binary or json
+
+  curl_max_allowed_resp_size:int64; // max allowed size of curl response
 }
 
 root_type Payload;

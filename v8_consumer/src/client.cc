@@ -60,6 +60,8 @@ std::string GetFailureStats() {
   fstats["curl_non_200_response"] = Curl::GetStats().GetCurlNon200Stat();
   fstats["curl_timeout_count"] = Curl::GetStats().GetCurlTimeoutStat();
   fstats["curl_failure_count"] = Curl::GetStats().GetCurlFailureStat();
+  fstats["curl_max_resp_size_exceeded"] =
+      Curl::GetStats().GetCurlMaxRespSizeExceededStat();
   fstats["timestamp"] = GetTimestampNow();
   return fstats.dump();
 }
@@ -541,6 +543,8 @@ void AppWorker::RouteMessageWithResponse(
       server_settings->host_addr.assign(payload->curr_host()->str());
 
       handler_instance_id = payload->function_instance_id()->str();
+      handler_config->curl_max_allowed_resp_size =
+          payload->curl_max_allowed_resp_size();
 
       LOG(logDebug) << "Loading app:" << app_name_ << std::endl;
 
@@ -552,10 +556,11 @@ void AppWorker::RouteMessageWithResponse(
       {
         std::lock_guard<std::mutex> lck(workers_map_mutex_);
         for (int16_t i = 0; i < thr_count_; i++) {
-          V8Worker *w = new V8Worker(
-              platform.release(), handler_config, server_settings, function_name_,
-              function_id_, handler_instance_id, user_prefix_, &latency_stats_,
-              &curl_latency_stats_, ns_server_port_, num_vbuckets_);
+          V8Worker *w =
+              new V8Worker(platform.release(), handler_config, server_settings,
+                           function_name_, function_id_, handler_instance_id,
+                           user_prefix_, &latency_stats_, &curl_latency_stats_,
+                           ns_server_port_, num_vbuckets_);
 
           LOG(logInfo) << "Init index: " << i << " V8Worker: " << w
                        << std::endl;

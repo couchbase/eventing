@@ -256,6 +256,12 @@ func (p *Producer) parseDepcfg() error {
 		p.handlerConfig.BucketCacheAge = 1000
 	}
 
+	if val, ok := settings["curl_max_allowed_resp_size"]; ok {
+		p.handlerConfig.CurlMaxAllowedRespSize = int(val.(float64))
+	} else {
+		p.handlerConfig.CurlMaxAllowedRespSize = 100
+	}
+
 	// Metastore related configuration
 
 	if val, ok := settings["timer_context_size"]; ok {
