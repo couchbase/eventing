@@ -58,6 +58,8 @@ std::string GetFailureStats() {
   fstats["delete_events_lost"] = delete_events_lost.load();
   fstats["timer_events_lost"] = timer_events_lost.load();
   fstats["curl_non_200_response"] = Curl::GetStats().GetCurlFailureStat();
+  fstats["curl_max_resp_size_exceeded"] =
+      Curl::GetStats().GetCurlMaxRespSizeExceededStat();
   fstats["timestamp"] = GetTimestampNow();
   return fstats.dump();
 }
@@ -546,6 +548,8 @@ void AppWorker::RouteMessageWithResponse(
       server_settings->host_addr.assign(payload->curr_host()->str());
 
       handler_instance_id = payload->function_instance_id()->str();
+      handler_config->curl_max_allowed_resp_size =
+          payload->curl_max_allowed_resp_size();
 
       LOG(logDebug) << "Loading app:" << app_name_ << std::endl;
 

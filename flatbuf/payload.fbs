@@ -50,6 +50,8 @@ table Payload {
 
   num_timer_partitions:int; // Timer partitions are configurable using this.
   is_binary:bool; //dcp mutation value is binary or json
+
+  curl_max_allowed_resp_size:int64; // max allowed size of curl response
 }
 
 root_type Payload;

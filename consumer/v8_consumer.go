@@ -84,6 +84,7 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		nsServerPort:                    nsServerPort,
 		numVbuckets:                     numVbuckets,
 		numTimerPartitions:              hConfig.NumTimerPartitions,
+		curlMaxAllowedRespSize:          hConfig.CurlMaxAllowedRespSize,
 		opsTimestamp:                    time.Now(),
 		producer:                        p,
 		reqStreamCh:                     make(chan *streamRequestInfo, numVbuckets*10),

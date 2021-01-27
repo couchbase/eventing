@@ -354,6 +354,7 @@ func (c *Consumer) makeV8InitPayload(appName, debuggerPort, currHost, eventingDi
 	payload.PayloadAddN1qlConsistency(builder, n1qlConsistency)
 	payload.PayloadAddLcbRetryCount(builder, int32(c.lcbRetryCount))
 	payload.PayloadAddNumTimerPartitions(builder, int32(c.numTimerPartitions))
+	payload.PayloadAddCurlMaxAllowedRespSize(builder, int64(c.curlMaxAllowedRespSize))
 
 	if c.n1qlPrepareAll {
 		payload.PayloadAddN1qlPrepareAll(builder, 0x1)

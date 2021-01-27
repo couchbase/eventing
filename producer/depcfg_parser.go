@@ -258,6 +258,13 @@ func (p *Producer) parseDepcfg() error {
 	} else {
 		p.handlerConfig.LcbRetryCount = 0
 	}
+
+	if val, ok := settings["curl_max_allowed_resp_size"]; ok {
+		p.handlerConfig.CurlMaxAllowedRespSize = int(val.(float64))
+	} else {
+		p.handlerConfig.CurlMaxAllowedRespSize = 100
+	}
+
 	// Metastore related configuration
 
 	if val, ok := settings["execute_timer_routine_count"]; ok {

@@ -3,12 +3,6 @@ package consumer
 import (
 	"bufio"
 	"fmt"
-	"github.com/couchbase/eventing/common"
-	mcd "github.com/couchbase/eventing/dcp/transport"
-	"github.com/couchbase/eventing/logging"
-	"github.com/couchbase/eventing/parser"
-	"github.com/couchbase/eventing/util"
-	"github.com/google/flatbuffers/go"
 	"net"
 	"os"
 	"os/exec"
@@ -19,6 +13,13 @@ import (
 	"sync/atomic"
 	"time"
 	"unsafe"
+
+	"github.com/couchbase/eventing/common"
+	mcd "github.com/couchbase/eventing/dcp/transport"
+	"github.com/couchbase/eventing/logging"
+	"github.com/couchbase/eventing/parser"
+	"github.com/couchbase/eventing/util"
+	flatbuffers "github.com/google/flatbuffers/go"
 )
 
 // ClearEventStats flushes event processing stats
@@ -579,6 +580,7 @@ func (c *Consumer) initConsumer(appName string) {
 	c.cppWorkerThrCount = 1
 	c.ipcType = "af_inet"
 	c.numTimerPartitions = 64
+	c.curlMaxAllowedRespSize = 100
 
 	c.connMutex = &sync.RWMutex{}
 	c.msgProcessedRWMutex = &sync.RWMutex{}

@@ -98,6 +98,7 @@ func (m *ServiceMgr) fillMissingWithDefaults(appName string, settings map[string
 	fillMissingDefault(app, settings, "cleanup_timers", false)
 	fillMissingDefault(app, settings, "cpp_worker_thread_count", float64(2))
 	fillMissingDefault(app, settings, "deadline_timeout", float64(62))
+	fillMissingDefault(app, settings, "curl_max_allowed_resp_size", float64(100))
 	fillMissingDefault(app, settings, "execution_timeout", float64(60))
 	fillMissingDefault(app, settings, "feedback_batch_size", float64(100))
 	fillMissingDefault(app, settings, "feedback_read_buffer_size", float64(65536))
@@ -642,14 +643,14 @@ func (m *ServiceMgr) getStatuses(appName string) (dStatus bool, pStatus bool, er
 }
 
 func (m *ServiceMgr) SetFailoverStatus(changeId string) {
-        m.failoverMu.Lock()
-        defer m.failoverMu.Unlock()
+	m.failoverMu.Lock()
+	defer m.failoverMu.Unlock()
 
-        m.failoverCounter++
-        m.failoverNotifTs = time.Now().Unix()
-        m.failoverChangeId = changeId
+	m.failoverCounter++
+	m.failoverNotifTs = time.Now().Unix()
+	m.failoverChangeId = changeId
 
-        return
+	return
 }
 
 func (m *ServiceMgr) ResetFailoverStatus() {

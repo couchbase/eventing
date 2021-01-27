@@ -397,6 +397,7 @@ type HandlerConfig struct {
 	WorkerResponseTimeout    int
 	LcbRetryCount            int
 	NumTimerPartitions       int
+	CurlMaxAllowedRespSize   int
 }
 
 type ProcessConfig struct {

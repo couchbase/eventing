@@ -165,7 +165,8 @@ void V8Worker::InitializeIsolateData(const server_settings_t *server_settings,
   // Connections
   data_.curl_factory = new CurlFactory(isolate_, context);
   data_.req_builder = new CurlRequestBuilder(isolate_, context);
-  data_.resp_builder = new CurlResponseBuilder(isolate_, context);
+  data_.resp_builder = new CurlResponseBuilder(
+      isolate_, context, h_config->curl_max_allowed_resp_size);
   data_.custom_error = new CustomError(isolate_, context);
   data_.curl_codex = new CurlCodex;
   data_.code_insight = new CodeInsight(isolate_);

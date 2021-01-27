@@ -163,6 +163,7 @@ typedef struct handler_config_s {
   bool skip_lcb_bootstrap;
   bool using_timer;
   int64_t timer_context_size;
+  int64_t curl_max_allowed_resp_size;
   std::string n1ql_consistency;
   std::vector<std::string> handler_headers;
   std::vector<std::string> handler_footers;
@@ -227,7 +228,8 @@ public:
            const std::string &user_prefix, Histogram *latency_stats,
            Histogram *curl_latency_stats, const std::string &ns_server_port,
            const int32_t &num_vbuckets, vb_seq_map_t *vb_seq,
-           std::vector<uint64_t> *processed_bucketops, vb_lock_map_t *vb_locks, int worker_idx);
+           std::vector<uint64_t> *processed_bucketops, vb_lock_map_t *vb_locks,
+           int worker_idx);
   ~V8Worker();
 
   int V8WorkerLoad(std::string source_s);

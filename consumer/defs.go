@@ -11,11 +11,11 @@ import (
 	"time"
 
 	"github.com/couchbase/eventing/common"
-	"github.com/couchbase/eventing/dcp"
+	couchbase "github.com/couchbase/eventing/dcp"
 	mcd "github.com/couchbase/eventing/dcp/transport"
 	cb "github.com/couchbase/eventing/dcp/transport/client"
 	"github.com/couchbase/eventing/suptree"
-	"github.com/google/flatbuffers/go"
+	flatbuffers "github.com/google/flatbuffers/go"
 	"gopkg.in/couchbase/gocb.v1"
 )
 
@@ -190,6 +190,7 @@ type Consumer struct {
 	logLevel                      string
 	numVbuckets                   int
 	numTimerPartitions            int
+	curlMaxAllowedRespSize        int
 	nsServerPort                  string
 	reqStreamCh                   chan *streamRequestInfo
 	resetBootstrapDone            bool
@@ -374,7 +375,7 @@ type Consumer struct {
 	insight               chan *common.Insight
 	languageCompatibility string
 	notifyWorker          uint32
-	binaryDocAllowed bool
+	binaryDocAllowed      bool
 }
 
 // For V8 worker spawned for debugging purpose

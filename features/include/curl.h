@@ -39,6 +39,9 @@ public:
   CurlStats();
   void UpdateCounters(const std::string &request_type);
   inline void UpdateNon200Counter() { non_200_resp_counter_++; }
+  inline void UpdateCurlMaxRespSizeExceededCounter() {
+    curl_large_resp_counter_++;
+  }
 
   inline std::int64_t GetCurlGetStat() const {
     return curl_get_counter_.load();
@@ -64,6 +67,10 @@ public:
     return non_200_resp_counter_.load();
   }
 
+  inline std::int64_t GetCurlMaxRespSizeExceededStat() const {
+    return curl_large_resp_counter_.load();
+  }
+
 private:
   std::atomic<std::int64_t> curl_get_counter_;
   std::atomic<std::int64_t> curl_post_counter_;
@@ -71,6 +78,7 @@ private:
   std::atomic<std::int64_t> curl_head_counter_;
   std::atomic<std::int64_t> curl_put_counter_;
   std::atomic<std::int64_t> non_200_resp_counter_;
+  std::atomic<std::int64_t> curl_large_resp_counter_;
 };
 
 class CurlClient {
@@ -426,11 +434,14 @@ private:
 class CurlResponseBuilder {
 public:
   CurlResponseBuilder(v8::Isolate *isolate,
-                      const v8::Local<v8::Context> &context);
+                      const v8::Local<v8::Context> &context,
+                      unsigned long max_response_size_in_mb);
   ~CurlResponseBuilder();
 
   Info NewResponse(CurlClient &curl_client, const CurlResponse &response,
                    v8::Local<v8::Object> &resp_obj_out, CurlStats &stats);
+
+  unsigned long max_allowed_response_size{100 * 1024 * 1024};
 
 private:
   std::string ExtractContentType(const std::string &header);
