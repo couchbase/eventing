@@ -2200,10 +2200,14 @@ angular.module('eventing', [
             mnAlertsService.formatAndSetAlerts(message, 'success', 4000);
           },
           showWarningAlert: function(message) {
-            mnAlertsService.formatAndSetAlerts(message, 'warning', 4000);
+            // Warnings stay on screen for 10s, can manually close using 'x'
+            mnAlertsService.formatAndSetAlerts(message, 'warning', 1000 * 10);
           },
           showErrorAlert: function(message) {
-            mnAlertsService.formatAndSetAlerts(message, 'error', 4000);
+            // Errors stay on screen forever, should manually close using 'x'
+            // Not passing a timeout value leaves the popup forever
+            //  Refer: ns_server/priv/public/ui/app/components/mn_alerts.js
+            mnAlertsService.formatAndSetAlerts(message, 'error');
           },
           getAppLog: function(appname) {
             return $http.get('/_p/event/getAppLog?aggregate=true&name=' +
