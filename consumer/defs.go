@@ -375,6 +375,7 @@ type Consumer struct {
 	insight               chan *common.Insight
 	languageCompatibility string
 	notifyWorker          uint32
+	binaryDocAllowed bool
 }
 
 // For V8 worker spawned for debugging purpose

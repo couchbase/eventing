@@ -1,7 +1,6 @@
 package servicemanager
 
 import (
-	"errors"
 	"math"
 	"runtime"
 	"sync"
@@ -51,8 +50,6 @@ const (
 )
 
 var (
-	errInvalidVersion = errors.New("invalid eventing version")
-
 	funtionTypes = map[string]struct{}{
 		"sbm":    struct{}{},
 		"notsbm": struct{}{},
@@ -251,31 +248,4 @@ type appStatus struct {
 type appStatusResponse struct {
 	Apps             []appStatus `json:"apps"`
 	NumEventingNodes int         `json:"num_eventing_nodes"`
-}
-
-type eventingVer struct {
-	major        int
-	minor        int
-	mpVersion    int
-	build        int
-	isEnterprise bool
-}
-
-var eventingVerMap = map[string]eventingVer{
-	"vulcan": eventingVer{major: 5,
-		minor:        5,
-		mpVersion:    0,
-		build:        0,
-		isEnterprise: true},
-	"alice": eventingVer{
-		major:        6,
-		minor:        0,
-		mpVersion:    0,
-		build:        0,
-		isEnterprise: true},
-	"mad-hatter": eventingVer{major: 6,
-		minor:        5,
-		mpVersion:    0,
-		build:        0,
-		isEnterprise: true},
 }

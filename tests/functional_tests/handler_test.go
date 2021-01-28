@@ -2079,7 +2079,7 @@ func TestBinaryDoc(t *testing.T) {
 	time.Sleep(time.Second * 5)
 
 	pumpBucketOpsSrc(opsType{count: itemCount}, dstBucket, &rateLimit{})
-	createAndDeployFunction(functionName, jsFileName, &commonSettings{srcMutationEnabled: true})
+	createAndDeployFunction(functionName, jsFileName, &commonSettings{srcMutationEnabled: true, languageCompatibility: "6.6.2"})
 	defer func() {
 		dumpStats()
 		flushFunctionAndBucket(functionName)

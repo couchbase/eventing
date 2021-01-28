@@ -86,28 +86,24 @@ func (c *Consumer) processDCPEvents() {
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key), e.Datatype)
 
 				switch e.Datatype {
-				case dcpDatatypeJSON, dcpDatatypeBinary:
+				case dcpDatatypeJSON:
 					c.dcpMutationCounter++
 					c.sendEvent(e)
-				case dcpDatatypeJSONXattr, dcpDatatypeBinXattr:
-					xattrLen := binary.BigEndian.Uint32(e.Value[0:4])
-					if c.app.SrcMutationEnabled {
-						if isRecursive, err := c.isRecursiveDCPEvent(e, functionInstanceID); err == nil && isRecursive == true {
-							c.suppressedDCPMutationCounter++
-						} else {
-							logging.Tracef("%s [%s:%s:%d] No IntraHandlerRecursion, sending key: %ru to be processed by JS handlers",
-								logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key))
-							c.dcpMutationCounter++
-							e.Value = e.Value[xattrLen+4:]
-							c.sendEvent(e)
-						}
-					} else {
-						logging.Tracef("%s [%s:%s:%d] Sending key: %ru to be processed by JS handlers",
-							logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key))
+
+				case dcpDatatypeBinary:
+					if c.binaryDocAllowed {
 						c.dcpMutationCounter++
-						e.Value = e.Value[xattrLen+4:]
 						c.sendEvent(e)
 					}
+
+				case dcpDatatypeJSONXattr:
+					c.sendXattrDoc(e, functionInstanceID)
+
+				case dcpDatatypeBinXattr:
+					if c.binaryDocAllowed {
+						c.sendXattrDoc(e, functionInstanceID)
+					}
+
 				}
 
 			case mcd.DCP_DELETION:
@@ -1370,4 +1366,27 @@ func (c *Consumer) processAndSendDcpDelOrExpMessage(e *cb.DcpEvent, functionInst
 		c.sendEvent(e)
 	}
 	return true
+}
+
+func (c *Consumer) sendXattrDoc(e *cb.DcpEvent, functionInstanceID string) {
+	logPrefix := "Consumer::sendXattrDoc"
+
+	xattrLen := binary.BigEndian.Uint32(e.Value[0:4])
+	if c.app.SrcMutationEnabled {
+		if isRecursive, err := c.isRecursiveDCPEvent(e, functionInstanceID); err == nil && isRecursive == true {
+			c.suppressedDCPMutationCounter++
+		} else {
+			logging.Tracef("%s [%s:%s:%d] No IntraHandlerRecursion, sending key: %ru to be processed by JS handlers",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key))
+			c.dcpMutationCounter++
+			e.Value = e.Value[xattrLen+4:]
+			c.sendEvent(e)
+		}
+	} else {
+		logging.Tracef("%s [%s:%s:%d] Sending key: %ru to be processed by JS handlers",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key))
+		c.dcpMutationCounter++
+		e.Value = e.Value[xattrLen+4:]
+		c.sendEvent(e)
+	}
 }

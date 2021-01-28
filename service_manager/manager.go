@@ -10,7 +10,6 @@ import (
 	"net/http"
 	_ "net/http/pprof" // For debugging
 	"os"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -817,7 +816,7 @@ func (m *ServiceMgr) getActiveNodeAddrs() ([]string, error) {
 	return nodeAddrs, nil
 }
 
-func (m *ServiceMgr) compareEventingVersion(need eventingVer) bool {
+func (m *ServiceMgr) compareEventingVersion(need common.CouchbaseVer) bool {
 	logPrefix := "ServiceMgr::compareEventingVersion"
 
 	nodes, err := m.getActiveNodeAddrs()
@@ -833,67 +832,16 @@ func (m *ServiceMgr) compareEventingVersion(need eventingVer) bool {
 	}
 
 	for _, ver := range versions {
-		eVer, err := frameEventingVersion(ver)
+		eVer, err := common.FrameCouchbaseVersion(ver)
 		if err != nil {
 			return false
 		}
 
-		if !eVer.compare(need) {
+		if !eVer.Compare(need) {
 			logging.Infof("%s eventing version for all nodes: %+v need version: %+v", logPrefix, versions, need)
 			return false
 		}
 	}
 
 	return true
-}
-
-func (e eventingVer) compare(need eventingVer) bool {
-	return (e.major > need.major ||
-		e.major == need.major && e.minor > need.minor ||
-		e.major == need.major && e.minor == need.minor && e.mpVersion >= need.mpVersion) &&
-		(e.isEnterprise == need.isEnterprise)
-}
-
-func frameEventingVersion(ver string) (eventingVer, error) {
-	var eVer eventingVer
-
-	segs := strings.Split(ver, "-")
-	if len(segs) < 4 {
-		return eVer, errInvalidVersion
-	}
-
-	verSegs := strings.Split(segs[1], ".")
-	if len(verSegs) != 3 {
-		return eVer, errInvalidVersion
-	}
-
-	val, err := strconv.Atoi(verSegs[0])
-	if err != nil {
-		return eVer, errInvalidVersion
-	}
-	eVer.major = val
-
-	val, err = strconv.Atoi(verSegs[1])
-	if err != nil {
-		return eVer, errInvalidVersion
-	}
-	eVer.minor = val
-
-	val, err = strconv.Atoi(verSegs[2])
-	if err != nil {
-		return eVer, errInvalidVersion
-	}
-	eVer.mpVersion = val
-
-	val, err = strconv.Atoi(segs[2])
-	if err != nil {
-		return eVer, errInvalidVersion
-	}
-	eVer.build = val
-
-	if segs[len(segs)-1] == "ee" {
-		eVer.isEnterprise = true
-	}
-
-	return eVer, nil
 }
