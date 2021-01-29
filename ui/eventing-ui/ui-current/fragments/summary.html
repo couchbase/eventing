@@ -17,15 +17,12 @@
           <p>{{summaryCtrl.errorMessage}}</p>
         </div>
       </div>
-      <div ng-show="summaryCtrl.workerCount > 2 * summaryCtrl.cpuCount">
-        <div class="alert alert-warning">
-          <p>There are {{summaryCtrl.workerCount}} eventing workers configured
-            to run on {{summaryCtrl.cpuCount}} cores. A sizing exercise is
-            recommended.</p>
-        </div>
-      </div>
     </mn-element-cargo>
     <div class="cbui-table">
+      <div class="warning field-warning" ng-show="summaryCtrl.workerCount > 2 * summaryCtrl.cpuCount">
+        <p>There are {{summaryCtrl.workerCount}} eventing workers configured
+        to run on {{summaryCtrl.cpuCount}} cores. A sizing exercise is
+        recommended.</p></div>
       <div class="cbui-table-header" ng-if="!summaryCtrl.isAppListEmpty()">
         <span class="cbui-table-cell">function name</span>
         <span class="cbui-table-cell">source keyspace</span>
