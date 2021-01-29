@@ -40,7 +40,6 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		bucketCacheSize:                 hConfig.BucketCacheSize,
 		bucketCacheAge:                  hConfig.BucketCacheAge,
 		cbBucket:                        b,
-		cbBucketRWMutex:                 &sync.RWMutex{},
 		checkpointInterval:              time.Duration(hConfig.CheckpointInterval) * time.Millisecond,
 		idleCheckpointInterval:          time.Duration(hConfig.IdleCheckpointInterval) * time.Millisecond,
 		clusterStateChangeNotifCh:       make(chan struct{}, ClusterChangeNotifChBufSize),
