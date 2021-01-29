@@ -38,6 +38,7 @@ std::atomic<int64_t> on_update_success = {0};
 std::atomic<int64_t> on_update_failure = {0};
 std::atomic<int64_t> on_delete_success = {0};
 std::atomic<int64_t> on_delete_failure = {0};
+std::atomic<int64_t> timer_callback_success = {0};
 std::atomic<int64_t> timer_callback_failure = {0};
 std::atomic<int64_t> timer_create_failure = {0};
 
@@ -1041,7 +1042,11 @@ void V8Worker::SendTimer(std::string callback, std::string timer_ctx) {
     auto emsg = ExceptionString(isolate_, context, &try_catch);
     LOG(logDebug) << "Timer callback Exception: " << emsg << std::endl;
     CodeInsight::Get(isolate_).AccumulateException(try_catch);
+
+    return;
   }
+
+  timer_callback_success++;
 }
 
 void V8Worker::StartDebugger() {

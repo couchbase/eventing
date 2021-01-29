@@ -4306,8 +4306,10 @@ func (m *ServiceMgr) highCardStats() []byte {
 			stats = populate(fmtStr, appName, "timer_cancel_counter", stats, executionStats)
 			stats = populate(fmtStr, appName, "timer_create_counter", stats, executionStats)
 			stats = populate(fmtStr, appName, "timer_create_failure", stats, executionStats)
+			stats = populate(fmtStr, appName, "timer_callback_success", stats, executionStats)
 			stats = populate(fmtStr, appName, "timer_callback_failure", stats, executionStats)
-			// TODO: change it to timer_callback_success
+			// The following metric tracks the total number of times a Timer callback is invoked.
+			// => timer_msg_counter = timer_callback_missing_counter + timer_callback_success + timer_callback_failure.
 			stats = populate(fmtStr, appName, "timer_msg_counter", stats, executionStats)
 		}
 
