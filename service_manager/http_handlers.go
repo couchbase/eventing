@@ -3223,14 +3223,16 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 
 		case "DELETE":
 			infoList := []*runtimeInfo{}
-			for _, app := range m.getTempStoreAll() {
-				audit.Log(auditevent.DeleteFunction, r, app.Name)
-				info := m.deletePrimaryStore(app.Name)
+			appsNames := m.getTempStoreAppNames()
+
+			for _, app := range appsNames {
+				audit.Log(auditevent.DeleteFunction, r, app)
+				info := m.deletePrimaryStore(app)
 				// Delete the application from temp store only if app does not exist in primary store
 				// or if the deletion succeeds on primary store
 				if info.Code == m.statusCodes.errAppNotDeployed.Code || info.Code == m.statusCodes.ok.Code {
-					audit.Log(auditevent.DeleteDrafts, r, app.Name)
-					info = m.deleteTempStore(app.Name)
+					audit.Log(auditevent.DeleteDrafts, r, app)
+					info = m.deleteTempStore(app)
 				}
 				infoList = append(infoList, info)
 			}
@@ -3347,32 +3349,31 @@ func (m *ServiceMgr) statusHandlerImpl(appName string) (response interface{}, in
 	if info.Code != m.statusCodes.ok.Code {
 		return
 	}
-
+	appsNames := m.getTempStoreAppNames()
 	var statusHandlerResponse appStatusResponse
-
 	statusHandlerResponse.NumEventingNodes = numEventingNodes
-	for _, app := range m.getTempStoreAll() {
+	for _, fnName := range appsNames {
 
 		// Is the status of this app needed?
-		if appName != "" && appName != app.Name {
+		if appName != "" && appName != fnName {
 			continue
 		}
 
-		deploymentStatus, processingStatus, err := m.getStatuses(app.Name)
+		deploymentStatus, processingStatus, err := m.getStatuses(fnName)
 		if err != nil {
 			info.Code = m.statusCodes.errInvalidConfig.Code
 			return
 		}
 
 		status := appStatus{
-			Name:             app.Name,
+			Name:             fnName,
 			DeploymentStatus: deploymentStatus,
 			ProcessingStatus: processingStatus,
 		}
-		if num, exists := appDeployedNodesCounter[app.Name]; exists {
+		if num, exists := appDeployedNodesCounter[fnName]; exists {
 			status.NumDeployedNodes = num
 		}
-		if num, exists := appBootstrappingNodesCounter[app.Name]; exists {
+		if num, exists := appBootstrappingNodesCounter[fnName]; exists {
 			status.NumBootstrappingNodes = num
 		}
 
@@ -3391,7 +3392,7 @@ func (m *ServiceMgr) statusHandlerImpl(appName string) (response interface{}, in
 		statusHandlerResponse.Apps = append(statusHandlerResponse.Apps, status)
 
 		// Do we already have the status of the app we care about?
-		if appName != "" && appName == app.Name {
+		if appName != "" && appName == fnName {
 			break
 		}
 	}
@@ -3520,6 +3521,7 @@ func percentileN(latencyStats map[string]uint64, p int) int {
 
 func (m *ServiceMgr) populateStats(fullStats bool) []stats {
 	statsList := make([]stats, 0)
+
 	for _, app := range m.getTempStoreAll() {
 		if m.checkIfDeployed(app.Name) {
 			stats := stats{}
