@@ -163,6 +163,7 @@ typedef struct handler_config_s {
   int64_t timer_context_size;
   int64_t bucket_cache_size;
   int64_t bucket_cache_age;
+  int64_t curl_max_allowed_resp_size;
   std::string n1ql_consistency;
   std::vector<std::string> handler_headers;
   std::vector<std::string> handler_footers;

@@ -170,6 +170,11 @@
       "description": "time in milliseconds after which a cached bucket object is considered stale",
       "minimum": 1,
       "default": 1000
+    },
+    "curl_max_allowed_resp_size": {
+      "type": "integer",
+      "description": "maximum allowable curl call response in 'MegaBytes'. Setting the value to 0 lifts the upper limit off. This parameters affects v8 engine stability since it defines the maximum amount of heap space acquired by a curl call",
+      "default": 100
     }
   }
 }
