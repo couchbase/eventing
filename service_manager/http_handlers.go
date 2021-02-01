@@ -1300,6 +1300,7 @@ func (m *ServiceMgr) setSettings(appName string, data []byte, force bool) (info 
 	if info.Code != m.statusCodes.ok.Code {
 		return
 	}
+	m.addDefaultDeploymentConfig(&app)
 
 	newTPValue, timerPartitionsPresent := settings["num_timer_partitions"]
 	oldTPValue, oldTimerPartitionsPresent := app.Settings["num_timer_partitions"]
