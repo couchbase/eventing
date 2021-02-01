@@ -758,3 +758,14 @@ func (m *ServiceMgr) checkTopologyChangeReadiness(changeType service.TopologyCha
 
 	return nil
 }
+
+func (m *ServiceMgr) getTempStoreAppNames() []string {
+	m.fnMu.RLock()
+	defer m.fnMu.RUnlock()
+	appsNames := make([]string, 0, len(m.fnsInTempStore))
+	for app := range m.fnsInTempStore {
+		appsNames = append(appsNames, app)
+	}
+
+	return appsNames
+}
