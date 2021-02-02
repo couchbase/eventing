@@ -875,13 +875,8 @@ func (m *ServiceMgr) validateSettings(appName string, settings map[string]interf
 		return
 	}
 
-	dcpStreamBoundaryValues := []string{"everything", "from_now", "from_prior"}
+	dcpStreamBoundaryValues := []string{"everything", "from_now"}
 	if info = m.validatePossibleValues("dcp_stream_boundary", settings, dcpStreamBoundaryValues); info.Code != m.statusCodes.ok.Code {
-		return
-	}
-
-	defaultStreamBoundaryValues := []string{"everything", "from_now"}
-	if info = m.validatePossibleValues("default_stream_boundary", settings, defaultStreamBoundaryValues); info.Code != m.statusCodes.ok.Code {
 		return
 	}
 

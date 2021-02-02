@@ -20,8 +20,15 @@
         Execute the new function for all invocations henceforth.
       </p>
       <div class="formrow">
-        Feed boundary:<br>
-        <select ng-model="settings.changeFeedBoundary">
+        Feed boundary:
+        <span class="fa-stack icon-info"
+          uib-tooltip="The preferred Deployment time Feed Boundary for the function can be changed under the settings."
+          tooltip-placement="right">
+          <span class="icon fa-circle-thin fa-stack-2x"></span>
+          <span class="icon fa-info fa-stack-1x"></span>
+        </span>
+        <br>
+        <select ng-model="settings.changeFeedBoundary" disabled>
           <option value="everything">Everything</option>
           <option value="from_now">From now</option>
         </select>

@@ -13,6 +13,7 @@ table Config {
   curl:[Curl];
   enforceSchema:bool;
   constants:[Constant];
+  lifecycleState:string;
 }
 
 table DepCfg {

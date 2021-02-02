@@ -1777,6 +1777,12 @@ func EncodeAppPayload(app *cm.Application) []byte {
 		schema = byte(0x1)
 	}
 
+	if app.Metainfo == nil {
+		app.Metainfo = make(map[string]interface{})
+		app.Metainfo["lifecycle_state"] = ""
+	}
+	lifecycleState := builder.CreateString(app.Metainfo["lifecycle_state"].(string))
+
 	cfg.ConfigStart(builder)
 	cfg.ConfigAddAppCode(builder, appCode)
 	cfg.ConfigAddAppName(builder, aName)
@@ -1787,6 +1793,7 @@ func EncodeAppPayload(app *cm.Application) []byte {
 	cfg.ConfigAddAccess(builder, access)
 	cfg.ConfigAddFunctionInstanceID(builder, fiid)
 	cfg.ConfigAddEnforceSchema(builder, schema)
+	cfg.ConfigAddLifecycleState(builder, lifecycleState)
 
 	config := cfg.ConfigEnd(builder)
 
@@ -1809,6 +1816,9 @@ func ParseFunctionPayload(data []byte, fnName string) cm.Application {
 	} else {
 		app.EnforceSchema = false
 	}
+	lifecycleState := string(config.LifecycleState())
+	app.Metainfo = make(map[string]interface{})
+	app.Metainfo["lifecycle_state"] = lifecycleState
 
 	d := new(cfg.DepCfg)
 	depcfg := new(cm.DepCfg)

@@ -72,6 +72,7 @@ std::string GetExecutionStats(const std::map<int16_t, V8Worker *> &workers) {
   estats["on_update_failure"] = on_update_failure.load();
   estats["on_delete_success"] = on_delete_success.load();
   estats["on_delete_failure"] = on_delete_failure.load();
+  estats["timer_callback_success"] = timer_callback_success.load();
   estats["timer_callback_failure"] = timer_callback_failure.load();
   estats["timer_create_failure"] = timer_create_failure.load();
   estats["messages_parsed"] = messages_parsed;

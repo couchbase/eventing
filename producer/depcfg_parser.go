@@ -42,6 +42,7 @@ func (p *Producer) parseDepcfg() error {
 	p.app.FunctionID = uint32(config.HandlerUUID())
 	p.app.FunctionInstanceID = string(config.FunctionInstanceID())
 	p.app.LastDeploy = time.Now().UTC().Format("2006-01-02T15:04:05.000000000-0700")
+	lifecycleState := string(config.LifecycleState())
 	p.app.Settings = make(map[string]interface{})
 
 	d := new(cfg.DepCfg)
@@ -128,14 +129,16 @@ func (p *Producer) parseDepcfg() error {
 		p.handlerConfig.CPPWorkerThrCount = 2
 	}
 
-	if val, ok := settings["dcp_stream_boundary"]; ok {
+	if lifecycleState == "pause" { // lifecycleState is "" in mixed mode
+		// We know that the handler should ways be in from_prior state in pause cycle
+		p.handlerConfig.StreamBoundary = common.DcpStreamBoundary("from_prior")
+	} else if val, ok := settings["dcp_stream_boundary"]; ok {
+		// Leave the settings as it is because it's an upgraded cluster without a life cycle Op yet
+		// Likely possible that the handler crashed after the store was changed
+		// or the function is in undeploy cycle where we use the value supplied by the user
 		p.handlerConfig.StreamBoundary = common.DcpStreamBoundary(val.(string))
 	} else {
-		if defaultValue, ok := settings["default_stream_boundary"]; ok {
-			p.handlerConfig.StreamBoundary = common.DcpStreamBoundary(defaultValue.(string))
-		} else {
-			p.handlerConfig.StreamBoundary = common.DcpStreamBoundary("everything")
-		}
+		p.handlerConfig.StreamBoundary = common.DcpStreamBoundary("everything")
 	}
 
 	if val, ok := settings["execution_timeout"]; ok {

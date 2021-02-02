@@ -89,6 +89,7 @@ type Application struct {
 	FunctionInstanceID string                 `json:"function_instance_id"`
 	Name               string                 `json:"appname"`
 	Settings           map[string]interface{} `json:"settings"`
+	Metainfo           map[string]interface{} `json:"metainfo,omitempty"`
 }
 
 type DepCfg struct {

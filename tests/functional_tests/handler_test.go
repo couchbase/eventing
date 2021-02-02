@@ -528,7 +528,7 @@ func TestPauseResumeLoopDefaultSettings(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		if i > 0 {
 			log.Println("Resuming app:", handler)
-			setSettings(functionName, true, true, &commonSettings{streamBoundary: "from_prior"})
+			setSettings(functionName, true, true, &commonSettings{})
 		}
 
 		pumpBucketOps(opsType{startIndex: itemCount * i}, &rateLimit{})
@@ -563,7 +563,7 @@ func TestPauseResumeLoopNonDefaultSettings(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		if i > 0 {
 			log.Println("Resuming app:", handler)
-			setSettings(functionName, true, true, &commonSettings{thrCount: 4, batchSize: 77, workerCount: 4, streamBoundary: "from_prior"})
+			setSettings(functionName, true, true, &commonSettings{thrCount: 4, batchSize: 77, workerCount: 4})
 		}
 
 		pumpBucketOps(opsType{startIndex: itemCount * i}, &rateLimit{})
@@ -611,7 +611,7 @@ func TestPauseAndResumeWithWorkerCountChange(t *testing.T) {
 	waitForStatusChange(functionName, "paused", statsLookupRetryCounter)
 
 	log.Println("Resuming app:", handler)
-	setSettings(functionName, true, true, &commonSettings{workerCount: 6, streamBoundary: "from_prior"})
+	setSettings(functionName, true, true, &commonSettings{workerCount: 6})
 
 	pumpBucketOps(opsType{count: itemCount * 2}, &rateLimit{})
 	eventCount = verifyBucketOps(itemCount*2, statsLookupRetryCounter)
@@ -654,7 +654,7 @@ func TestPauseResumeWithEventingReb(t *testing.T) {
 	waitForRebalanceFinish()
 
 	log.Println("Resuming app:", handler)
-	setSettings(functionName, true, true, &commonSettings{workerCount: 6, streamBoundary: "from_prior"})
+	setSettings(functionName, true, true, &commonSettings{workerCount: 6})
 
 	pumpBucketOps(opsType{count: itemCount * 2}, &rateLimit{})
 	eventCount = verifyBucketOps(itemCount*2, statsLookupRetryCounter)
@@ -727,8 +727,8 @@ func TestChangeFnCodeBetweenPauseResume(t *testing.T) {
 
 	fnFile2 := "bucket_op_with_timer_100s_missing_cb"
 
-	log.Printf("Resuming function: %s with from_prior feed boundary\n", functionName)
-	createAndDeployFunction(functionName, fnFile2, &commonSettings{streamBoundary: "from_prior"})
+	log.Printf("Resuming function: %s\n", functionName)
+	createAndDeployFunction(functionName, fnFile2, &commonSettings{})
 
 	waitForFailureStatCounterSync(functionName, "timer_callback_missing_counter", itemCount)
 
@@ -736,75 +736,6 @@ func TestChangeFnCodeBetweenPauseResume(t *testing.T) {
 	setSettings(functionName, false, false, &commonSettings{})
 
 	time.Sleep(5 * time.Second)
-	flushFunctionAndBucket(functionName)
-}
-
-func TestDiffFeedBoundariesWithResume(t *testing.T) {
-	functionName := t.Name()
-
-	time.Sleep(5 * time.Second)
-	handler := "bucket_op_on_update"
-
-	flushFunctionAndBucket(functionName)
-	createAndDeployFunction(functionName, handler, &commonSettings{})
-	waitForDeployToFinish(functionName)
-
-	pumpBucketOps(opsType{count: itemCount}, &rateLimit{})
-	eventCount := verifyBucketCount(itemCount, statsLookupRetryCounter, dstBucket)
-	if eventCount != itemCount {
-		t.Error("For TestDiffFeedBoundariesWithResume expected", itemCount,
-			"got", eventCount,
-		)
-	}
-
-	log.Println("Pausing app:", handler)
-	setSettings(functionName, true, false, &commonSettings{})
-	waitForStatusChange(functionName, "paused", statsLookupRetryCounter)
-
-	bucketFlush(dstBucket)
-	count := verifyBucketCount(0, statsLookupRetryCounter, dstBucket)
-	if count != 0 {
-		t.Error("Waited too long for item count to come down to 0")
-	}
-
-	go pumpBucketOps(opsType{count: rlItemCount}, &rateLimit{})
-
-	log.Printf("Resuming app: %s from feed boundary everything\n", handler)
-	res, _ := setSettings(functionName, true, true, &commonSettings{streamBoundary: "everything"})
-	if res.httpResponseCode == 200 {
-		t.Error("Expected non 200 response code")
-	}
-
-	if res.httpResponseCode != 200 && res.Name != "ERR_INVALID_CONFIG" {
-		t.Error("Expected ERR_INVALID_CONFIG got", res.Name)
-	}
-
-	log.Printf("Resuming app: %s from feed boundary from_now\n", handler)
-	res, _ = setSettings(functionName, true, true, &commonSettings{streamBoundary: "from_now"})
-	if res.httpResponseCode == 200 {
-		t.Error("Expected non 200 response code")
-	}
-
-	if res.httpResponseCode != 200 && res.Name != "ERR_INVALID_CONFIG" {
-		t.Error("Expected ERR_INVALID_CONFIG got", res.Name)
-	}
-
-	log.Printf("Resuming app: %s from feed boundary from_prior\n", handler)
-	setSettings(functionName, true, true, &commonSettings{streamBoundary: "from_prior"})
-	waitForStatusChange(functionName, "deployed", statsLookupRetryCounter)
-
-	eventCount = verifyBucketCount(rlItemCount, statsLookupRetryCounter, dstBucket)
-	if eventCount != rlItemCount {
-		t.Error("For", "TestDiffFeedBoundariesWithResume with from_prior feed boundary",
-			"expected", rlItemCount,
-			"got", eventCount,
-		)
-	}
-
-	log.Println("Undeploying app:", handler)
-	setSettings(functionName, false, false, &commonSettings{})
-	waitForStatusChange(functionName, "undeployed", statsLookupRetryCounter)
-
 	flushFunctionAndBucket(functionName)
 }
 

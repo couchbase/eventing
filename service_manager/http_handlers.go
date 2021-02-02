@@ -1247,6 +1247,14 @@ func (m *ServiceMgr) setSettings(appName string, data []byte, force bool) (info 
 		}
 	}
 
+	// This block is helpful in mixed mode && upgraded cluster, since we are getting rid of 'from_prior' in 6.6.2
+	// In a cluster upgradation when the functions are in the paused state, the incoming requests
+	// to resume will replace the dcp_stream_boundary to default value. Since in resume processing
+	// we are ignoring the dcp_stream_boundary, replacing the value should not be a problem
+	if value, ok := settings["dcp_stream_boundary"]; ok && value == "from_prior" {
+		settings["dcp_stream_boundary"] = "everything"
+	}
+
 	if info = m.validateSettings(appName, util.DeepCopy(settings)); info.Code != m.statusCodes.ok.Code {
 		logging.Errorf("%s %s", logPrefix, info.Info)
 		return
@@ -1293,8 +1301,6 @@ func (m *ServiceMgr) setSettings(appName string, data []byte, force bool) (info 
 		return
 	}
 
-	existingBoundary := app.Settings["dcp_stream_boundary"]
-	newBoundary, dsbOk := settings["dcp_stream_boundary"]
 	newTPValue, timerPartitionsPresent := settings["num_timer_partitions"]
 	oldTPValue, oldTimerPartitionsPresent := app.Settings["num_timer_partitions"]
 
@@ -1323,10 +1329,8 @@ func (m *ServiceMgr) setSettings(appName string, data []byte, force bool) (info 
 			return
 		}
 
-		// Resetting dcp_stream_boundary to everything during undeployment
-		if !processingStatus && !deploymentStatus {
-			app.Settings["dcp_stream_boundary"] = common.DcpEverything
-		}
+		// Add the cycle meta setting based on the current app state
+		m.addLifeCycleStateByFunctionState(&app)
 
 		// Check for pause processing
 		if deploymentStatus && !processingStatus {
@@ -1362,7 +1366,7 @@ func (m *ServiceMgr) setSettings(appName string, data []byte, force bool) (info 
 			}
 		}
 
-		if filterFeedBoundary(settings) == common.DcpFromPrior && !m.compareEventingVersion(mhVersion) {
+		if deploymentStatus && processingStatus && m.superSup.GetAppState(appName) == common.AppStatePaused && !m.compareEventingVersion(mhVersion) {
 			info.Code = m.statusCodes.errClusterVersion.Code
 			info.Info = fmt.Sprintf("All eventing nodes in cluster must be on version %s or higher for resuming function execution",
 				mhVersion)
@@ -1370,26 +1374,8 @@ func (m *ServiceMgr) setSettings(appName string, data []byte, force bool) (info 
 			return
 		}
 
-		if filterFeedBoundary(settings) == common.DcpFromPrior && m.superSup.GetAppState(appName) != common.AppStatePaused {
-			info.Code = m.statusCodes.errInvalidConfig.Code
-			info.Info = fmt.Sprintf("Function: %s feed boundary: from_prior is only allowed if function is in paused state, current state: %v",
-				appName, m.superSup.GetAppState(appName))
-			logging.Errorf("%s %s", logPrefix, info.Info)
-			return
-		}
-
 		if deploymentStatus && processingStatus {
 			if m.superSup.GetAppState(appName) == common.AppStatePaused {
-				switch filterFeedBoundary(settings) {
-				case common.DcpFromNow, common.DcpEverything:
-					info.Code = m.statusCodes.errInvalidConfig.Code
-					info.Info = fmt.Sprintf("Function: %s only from_prior feed boundary is allowed during resume", appName)
-					logging.Errorf("%s %s", logPrefix, info.Info)
-					return
-				case common.DcpStreamBoundary(""):
-					app.Settings["dcp_stream_boundary"] = "from_prior"
-				default:
-				}
 				if oldTimerPartitionsPresent {
 					if timerPartitionsPresent && oldTPValue != newTPValue {
 						info.Code = m.statusCodes.errInvalidConfig.Code
@@ -1424,13 +1410,6 @@ func (m *ServiceMgr) setSettings(appName string, data []byte, force bool) (info 
 				if !m.checkIfDeployed(appName) {
 					m.addDefaultTimerPartitionsIfMissing(&app)
 				}
-			}
-
-			if dsbOk && m.superSup.GetAppState(appName) == common.AppStateEnabled && newBoundary != existingBoundary {
-				info.Code = m.statusCodes.errAppDeployed.Code
-				info.Info = "DCP stream boundary cannot be changed while the app is deployed"
-				logging.Errorf("%s %s", logPrefix, info.Info)
-				return
 			}
 
 			if info = m.validateApplication(&app); info.Code != m.statusCodes.ok.Code {
@@ -1691,6 +1670,7 @@ func (m *ServiceMgr) getTempStoreAll() []application {
 					logPrefix, fnName, uErr, string(data))
 				continue
 			}
+			m.maybeDeleteLifeCycleState(&app)
 			applications = append(applications, app)
 		} else if err != nil {
 			logging.Errorf("%s Function: %s failed to read data from metakv, err: %v", logPrefix, fnName, err)
@@ -1914,33 +1894,12 @@ func (m *ServiceMgr) savePrimaryStore(app *application) (info *runtimeInfo) {
 	}
 
 	mhVersion := common.CouchbaseVerMap["mad-hatter"]
-	if filterFeedBoundary(app.Settings) == common.DcpFromPrior && !m.compareEventingVersion(mhVersion) {
+	if app.Settings["deployment_status"].(bool) && app.Settings["processing_status"].(bool) && m.superSup.GetAppState(app.Name) == common.AppStatePaused && !m.compareEventingVersion(mhVersion) {
 		info.Code = m.statusCodes.errClusterVersion.Code
-		info.Info = fmt.Sprintf("All eventing nodes in the cluster must be on version %s or higher for using 'from prior' deployment feed boundary",
+		info.Info = fmt.Sprintf("All eventing nodes in the cluster must be on version %s or higher for using the pause functionality",
 			mhVersion)
 		logging.Warnf("%s Version compat check failed: %s", logPrefix, info.Info)
 		return
-	}
-
-	if filterFeedBoundary(app.Settings) == common.DcpFromPrior && m.superSup.GetAppState(app.Name) != common.AppStatePaused {
-		info.Code = m.statusCodes.errInvalidConfig.Code
-		info.Info = fmt.Sprintf("Function: %s feed boundary: from_prior is only allowed if function is in paused state", app.Name)
-
-		logging.Errorf("%s %s", logPrefix, info.Info)
-		return
-	}
-
-	if m.superSup.GetAppState(app.Name) == common.AppStatePaused {
-		switch filterFeedBoundary(app.Settings) {
-		case common.DcpFromNow, common.DcpEverything:
-			info.Code = m.statusCodes.errInvalidConfig.Code
-			info.Info = fmt.Sprintf("Function: %s only from_prior feed boundary is allowed during resume", app.Name)
-			logging.Errorf("%s %s", logPrefix, info.Info)
-			return
-		case common.DcpStreamBoundary(""):
-			app.Settings["dcp_stream_boundary"] = "from_prior"
-		default:
-		}
 	}
 
 	srcMutationEnabled := m.isSrcMutationEnabled(&app.DeploymentConfig)
@@ -2731,10 +2690,6 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 
 			app.AppHandlers = string(data)
 
-			if appState == common.AppStatePaused {
-				app.Settings["dcp_stream_boundary"] = "from_prior"
-			}
-
 			runtimeInfo := m.savePrimaryStore(&app)
 			if runtimeInfo.Code == m.statusCodes.ok.Code {
 				audit.Log(auditevent.SaveDraft, r, appName)
@@ -2817,7 +2772,6 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 
 			// Don't allow the user to change the meta and source keyspaces
 			if appState == common.AppStatePaused {
-				app.Settings["dcp_stream_boundary"] = "from_prior"
 				if !CheckIfAppKeyspacesAreSame(appCopy, app) {
 					info.Code = m.statusCodes.errInvalidConfig.Code
 					info.Info = "Source and Meta Keyspaces can only be changed when the function is in undeployed state."
@@ -2865,7 +2819,6 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 		var settings = make(map[string]interface{})
 		settings["deployment_status"] = true
 		settings["processing_status"] = false
-		settings["dcp_stream_boundary"] = "everything"
 
 		data, err := json.MarshalIndent(settings, "", " ")
 		if err != nil {
@@ -2913,7 +2866,6 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 		var settings = make(map[string]interface{})
 		settings["deployment_status"] = true
 		settings["processing_status"] = true
-		settings["dcp_stream_boundary"] = "from_prior"
 
 		data, err := json.MarshalIndent(settings, "", " ")
 		if err != nil {
@@ -3063,6 +3015,7 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 			audit.Log(auditevent.FetchDrafts, r, appName)
 
 			app, info := m.getTempStore(appName)
+			m.maybeDeleteLifeCycleState(&app)
 			if info.Code != m.statusCodes.ok.Code {
 				m.sendErrorInfo(w, info)
 				return
@@ -3098,6 +3051,7 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 			m.addDefaultVersionIfMissing(&app)
 			m.addDefaultDeploymentConfig(&app)
 			m.addDefaultTimerPartitionsIfMissing(&app)
+			m.addLifeCycleStateByFunctionState(&app)
 
 			var isMixedMode bool
 			if isMixedMode, info = m.isMixedModeCluster(); info.Code != m.statusCodes.ok.Code {
@@ -3116,6 +3070,10 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 				if app.Settings["deployment_status"] != app.Settings["processing_status"] {
 					app.Settings["deployment_status"] = false
 					app.Settings["processing_status"] = false
+				}
+				// If the app doesn't exist or has 'from_prior', set the stream boundary to everything
+				if val, ok := app.Settings["dcp_stream_boundary"]; !ok || val == "from_prior" {
+					app.Settings["dcp_stream_boundary"] = "everything"
 				}
 			}
 
@@ -3223,14 +3181,16 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 
 		case "DELETE":
 			infoList := []*runtimeInfo{}
-			for _, app := range m.getTempStoreAll() {
-				audit.Log(auditevent.DeleteFunction, r, app.Name)
-				info := m.deletePrimaryStore(app.Name)
+			appsNames := m.getTempStoreAppNames()
+
+			for _, app := range appsNames {
+				audit.Log(auditevent.DeleteFunction, r, app)
+				info := m.deletePrimaryStore(app)
 				// Delete the application from temp store only if app does not exist in primary store
 				// or if the deletion succeeds on primary store
 				if info.Code == m.statusCodes.errAppNotDeployed.Code || info.Code == m.statusCodes.ok.Code {
-					audit.Log(auditevent.DeleteDrafts, r, app.Name)
-					info = m.deleteTempStore(app.Name)
+					audit.Log(auditevent.DeleteDrafts, r, app)
+					info = m.deleteTempStore(app)
 				}
 				infoList = append(infoList, info)
 			}
@@ -3278,6 +3238,31 @@ func (m *ServiceMgr) addDefaultTimerPartitionsIfMissing(app *application) {
 	if _, ok := app.Settings["num_timer_partitions"]; !ok {
 		app.Settings["num_timer_partitions"] = float64(defaultNumTimerPartitions)
 	}
+}
+
+func (m *ServiceMgr) addLifeCycleStateByFunctionState(app *application) {
+	deploymentStatus, _ := app.Settings["deployment_status"]
+	processingStatus, _ := app.Settings["processing_status"]
+	state := m.superSup.GetAppState(app.Name)
+	if app.Metainfo == nil {
+		app.Metainfo = make(map[string]interface{})
+	}
+	if deploymentStatus == true && processingStatus == false {
+		app.Metainfo["lifecycle_state"] = "pause"
+	} else if deploymentStatus == false && processingStatus == false {
+		app.Metainfo["lifecycle_state"] = "undeploy"
+	} else {
+		if state == common.AppStatePaused {
+			app.Metainfo["lifecycle_state"] = "pause"
+		} else {
+			app.Metainfo["lifecycle_state"] = "undeploy"
+		}
+	}
+}
+
+func (m *ServiceMgr) maybeDeleteLifeCycleState(app *application) {
+	// Resetting it to nil won't make it available during export since 'omitempty' is used in the definition
+	app.Metainfo = nil
 }
 
 func (m *ServiceMgr) notifyRetryToAllProducers(appName string, r *retry) (info *runtimeInfo) {
@@ -3347,32 +3332,31 @@ func (m *ServiceMgr) statusHandlerImpl(appName string) (response interface{}, in
 	if info.Code != m.statusCodes.ok.Code {
 		return
 	}
-
+	appsNames := m.getTempStoreAppNames()
 	var statusHandlerResponse appStatusResponse
-
 	statusHandlerResponse.NumEventingNodes = numEventingNodes
-	for _, app := range m.getTempStoreAll() {
+	for _, fnName := range appsNames {
 
 		// Is the status of this app needed?
-		if appName != "" && appName != app.Name {
+		if appName != "" && appName != fnName {
 			continue
 		}
 
-		deploymentStatus, processingStatus, err := m.getStatuses(app.Name)
+		deploymentStatus, processingStatus, err := m.getStatuses(fnName)
 		if err != nil {
 			info.Code = m.statusCodes.errInvalidConfig.Code
 			return
 		}
 
 		status := appStatus{
-			Name:             app.Name,
+			Name:             fnName,
 			DeploymentStatus: deploymentStatus,
 			ProcessingStatus: processingStatus,
 		}
-		if num, exists := appDeployedNodesCounter[app.Name]; exists {
+		if num, exists := appDeployedNodesCounter[fnName]; exists {
 			status.NumDeployedNodes = num
 		}
-		if num, exists := appBootstrappingNodesCounter[app.Name]; exists {
+		if num, exists := appBootstrappingNodesCounter[fnName]; exists {
 			status.NumBootstrappingNodes = num
 		}
 
@@ -3391,7 +3375,7 @@ func (m *ServiceMgr) statusHandlerImpl(appName string) (response interface{}, in
 		statusHandlerResponse.Apps = append(statusHandlerResponse.Apps, status)
 
 		// Do we already have the status of the app we care about?
-		if appName != "" && appName == app.Name {
+		if appName != "" && appName == fnName {
 			break
 		}
 	}
@@ -3520,6 +3504,7 @@ func percentileN(latencyStats map[string]uint64, p int) int {
 
 func (m *ServiceMgr) populateStats(fullStats bool) []stats {
 	statsList := make([]stats, 0)
+
 	for _, app := range m.getTempStoreAll() {
 		if m.checkIfDeployed(app.Name) {
 			stats := stats{}
@@ -3645,6 +3630,7 @@ func (m *ServiceMgr) exportHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		app.Settings["deployment_status"] = false
 		app.Settings["processing_status"] = false
+		m.maybeDeleteLifeCycleState(&app)
 		exportedFns = append(exportedFns, app.Name)
 	}
 
@@ -3914,6 +3900,10 @@ func (m *ServiceMgr) createApplications(r *http.Request, appList *[]application,
 			m.addDefaultVersionIfMissing(&app)
 		}
 		m.addDefaultTimerPartitionsIfMissing(&app)
+		m.addLifeCycleStateByFunctionState(&app)
+		if val, ok := app.Settings["dcp_stream_boundary"]; ok && val == "from_prior" {
+			app.Settings["dcp_stream_boundary"] = "everything"
+		}
 
 		m.addDefaultDeploymentConfig(&app)
 		if infoVal := m.validateApplication(&app); infoVal.Code != m.statusCodes.ok.Code {
@@ -4304,8 +4294,10 @@ func (m *ServiceMgr) highCardStats() []byte {
 			stats = populate(fmtStr, appName, "timer_cancel_counter", stats, executionStats)
 			stats = populate(fmtStr, appName, "timer_create_counter", stats, executionStats)
 			stats = populate(fmtStr, appName, "timer_create_failure", stats, executionStats)
+			stats = populate(fmtStr, appName, "timer_callback_success", stats, executionStats)
 			stats = populate(fmtStr, appName, "timer_callback_failure", stats, executionStats)
-			// TODO: change it to timer_callback_success
+			// The following metric tracks the total number of times a Timer callback is invoked.
+			// => timer_msg_counter = timer_callback_missing_counter + timer_callback_success + timer_callback_failure.
 			stats = populate(fmtStr, appName, "timer_msg_counter", stats, executionStats)
 		}
 

@@ -17,13 +17,7 @@
     },
     "dcp_stream_boundary": {
       "type": "string",
-      "description": "indicates where to start dcp stream from (beginning of time, present point, or point where paused)",
-      "enum": ["everything", "from_now", "from_prior"],
-      "default": "from_now"
-    },
-    "default_stream_boundary": {
-      "type": "string",
-      "description": "the default value for the dcp stream boudnary for each handler",
+      "description": "indicates where to start dcp stream from (beginning of time, present point) 'from_prior' is deprecated in 6.6.2",
       "enum": ["everything", "from_now"],
       "default": "everything"
     },
