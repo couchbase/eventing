@@ -39,6 +39,7 @@
 #include "commands.h"
 #include "histogram.h"
 #include "insight.h"
+#include "exceptioninsight.h"
 #include "inspector_agent.h"
 #include "isolate_data.h"
 #include "js_exception.h"
@@ -263,6 +264,8 @@ public:
   uint64_t GetVbFilter(int vb_no);
 
   CodeInsight &GetInsight();
+
+  ExceptionInsight &GetExceptionInsight();
 
   void EraseVbFilter(int vb_no);
 
