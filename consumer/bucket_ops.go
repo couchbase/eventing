@@ -24,6 +24,11 @@ var vbTakeoverCallback = func(args ...interface{}) error {
 	vb := args[1].(uint16)
 
 	err := c.doVbTakeover(vb)
+	if err == errVbOwnedByAnotherNode && !c.checkIfCurrentNodeShouldOwnVb(vb) {
+		c.purgeVbStreamRequested(logPrefix, vb)
+		return nil
+	}
+
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 		return err
