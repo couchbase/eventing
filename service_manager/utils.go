@@ -892,6 +892,10 @@ func (m *ServiceMgr) checkLocalTopologyChangeReadiness() error {
 		return fmt.Errorf("Some apps are being paused on nodId: %s Apps: %v", m.nodeInfo.NodeID, pausingApps)
 	}
 
+	if m.superSup.RebalanceStatus() {
+		return fmt.Errorf("Eventing Rebalance or Failover processing ongoing on nodeId: %s", m.nodeInfo.NodeID)
+	}
+
 	return nil
 }
 
