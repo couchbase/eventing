@@ -47,6 +47,7 @@ const (
 )
 
 var GocbCredsRequestCounter = 0
+var AppNotExist = errors.New("App content doesn't exist or is empty")
 
 type Uint16Slice []uint16
 
@@ -761,7 +762,7 @@ func ReadAppContent(appsPath, checksumPath, appName string) ([]byte, error) {
 	} else {
 		if len(hashdata) == 0 {
 			logging.Errorf("%s Function: %s app content doesn't exist or is empty", logPrefix, appName)
-			return nil, nil
+			return nil, AppNotExist
 		}
 
 		if err := json.Unmarshal(hashdata, &payloadhash); err != nil {

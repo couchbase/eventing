@@ -337,7 +337,6 @@ func (m *ServiceMgr) primaryStoreCsumPathCallback(path string, value []byte, rev
 			ScopeName:      cfg.SourceScope,
 			CollectionName: cfg.SourceCollection,
 		}
-
 		delete(m.bucketFunctionMap[source], fnName)
 		if len(m.bucketFunctionMap[source]) == 0 {
 			delete(m.bucketFunctionMap, source)
@@ -390,7 +389,13 @@ func (m *ServiceMgr) settingChangeCallback(path string, value []byte, rev interf
 	cfg, ok := m.fnsInPrimaryStore[functionName]
 
 	if !ok {
-		return nil
+		data, err := util.ReadAppContent(metakvAppsPath, metakvChecksumPath, functionName)
+		if err != nil {
+			logging.Errorf("%s Reading function: %s from metakv failed, err: %v", logPrefix, functionName, err)
+			return nil
+		}
+		app := m.parseFunctionPayload(data, functionName)
+		cfg = app.DeploymentConfig
 	}
 
 	if value == nil {
@@ -448,7 +453,6 @@ func (m *ServiceMgr) settingChangeCallback(path string, value []byte, rev interf
 	}
 
 	functions[functionName] = functionInfo{fnName: functionName, fnType: funtionType, fnDeployed: deploymentStatus}
-
 	return nil
 }
 

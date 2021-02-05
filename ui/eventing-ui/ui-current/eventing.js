@@ -2197,9 +2197,10 @@ angular.module('eventing', [
           showSuccessAlert: function(message) {
             mnAlertsService.formatAndSetAlerts(message, 'success', 4000);
           },
-          showWarningAlert: function(message) {
+          showWarningAlert: function(message, timeout) {
             // Warnings stay on screen for 10s, can manually close using 'x'
-            mnAlertsService.formatAndSetAlerts(message, 'warning', 1000 * 10);
+            timeout = timeout == undefined? 1000 * 10 : (timeout == -1 ? undefined : timeout)
+            mnAlertsService.formatAndSetAlerts(message, 'warning', timeout);
           },
           showErrorAlert: function(message) {
             // Errors stay on screen forever, should manually close using 'x'
