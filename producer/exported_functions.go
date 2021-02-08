@@ -737,7 +737,8 @@ func (p *Producer) cleanupMetadataImpl(id int, vbsToCleanup []uint16, undeployWG
 					receivedVbSeqNos[e.VBucket] = uint64(0xFFFFFFFFFFFFFFFF)
 					rw.Unlock()
 
-				case mcd.DCP_SYSTEM_EVENT:
+				case mcd.DCP_SYSTEM_EVENT, mcd.DCP_SEQNO_ADVANCED:
+
 				}
 			}
 		}
