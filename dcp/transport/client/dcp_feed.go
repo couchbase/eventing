@@ -24,6 +24,7 @@ const opaqueGetseqno = 0xDEADBEEF
 const openConnFlag = uint32(0x1)
 const bufferAckPeriod = 20
 const includeDeleteTime = uint32(0x20)
+const dcpSeqnoAdvExtrasLen = 8
 
 // error codes
 var ErrorInvalidLog = errors.New("couchbase.errorInvalidLog")
@@ -401,6 +402,16 @@ func (feed *DcpFeed) handlePacket(
 		feed.handleSystemEvent(pkt, event)
 		stream.Seqno = event.Seqno
 		sendAck = true
+
+	case transport.DCP_SEQNO_ADVANCED:
+		event = newDcpEvent(pkt, stream)
+		sendAck = true
+		if len(pkt.Extras) == dcpSeqnoAdvExtrasLen {
+			event.Seqno = binary.BigEndian.Uint64(pkt.Extras)
+		} else {
+			fmsg := "%v ##%x DCP_SEQNO_ADVANCED for vb %d. Expected extras len: %v, received: %v\n"
+			logging.Fatalf(fmsg, prefix, stream.AppOpaque, vb, dcpSeqnoAdvExtrasLen, len(pkt.Extras))
+		}
 
 	default:
 		fmsg := "%v opcode %v not known for vbucket %d\n"

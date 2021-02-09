@@ -293,6 +293,9 @@ func (c *Consumer) processDCPEvents() {
 					c.sendVbFilterData(e.VBucket, lastSentSeqNo, false)
 				}
 
+			case mcd.DCP_SEQNO_ADVANCED, mcd.DCP_SYSTEM_EVENT:
+				c.vbProcessingStats.updateVbStat(e.VBucket, "last_read_seq_no", e.Seqno)
+
 			default:
 			}
 
