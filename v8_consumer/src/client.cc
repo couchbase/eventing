@@ -1088,6 +1088,9 @@ void AppWorker::EventGenLoop() {
               v8_worker.second->PushFront(std::move(msg));
             }
           }
+
+          // Log Exception Insights ~ once a minute.
+          worker->LogExceptionSummary();
         }
       }
       std::this_thread::sleep_for(std::chrono::seconds(7));
@@ -1146,6 +1149,7 @@ void AppWorker::SendPauseAck(
 }
 
 int main(int argc, char **argv) {
+
   if (argc < 16) {
     std::cerr
         << "Need at least 13 arguments: appname, ipc_type, port, "
@@ -1183,6 +1187,7 @@ int main(int argc, char **argv) {
   }
 
   AppWorker *worker = AppWorker::GetAppWorker();
+
   worker->SetNsServerPort(ns_server_port);
   worker->SetNumVbuckets(num_vbuckets);
   if (std::strcmp(ipc_type.c_str(), "af_unix") == 0) {
@@ -1198,6 +1203,7 @@ int main(int argc, char **argv) {
 
   worker->ReadStdinLoop();
   worker->EventGenLoop();
+
   worker->stdin_read_thr_.join();
   worker->event_gen_thr_.join();
   worker->main_uv_loop_thr_.join();
@@ -1214,4 +1220,45 @@ std::string AppWorker::GetInsight() {
     sum.Accumulate(entry);
   }
   return sum.ToJSON();
+}
+
+bool AppWorker::shouldNotLogExceptionSummaryYet() {
+
+  static std::chrono::steady_clock::time_point previous_time = std::chrono::steady_clock::now();
+  static std::chrono::steady_clock::time_point current_time;
+
+  current_time = std::chrono::steady_clock::now();
+
+  bool needNotLogExceptionSummaryYet = (current_time - previous_time) < std::chrono::seconds{60};
+
+  if (needNotLogExceptionSummaryYet) {
+
+    return true;
+  }
+
+  previous_time = current_time;
+
+  return false;
+}
+
+void AppWorker::LogExceptionSummary() {
+
+  if (shouldNotLogExceptionSummaryYet()) {
+
+    return;
+  }
+
+  ExceptionInsight summary(nullptr);
+
+  for (int16_t i = 0; i < thr_count_; i++) {
+    auto &workerExceptionInsight = workers_[i]->GetExceptionInsight();
+    summary.AccumulateAndClear(workerExceptionInsight);
+  }
+
+  if (thr_count_ > 0) {
+
+    // Piggyback on the logging channel of the first worker thread to
+    // log the exception summary.
+    workers_[0]->GetExceptionInsight().LogExceptionSummary(summary);
+  }
 }
