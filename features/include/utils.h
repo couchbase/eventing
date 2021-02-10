@@ -117,15 +117,6 @@ struct ConnStrInfo {
   std::string conn_str;
 };
 
-struct ExceptionInfo {
-
-  std::string exception;
-  uint32_t line;
-  std::string file;
-  std::string srcLine;
-  std::string stack;
-};
-
 class Utils {
 public:
   Utils(v8::Isolate *isolate, const v8::Local<v8::Context> &context);
@@ -209,9 +200,6 @@ const char *ToCString(const v8::String::Utf8Value &value);
 std::string ConvertToISO8601(std::string timestamp);
 std::string GetTranspilerSrc();
 std::string ExceptionString(v8::Isolate *isolate,
-                            v8::Local<v8::Context> &context,
-                            v8::TryCatch *try_catch);
-ExceptionInfo GetExceptionInfo(v8::Isolate *isolate,
                             v8::Local<v8::Context> &context,
                             v8::TryCatch *try_catch);
 

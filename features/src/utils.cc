@@ -179,51 +179,19 @@ std::string ConvertToISO8601(std::string timestamp) {
   return buf_s;
 }
 
+// Exception details will be appended to the first argument.
 std::string ExceptionString(v8::Isolate *isolate,
                             v8::Local<v8::Context> &context,
                             v8::TryCatch *try_catch) {
 
   std::ostringstream os;
-
-  ExceptionInfo exception_info = GetExceptionInfo(isolate, context, try_catch);
-
-  // The actual exception
-  if (! exception_info.exception.empty()) {
-
-    os << exception_info.exception;
-    os << " " << std::endl;
-  }
-
-  // and its location
-  if (! exception_info.file.empty()) {
-
-    os << "Location: " << exception_info.file << ":" << exception_info.line << " " << std::endl;
-
-    if (! exception_info.srcLine.empty()) {
-      os << "Code: " << exception_info.srcLine << " " << std::endl;
-    }
-
-    // and stack trace
-    if (! exception_info.stack.empty()) {
-      os << "Stack: " << std::endl << exception_info.stack << " " << std::endl;
-    }
-  }
-
-  return os.str();
-}
-
-ExceptionInfo GetExceptionInfo(v8::Isolate *isolate,
-                            v8::Local<v8::Context> &context,
-                            v8::TryCatch *try_catch) {
-
-  ExceptionInfo exception_info;
   v8::HandleScope handle_scope(isolate);
 
-  // Extract exception object
+  // Print exception object
   auto exception = try_catch->Exception();
   if (!exception.IsEmpty()) {
     // If the exception is of Error type, then call toString() on it
-
+    os << "Exception: ";
     v8::Local<v8::Object> obj;
     v8::Local<v8::Value> fn;
     v8::Local<v8::Value> val;
@@ -231,23 +199,22 @@ ExceptionInfo GetExceptionInfo(v8::Isolate *isolate,
         TO_LOCAL(exception->ToObject(context), &obj) &&
         TO_LOCAL(obj->Get(context, v8Str(isolate, "toString")), &fn) &&
         TO_LOCAL(fn.As<v8::Function>()->Call(context, obj, 0, nullptr), &val)) {
-      exception_info.exception = JSONStringify(isolate, val, true);
+      os << JSONStringify(isolate, val, true).c_str();
     } else {
-      exception_info.exception = JSONStringify(isolate, try_catch->Exception(), true);
+      os << JSONStringify(isolate, try_catch->Exception(), true).c_str();
     }
+    os << " " << std::endl;
   }
 
-  // Extract exception location details
+  // Print exception location details
   v8::Handle<v8::Message> message = try_catch->Message();
   if (!message.IsEmpty()) {
-    // Extract location
+    // Print location
     v8::String::Utf8Value file(isolate, message->GetScriptResourceName());
     int line = message->GetLineNumber(context).FromMaybe(0);
+    os << "Location: " << ToCString(file) << ":" << line << " " << std::endl;
 
-    exception_info.file = ToCString(file);
-    exception_info.line = message->GetLineNumber(context).FromMaybe(0);
-
-    // Extract source code
+    // Print source code
     auto maybe_srcline = message->GetSourceLine(context);
     if (!maybe_srcline.IsEmpty()) {
       v8::Local<v8::String> local_srcline;
@@ -256,22 +223,19 @@ ExceptionInfo GetExceptionInfo(v8::Isolate *isolate,
       std::string srcline = ToCString(sourceline_utf8);
       srcline = std::regex_replace(srcline, std::regex("^\\s+"), "");
       srcline = std::regex_replace(srcline, std::regex("\\s+$"), "");
-
-      exception_info.srcLine = srcline;
+      os << "Code: " << ToCString(sourceline_utf8) << " " << std::endl;
     }
 
-    // Extract stack trace
+    // Print stack trace
     auto maybe_stack = try_catch->StackTrace(context);
     if (!maybe_stack.IsEmpty()) {
       v8::Local<v8::Value> local_stack;
       TO_LOCAL(maybe_stack, &local_stack);
       v8::String::Utf8Value stack_utf8(isolate, local_stack);
-
-      exception_info.stack = ToCString(stack_utf8);
+      os << "Stack: " << std::endl << ToCString(stack_utf8) << " " << std::endl;
     }
   }
-
-  return exception_info;
+  return os.str();
 }
 
 std::vector<std::string> &split(const std::string &s, char delim,

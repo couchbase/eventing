@@ -28,7 +28,6 @@ class CurlRequestBuilder;
 class CurlResponseBuilder;
 class Communicator;
 class CodeInsight;
-class ExceptionInsight;
 struct CurlCodex;
 struct LanguageCompatibility;
 class BucketOps;
@@ -71,7 +70,6 @@ struct IsolateData {
   BucketOps *bucket_ops{nullptr};
   std::mutex termination_lock_;
   bool is_executing_{false};
-  ExceptionInsight *exception_insight{nullptr};
 };
 
 inline IsolateData *UnwrapData(v8::Isolate *isolate) {
