@@ -766,6 +766,7 @@ func (m *ServiceMgr) onRebalanceDoneLocked(err error, cancelRebalance bool) {
 	m.rebalancer = nil
 	m.rebalancerMutex.Unlock()
 	m.rebalanceCtx = nil
+	util.Retry(util.NewFixedBackoff(time.Second), nil, cleanupEventingMetaKvPath, metakvRebalanceTokenPath)
 
 	m.updateStateLocked(func(s *state) {
 		s.rebalanceTask = newTask
