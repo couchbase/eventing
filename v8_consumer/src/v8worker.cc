@@ -19,6 +19,7 @@
 #include "bucket_ops.h"
 #include "curl.h"
 #include "insight.h"
+#include "exceptioninsight.h"
 #include "lang_compat.h"
 #include "lcb_utils.h"
 #include "query-helper.h"
@@ -219,6 +220,7 @@ void V8Worker::InitializeIsolateData(const server_settings_t *server_settings,
   data_.custom_error = new CustomError(isolate_, context);
   data_.curl_codex = new CurlCodex;
   data_.code_insight = new CodeInsight(isolate_);
+  data_.exception_insight = new ExceptionInsight(isolate_);
   data_.query_mgr =
       new Query::Manager(isolate_, cb_source_bucket_,
                          static_cast<std::size_t>(h_config->lcb_inst_capacity));
@@ -386,6 +388,7 @@ V8Worker::~V8Worker() {
   delete data->req_builder;
   delete data->resp_builder;
   delete data->curl_codex;
+  delete data->exception_insight;
   delete data->query_mgr;
   delete data->query_iterable;
   delete data->query_iterable_impl;
@@ -502,6 +505,8 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
   if (!ExecuteScript(source)) {
     return kFailedToCompileJs;
   }
+
+  ExceptionInsight::Get(isolate_).Setup(function_name_);
 
   auto global = context->Global();
   v8::Local<v8::Value> on_update_def;
@@ -849,6 +854,7 @@ int V8Worker::SendUpdate(const std::string &value, const std::string &meta,
     auto emsg = ExceptionString(isolate_, context, &try_catch);
     LOG(logDebug) << "OnUpdate Exception: " << emsg << std::endl;
     CodeInsight::Get(isolate_).AccumulateException(try_catch);
+    ExceptionInsight::Get(isolate_).AccumulateException(try_catch);
   }
 
   if (debugger_started_) {
@@ -882,6 +888,7 @@ int V8Worker::SendUpdate(const std::string &value, const std::string &meta,
     auto emsg = ExceptionString(isolate_, context, &try_catch);
     LOG(logDebug) << "OnUpdate Exception: " << emsg << std::endl;
     CodeInsight::Get(isolate_).AccumulateException(try_catch);
+    ExceptionInsight::Get(isolate_).AccumulateException(try_catch);
     return kOnUpdateCallFail;
   }
 
@@ -932,7 +939,12 @@ int V8Worker::SendDelete(const std::string &options, const std::string &meta) {
     return kOnDeleteCallFail;
   }
 
-  assert(!try_catch.HasCaught());
+  if (try_catch.HasCaught()) {
+    auto emsg = ExceptionString(isolate_, context, &try_catch);
+    LOG(logDebug) << "OnDelete Exception: " << emsg << std::endl;
+    CodeInsight::Get(isolate_).AccumulateException(try_catch);
+    ExceptionInsight::Get(isolate_).AccumulateException(try_catch);
+  }
 
   if (debugger_started_) {
     if (!agent_->IsStarted()) {
@@ -964,6 +976,9 @@ int V8Worker::SendDelete(const std::string &options, const std::string &meta) {
                   << ExceptionString(isolate_, context, &try_catch)
                   << std::endl;
     UpdateHistogram(start_time);
+    CodeInsight::Get(isolate_).AccumulateException(try_catch);
+    ExceptionInsight::Get(isolate_).AccumulateException(try_catch);
+
     ++on_delete_failure;
     return kOnDeleteCallFail;
   }
@@ -1011,6 +1026,7 @@ void V8Worker::SendTimer(std::string callback, std::string timer_ctx) {
     auto emsg = ExceptionString(isolate_, context, &try_catch);
     LOG(logDebug) << "Timer callback Exception: " << emsg << std::endl;
     CodeInsight::Get(isolate_).AccumulateException(try_catch);
+    ExceptionInsight::Get(isolate_).AccumulateException(try_catch);
   }
 
   if (debugger_started_) {
@@ -1042,6 +1058,7 @@ void V8Worker::SendTimer(std::string callback, std::string timer_ctx) {
     auto emsg = ExceptionString(isolate_, context, &try_catch);
     LOG(logDebug) << "Timer callback Exception: " << emsg << std::endl;
     CodeInsight::Get(isolate_).AccumulateException(try_catch);
+    ExceptionInsight::Get(isolate_).AccumulateException(try_catch);
 
     return;
   }
@@ -1312,6 +1329,11 @@ void V8Worker::FreeCurlBindings() {
 CodeInsight &V8Worker::GetInsight() {
   auto &insight = CodeInsight::Get(isolate_);
   return insight;
+}
+
+ExceptionInsight &V8Worker::GetExceptionInsight() {
+  auto &exception_insight = ExceptionInsight::Get(isolate_);
+  return exception_insight;
 }
 
 // Watches the duration of the event and terminates its execution if it goes

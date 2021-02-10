@@ -84,6 +84,8 @@ public:
 
   void EventGenLoop();
 
+  void ExceptionSummaryLogLoop();
+
   static void StopUvLoop(uv_async_t *);
 
   void SendFilterAck(int opcode, int msgtype, int vb_no, int64_t seq_no,
@@ -111,6 +113,9 @@ protected:
 private:
   AppWorker();
   ~AppWorker();
+
+  bool shouldNotLogExceptionSummaryYet() ;
+  void LogExceptionSummary();
 
   std::vector<std::unordered_set<int64_t>>
   PartitionVbuckets(const std::vector<int64_t> &vbuckets) const;
