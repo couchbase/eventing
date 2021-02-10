@@ -117,7 +117,7 @@ struct ConnStrInfo {
   std::string conn_str;
 };
 
-struct ExceptionInfo {
+struct V8ExceptionInfo {
 
   std::string exception;
   uint32_t line;
@@ -211,7 +211,7 @@ std::string GetTranspilerSrc();
 std::string ExceptionString(v8::Isolate *isolate,
                             v8::Local<v8::Context> &context,
                             v8::TryCatch *try_catch);
-ExceptionInfo GetExceptionInfo(v8::Isolate *isolate,
+V8ExceptionInfo GetV8ExceptionInfo(v8::Isolate *isolate,
                             v8::Local<v8::Context> &context,
                             v8::TryCatch *try_catch);
 

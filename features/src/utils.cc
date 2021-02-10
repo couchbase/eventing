@@ -185,38 +185,38 @@ std::string ExceptionString(v8::Isolate *isolate,
 
   std::ostringstream os;
 
-  ExceptionInfo exception_info = GetExceptionInfo(isolate, context, try_catch);
+  V8ExceptionInfo v8exception_info = GetV8ExceptionInfo(isolate, context, try_catch);
 
   // The actual exception
-  if (! exception_info.exception.empty()) {
+  if (! v8exception_info.exception.empty()) {
 
-    os << exception_info.exception;
+    os << v8exception_info.exception;
     os << " " << std::endl;
   }
 
   // and its location
-  if (! exception_info.file.empty()) {
+  if (! v8exception_info.file.empty()) {
 
-    os << "Location: " << exception_info.file << ":" << exception_info.line << " " << std::endl;
+    os << "Location: " << v8exception_info.file << ":" << v8exception_info.line << " " << std::endl;
 
-    if (! exception_info.srcLine.empty()) {
-      os << "Code: " << exception_info.srcLine << " " << std::endl;
+    if (! v8exception_info.srcLine.empty()) {
+      os << "Code: " << v8exception_info.srcLine << " " << std::endl;
     }
 
     // and stack trace
-    if (! exception_info.stack.empty()) {
-      os << "Stack: " << std::endl << exception_info.stack << " " << std::endl;
+    if (! v8exception_info.stack.empty()) {
+      os << "Stack: " << std::endl << v8exception_info.stack << " " << std::endl;
     }
   }
 
   return os.str();
 }
 
-ExceptionInfo GetExceptionInfo(v8::Isolate *isolate,
+V8ExceptionInfo GetV8ExceptionInfo(v8::Isolate *isolate,
                             v8::Local<v8::Context> &context,
                             v8::TryCatch *try_catch) {
 
-  ExceptionInfo exception_info;
+  V8ExceptionInfo v8exception_info;
   v8::HandleScope handle_scope(isolate);
 
   // Extract exception object
@@ -231,9 +231,9 @@ ExceptionInfo GetExceptionInfo(v8::Isolate *isolate,
         TO_LOCAL(exception->ToObject(context), &obj) &&
         TO_LOCAL(obj->Get(context, v8Str(isolate, "toString")), &fn) &&
         TO_LOCAL(fn.As<v8::Function>()->Call(context, obj, 0, nullptr), &val)) {
-      exception_info.exception = JSONStringify(isolate, val, true);
+      v8exception_info.exception = JSONStringify(isolate, val, true);
     } else {
-      exception_info.exception = JSONStringify(isolate, try_catch->Exception(), true);
+      v8exception_info.exception = JSONStringify(isolate, try_catch->Exception(), true);
     }
   }
 
@@ -242,10 +242,9 @@ ExceptionInfo GetExceptionInfo(v8::Isolate *isolate,
   if (!message.IsEmpty()) {
     // Extract location
     v8::String::Utf8Value file(isolate, message->GetScriptResourceName());
-    int line = message->GetLineNumber(context).FromMaybe(0);
 
-    exception_info.file = ToCString(file);
-    exception_info.line = message->GetLineNumber(context).FromMaybe(0);
+    v8exception_info.file = ToCString(file);
+    v8exception_info.line = message->GetLineNumber(context).FromMaybe(0);
 
     // Extract source code
     auto maybe_srcline = message->GetSourceLine(context);
@@ -257,7 +256,7 @@ ExceptionInfo GetExceptionInfo(v8::Isolate *isolate,
       srcline = std::regex_replace(srcline, std::regex("^\\s+"), "");
       srcline = std::regex_replace(srcline, std::regex("\\s+$"), "");
 
-      exception_info.srcLine = srcline;
+      v8exception_info.srcLine = srcline;
     }
 
     // Extract stack trace
@@ -267,11 +266,11 @@ ExceptionInfo GetExceptionInfo(v8::Isolate *isolate,
       TO_LOCAL(maybe_stack, &local_stack);
       v8::String::Utf8Value stack_utf8(isolate, local_stack);
 
-      exception_info.stack = ToCString(stack_utf8);
+      v8exception_info.stack = ToCString(stack_utf8);
     }
   }
 
-  return exception_info;
+  return v8exception_info;
 }
 
 std::vector<std::string> &split(const std::string &s, char delim,

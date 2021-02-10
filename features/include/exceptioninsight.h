@@ -14,7 +14,7 @@ struct ExceptionInfoEntry {
   ExceptionInfoEntry();
 
   uint32_t count_;
-  ExceptionInfo exception_info_;
+  V8ExceptionInfo v8exception_info_;
 };
 
 class ExceptionInsight {
@@ -38,7 +38,7 @@ private:
 
   std::mutex lock_;
   std::string function_name_;
-  char start_time_[26];
+  char start_time_[sizeof "2021-02-10T15:46:00"];
 
   std::map<uint64_t, ExceptionInfoEntry> entries_;
 
