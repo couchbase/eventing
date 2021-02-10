@@ -179,7 +179,7 @@ void SubDocumentLookupCallback(lcb_INSTANCE *instance, int cbtype,
           }
         }
       } else {
-          result->value.assign(cValue, nValue);
+        result->value.assign(cValue, nValue);
       }
     }
   }
@@ -374,10 +374,7 @@ std::pair<lcb_STATUS, Result> LcbUnlock(lcb_INSTANCE *instance,
   return {err, result};
 }
 
-bool IsRetriable(lcb_STATUS error) {
-  // TODO: There is no equivalent for LCB_EIFTMP in SDK3 CCBC-1308
-  return false;
-}
+bool IsRetriable(lcb_STATUS error) { return LCB_ERROR_IS_TRANSIENT(error); }
 
 void evt_log_formatter(char *buf, int buf_size, const char *subsystem,
                        int srcline, unsigned int instance_id, const char *fmt,
