@@ -224,9 +224,10 @@ func (cp *connectionPool) StartDcpFeed(
 	<-cp.createsem
 
 	dcpf, err := memcached.NewDcpFeed(mc, name.Raw(), outch, opaque, config)
+	dcpWindowSize := config["dcpWindowSize"].(uint32)
 	if err == nil {
 		err = dcpf.DcpOpen(
-			name.Raw(), sequence, flags, DEFAULT_WINDOW_SIZE, opaque,
+			name.Raw(), sequence, flags, dcpWindowSize, opaque,
 		)
 		if err == nil {
 			return dcpf, err

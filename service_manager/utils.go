@@ -137,6 +137,7 @@ func (m *ServiceMgr) fillMissingWithDefaults(appName string, settings map[string
 	// DCP connection related configurations
 	fillMissingDefault(app, settings, "agg_dcp_feed_mem_cap", float64(1024))
 	fillMissingDefault(app, settings, "data_chan_size", float64(50))
+	fillMissingDefault(app, settings, "dcp_window_size", float64(20*1024*1024))
 	fillMissingDefault(app, settings, "dcp_gen_chan_size", float64(10000))
 	fillMissingDefault(app, settings, "dcp_num_connections", float64(1))
 
