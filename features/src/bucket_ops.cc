@@ -831,7 +831,7 @@ void BucketOps::ReplaceOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
   v8::Local<v8::Object> response_obj = v8::Object::New(isolate);
 
-  if (result->rc == LCB_ERR_DOCUMENT_EXISTS) {
+  if (result->rc == LCB_ERR_CAS_MISMATCH) {
     info = bucket_ops->SetErrorObject(
         response_obj, "LCB_KEY_EEXISTS",
         "The document key exists with a CAS value different than specified",
@@ -1026,7 +1026,7 @@ void BucketOps::DeleteOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
   }
 
   v8::Local<v8::Object> response_obj = v8::Object::New(isolate);
-  if (result->rc == LCB_ERR_DOCUMENT_EXISTS) {
+  if (result->rc == LCB_ERR_CAS_MISMATCH) {
     info = bucket_ops->SetErrorObject(
         response_obj, "LCB_KEY_EEXISTS",
         "The document key exists with a CAS value different than specified",
