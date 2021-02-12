@@ -347,6 +347,12 @@ func (p *Producer) parseDepcfg() error {
 		p.dcpConfig["dataChanSize"] = 50
 	}
 
+	if val, ok := settings["dcp_window_size"]; ok {
+		p.dcpConfig["dcpWindowSize"] = uint32(val.(float64))
+	} else {
+		p.dcpConfig["dcpWindowSize"] = uint32(20 * 1024 * 1024)
+	}
+
 	p.dcpConfig["latencyTick"] = p.handlerConfig.StatsLogInterval
 
 	if val, ok := settings["dcp_gen_chan_size"]; ok {
