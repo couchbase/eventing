@@ -16,6 +16,7 @@
 #include "crc64.h"
 #include "isolate_data.h"
 #include "js_exception.h"
+#include "lcb_utils.h"
 #include "utils.h"
 #include <nlohmann/json.hpp>
 
@@ -790,4 +791,11 @@ int64_t GetUnixTime() {
   auto t = std::time(nullptr);
   auto secs = static_cast<std::chrono::seconds>(t).count();
   return static_cast<int64_t>(secs);
+}
+
+uint8_t GetDataType(const v8::Local<v8::Value> &value) {
+  if (value->IsArrayBuffer()) {
+    return BINARY_DOC;
+  }
+  return JSON_DOC;
 }

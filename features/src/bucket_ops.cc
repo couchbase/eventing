@@ -681,6 +681,7 @@ void BucketOps::InsertOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
   result->key = meta.key;
   result->exptime = meta.expiry;
+  result->datatype = GetDataType(args[2]);
 
   info = bucket_ops->ResponseSuccessObject(std::move(result), response_obj);
   if (info.is_fatal) {
@@ -800,6 +801,7 @@ void BucketOps::ReplaceOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
   result->key = meta.key;
   result->exptime = meta.expiry;
+  result->datatype = GetDataType(args[2]);
 
   info = bucket_ops->ResponseSuccessObject(std::move(result), response_obj);
   if (info.is_fatal) {
@@ -887,6 +889,7 @@ void BucketOps::UpsertOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
   result->key = meta.key;
   result->exptime = meta.expiry;
+  result->datatype = GetDataType(args[2]);
 
   info = bucket_ops->ResponseSuccessObject(std::move(result), response_obj);
   if (info.is_fatal) {

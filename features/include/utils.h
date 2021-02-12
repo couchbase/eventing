@@ -227,5 +227,5 @@ std::string GetConnectionStr(const std::string &end_point,
 std::string BuildUrl(const std::string &host, const std::string &path);
 
 int64_t GetUnixTime();
-
+uint8_t GetDataType(const v8::Local<v8::Value> &value);
 #endif
