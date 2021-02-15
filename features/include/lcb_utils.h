@@ -28,6 +28,7 @@ struct Result {
   uint64_t counter{0};
 };
 
+const uint8_t BINARY_DOC = 0;
 const uint8_t JSON_DOC = 1;
 const uint8_t XATTR_DOC = 4;
 

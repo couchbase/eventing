@@ -32,7 +32,8 @@
 #define TO_LOCAL(maybe, local)                                                 \
   (ToLocal((maybe), (local), __FILE__, __FUNCTION__, __LINE__))
 #define IS_EMPTY(v8obj) (IsEmpty((v8obj), __FILE__, __FUNCTION__, __LINE__))
-#define CHECK_SUCCESS(maybe)(CheckSuccess(maybe, __FILE__, __FUNCTION__, __LINE__))
+#define CHECK_SUCCESS(maybe)                                                   \
+  (CheckSuccess(maybe, __FILE__, __FUNCTION__, __LINE__))
 
 struct CompilationInfo {
   CompilationInfo() : compile_success(false), index(0), line_no(0), col_no(0) {}
@@ -77,9 +78,11 @@ bool To(const v8::Maybe<T> &from, T *to, const char *file = "",
 }
 
 template <typename T>
-void CheckSuccess(const v8::Maybe<T> &from, const char *file = "", const char *caller = "", int line = -1) {
-  if(!from.FromJust()) {
-    LOG(logError) << "file : " << file << "line : " << line << "caller : " << caller << " : Error with SET/GET";
+void CheckSuccess(const v8::Maybe<T> &from, const char *file = "",
+                  const char *caller = "", int line = -1) {
+  if (!from.FromJust()) {
+    LOG(logError) << "file : " << file << "line : " << line
+                  << "caller : " << caller << " : Error with SET/GET";
   }
 }
 
@@ -212,8 +215,8 @@ std::string ExceptionString(v8::Isolate *isolate,
                             v8::Local<v8::Context> &context,
                             v8::TryCatch *try_catch);
 V8ExceptionInfo GetV8ExceptionInfo(v8::Isolate *isolate,
-                            v8::Local<v8::Context> &context,
-                            v8::TryCatch *try_catch);
+                                   v8::Local<v8::Context> &context,
+                                   v8::TryCatch *try_catch);
 
 CompilationInfo BuildCompileInfo(v8::Isolate *isolate,
                                  v8::Local<v8::Context> &context,
@@ -245,5 +248,5 @@ std::string GetConnectionStr(const std::string &end_point,
 std::string BuildUrl(const std::string &host, const std::string &path);
 
 int64_t GetUnixTime();
-
+uint8_t GetDataType(const v8::Local<v8::Value> &value);
 #endif

@@ -16,6 +16,7 @@
 #include "crc64.h"
 #include "isolate_data.h"
 #include "js_exception.h"
+#include "lcb_utils.h"
 #include "utils.h"
 #include <nlohmann/json.hpp>
 
@@ -185,27 +186,30 @@ std::string ExceptionString(v8::Isolate *isolate,
 
   std::ostringstream os;
 
-  V8ExceptionInfo v8exception_info = GetV8ExceptionInfo(isolate, context, try_catch);
+  V8ExceptionInfo v8exception_info =
+      GetV8ExceptionInfo(isolate, context, try_catch);
 
   // The actual exception
-  if (! v8exception_info.exception.empty()) {
+  if (!v8exception_info.exception.empty()) {
 
     os << v8exception_info.exception;
     os << " " << std::endl;
   }
 
   // and its location
-  if (! v8exception_info.file.empty()) {
+  if (!v8exception_info.file.empty()) {
 
-    os << "Location: " << v8exception_info.file << ":" << v8exception_info.line << " " << std::endl;
+    os << "Location: " << v8exception_info.file << ":" << v8exception_info.line
+       << " " << std::endl;
 
-    if (! v8exception_info.srcLine.empty()) {
+    if (!v8exception_info.srcLine.empty()) {
       os << "Code: " << v8exception_info.srcLine << " " << std::endl;
     }
 
     // and stack trace
-    if (! v8exception_info.stack.empty()) {
-      os << "Stack: " << std::endl << v8exception_info.stack << " " << std::endl;
+    if (!v8exception_info.stack.empty()) {
+      os << "Stack: " << std::endl
+         << v8exception_info.stack << " " << std::endl;
     }
   }
 
@@ -213,8 +217,8 @@ std::string ExceptionString(v8::Isolate *isolate,
 }
 
 V8ExceptionInfo GetV8ExceptionInfo(v8::Isolate *isolate,
-                            v8::Local<v8::Context> &context,
-                            v8::TryCatch *try_catch) {
+                                   v8::Local<v8::Context> &context,
+                                   v8::TryCatch *try_catch) {
 
   V8ExceptionInfo v8exception_info;
   v8::HandleScope handle_scope(isolate);
@@ -233,7 +237,8 @@ V8ExceptionInfo GetV8ExceptionInfo(v8::Isolate *isolate,
         TO_LOCAL(fn.As<v8::Function>()->Call(context, obj, 0, nullptr), &val)) {
       v8exception_info.exception = JSONStringify(isolate, val, true);
     } else {
-      v8exception_info.exception = JSONStringify(isolate, try_catch->Exception(), true);
+      v8exception_info.exception =
+          JSONStringify(isolate, try_catch->Exception(), true);
     }
   }
 
@@ -814,4 +819,11 @@ int64_t GetUnixTime() {
   auto t = std::time(nullptr);
   auto secs = static_cast<std::chrono::seconds>(t).count();
   return static_cast<int64_t>(secs);
+}
+
+uint8_t GetDataType(const v8::Local<v8::Value> &value) {
+  if (value->IsArrayBuffer()) {
+    return BINARY_DOC;
+  }
+  return JSON_DOC;
 }

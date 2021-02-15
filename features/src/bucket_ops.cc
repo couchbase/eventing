@@ -286,7 +286,8 @@ MetaInfo BucketOps::ExtractMetaInfo(v8::Local<v8::Value> meta_object,
     return {false, "document key cannot be empty"};
   }
 
-  if (cas_check && req_obj->Has(context, v8Str(isolate_, cas_str_)).FromJust()) {
+  if (cas_check &&
+      req_obj->Has(context, v8Str(isolate_, cas_str_)).FromJust()) {
     v8::Local<v8::Value> cas;
     if (!TO_LOCAL(req_obj->Get(context, v8Str(isolate_, cas_str_)), &cas)) {
       return {false, "error in reading cas"};
@@ -298,7 +299,8 @@ MetaInfo BucketOps::ExtractMetaInfo(v8::Local<v8::Value> meta_object,
     meta.cas = std::strtoull(cas_value.c_str(), nullptr, 10);
   }
 
-  if (expiry_check && req_obj->Has(context, v8Str(isolate_, expiry_str_)).FromJust()) {
+  if (expiry_check &&
+      req_obj->Has(context, v8Str(isolate_, expiry_str_)).FromJust()) {
     v8::Local<v8::Value> expiry;
     if (!TO_LOCAL(req_obj->Get(context, v8Str(isolate_, expiry_str_)),
                   &expiry)) {
@@ -750,6 +752,7 @@ void BucketOps::InsertOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
   result->key = meta.key;
   result->exptime = meta.expiry;
+  result->datatype = GetDataType(args[2]);
 
   info = bucket_ops->ResponseSuccessObject(std::move(result), response_obj);
   if (info.is_fatal) {
@@ -869,6 +872,7 @@ void BucketOps::ReplaceOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
   result->key = meta.key;
   result->exptime = meta.expiry;
+  result->datatype = GetDataType(args[2]);
 
   info = bucket_ops->ResponseSuccessObject(std::move(result), response_obj);
   if (info.is_fatal) {
@@ -956,6 +960,7 @@ void BucketOps::UpsertOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
   result->key = meta.key;
   result->exptime = meta.expiry;
+  result->datatype = GetDataType(args[2]);
 
   info = bucket_ops->ResponseSuccessObject(std::move(result), response_obj);
   if (info.is_fatal) {
