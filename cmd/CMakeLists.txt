@@ -30,6 +30,14 @@ GET_FILENAME_COMPONENT (CURL_LIB_DIR "${CURL_LIBRARIES}" DIRECTORY)
 SET(CGO_INCLUDE_DIRS "${sigar_SOURCE_DIR}/include;${CURL_INCLUDE_DIR}")
 SET(CGO_LIBRARY_DIRS "${sigar_BINARY_DIR}/src;${CURL_LIB_DIR}")
 
+IF(BUILD_ENTERPRISE)
+    SET(NEWEVAL_DIR ../../eventing-ee/evaluator)
+    find_path(NEWEVAL_INCLUDE_DIR worker.h
+        HINTS ${NEWEVAL_DIR}/worker/include)
+    LIST(APPEND CGO_INCLUDE_DIRS ${NEWEVAL_INCLUDE_DIR})
+    LIST(APPEND CGO_LIBRARY_DIRS ${evaluator_BINARY_DIR})
+ENDIF()
+
 GoInstall(TARGET eventing-producer PACKAGE github.com/couchbase/eventing/cmd/producer
   GOPATH "${PROJECT_SOURCE_DIR}/../../../../.." "${GODEPSDIR}"
   INSTALL_PATH bin OUTPUT eventing-producer
@@ -48,5 +56,5 @@ GoInstall(TARGET cbevent PACKAGE github.com/couchbase/eventing/cmd/cbevent
   LDFLAGS "${LDFLAGS}"
   GOVERSION ${GOVERSION})
 
-ADD_DEPENDENCIES(eventing-producer eventing-generated cbq-engine indexer)
+ADD_DEPENDENCIES(eventing-producer eventing-generated cbq-engine indexer jseval)
 ADD_DEPENDENCIES(cbevent eventing-generated)
