@@ -87,7 +87,6 @@ type ServiceMgr struct {
 	keyFile           string
 	lcbCredsCounter   int64
 	mu                *sync.RWMutex
-	statsWritten      bool
 	uuid              string
 
 	stopTracerCh chan struct{} // chan used to signal stopping of runtime.Trace
