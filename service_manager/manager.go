@@ -51,7 +51,6 @@ func NewServiceMgr(config util.Config, rebalanceRunning bool, superSup common.Ev
 		rebalancerMutex:   &sync.RWMutex{},
 		servers:           make([]service.NodeID, 0),
 		state:             NewState(),
-		statsWritten:      true,
 		stopTracerCh:      make(chan struct{}, 1),
 		superSup:          superSup,
 		finch:             make(chan bool),
