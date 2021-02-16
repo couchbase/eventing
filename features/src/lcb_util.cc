@@ -246,7 +246,6 @@ std::pair<lcb_STATUS, Result> LcbGet(lcb_INSTANCE *instance, lcb_CMDGET &cmd) {
     return {err, result};
   }
 
-  lcb_cmdget_destroy(&cmd);
   err = lcb_wait(instance, LCB_WAIT_DEFAULT);
 
   if (err != LCB_SUCCESS) {
@@ -266,7 +265,6 @@ std::pair<lcb_STATUS, Result> LcbSet(lcb_INSTANCE *instance,
     return {err, result};
   }
 
-  lcb_cmdstore_destroy(&cmd);
   err = lcb_wait(instance, LCB_WAIT_DEFAULT);
 
   if (err != LCB_SUCCESS) {
@@ -286,7 +284,6 @@ std::pair<lcb_STATUS, Result> LcbDelete(lcb_INSTANCE *instance,
     return {err, result};
   }
 
-  lcb_cmdremove_destroy(&cmd);
   err = lcb_wait(instance, LCB_WAIT_DEFAULT);
 
   if (err != LCB_SUCCESS) {
@@ -306,7 +303,6 @@ std::pair<lcb_STATUS, Result> LcbSubdocSet(lcb_INSTANCE *instance,
     return {err, result};
   }
 
-  lcb_cmdsubdoc_destroy(&cmd);
   err = lcb_wait(instance, LCB_WAIT_DEFAULT);
 
   if (err != LCB_SUCCESS) {
@@ -326,7 +322,6 @@ std::pair<lcb_STATUS, Result> LcbSubdocDelete(lcb_INSTANCE *instance,
     return {err, result};
   }
 
-  lcb_cmdsubdoc_destroy(&cmd);
   err = lcb_wait(instance, LCB_WAIT_DEFAULT);
 
   if (err != LCB_SUCCESS) {
@@ -346,7 +341,6 @@ std::pair<lcb_STATUS, Result> LcbGetCounter(lcb_INSTANCE *instance,
     return {err, result};
   }
 
-  lcb_cmdcounter_destroy(&cmd);
   err = lcb_wait(instance, LCB_WAIT_DEFAULT);
 
   if (err != LCB_SUCCESS) {
