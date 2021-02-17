@@ -1004,6 +1004,10 @@ func (m *ServiceMgr) validateSettings(appName string, settings map[string]interf
 		return
 	}
 
+	if info = m.validatePositiveInteger("dcp_window_size", settings); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
 	if info = m.validatePositiveInteger("dcp_gen_chan_size", settings); info.Code != m.statusCodes.ok.Code {
 		return
 	}
