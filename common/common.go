@@ -381,39 +381,40 @@ type PlannerNodeVbMapping struct {
 }
 
 type HandlerConfig struct {
-	N1qlPrepareAll           bool
-	LanguageCompatibility    string
-	AggDCPFeedMemCap         int64
-	CheckpointInterval       int
-	IdleCheckpointInterval   int
-	CPPWorkerThrCount        int
-	ExecuteTimerRoutineCount int
-	ExecutionTimeout         int
-	FeedbackBatchSize        int
-	FeedbackQueueCap         int64
-	FeedbackReadBufferSize   int
-	HandlerHeaders           []string
-	HandlerFooters           []string
-	LcbInstCapacity          int
-	N1qlConsistency          string
-	LogLevel                 string
-	SocketWriteBatchSize     int
-	SourceKeyspace           *Keyspace
-	StatsLogInterval         int
-	StreamBoundary           DcpStreamBoundary
-	TimerContextSize         int64
-	TimerQueueMemCap         uint64
-	TimerQueueSize           uint64
-	UndeployRoutineCount     int
-	WorkerCount              int
-	WorkerQueueCap           int64
-	WorkerQueueMemCap        int64
-	WorkerResponseTimeout    int
-	LcbRetryCount            int
-	BucketCacheSize          int64
-	BucketCacheAge           int64
-	NumTimerPartitions       int
-	CurlMaxAllowedRespSize   int
+	N1qlPrepareAll            bool
+	LanguageCompatibility     string
+	AllowTransactionMutations bool
+	AggDCPFeedMemCap          int64
+	CheckpointInterval        int
+	IdleCheckpointInterval    int
+	CPPWorkerThrCount         int
+	ExecuteTimerRoutineCount  int
+	ExecutionTimeout          int
+	FeedbackBatchSize         int
+	FeedbackQueueCap          int64
+	FeedbackReadBufferSize    int
+	HandlerHeaders            []string
+	HandlerFooters            []string
+	LcbInstCapacity           int
+	N1qlConsistency           string
+	LogLevel                  string
+	SocketWriteBatchSize      int
+	SourceKeyspace            *Keyspace
+	StatsLogInterval          int
+	StreamBoundary            DcpStreamBoundary
+	TimerContextSize          int64
+	TimerQueueMemCap          uint64
+	TimerQueueSize            uint64
+	UndeployRoutineCount      int
+	WorkerCount               int
+	WorkerQueueCap            int64
+	WorkerQueueMemCap         int64
+	WorkerResponseTimeout     int
+	LcbRetryCount             int
+	BucketCacheSize           int64
+	BucketCacheAge            int64
+	NumTimerPartitions        int
+	CurlMaxAllowedRespSize    int
 }
 
 type ProcessConfig struct {

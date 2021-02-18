@@ -291,6 +291,12 @@ func (p *Producer) parseDepcfg() error {
 		p.handlerConfig.UndeployRoutineCount = util.CPUCount(true)
 	}
 
+	if val, ok := settings["allow_transaction_mutations"]; ok {
+		p.handlerConfig.AllowTransactionMutations = val.(bool)
+	} else {
+		p.handlerConfig.AllowTransactionMutations = false
+	}
+
 	// Rebalance related configurations
 
 	if val, ok := settings["vb_ownership_giveup_routine_count"]; ok {

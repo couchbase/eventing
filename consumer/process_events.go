@@ -1,6 +1,7 @@
 package consumer
 
 import (
+	"bytes"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -95,7 +96,7 @@ func (c *Consumer) processDCPEvents() {
 					c.sendXattrDoc(e, functionInstanceID)
 
 				case dcpDatatypeBinXattr:
-					if c.binaryDocAllowed {
+					if c.binaryDocAllowed && c.checkTransactionMutationAllowed(e) {
 						c.sendXattrDoc(e, functionInstanceID)
 					}
 
@@ -1371,4 +1372,8 @@ func (c *Consumer) filterMutations(e *cb.DcpEvent) bool {
 	}
 
 	return false
+}
+
+func (c *Consumer) checkTransactionMutationAllowed(e *cb.DcpEvent) bool {
+	return c.allowTransactionMutations && bytes.HasPrefix(e.Key, cb.TransactionMutationPrefix)
 }

@@ -108,6 +108,7 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		stopConsumerCh:                  make(chan struct{}),
 		superSup:                        s,
 		tcpPort:                         pConfig.SockIdentifier,
+		allowTransactionMutations:       hConfig.AllowTransactionMutations,
 		timerContextSize:                hConfig.TimerContextSize,
 		updateStatsTicker:               time.NewTicker(updateCPPStatsTickInterval),
 		loadStatsTicker:                 time.NewTicker(updateCPPStatsTickInterval),

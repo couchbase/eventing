@@ -847,6 +847,11 @@ func (m *ServiceMgr) validateSettings(appName string, settings map[string]interf
 	if info = m.validateBoolean("n1ql_prepare_all", false, settings); info.Code != m.statusCodes.ok.Code {
 		return
 	}
+
+	if info = m.validateBoolean("allow_transaction_mutations", true, settings); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
 	if info = m.validatePossibleValues("language_compatibility", settings, common.LanguageCompatibility); info.Code != m.statusCodes.ok.Code {
 		return
 	}
