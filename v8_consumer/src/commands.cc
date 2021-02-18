@@ -66,6 +66,8 @@ dcp_opcode getDCPOpcode(int8_t opcode) {
     return oDelete;
   if (opcode == 2)
     return oMutation;
+  if (opcode == 3)
+    return oNoOp;
   return DCP_Opcode_Unknown;
 }
 

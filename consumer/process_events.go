@@ -295,10 +295,12 @@ func (c *Consumer) processDCPEvents() {
 				}
 
 			case mcd.DCP_SYSTEM_EVENT:
+				c.checkAndSendNoOp(e.Seqno, e.VBucket)
 				c.vbProcessingStats.updateVbStat(e.VBucket, "last_read_seq_no", e.Seqno)
 				c.vbProcessingStats.updateVbStat(e.VBucket, "manifest_id", string(e.ManifestUID))
 
 			case mcd.DCP_SEQNO_ADVANCED:
+				c.checkAndSendNoOp(e.Seqno, e.VBucket)
 				c.vbProcessingStats.updateVbStat(e.VBucket, "last_read_seq_no", e.Seqno)
 
 			default:
@@ -1123,8 +1125,8 @@ func (c *Consumer) getCurrentlyOwnedVbs() []uint16 {
 
 // Distribute partitions among cpp worker threads
 func (c *Consumer) cppWorkerThrPartitionMap() {
-	partitions := make([]uint16, cppWorkerPartitionCount)
-	for i := 0; i < int(cppWorkerPartitionCount); i++ {
+	partitions := make([]uint16, c.numVbuckets)
+	for i := 0; i < int(c.numVbuckets); i++ {
 		partitions[i] = uint16(i)
 	}
 
@@ -1157,6 +1159,13 @@ func (c *Consumer) sendEvent(e *cb.DcpEvent) error {
 		c.sendDcpEvent(e, false)
 	}
 	return nil
+}
+
+func (c *Consumer) checkAndSendNoOp(seqNo uint64, partition uint16) {
+	lastSent := c.vbProcessingStats.getVbStat(partition, "last_sent_seq_no").(uint64)
+	if !c.producer.IsTrapEvent() && (seqNo-lastSent) >= noOpMsgSendThreshold {
+		c.sendNoOpEvent(seqNo, partition)
+	}
 }
 
 func (c *Consumer) processReqStreamMessages() {
@@ -1400,6 +1409,7 @@ func (c *Consumer) filterMutations(e *cb.DcpEvent) bool {
 
 	c.vbProcessingStats.updateVbStat(e.VBucket, "last_read_seq_no", e.Seqno)
 	if c.collectionID != e.CollectionID {
+		c.checkAndSendNoOp(e.Seqno, e.VBucket)
 		return true
 	}
 

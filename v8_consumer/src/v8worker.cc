@@ -18,8 +18,8 @@
 #include "bucket_cache.h"
 #include "bucket_ops.h"
 #include "curl.h"
-#include "insight.h"
 #include "exceptioninsight.h"
+#include "insight.h"
 #include "lang_compat.h"
 #include "lcb_utils.h"
 #include "query-helper.h"
@@ -39,6 +39,7 @@ std::atomic<int64_t> on_update_success = {0};
 std::atomic<int64_t> on_update_failure = {0};
 std::atomic<int64_t> on_delete_success = {0};
 std::atomic<int64_t> on_delete_failure = {0};
+std::atomic<int64_t> no_op_counter = {0};
 std::atomic<int64_t> timer_callback_success = {0};
 std::atomic<int64_t> timer_callback_failure = {0};
 std::atomic<int64_t> timer_create_failure = {0};
@@ -612,6 +613,10 @@ void V8Worker::RouteMessage() {
         HandleMutationEvent(msg);
         break;
 
+      case oNoOp:
+        HandleNoOpEvent(msg);
+        break;
+
       default:
         LOG(logError) << "Received invalid DCP opcode" << std::endl;
         break;
@@ -724,6 +729,22 @@ void V8Worker::HandleMutationEvent(const std::unique_ptr<WorkerMessage> &msg) {
   const auto doc = flatbuf::payload::GetPayload(
       static_cast<const void *>(msg->payload.payload.c_str()));
   SendUpdate(doc->value()->str(), msg->header.metadata, doc->is_binary());
+}
+
+void V8Worker::HandleNoOpEvent(const std::unique_ptr<WorkerMessage> &msg) {
+  auto [vb, seq_num, is_valid] = GetVbAndSeqNum(msg);
+  if (!is_valid) {
+    return;
+  }
+
+  {
+    std::lock_guard<std::mutex> guard(bucketops_lock_);
+    if (IsFilteredEventLocked(vb, seq_num)) {
+      return;
+    }
+    UpdateSeqNumLocked(vb, seq_num);
+  }
+  no_op_counter++;
 }
 
 std::tuple<int, uint64_t, bool>

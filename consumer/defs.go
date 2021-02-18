@@ -38,15 +38,14 @@ const (
 )
 
 const (
-	udsSockPathLimit = 100
+	udsSockPathLimit     = 100
+	noOpMsgSendThreshold = 200
 
 	// To decode messages from c++ world to Go
 	headerFragmentSize = 4
 
 	// ClusterChangeNotifChBufSize limits buffer size for cluster change notif from producer
 	ClusterChangeNotifChBufSize = 10
-
-	cppWorkerPartitionCount = 1024
 
 	// Interval for retrying failed bucket operations using go-couchbase
 	bucketOpRetryInterval = time.Duration(1000) * time.Millisecond

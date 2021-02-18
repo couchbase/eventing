@@ -13,7 +13,6 @@ import (
 	mcd "github.com/couchbase/eventing/dcp/transport"
 	"github.com/couchbase/eventing/dcp/transport/client"
 	"github.com/couchbase/eventing/logging"
-	"github.com/couchbase/eventing/util"
 	"github.com/google/flatbuffers/go"
 )
 
@@ -100,9 +99,9 @@ func (c *Consumer) sendWorkerThrMap(thrPartitionMap map[int][]uint16, sendToDebu
 	var payload []byte
 	var pBuilder *flatbuffers.Builder
 	if sendToDebugger {
-		payload, pBuilder = c.makeThrMapPayload(thrPartitionMap, cppWorkerPartitionCount)
+		payload, pBuilder = c.makeThrMapPayload(thrPartitionMap, c.numVbuckets)
 	} else {
-		payload, pBuilder = c.makeThrMapPayload(c.cppThrPartitionMap, cppWorkerPartitionCount)
+		payload, pBuilder = c.makeThrMapPayload(c.cppThrPartitionMap, c.numVbuckets)
 	}
 
 	c.msgProcessedRWMutex.Lock()
@@ -418,6 +417,34 @@ func (c *Consumer) sendGetLcbExceptionStats(sendToDebugger bool) {
 	c.sendMessage(m)
 }
 
+func (c *Consumer) sendNoOpEvent(seqNo uint64, partition uint16) {
+	m := dcpMetadata{
+		SeqNo:   seqNo,
+		Vbucket: partition,
+	}
+
+	metadata, err := json.Marshal(&m)
+	if err != nil {
+		logging.Errorf("CRHM[%s:%s:%s:%d] key: %ru failed to marshal NoOp data seq: %d",
+			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), seqNo)
+		return
+	}
+
+	dcpHeader, hBuilder := c.makeDcpNoOpHeader(int16(partition), string(metadata))
+	msg := &msgToTransmit{
+		msg: &message{
+			Header: dcpHeader,
+		},
+		prioritize:    false,
+		headerBuilder: hBuilder,
+	}
+
+	c.vbProcessingStats.updateVbStat(partition, "last_sent_seq_no", seqNo)
+	c.sentEventsSize += int64(len(dcpHeader))
+	c.numSentEvents++
+	c.sendMessage(msg)
+}
+
 func (c *Consumer) sendDcpEvent(e *memcached.DcpEvent, sendToDebugger bool) {
 	m := dcpMetadata{
 		Cas:     strconv.FormatUint(e.Cas, 10),
@@ -442,12 +469,10 @@ func (c *Consumer) sendDcpEvent(e *memcached.DcpEvent, sendToDebugger bool) {
 		return
 	}
 
-	partition := int16(util.VbucketByKey(e.Key, cppWorkerPartitionCount))
-
 	var dcpHeader, payload []byte
 	var hBuilder, pBuilder *flatbuffers.Builder
 	if e.Opcode == mcd.DCP_MUTATION {
-		dcpHeader, hBuilder = c.makeDcpMutationHeader(partition, string(metadata))
+		dcpHeader, hBuilder = c.makeDcpMutationHeader(int16(e.VBucket), string(metadata))
 		payload, pBuilder = c.makeDcpPayload(e.Key, e.Value, isBinary)
 	} else if e.Opcode == mcd.DCP_DELETION || e.Opcode == mcd.DCP_EXPIRATION {
 		optionMap := map[string]interface{}{
@@ -460,7 +485,7 @@ func (c *Consumer) sendDcpEvent(e *memcached.DcpEvent, sendToDebugger bool) {
 			return
 		}
 
-		dcpHeader, hBuilder = c.makeDcpDeletionHeader(partition, string(metadata))
+		dcpHeader, hBuilder = c.makeDcpDeletionHeader(int16(e.VBucket), string(metadata))
 		payload, pBuilder = c.makeDcpPayload(e.Key, options, false)
 	}
 

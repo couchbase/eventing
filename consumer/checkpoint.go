@@ -19,7 +19,7 @@ func (c *Consumer) doLastSeqNoCheckpoint() {
 	var vbBlob vbucketKVBlob
 	var cas gocb.Cas
 	var isNoEnt bool
-	checkpoints := make([]time.Time, 1024)
+	checkpoints := make([]time.Time, c.numVbuckets)
 	for {
 		select {
 		case <-c.checkpointTicker.C:
