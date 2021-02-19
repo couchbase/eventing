@@ -577,3 +577,16 @@ func (c *Consumer) getCollectionID() (uint32, error) {
 
 	return cid, nil
 }
+
+func (c *Consumer) getManifestUID(bucket string) (string, error) {
+	hostAddress := net.JoinHostPort(util.Localhost(), c.nsServerPort)
+	cic, err := util.FetchClusterInfoClient(hostAddress)
+	if err != nil {
+		return "0", err
+	}
+
+	cinfo := cic.GetClusterInfoCache()
+	cinfo.RLock()
+	defer cinfo.RUnlock()
+	return cinfo.GetManifestID(bucket)
+}

@@ -369,9 +369,10 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlo
 		logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, len(c.reqStreamCh))
 
 	c.reqStreamCh <- &streamRequestInfo{
-		vb:         vb,
-		vbBlob:     vbBlob,
-		startSeqNo: vbBlob.LastSeqNoProcessed,
+		vb:          vb,
+		vbBlob:      vbBlob,
+		startSeqNo:  vbBlob.LastSeqNoProcessed,
+		manifestUID: vbBlob.ManifestUID,
 	}
 
 	return nil

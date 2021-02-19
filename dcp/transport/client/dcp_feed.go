@@ -5,6 +5,7 @@ package memcached
 
 import (
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/couchbase/eventing/common/collections"
@@ -137,12 +138,14 @@ func (feed *DcpFeed) DcpGetSeqnos() (map[uint16]uint64, error) {
 
 // DcpRequestStream for a single vbucket.
 func (feed *DcpFeed) DcpRequestStream(vbno, opaqueMSB uint16, flags uint32,
-	vuuid, startSequence, endSequence, snapStart, snapEnd uint64) error {
+	vuuid, startSequence, endSequence, snapStart, snapEnd uint64,
+	manifestUID string) error {
 
 	respch := make(chan []interface{}, 1)
 	cmd := []interface{}{
 		dfCmdRequestStream, vbno, opaqueMSB, flags, vuuid,
-		startSequence, endSequence, snapStart, snapEnd, respch}
+		startSequence, endSequence, snapStart, snapEnd, manifestUID,
+		respch}
 	resp, err := failsafeOp(feed.reqch, respch, cmd, feed.finch)
 	return opError(err, resp, 0)
 }
@@ -264,10 +267,12 @@ func (feed *DcpFeed) handleControlRequest(
 		flags, vuuid := msg[3].(uint32), msg[4].(uint64)
 		startSequence, endSequence := msg[5].(uint64), msg[6].(uint64)
 		snapStart, snapEnd := msg[7].(uint64), msg[8].(uint64)
-		respch := msg[9].(chan []interface{})
+
+		manifestUID := msg[9].(string)
+		respch := msg[10].(chan []interface{})
 		err := feed.doDcpRequestStream(
 			vbno, opaqueMSB, flags, vuuid,
-			startSequence, endSequence, snapStart, snapEnd)
+			startSequence, endSequence, snapStart, snapEnd, manifestUID)
 		respch <- []interface{}{err}
 
 	case dfCmdCloseStream:
@@ -442,6 +447,9 @@ func (feed *DcpFeed) handlePacket(
 func (feed *DcpFeed) handleSystemEvent(pkt *transport.MCRequest, dcpEvent *DcpEvent) {
 	extras := pkt.Extras
 	dcpEvent.Seqno = binary.BigEndian.Uint64(extras[0:8])
+	uid := binary.BigEndian.Uint64(pkt.Body[0:8]) //8 byte Manifest UID
+	uidstr := strconv.FormatUint(uid, 16)         //convert to base 16 encoded string
+	dcpEvent.ManifestUID = []byte(uidstr)
 }
 
 func (feed *DcpFeed) doDcpGetFailoverLog(
@@ -725,7 +733,8 @@ func (feed *DcpFeed) doControlRequest(opaque uint16, key string, value []byte, r
 
 func (feed *DcpFeed) doDcpRequestStream(
 	vbno, opaqueMSB uint16, flags uint32,
-	vuuid, startSequence, endSequence, snapStart, snapEnd uint64) error {
+	vuuid, startSequence, endSequence, snapStart, snapEnd uint64,
+	manifestUID string) error {
 
 	rq := &transport.MCRequest{
 		Opcode:  transport.DCP_STREAMREQ,
@@ -742,6 +751,13 @@ func (feed *DcpFeed) doDcpRequestStream(
 	binary.BigEndian.PutUint64(rq.Extras[40:48], snapEnd)
 
 	prefix := feed.logPrefix
+
+	requestValue := &StreamRequestValue{}
+	if feed.collectionAware {
+		requestValue.ManifestUID = manifestUID
+		body, _ := json.Marshal(requestValue)
+		rq.Body = body
+	}
 
 	feed.conn.SetMcdConnectionWriteDeadline()
 	defer feed.conn.ResetMcdConnectionWriteDeadline()
@@ -925,6 +941,10 @@ func vbOpaque(opq32 uint32) uint16 {
 	return uint16(opq32 & 0xFFFF)
 }
 
+type StreamRequestValue struct {
+	ManifestUID string `json:"uid,omitempty"`
+}
+
 // DcpStream is per stream data structure over an DCP Connection.
 type DcpStream struct {
 	AppOpaque        uint16
@@ -965,6 +985,8 @@ type DcpEvent struct {
 	SnapstartSeq uint64 // start sequence number of this snapshot
 	SnapendSeq   uint64 // End sequence number of the snapshot
 	SnapshotType uint32 // 0: disk 1: memory
+	// collections
+	ManifestUID []byte // For DCP_SYSTEM_EVENT
 	// failoverlog
 	FailoverLog *FailoverLog // Failover log containing vvuid and sequnce number
 	Error       error        // Error value in case of a failure

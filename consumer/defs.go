@@ -431,6 +431,7 @@ type vbucketKVBlob struct {
 	VBId                      uint16           `json:"vb_id"`
 	VBuuid                    uint64           `json:"vb_uuid"`
 	WorkerRequestedVbStream   string           `json:"worker_requested_vb_stream"`
+	ManifestUID               string           `json:"manifest_id"`
 
 	CurrentProcessedDocIDTimer   string `json:"currently_processed_doc_id_timer"`
 	LastCleanedUpDocIDTimerEvent string `json:"last_cleaned_up_doc_id_timer_event"`
@@ -473,7 +474,8 @@ type cppQueueSize struct {
 }
 
 type streamRequestInfo struct {
-	startSeqNo uint64
-	vb         uint16
-	vbBlob     *vbucketKVBlob
+	manifestUID string
+	startSeqNo  uint64
+	vb          uint16
+	vbBlob      *vbucketKVBlob
 }

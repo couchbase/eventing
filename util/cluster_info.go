@@ -759,6 +759,10 @@ func (c *ClusterInfoCache) GetCollectionID(bucket, scope, collection string) (ui
 	return c.pool.GetCollectionID(bucket, scope, collection)
 }
 
+func (c *ClusterInfoCache) GetManifestID(bucket string) (string, error) {
+	return c.pool.GetManifestID(bucket)
+}
+
 func (c *ClusterInfoCache) GetNodeCompatVersion(service string) uint32 {
 	version := (uint32)(math.MaxUint32)
 	for _, n := range c.nodes {

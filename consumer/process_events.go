@@ -294,7 +294,11 @@ func (c *Consumer) processDCPEvents() {
 					c.sendVbFilterData(e.VBucket, lastSentSeqNo, false)
 				}
 
-			case mcd.DCP_SEQNO_ADVANCED, mcd.DCP_SYSTEM_EVENT:
+			case mcd.DCP_SYSTEM_EVENT:
+				c.vbProcessingStats.updateVbStat(e.VBucket, "last_read_seq_no", e.Seqno)
+				c.vbProcessingStats.updateVbStat(e.VBucket, "manifest_id", string(e.ManifestUID))
+
+			case mcd.DCP_SEQNO_ADVANCED:
 				c.vbProcessingStats.updateVbStat(e.VBucket, "last_read_seq_no", e.Seqno)
 
 			default:
@@ -404,6 +408,11 @@ func (c *Consumer) startDcp(flogs couchbase.FailoverLog) error {
 		return nil
 	}
 
+	currentManifestUID := "0"
+	if c.dcpStreamBoundary == common.DcpFromNow {
+		currentManifestUID, _ = c.getManifestUID(c.sourceKeyspace.BucketName)
+	}
+
 	logging.Debugf("%s [%s:%s:%d] get_all_vb_seqnos: len => %d dump => %v",
 		logPrefix, c.workerName, c.tcpPort, c.Pid(), len(vbSeqnos), vbSeqnos)
 
@@ -467,6 +476,7 @@ func (c *Consumer) startDcp(flogs couchbase.FailoverLog) error {
 				Timestamp:      time.Now().String(),
 			}
 			vbBlob.OwnershipHistory = append(vbBlob.OwnershipHistory, entry)
+			vbBlob.ManifestUID = currentManifestUID
 
 			if c.dcpStreamBoundary == common.DcpFromNow {
 				vbBlob.LastSeqNoProcessed = vbSeqnos[int(vb)]
@@ -502,10 +512,12 @@ func (c *Consumer) startDcp(flogs couchbase.FailoverLog) error {
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, len(c.reqStreamCh))
 
 				c.reqStreamCh <- &streamRequestInfo{
-					vb:         vb,
-					vbBlob:     &vbBlob,
-					startSeqNo: uint64(0),
+					vb:          vb,
+					vbBlob:      &vbBlob,
+					startSeqNo:  uint64(0),
+					manifestUID: vbBlob.ManifestUID,
 				}
+				c.vbProcessingStats.updateVbStat(vb, "manifest_id", vbBlob.ManifestUID)
 				c.vbProcessingStats.updateVbStat(vb, "start_seq_no", uint64(0))
 				c.vbProcessingStats.updateVbStat(vb, "timestamp", time.Now().Format(time.RFC3339))
 
@@ -514,16 +526,22 @@ func (c *Consumer) startDcp(flogs couchbase.FailoverLog) error {
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, len(c.reqStreamCh))
 
 				c.reqStreamCh <- &streamRequestInfo{
-					vb:         vb,
-					vbBlob:     &vbBlob,
-					startSeqNo: vbSeqnos[int(vb)],
+					vb:          vb,
+					vbBlob:      &vbBlob,
+					startSeqNo:  vbSeqnos[int(vb)],
+					manifestUID: vbBlob.ManifestUID,
 				}
+				c.vbProcessingStats.updateVbStat(vb, "manifest_id", vbBlob.ManifestUID)
 				c.vbProcessingStats.updateVbStat(vb, "start_seq_no", vbSeqnos[int(vb)])
 				c.vbProcessingStats.updateVbStat(vb, "timestamp", time.Now().Format(time.RFC3339))
 			}
 		} else {
 			logging.Infof("%s [%s:%s:%d] vb: %d checkpoint blob prexisted, UUID: %s assigned worker: %s",
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, vbBlob.NodeUUID, vbBlob.AssignedWorker)
+
+			if vbBlob.ManifestUID == "" {
+				vbBlob.ManifestUID = currentManifestUID
+			}
 
 			if (vbBlob.NodeUUID == c.NodeUUID() || vbBlob.NodeUUID == "") &&
 				(vbBlob.AssignedWorker == c.ConsumerName() || vbBlob.AssignedWorker == "") {
@@ -546,34 +564,41 @@ func (c *Consumer) startDcp(flogs couchbase.FailoverLog) error {
 					switch c.dcpStreamBoundary {
 					case common.DcpEverything:
 						c.reqStreamCh <- &streamRequestInfo{
-							vb:         vb,
-							vbBlob:     &vbBlob,
-							startSeqNo: 0,
+							vb:          vb,
+							vbBlob:      &vbBlob,
+							startSeqNo:  0,
+							manifestUID: vbBlob.ManifestUID,
 						}
 						c.vbProcessingStats.updateVbStat(vb, "start_seq_no", 0)
 
 					case common.DcpFromNow:
 						c.reqStreamCh <- &streamRequestInfo{
-							vb:         vb,
-							vbBlob:     &vbBlob,
-							startSeqNo: vbSeqnos[int(vb)],
+							vb:          vb,
+							vbBlob:      &vbBlob,
+							startSeqNo:  vbSeqnos[int(vb)],
+							manifestUID: vbBlob.ManifestUID,
 						}
+						c.vbProcessingStats.updateVbStat(vb, "manifest_id", vbBlob.ManifestUID)
 						c.vbProcessingStats.updateVbStat(vb, "start_seq_no", vbSeqnos[int(vb)])
 
 					case common.DcpFromPrior:
 						c.reqStreamCh <- &streamRequestInfo{
-							vb:         vb,
-							vbBlob:     &vbBlob,
-							startSeqNo: vbBlob.LastSeqNoProcessed,
+							vb:          vb,
+							vbBlob:      &vbBlob,
+							startSeqNo:  vbBlob.LastSeqNoProcessed,
+							manifestUID: vbBlob.ManifestUID,
 						}
+						c.vbProcessingStats.updateVbStat(vb, "manifest_id", vbBlob.ManifestUID)
 						c.vbProcessingStats.updateVbStat(vb, "start_seq_no", vbBlob.LastSeqNoProcessed)
 					}
 				} else {
 					c.reqStreamCh <- &streamRequestInfo{
-						vb:         vb,
-						vbBlob:     &vbBlob,
-						startSeqNo: vbBlob.LastSeqNoProcessed,
+						vb:          vb,
+						vbBlob:      &vbBlob,
+						startSeqNo:  vbBlob.LastSeqNoProcessed,
+						manifestUID: vbBlob.ManifestUID,
 					}
+					c.vbProcessingStats.updateVbStat(vb, "manifest_id", vbBlob.ManifestUID)
 					c.vbProcessingStats.updateVbStat(vb, "start_seq_no", vbBlob.LastSeqNoProcessed)
 				}
 
@@ -751,7 +776,7 @@ func (c *Consumer) clearUpOwnershipInfoFromMeta(vb uint16) error {
 	return nil
 }
 
-func (c *Consumer) dcpRequestStreamHandle(vb uint16, vbBlob *vbucketKVBlob, start uint64) error {
+func (c *Consumer) dcpRequestStreamHandle(vb uint16, vbBlob *vbucketKVBlob, start uint64, mid string) error {
 	logPrefix := "Consumer::dcpRequestStreamHandle"
 
 	defer func() {
@@ -812,8 +837,8 @@ func (c *Consumer) dcpRequestStreamHandle(vb uint16, vbBlob *vbucketKVBlob, star
 
 	snapStart, snapEnd := start, start
 
-	logging.Infof("%s [%s:%s:%d] vb: %d DCP stream start vbKvAddr: %rs vbuuid: %d startSeq: %d snapshotStart: %d snapshotEnd: %d",
-		logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, vbKvAddr, vbBlob.VBuuid, start, snapStart, snapEnd)
+	logging.Infof("%s [%s:%s:%d] vb: %d DCP stream start vbKvAddr: %rs vbuuid: %d startSeq: %d snapshotStart: %d snapshotEnd: %d Manifest id: %s",
+		logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, vbKvAddr, vbBlob.VBuuid, start, snapStart, snapEnd, mid)
 
 	if c.dcpFeedsClosed {
 		return errDcpFeedsClosed
@@ -837,7 +862,7 @@ func (c *Consumer) dcpRequestStreamHandle(vb uint16, vbBlob *vbucketKVBlob, star
 	}
 
 	c.dcpStreamReqCounter++
-	err = dcpFeed.DcpRequestStream(vb, opaque, flags, vbBlob.VBuuid, start, end, snapStart, snapEnd)
+	err = dcpFeed.DcpRequestStream(vb, opaque, flags, vbBlob.VBuuid, start, end, snapStart, snapEnd, mid)
 	if err != nil {
 		c.dcpStreamReqErrCounter++
 		logging.Errorf("%s [%s:%s:%d] vb: %d STREAMREQ call failed on dcpFeed: %v, err: %v",
@@ -946,6 +971,10 @@ func (c *Consumer) handleFailoverLog() {
 					return
 				}
 
+				if vbBlob.ManifestUID == "" {
+					vbBlob.ManifestUID = "0"
+				}
+
 				err = util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), c.retryCount, getKvNodesFromVbMap, c)
 				if err == common.ErrRetryTimeout {
 					logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
@@ -1007,9 +1036,10 @@ func (c *Consumer) handleFailoverLog() {
 					// maintain that information
 					c.sendVbFilterData(vbFlog.vb, vbFlog.seqNo, true)
 					streamInfo := &streamRequestInfo{
-						vb:         vbFlog.vb,
-						vbBlob:     &vbBlob,
-						startSeqNo: vbFlog.seqNo,
+						vb:          vbFlog.vb,
+						vbBlob:      &vbBlob,
+						startSeqNo:  vbFlog.seqNo,
+						manifestUID: vbBlob.ManifestUID,
 					}
 
 					select {
@@ -1052,15 +1082,17 @@ func (c *Consumer) handleFailoverLog() {
 					logging.Infof("%s [%s:%s:%d] vb: %d Sending streamRequestInfo size: %d",
 						logPrefix, c.workerName, c.tcpPort, c.Pid(), vbFlog.vb, len(c.reqStreamCh))
 					streamInfo := &streamRequestInfo{
-						vb:         vbFlog.vb,
-						vbBlob:     &vbBlob,
-						startSeqNo: vbBlob.LastSeqNoProcessed,
+						vb:          vbFlog.vb,
+						vbBlob:      &vbBlob,
+						startSeqNo:  vbBlob.LastSeqNoProcessed,
+						manifestUID: vbBlob.ManifestUID,
 					}
 					select {
 					case c.reqStreamCh <- streamInfo:
 					case <-c.stopConsumerCh:
 						return
 					}
+					c.vbProcessingStats.updateVbStat(vbFlog.vb, "manifest_id", vbBlob.ManifestUID)
 					c.vbProcessingStats.updateVbStat(vbFlog.vb, "start_seq_no", vbBlob.LastSeqNoProcessed)
 					c.vbProcessingStats.updateVbStat(vbFlog.vb, "timestamp", time.Now().Format(time.RFC3339))
 				}
@@ -1195,7 +1227,7 @@ func (c *Consumer) processReqStreamMessages() {
 			go func(msg *streamRequestInfo, c *Consumer, logPrefix string, streamReqWG *sync.WaitGroup) {
 				defer streamReqWG.Done()
 
-				err := c.dcpRequestStreamHandle(msg.vb, msg.vbBlob, msg.startSeqNo)
+				err := c.dcpRequestStreamHandle(msg.vb, msg.vbBlob, msg.startSeqNo, msg.manifestUID)
 				if err == common.ErrRetryTimeout {
 					logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 					return

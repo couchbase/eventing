@@ -135,6 +135,7 @@ func (c *Consumer) updateCheckpointInfo(vbKey string, vb uint16, vbBlob *vbucket
 	vbBlob.NextDocIDTimerToProcess = c.vbProcessingStats.getVbStat(vb, "next_doc_id_timer_to_process").(string)
 	vbBlob.NextCronTimerToProcess = c.vbProcessingStats.getVbStat(vb, "next_cron_timer_to_process").(string)
 	vbBlob.VBuuid = c.vbProcessingStats.getVbStat(vb, "vb_uuid").(uint64)
+	vbBlob.ManifestUID = c.vbProcessingStats.getVbStat(vb, "manifest_id").(string)
 
 	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, periodicCheckpointCallback,
 		c, c.producer.AddMetadataPrefix(vbKey), vbBlob)

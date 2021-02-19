@@ -26,6 +26,7 @@ func newVbProcessingStats(appName string, numVbuckets uint16, uuid, workerName s
 		vbsts[i].stats["last_doc_timer_feedback_seqno"] = uint64(0)
 		vbsts[i].stats["last_processed_seq_no"] = uint64(0)
 		vbsts[i].stats["last_sent_seq_no"] = uint64(0)
+		vbsts[i].stats["manifest_id"] = "0"
 
 		vbsts[i].stats["currently_processed_doc_id_timer"] = time.Now().UTC().Format(time.RFC3339)
 		vbsts[i].stats["last_cleaned_up_doc_id_timer_event"] = time.Now().UTC().Format(time.RFC3339)

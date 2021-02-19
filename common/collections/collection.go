@@ -43,6 +43,10 @@ func (cm *CollectionManifest) GetCollectionID(scope, collection string) (uint32,
 	return 0, SCOPE_NOT_FOUND
 }
 
+func (cm *CollectionManifest) GetManifestId() string {
+	return cm.UID
+}
+
 // Decodes the encoded value according to LEB128 uint32 scheme
 // Returns the decoded key as byte stream, collectionID as uint32 value
 func LEB128Dec(data []byte) ([]byte, uint32) {
