@@ -22,16 +22,15 @@
       <div class="formrow">
         Feed boundary:
         <span class="fa-stack icon-info"
-          uib-tooltip="The preferred Deployment time Feed Boundary for the function can be changed under the settings."
+          uib-tooltip="The preferred Deployment time Feed Boundary for the function can be changed under the function level settings."
           tooltip-placement="right">
           <span class="icon fa-circle-thin fa-stack-2x"></span>
           <span class="icon fa-info fa-stack-1x"></span>
         </span>
         <br>
-        <select ng-model="settings.changeFeedBoundary" disabled>
-          <option value="everything">Everything</option>
-          <option value="from_now">From now</option>
-        </select>
+        <!-- TODO: replace the below input text with a READ ONLY UI element after UI team designs one -->
+        <input class="input-short-1" style="width: 30%; margin-top: 0.5em;" type="text" ng-model="settings.changeFeedBoundary == 'from_now'?'From now':'Everything'" disabled>
+        </input>
       </div>
     </div>
     <!--Pause action-->
