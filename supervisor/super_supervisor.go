@@ -345,6 +345,15 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 					delete(s.pausingApps, appName)
 					s.appListRWMutex.Unlock()
 					logging.Infof("%s [%d] Function: %s pausing done", logPrefix, s.runningFnsCount(), appName)
+				} else {
+					// This can happen if eventing producer crashed and respawned
+					// Spawning of the producer happens lazily when user deploy this function
+					s.appRWMutex.Lock()
+					s.appDeploymentStatus[appName] = deploymentStatus
+					s.appProcessingStatus[appName] = processingStatus
+					s.appRWMutex.Unlock()
+					s.addToDeployedApps(appName)
+					s.addToLocallyDeployedApps(appName)
 				}
 			}
 
