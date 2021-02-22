@@ -138,7 +138,7 @@
           ng-init="appModel.settings.dcp_stream_boundary = appModel.settings.dcp_stream_boundary ?
             ( appModel.settings.dcp_stream_boundary === 'from_prior' ? 'everything' : appModel.settings.dcp_stream_boundary ) : 'everything'"
           ng-model="appModel.settings.dcp_stream_boundary"
-          ng-disabled="!(appModel.status == 'undeployed')">
+          ng-disabled="!(appModel.status == 'undeployed') && !formCtrl.isDialog">
           <option value="everything">Everything</option>
           <option value="from_now">From now</option>
         </select>
