@@ -45,7 +45,7 @@ enum v8_worker_opcode {
   V8_Worker_Opcode_Unknown
 };
 
-enum dcp_opcode { oDelete, oMutation, DCP_Opcode_Unknown };
+enum dcp_opcode { oDelete, oMutation, oNoOp, DCP_Opcode_Unknown };
 
 enum filter_opcode { oVbFilter, oProcessedSeqNo, Filter_Opcode_Unknown };
 

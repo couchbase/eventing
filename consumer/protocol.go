@@ -64,6 +64,7 @@ const (
 	dcpOpcode int8 = iota
 	dcpDeletion
 	dcpMutation
+	dcpNoOp
 )
 
 const (
@@ -119,16 +120,16 @@ type message struct {
 	Payload []byte
 }
 
-func (c *Consumer) makeTimerEventHeader(partition int16) ([]byte, *flatbuffers.Builder) {
-	return c.makeHeader(timerEvent, timer, partition, "")
-}
-
 func (c *Consumer) makeDcpMutationHeader(partition int16, mutationMeta string) ([]byte, *flatbuffers.Builder) {
 	return c.makeDcpHeader(dcpMutation, partition, mutationMeta)
 }
 
 func (c *Consumer) makeDcpDeletionHeader(partition int16, deletionMeta string) ([]byte, *flatbuffers.Builder) {
 	return c.makeDcpHeader(dcpDeletion, partition, deletionMeta)
+}
+
+func (c *Consumer) makeDcpNoOpHeader(partition int16, meta string) ([]byte, *flatbuffers.Builder) {
+	return c.makeDcpHeader(dcpNoOp, partition, meta)
 }
 
 func (c *Consumer) makeDcpHeader(opcode int8, partition int16, meta string) ([]byte, *flatbuffers.Builder) {

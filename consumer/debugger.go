@@ -278,8 +278,8 @@ func (c *Consumer) startDebugger(e *cb.DcpEvent, instance common.DebuggerInstanc
 
 	c.sendLogLevel(c.logLevel, true)
 
-	partitions := make([]uint16, cppWorkerPartitionCount)
-	for i := 0; i < int(cppWorkerPartitionCount); i++ {
+	partitions := make([]uint16, c.numVbuckets)
+	for i := 0; i < int(c.numVbuckets); i++ {
 		partitions[i] = uint16(i)
 	}
 	thrPartitionMap := util.VbucketDistribution(partitions, 1)

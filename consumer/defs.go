@@ -38,15 +38,14 @@ const (
 )
 
 const (
-	udsSockPathLimit = 100
+	udsSockPathLimit     = 100
+	noOpMsgSendThreshold = 200
 
 	// To decode messages from c++ world to Go
 	headerFragmentSize = 4
 
 	// ClusterChangeNotifChBufSize limits buffer size for cluster change notif from producer
 	ClusterChangeNotifChBufSize = 10
-
-	cppWorkerPartitionCount = 1024
 
 	// Interval for retrying failed bucket operations using go-couchbase
 	bucketOpRetryInterval = time.Duration(1000) * time.Millisecond
@@ -200,6 +199,7 @@ type Consumer struct {
 	stoppingConsumer              bool
 	isPausing                     bool
 	superSup                      common.EventingSuperSup
+	allowTransactionMutations     bool
 	timerContextSize              int64
 	vbDcpEventsRemaining          map[int]int64 // Access controlled by statsRWMutex
 	vbDcpFeedMap                  map[uint16]*couchbase.DcpFeed
@@ -430,6 +430,7 @@ type vbucketKVBlob struct {
 	VBId                      uint16           `json:"vb_id"`
 	VBuuid                    uint64           `json:"vb_uuid"`
 	WorkerRequestedVbStream   string           `json:"worker_requested_vb_stream"`
+	ManifestUID               string           `json:"manifest_id"`
 
 	CurrentProcessedDocIDTimer   string `json:"currently_processed_doc_id_timer"`
 	LastCleanedUpDocIDTimerEvent string `json:"last_cleaned_up_doc_id_timer_event"`
@@ -472,7 +473,8 @@ type cppQueueSize struct {
 }
 
 type streamRequestInfo struct {
-	startSeqNo uint64
-	vb         uint16
-	vbBlob     *vbucketKVBlob
+	manifestUID string
+	startSeqNo  uint64
+	vb          uint16
+	vbBlob      *vbucketKVBlob
 }

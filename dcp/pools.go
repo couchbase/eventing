@@ -692,6 +692,17 @@ func (p *Pool) GetCollectionID(bucket, scope, collection string) (uint32, error)
 	return 0, nil
 }
 
+func (p *Pool) GetManifestID(bucket string) (string, error) {
+	version := p.GetClusterCompatVersion()
+	if version >= collections.COLLECTION_SUPPORTED_VERSION {
+		if manifest, ok := p.Manifest[bucket]; ok {
+			return manifest.GetManifestId(), nil
+		}
+		return "0", collections.COLLECTION_ID_NIL
+	}
+	return "0", nil
+}
+
 func (p *Pool) GetClusterCompatVersion() uint32 {
 	version := (uint32)(math.MaxUint32)
 	for _, n := range p.Nodes {

@@ -72,6 +72,7 @@ std::string GetExecutionStats(const std::map<int16_t, V8Worker *> &workers) {
   estats["on_update_failure"] = on_update_failure.load();
   estats["on_delete_success"] = on_delete_success.load();
   estats["on_delete_failure"] = on_delete_failure.load();
+  estats["no_op_counter"] = no_op_counter.load();
   estats["timer_callback_success"] = timer_callback_success.load();
   estats["timer_callback_failure"] = timer_callback_failure.load();
   estats["timer_create_failure"] = timer_create_failure.load();
@@ -663,10 +664,6 @@ void AppWorker::RouteMessageWithResponse(
     }
     break;
   case eDCP:
-    payload = flatbuf::payload::GetPayload(
-        (const void *)worker_msg->payload.payload.c_str());
-    val.assign(payload->value()->str());
-
     switch (getDCPOpcode(worker_msg->header.opcode)) {
     case oDelete:
       worker_index = partition_thr_map_[worker_msg->header.partition];
@@ -688,6 +685,12 @@ void AppWorker::RouteMessageWithResponse(
         LOG(logError) << "Mutation event lost: worker " << worker_index
                       << " is null" << std::endl;
         ++mutation_events_lost;
+      }
+      break;
+    case oNoOp:
+      worker_index = partition_thr_map_[worker_msg->header.partition];
+      if (workers_[worker_index] != nullptr) {
+        workers_[worker_index]->PushBack(std::move(worker_msg));
       }
       break;
     default:
@@ -1224,12 +1227,14 @@ std::string AppWorker::GetInsight() {
 
 bool AppWorker::shouldNotLogExceptionSummaryYet() {
 
-  static std::chrono::steady_clock::time_point previous_time = std::chrono::steady_clock::now();
+  static std::chrono::steady_clock::time_point previous_time =
+      std::chrono::steady_clock::now();
   static std::chrono::steady_clock::time_point current_time;
 
   current_time = std::chrono::steady_clock::now();
 
-  bool needNotLogExceptionSummaryYet = (current_time - previous_time) < std::chrono::seconds{60};
+  bool needNotLogExceptionSummaryYet =
+      (current_time - previous_time) < std::chrono::seconds{60};
 
   if (needNotLogExceptionSummaryYet) {
 

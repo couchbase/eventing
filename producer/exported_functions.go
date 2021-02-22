@@ -768,7 +768,7 @@ func (p *Producer) cleanupMetadataImpl(id int, vbsToCleanup []uint16, undeployWG
 			logPrefix, p.appName, p.LenRunningConsumers(), id, vb)
 
 		opaque := uint16(vb)
-		err := dcpFeed.DcpRequestStream(vb, opaque, flags, vbuuid, start, end, snapStart, snapEnd)
+		err := dcpFeed.DcpRequestStream(vb, opaque, flags, vbuuid, start, end, snapStart, snapEnd, "0")
 		if err != nil {
 			logging.Errorf("%s [%s:%d:id_%d] vb: %d failed to request stream",
 				logPrefix, p.appName, p.LenRunningConsumers(), id, vb)

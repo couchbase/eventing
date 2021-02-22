@@ -335,6 +335,7 @@ var periodicCheckpointCallback = func(args ...interface{}) error {
 	mutateIn = append(mutateIn, gocb.UpsertSpec("next_doc_id_timer_to_process", vbBlob.NextDocIDTimerToProcess, upsertOptions))
 	mutateIn = append(mutateIn, gocb.UpsertSpec("last_doc_timer_feedback_seqno", vbBlob.LastDocTimerFeedbackSeqNo, upsertOptions))
 	mutateIn = append(mutateIn, gocb.UpsertSpec("last_processed_seq_no", vbBlob.LastSeqNoProcessed, upsertOptions))
+	mutateIn = append(mutateIn, gocb.UpsertSpec("manifest_id", vbBlob.ManifestUID, upsertOptions))
 	mutateIn = append(mutateIn, gocb.UpsertSpec("vb_uuid", vbBlob.VBuuid, upsertOptions))
 
 	_, err := c.gocbMetaHandle.MutateIn(vbKey.Raw(), mutateIn, nil)
@@ -398,6 +399,7 @@ retryUpdateCheckpoint:
 	mutateIn = append(mutateIn, gocb.UpsertSpec("previous_vb_owner", vbBlob.PreviousVBOwner, upsertOptions))
 	mutateIn = append(mutateIn, gocb.UpsertSpec("worker_requested_vb_stream", "", upsertOptions))
 	mutateIn = append(mutateIn, gocb.UpsertSpec("last_processed_seq_no", vbBlob.LastSeqNoProcessed, upsertOptions))
+	mutateIn = append(mutateIn, gocb.UpsertSpec("manifest_id", vbBlob.ManifestUID, upsertOptions))
 	_, err := c.gocbMetaHandle.MutateIn(vbKey.Raw(), mutateIn, nil)
 
 	if errors.Is(err, gocb.ErrDocumentNotFound) {
