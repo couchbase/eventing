@@ -1,20 +1,22 @@
 function OnUpdate(doc, meta) {
-    const lcbConnPoolSize = 5;
-    let count = 0;
-
     try {
-        for (let i = 0; i < lcbConnPoolSize + 10; ++i) {
-            let query = SELECT * FROM default;
-            for (let row of query) {
-                ++count;
-                break;
-            }
-        }
+        let query1 = SELECT * FROM default;
+        let query2 = SELECT * FROM default;
+        let query3 = SELECT * FROM default;
+        let query4 = SELECT * FROM default;
+        let query5 = SELECT * FROM default;
+        let query6 = SELECT * FROM default;
+        let query7 = SELECT * FROM default;
+        let query8 = SELECT * FROM default;
+        let query9 = SELECT * FROM default;
+        let query10 = SELECT * FROM default;
+        let query11 = SELECT * FROM default;
     } catch (e) {
-        if (e.message === 'Connection pool maximum capacity reached' && count === lcbConnPoolSize) {
-            dst_bucket[meta.id] = 'yes';
+        if (e.message === 'Connection pool maximum capacity reached') {
+            dst_bucket[meta.id] = 'Success';
+            log(e)
         } else {
-            log (e, count);
+            log(e)
         }
     }
 }
