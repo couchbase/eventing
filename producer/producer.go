@@ -130,7 +130,7 @@ func (p *Producer) Serve() {
 	}
 	p.seqsNoProcessedRWMutex.Unlock()
 
-	go p.pollForDeletedVbs()
+	//go p.pollForDeletedVbs()
 
 	p.appLogWriter, err = openAppLog(p.appLogPath, 0640, p.appLogMaxSize, p.appLogMaxFiles)
 	if err != nil {

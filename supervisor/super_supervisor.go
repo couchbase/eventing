@@ -230,26 +230,26 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 
 			switch processingStatus {
 			case true:
-				sourceNodeCount, metaNodeCount, err := s.getSourceAndMetaBucketNodeCount(appName)
-				if err != nil {
-					logging.Errorf("%s [%d] getSourceAndMetaBucketNodeCount failed for Function: %s  runningProducer: %v",
-						logPrefix, s.runningFnsCount(), appName, s.runningFns()[appName])
-					return nil
-				}
-				if sourceNodeCount < 1 || metaNodeCount < 1 {
-					util.Retry(util.NewExponentialBackoff(), &s.retryCount, undeployFunctionCallback, s, appName)
-					s.appRWMutex.Lock()
-					s.appDeploymentStatus[appName] = false
-					s.appProcessingStatus[appName] = false
-					s.appRWMutex.Unlock()
-					logging.Errorf("%s [%d] Source bucket or metadata bucket is deleted, Function: %s is undeployed",
-						logPrefix, s.runningFnsCount(), appName)
-					return nil
-				}
 				logging.Infof("%s [%d] Function: %s begin deployment process", logPrefix, s.runningFnsCount(), appName)
 				state := s.GetAppState(appName)
 
 				if state == common.AppStateUndeployed || state == common.AppStatePaused {
+					sourceNodeCount, metaNodeCount, err := s.getSourceAndMetaBucketNodeCount(appName)
+					if err != nil {
+						logging.Errorf("%s [%d] getSourceAndMetaBucketNodeCount failed for Function: %s  runningProducer: %v",
+							logPrefix, s.runningFnsCount(), appName, s.runningFns()[appName])
+						return nil
+					}
+					if sourceNodeCount < 1 || metaNodeCount < 1 {
+						util.Retry(util.NewExponentialBackoff(), &s.retryCount, undeployFunctionCallback, s, appName)
+						s.appRWMutex.Lock()
+						s.appDeploymentStatus[appName] = false
+						s.appProcessingStatus[appName] = false
+						s.appRWMutex.Unlock()
+						logging.Errorf("%s [%d] Source bucket or metadata bucket is deleted, Function: %s is undeployed",
+							logPrefix, s.runningFnsCount(), appName)
+						return nil
+					}
 
 					s.appListRWMutex.Lock()
 					if _, ok := s.bootstrappingApps[appName]; ok {
@@ -271,11 +271,6 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 					resumed := false
 					if state == common.AppStatePaused {
 						if p, ok := s.runningFns()[appName]; ok {
-							err = s.WatchBucket(p.SourceBucket(), appName)
-							if err != nil {
-								return err
-							}
-
 							p.ResumeProducer()
 							p.NotifySupervisor()
 							resumed = true
@@ -342,7 +337,6 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 
 						p.PauseProducer()
 						p.NotifySupervisor()
-						s.UnwatchBucket(p.SourceBucket(), appName)
 						logging.Infof("%s [%d] Function: %s Cleaned up running Eventing.Producer instance", logPrefix, s.runningFnsCount(), appName)
 
 					}
@@ -470,16 +464,16 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(path string, value []byte,
 			logging.Infof("%s [%d] Function: %s deployment_status: %t processing_status: %t runningProducer: %v",
 				logPrefix, s.runningFnsCount(), appName, deploymentStatus, processingStatus, s.runningFns()[appName])
 
-			sourceNodeCount, metaNodeCount, err := s.getSourceAndMetaBucketNodeCount(appName)
-			if err != nil {
-				logging.Errorf("%s [%d] getSourceAndMetaBucketNodeCount failed for Function: %s  runningProducer: %v",
-					logPrefix, s.runningFnsCount(), appName, s.runningFns()[appName])
-				continue
-			}
-
 			if _, ok := s.runningFns()[appName]; !ok {
 
 				if deploymentStatus && processingStatus {
+					sourceNodeCount, metaNodeCount, err := s.getSourceAndMetaBucketNodeCount(appName)
+					if err != nil {
+						logging.Errorf("%s [%d] getSourceAndMetaBucketNodeCount failed for Function: %s  runningProducer: %v",
+							logPrefix, s.runningFnsCount(), appName, s.runningFns()[appName])
+						continue
+					}
+
 					if sourceNodeCount < 1 || metaNodeCount < 1 {
 						util.Retry(util.NewExponentialBackoff(), &s.retryCount, undeployFunctionCallback, s, appName)
 						logging.Errorf("%s [%d] Source bucket or metadata bucket is deleted, Function: %s is undeployed",

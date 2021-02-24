@@ -1,6 +1,7 @@
 package supervisor
 
 import (
+	"errors"
 	"sync"
 	"time"
 
@@ -44,6 +45,8 @@ const (
 
 //TODO: move it to common package
 const bucketOpRetryInterval = time.Duration(1000) * time.Millisecond
+
+var NoBucket = errors.New("Bucket not found")
 
 const (
 	supCmdType int8 = iota

@@ -659,7 +659,7 @@ func FetchClusterInfoClient(clusterURL string) (c *ClusterInfoClient, err error)
 		}
 
 		config := getConfig()
-		cicSingleton.servicesNotifierRetryTm = 6000
+		cicSingleton.servicesNotifierRetryTm = 5
 		if tm, ok := config["service_notifier_timeout"]; ok {
 			retryTm, tOk := tm.(float64)
 			if tOk {
