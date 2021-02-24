@@ -414,6 +414,9 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(path string, value []byte,
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if value != nil {
+		s.serviceMgr.OptimiseLoadingCIC(false)
+		s.bucketRefresh(nil)
+
 		if string(value) == stopRebalance {
 			topologyChangeMsg.CType = common.StopRebalanceCType
 		} else if string(value) == startFailover {
@@ -543,6 +546,10 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(path string, value []byte,
 				}
 			}
 		}
+	} else {
+		// Empty value means no rebalance. We clear out the value from topologyChange when rebalance completes
+		// Need to think about it in mixed mode cluster
+		s.serviceMgr.OptimiseLoadingCIC(true)
 	}
 
 	return nil
@@ -760,6 +767,7 @@ func (s *SuperSupervisor) NotifyPrepareTopologyChange(ejectNodes, keepNodes []st
 		s.keepNodes = keepNodes
 	}
 
+	s.bucketRefresh(nil)
 	for _, eventingProducer := range s.runningFns() {
 		logging.Infof("%s [%d] Updating producer %p, keepNodes => %v", logPrefix, s.runningFnsCount(), eventingProducer, keepNodes)
 		eventingProducer.NotifyPrepareTopologyChange(s.ejectNodes, s.keepNodes, changeType)

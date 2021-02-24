@@ -329,6 +329,7 @@ type EventingServiceMgr interface {
 	ResetFailoverStatus()
 	GetFailoverStatus() (failoverNotifTs int64, changeId string)
 	CheckLifeCycleOpsDuringRebalance() bool
+	OptimiseLoadingCIC(bool) error
 }
 
 type Config map[string]interface{}
