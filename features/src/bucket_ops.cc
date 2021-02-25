@@ -41,7 +41,6 @@ BucketOps::BucketOps(v8::Isolate *isolate,
   success_str_ = "success";
   json_str_ = "json";
   binary_str_ = "binary";
-  error_str_ = "error";
   invalid_counter_str_ = "not_number";
 }
 
@@ -191,16 +190,17 @@ Info BucketOps::SetMetaObject(std::unique_ptr<Result> const &result,
     }
   }
 
-  auto datatype = json_str_;
-  if (!(result->datatype & JSON_DOC)) {
-    datatype = binary_str_;
-  }
-
-  if (!TO(meta_obj->Set(context, v8Str(isolate_, data_type_str_),
-                        v8Str(isolate_, datatype)),
-          &success) ||
-      !success) {
-    return {true, "Unable to set datatype value in metaObject"};
+  if (!(result->datatype & UNKNOWN_TYPE)) {
+    auto datatype = json_str_;
+    if (!(result->datatype & JSON_DOC)) {
+      datatype = binary_str_;
+    }
+    if (!TO(meta_obj->Set(context, v8Str(isolate_, data_type_str_),
+                          v8Str(isolate_, datatype)),
+            &success) ||
+        !success) {
+      return {true, "Unable to set datatype value in metaObject"};
+    }
   }
 
   if (!TO(response_obj->Set(context, v8Str(isolate_, meta_str_), meta_obj),
@@ -752,7 +752,6 @@ void BucketOps::InsertOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
   result->key = meta.key;
   result->exptime = meta.expiry;
-  result->datatype = GetDataType(args[2]);
 
   info = bucket_ops->ResponseSuccessObject(std::move(result), response_obj);
   if (info.is_fatal) {
@@ -872,7 +871,6 @@ void BucketOps::ReplaceOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
   result->key = meta.key;
   result->exptime = meta.expiry;
-  result->datatype = GetDataType(args[2]);
 
   info = bucket_ops->ResponseSuccessObject(std::move(result), response_obj);
   if (info.is_fatal) {
@@ -960,7 +958,6 @@ void BucketOps::UpsertOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
   result->key = meta.key;
   result->exptime = meta.expiry;
-  result->datatype = GetDataType(args[2]);
 
   info = bucket_ops->ResponseSuccessObject(std::move(result), response_obj);
   if (info.is_fatal) {

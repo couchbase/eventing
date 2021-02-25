@@ -820,10 +820,3 @@ int64_t GetUnixTime() {
   auto secs = static_cast<std::chrono::seconds>(t).count();
   return static_cast<int64_t>(secs);
 }
-
-uint8_t GetDataType(const v8::Local<v8::Value> &value) {
-  if (value->IsArrayBuffer()) {
-    return BINARY_DOC;
-  }
-  return JSON_DOC;
-}

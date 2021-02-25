@@ -17,20 +17,21 @@
 #include <string>
 #include <thread>
 
+const uint8_t BINARY_DOC = 0;
+const uint8_t JSON_DOC = 1;
+const uint8_t XATTR_DOC = 4;
+const uint8_t UNKNOWN_TYPE = 8;
+
 struct Result {
   std::string key;
   uint64_t cas{0};
   lcb_STATUS rc{LCB_SUCCESS};
-  uint8_t datatype{0};
+  uint8_t datatype{UNKNOWN_TYPE};
   std::string value;
   uint32_t exptime{0};
   int64_t subdoc_counter{0};
   uint64_t counter{0};
 };
-
-const uint8_t BINARY_DOC = 0;
-const uint8_t JSON_DOC = 1;
-const uint8_t XATTR_DOC = 4;
 
 constexpr int def_lcb_retry_count = 6;
 constexpr int def_lcb_retry_timeout = 0;
