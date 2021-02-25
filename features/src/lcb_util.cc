@@ -156,6 +156,8 @@ void SubDocumentLookupCallback(lcb_t instance, int cbtype, const lcb_RESPBASE *r
       } else if(index == 1) {
         // 0x00: raw, 0x01 json, 0x05: jsonXattr, 0x04: rawXattr
         auto json = nlohmann::json::parse(reinterpret_cast<const char *>(resp_item.value));
+        // Default it to binary doc
+        result->datatype = BINARY_DOC;
         auto values = json.get<std::vector<std::string>>();
         for (const auto &type : values) {
           if (type == "json") {

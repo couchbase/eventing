@@ -429,11 +429,14 @@ func (c *Consumer) sendDcpEvent(e *memcached.DcpEvent, sendToDebugger bool) {
 	}
 
 	isBinary := e.Datatype == dcpDatatypeBinary || e.Datatype == dcpDatatypeBinXattr
-	if isBinary {
-		m.Type = "binary"
-	} else {
-		m.Type = "json"
+	if e.Opcode == mcd.DCP_MUTATION {
+		if isBinary {
+			m.Type = "binary"
+		} else {
+			m.Type = "json"
+		}
 	}
+
 	metadata, err := json.Marshal(&m)
 
 	if err != nil {
