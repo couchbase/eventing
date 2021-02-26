@@ -2,6 +2,7 @@ package servicemanager
 
 import (
 	"bytes"
+	"net"
 	"os"
 	"time"
 
@@ -100,6 +101,13 @@ func (m *ServiceMgr) GetCurrentTopology(rev service.Revision, cancel service.Can
 // PrepareTopologyChange callback for cbauth service.Manager
 func (m *ServiceMgr) PrepareTopologyChange(change service.TopologyChange) error {
 	logPrefix := "ServiceMgr::PrepareTopologyChange"
+
+	err := m.OptimiseLoadingCIC(false)
+	if err != nil {
+		logging.Errorf("%s failed: %v", logPrefix, err)
+		return err
+	}
+	defer m.OptimiseLoadingCIC(true)
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -212,5 +220,15 @@ func (m *ServiceMgr) StartTopologyChange(change service.TopologyChange) error {
 		return service.ErrNotSupported
 	}
 
+	return nil
+}
+
+func (m *ServiceMgr) OptimiseLoadingCIC(optimise bool) error {
+	hostaddress := net.JoinHostPort(util.Localhost(), m.restPort)
+	cic, err := util.FetchClusterInfoClient(hostaddress)
+	if err != nil {
+		return err
+	}
+	cic.OptimiseCICFetch(optimise)
 	return nil
 }

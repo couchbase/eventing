@@ -305,6 +305,7 @@ type EventingServiceMgr interface {
 	UpdateBucketGraphFromMetakv(functionName string) error
 	ResetFailoverStatus()
 	GetFailoverStatus() (failoverNotifTs int64, changeId string)
+	OptimiseLoadingCIC(bool) error
 }
 
 type Config map[string]interface{}

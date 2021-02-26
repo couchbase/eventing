@@ -623,7 +623,7 @@ loop:
 	return nil
 }
 
-func (p *Pool) refresh() (err error) {
+func (p *Pool) Refresh() (err error) {
 	bucketMap := make(map[string]Bucket)
 
 loop:
@@ -670,6 +670,26 @@ func (p *Pool) GetBucketURLVersionHash() (string, error) {
 	return m["v"][0], nil
 }
 
+func (c *Client) CallPoolURI(name string) (p Pool, err error) {
+	var poolURI string
+	for _, p := range c.Info.Pools {
+		if p.Name == name {
+			poolURI = p.URI
+			break
+		}
+	}
+	if poolURI == "" {
+		return p, errors.New("No pool named " + name)
+	}
+
+	if err = c.parseURLResponse(poolURI, &p); err != nil {
+		return
+	}
+
+	p.client = *c
+	return
+}
+
 // GetPool gets a pool from within the couchbase cluster (usually
 // "default").
 func (c *Client) GetPool(name string) (p Pool, err error) {
@@ -687,7 +707,7 @@ func (c *Client) GetPool(name string) (p Pool, err error) {
 
 	p.client = *c
 
-	err = p.refresh()
+	err = p.Refresh()
 	return
 }
 

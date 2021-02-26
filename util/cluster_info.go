@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/couchbase/eventing/common"
@@ -67,11 +68,12 @@ type ClusterInfoCache struct {
 }
 
 type ClusterInfoClient struct {
-	cinfo                   *ClusterInfoCache
-	clusterURL              string
-	pool                    string
-	servicesNotifierRetryTm uint
-	finch                   chan bool
+	cinfo                              *ClusterInfoCache
+	clusterURL                         string
+	pool                               string
+	servicesNotifierRetryTm            uint
+	finch                              chan bool
+	fetchBucketInfoOnURIHashChangeOnly int32
 }
 
 type NodeId int
@@ -93,7 +95,7 @@ func FetchNewClusterInfoCache(clusterUrl string) (*ClusterInfoCache, error) {
 		c.SetServicePorts(ServiceAddrMap)
 	}
 
-	if err := c.Fetch(); err != nil {
+	if err := c.Fetch(false); err != nil {
 		return nil, err
 	}
 
@@ -119,7 +121,7 @@ func (c *ClusterInfoCache) SetServicePorts(portMap map[string]string) {
 
 }
 
-func (c *ClusterInfoCache) Fetch() error {
+func (c *ClusterInfoCache) Fetch(optimise bool) error {
 
 	fn := func(r int, err error) error {
 		if r > 0 {
@@ -134,48 +136,23 @@ func (c *ClusterInfoCache) Fetch() error {
 			return err
 		}
 
-		c.pool, err = c.client.GetPool(c.poolName)
-		if err != nil {
-			return err
-		}
-
-		var nodes []couchbase.Node
-		var failedNodes []couchbase.Node
-		var addNodes []couchbase.Node
-		version := uint32(math.MaxUint32)
-		minorVersion := uint32(math.MaxUint32)
-		for _, n := range c.pool.Nodes {
-			logging.Tracef("Examining node %+v", n)
-			if n.ClusterMembership == "active" {
-				nodes = append(nodes, n)
-			} else if n.ClusterMembership == "inactiveFailed" {
-				// node being failed over
-				failedNodes = append(failedNodes, n)
-			} else if n.ClusterMembership == "inactiveAdded" {
-				// node being added (but not yet rebalanced in)
-				addNodes = append(addNodes, n)
-			} else {
-				logging.Warnf("ClusterInfoCache: unrecognized node membership %v", n.ClusterMembership)
+		if optimise {
+			np, err := c.client.CallPoolURI(c.poolName)
+			if err != nil {
+				return err
 			}
 
-			// Find the minimum cluster compatibility
-			v := uint32(n.ClusterCompatibility / 65536)
-			minorv := uint32(n.ClusterCompatibility) - (v * 65536)
-			if v < version || (v == version && minorv < minorVersion) {
-				version = v
-				minorVersion = minorv
-				logging.Tracef("Lowering version to %v.%v due to node %+v", version, minorVersion, n)
+			err = c.updatePool(&np)
+			if err != nil {
+				return err
+			}
+		} else {
+			c.pool, err = c.client.GetPool(c.poolName)
+			if err != nil {
+				return err
 			}
 		}
-		c.nodes = nodes
-		c.failedNodes = failedNodes
-		c.addNodes = addNodes
-
-		c.version = version
-		c.minorVersion = minorVersion
-		if c.version == math.MaxUint32 {
-			c.version = 0
-		}
+		c.updateNodesData()
 
 		found := false
 		for _, node := range c.nodes {
@@ -643,18 +620,86 @@ func (c *ClusterInfoCache) getStaticServicePort(srvc string) (string, error) {
 
 }
 
-func (c *ClusterInfoCache) FetchWithLock() error {
+// updatePool will fetch bucket info if the verion hash in bucketURL changes
+// else it will copy it from existing pool avoiding REST Calls to ns-server.
+func (c *ClusterInfoCache) updatePool(np *couchbase.Pool) (err error) {
+	ovh, err := c.pool.GetBucketURLVersionHash()
+	if err != nil {
+		return err
+	}
+
+	nvh, err := np.GetBucketURLVersionHash()
+	if err != nil {
+		return err
+	}
+
+	if ovh != nvh {
+		err = np.Refresh()
+		if err != nil {
+			return err
+		}
+		c.pool = *np
+	} else {
+		np.BucketMap = c.pool.BucketMap
+		c.pool.BucketMap = nil
+		c.pool = *np
+	}
+
+	return nil
+}
+
+func (c *ClusterInfoCache) FetchWithLock(optimise bool) error {
 	c.Lock()
 	defer c.Unlock()
-	return c.Fetch()
+	return c.Fetch(optimise)
+}
+
+func (c *ClusterInfoCache) updateNodesData() {
+	var nodes []couchbase.Node
+	var failedNodes []couchbase.Node
+	var addNodes []couchbase.Node
+	version := uint32(math.MaxUint32)
+	minorVersion := uint32(math.MaxUint32)
+
+	for _, n := range c.pool.Nodes {
+		if n.ClusterMembership == "active" {
+			nodes = append(nodes, n)
+		} else if n.ClusterMembership == "inactiveFailed" {
+			// node being failed over
+			failedNodes = append(failedNodes, n)
+		} else if n.ClusterMembership == "inactiveAdded" {
+			// node being added (but not yet rebalanced in)
+			addNodes = append(addNodes, n)
+		} else {
+			logging.Warnf("ClusterInfoCache: unrecognized node membership %v", n.ClusterMembership)
+		}
+
+		// Find the minimum cluster compatibility
+		v := uint32(n.ClusterCompatibility / 65536)
+		minorv := uint32(n.ClusterCompatibility) - (v * 65536)
+		if v < version || (v == version && minorv < minorVersion) {
+			version = v
+			minorVersion = minorv
+		}
+	}
+
+	c.nodes = nodes
+	c.failedNodes = failedNodes
+	c.addNodes = addNodes
+	c.version = version
+	c.minorVersion = minorVersion
+	if c.version == math.MaxUint32 {
+		c.version = 0
+	}
 }
 
 func FetchClusterInfoClient(clusterURL string) (c *ClusterInfoClient, err error) {
 	once.Do(func() {
 		cicSingleton = &ClusterInfoClient{
-			clusterURL: clusterURL,
-			pool:       "default",
-			finch:      make(chan bool),
+			clusterURL:                         clusterURL,
+			pool:                               "default",
+			finch:                              make(chan bool),
+			fetchBucketInfoOnURIHashChangeOnly: 1,
 		}
 
 		config := getConfig()
@@ -727,18 +772,30 @@ func (c *ClusterInfoClient) watchClusterChanges() {
 	ch := scn.GetNotifyCh()
 	for {
 		select {
-		case _, ok := <-ch:
+		case notif, ok := <-ch:
 			if !ok {
 				selfRestart()
 				return
-			} else if err := c.cinfo.FetchWithLock(); err != nil {
-				logging.Errorf("cic.cinfo.FetchWithLock(): %v\n", err)
-				selfRestart()
-				return
 			}
+
+			if notif.Type == PoolChangeNotification {
+				optimise := (atomic.LoadInt32(&c.fetchBucketInfoOnURIHashChangeOnly) == 1)
+				if err := c.cinfo.FetchWithLock(optimise); err != nil {
+					logging.Errorf("cic.cinfo.FetchWithLock(%v): %v\n", err, optimise)
+					selfRestart()
+					return
+				}
+			} else {
+				if err := c.cinfo.FetchWithLock(false); err != nil {
+					logging.Errorf("cic.cinfo.FetchWithLock(false): %v\n", err)
+					selfRestart()
+					return
+				}
+			}
+
 		case <-ticker.C:
-			if err := c.cinfo.FetchWithLock(); err != nil {
-				logging.Errorf("cic.cinfo.FetchWithLock(): %v\n", err)
+			if err := c.cinfo.FetchWithLock(false); err != nil {
+				logging.Errorf("cic.cinfo.FetchWithLock(false): %v\n", err)
 				selfRestart()
 				return
 			}
@@ -752,6 +809,18 @@ func (c *ClusterInfoClient) Close() {
 	defer func() { recover() }()
 
 	close(c.finch)
+}
+
+func (c *ClusterInfoClient) OptimiseCICFetch(optimise bool) {
+	if optimise {
+		atomic.StoreInt32(&c.fetchBucketInfoOnURIHashChangeOnly, 1)
+		return
+	}
+
+	// It possible that watch cluster change missed the notification of poolchange
+	// when it reached here. Refresh it when optimisation is turned off
+	c.cinfo.FetchWithLock(false)
+	atomic.StoreInt32(&c.fetchBucketInfoOnURIHashChangeOnly, 0)
 }
 
 func getConfig() (c common.Config) {
