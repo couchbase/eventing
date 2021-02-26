@@ -17,6 +17,7 @@ import (
 	"sort"
 	"strings"
 	"sync/atomic"
+	"time"
 	"unsafe"
 
 	"github.com/couchbase/eventing/dcp/transport/client"
@@ -191,6 +192,14 @@ func (b Bucket) getConnPools() []*connectionPool {
 		return *(*[]*connectionPool)(ptr)
 	}
 	return nil
+}
+
+func (b *Bucket) GetBucketURLVersionHash() (string, error) {
+	return b.pool.GetBucketURLVersionHash()
+}
+
+func (b *Bucket) SetBucketUri(nUri string) {
+	b.pool.BucketURL["uri"] = nUri
 }
 
 func (b *Bucket) replaceConnPools(with []*connectionPool) {
@@ -530,12 +539,31 @@ func GetBucketList(baseU string) (bInfo []BucketInfo, err error) {
 func (b *Bucket) Refresh() error {
 	pool := b.pool
 	tmpb := &Bucket{}
-	err := pool.client.parseURLResponse(b.URI, tmpb)
+
+	// Unescape the b.URI as it pool.client.parseURLResponse will again escape it.
+	bucketURI, err1 := url.PathUnescape(b.URI)
+	if err1 != nil {
+		return fmt.Errorf("Malformed bucket URI path %v, error %v", b.URI, err1)
+	}
+
+	err := pool.client.parseURLResponse(bucketURI, tmpb)
 	if err != nil {
 		return err
 	}
 	b.init(tmpb)
 
+	return nil
+}
+
+func (b *Bucket) RefreshWithTerseBucket() error {
+	pool := b.pool
+
+	_, tmpb, err := pool.getTerseBucket(b.Name)
+	if err != nil {
+		return err
+	}
+
+	b.init(tmpb)
 	return nil
 }
 
@@ -557,8 +585,46 @@ func (b *Bucket) init(nb *Bucket) {
 	atomic.StorePointer(&b.nodeList, unsafe.Pointer(&nb.NodesJSON))
 }
 
+func (p *Pool) getTerseBucket(bucketn string) (bool, *Bucket, error) {
+	nb := &Bucket{}
+	err := p.client.parseURLResponse(p.BucketURL["terseBucketsBase"]+bucketn, nb)
+	if err != nil {
+		// bucket list is out of sync with cluster bucket list
+		// bucket might have got deleted.
+		if strings.Contains(err.Error(), "HTTP error 404") {
+			return true, nil, err
+		}
+		return false, nil, err
+	}
+	return false, nb, nil
+}
+
+// refreshBucket only calls terseBucket endpoint to fetch the bucket info.
+func (p *Pool) refreshBucket(bucketn string) error {
+	retryCount := 0
+loop:
+	retry, nb, err := p.getTerseBucket(bucketn)
+	if retry {
+		retryCount++
+		if retryCount > 5 {
+			return err
+		}
+		logging.Warnf("cluster_info: Out of sync for bucket %s. Retrying to getTerseBucket. retry count %v", bucketn, retryCount)
+		time.Sleep(5 * time.Millisecond)
+		goto loop
+	}
+	if err != nil {
+		return err
+	}
+	nb.pool = p
+	nb.init(nb)
+	p.BucketMap[nb.Name] = *nb
+
+	return nil
+}
+
 func (p *Pool) refresh() (err error) {
-	p.BucketMap = make(map[string]Bucket)
+	bucketMap := make(map[string]Bucket)
 
 loop:
 	buckets := []Bucket{}
@@ -567,29 +633,41 @@ loop:
 		return err
 	}
 	for _, b := range buckets {
-		nb := &Bucket{}
-		err = p.client.parseURLResponse(p.BucketURL["terseBucketsBase"]+b.Name, nb)
+		retry, nb, err := p.getTerseBucket(b.Name)
+		if retry {
+			logging.Warnf("cluster_info: Out of sync for bucket %s. Retrying..", b.Name)
+			goto loop
+		}
 		if err != nil {
-			// bucket list is out of sync with cluster bucket list
-			// bucket might have got deleted.
-			if strings.Contains(err.Error(), "HTTP error 404") {
-				logging.Warnf("cluster_info: Out of sync for bucket %s. Retrying..", b.Name)
-				goto loop
-			}
 			return err
 		}
-		b.pool = p
-		b.init(nb)
-		p.BucketMap[b.Name] = b
+		nb.pool = p
+		nb.init(nb)
+		bucketMap[nb.Name] = *nb
 	}
+
+	p.BucketMap = bucketMap
 	return nil
 }
 
 func (p *Pool) GetServerGroups() (groups ServerGroups, err error) {
-
 	err = p.client.parseURLResponse(p.ServerGroupsUri, &groups)
 	return
+}
 
+// GetBucketURLVersionHash will prase the p.BucketURI and extract version hash from it
+// Parses /pools/default/buckets?v=<$ver>&uuid=<$uid> and returns $ver
+func (p *Pool) GetBucketURLVersionHash() (string, error) {
+	b := p.BucketURL["uri"]
+	u, err := url.Parse(b)
+	if err != nil {
+		return "", fmt.Errorf("Unable to parse BucketURL: %v in PoolChangeNotification", b)
+	}
+	m, err := url.ParseQuery(u.RawQuery)
+	if err != nil {
+		return "", fmt.Errorf("Unable to extract version hash from BucketURL: %v in PoolChangeNotification", b)
+	}
+	return m["v"][0], nil
 }
 
 // GetPool gets a pool from within the couchbase cluster (usually

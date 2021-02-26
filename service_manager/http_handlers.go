@@ -2300,13 +2300,16 @@ func (m *ServiceMgr) getKVNodesAddresses(w http.ResponseWriter, r *http.Request)
 	w.Header().Set("Content-Type", "application/json")
 
 	nsServer := net.JoinHostPort(util.Localhost(), m.restPort)
-	clusterInfo, err := util.FetchNewClusterInfoCache(nsServer)
+	cic, err := util.FetchClusterInfoClient(nsServer)
 	if err != nil {
 		logging.Errorf("%s Failed to get cluster info cache, err : %v", logPrefix, err)
 		return
 	}
 
-	kvNodes, err := clusterInfo.GetAddressOfActiveKVNodes()
+	cinfo := cic.GetClusterInfoCache()
+	cinfo.RLock()
+	kvNodes, err := cinfo.GetAddressOfActiveKVNodes()
+	cinfo.RUnlock()
 	if err != nil {
 		logging.Errorf("%s Failed to get KV nodes addresses, err : %v", logPrefix, err)
 		return

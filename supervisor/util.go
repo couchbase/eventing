@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/couchbase/eventing/common"
+	"github.com/couchbase/eventing/dcp"
 	"github.com/couchbase/eventing/gen/flatbuf/cfg"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
@@ -220,20 +221,51 @@ func (s *SuperSupervisor) watchBucketWithLock(bucketName, appName string) error 
 	return nil
 }
 
-func (s *SuperSupervisor) bucketRefresh() error {
+func (s *SuperSupervisor) bucketRefresh(np *couchbase.Pool) ([]string, error) {
 	s.bucketsRWMutex.Lock()
 	defer s.bucketsRWMutex.Unlock()
+	deletedBuckets := make([]string, 0)
+	var nHash string
+	if np != nil {
+		nHash, _ = np.GetBucketURLVersionHash()
+	}
+
 	for bucketName := range s.buckets {
-		if err := s.buckets[bucketName].Refresh(s.retryCount, s.restPort); err != nil {
-			return err
+		if err := s.buckets[bucketName].Refresh(s.retryCount, s.restPort, np, nHash); err != nil {
+			if err == NoBucket {
+				deletedBuckets = append(deletedBuckets, bucketName)
+			} else {
+				return nil, err
+			}
 		}
 	}
-	return nil
+	return deletedBuckets, nil
+}
+
+func (s *SuperSupervisor) undeployFunctionsOnDeletedBkts(deletedBuckets []string) {
+	logPrefix := "SuperSupervisor::undeployFunctionsOnDeletedBkts"
+	logging.Infof("%s Undeploying functions due to bucket delete: %v", logPrefix, deletedBuckets)
+
+	for _, bucketName := range deletedBuckets {
+		appNames, ok := s.getAppsWatchingBucket(bucketName)
+		if !ok {
+			continue
+		}
+
+		for _, appName := range appNames {
+			p, ok := s.runningProducers[appName]
+			if !ok {
+				continue
+			}
+			skipMetadataCleanup := (p.MetadataBucket() == bucketName)
+			s.StopProducer(appName, skipMetadataCleanup, true)
+		}
+	}
 }
 
 func (s *SuperSupervisor) watchBucketChanges() {
 	config := s.getConfig()
-	s.servicesNotifierRetryTm = 6000
+	s.servicesNotifierRetryTm = 5
 	if tm, ok := config["service_notifier_timeout"]; ok {
 		retryTm, tOk := tm.(float64)
 		if tOk {
@@ -241,7 +273,21 @@ func (s *SuperSupervisor) watchBucketChanges() {
 		}
 	}
 
+	delChannel := make(chan []string, 5)
+	go func(delChannel <-chan []string) {
+		for {
+			select {
+			case delBuckets, ok := <-delChannel:
+				if !ok {
+					return
+				}
+				s.undeployFunctionsOnDeletedBkts(delBuckets)
+			}
+		}
+	}(delChannel)
+
 	selfRestart := func() {
+		close(delChannel)
 		time.Sleep(time.Duration(s.servicesNotifierRetryTm) * time.Millisecond)
 		go s.watchBucketChanges()
 	}
@@ -262,29 +308,51 @@ func (s *SuperSupervisor) watchBucketChanges() {
 	}
 	defer scn.Close()
 
-	ticker := time.NewTicker(time.Duration(s.servicesNotifierRetryTm) * time.Millisecond)
+	ticker := time.NewTicker(time.Duration(s.servicesNotifierRetryTm) * time.Minute)
 	defer ticker.Stop()
 
 	// For observing node services config
 	ch := scn.GetNotifyCh()
 	for {
 		select {
-		case _, ok := <-ch:
+		case notif, ok := <-ch:
 			if !ok {
 				selfRestart()
 				return
-			} else if err := s.bucketRefresh(); err != nil {
-				logging.Errorf("s.bucketRefresh(): %v\n", err)
+			}
+
+			// Process only PoolChangeNotification as any change to
+			// ClusterMembership is reflected only in PoolChangeNotification
+			if notif.Type != util.PoolChangeNotification {
+				continue
+			}
+
+			np := notif.Msg.(*couchbase.Pool)
+			deletedBuckets, err := s.bucketRefresh(np)
+			if err != nil {
+				logging.Errorf("Refresh bucket Error")
 				selfRestart()
 				return
 			}
+
+			if len(deletedBuckets) != 0 {
+				delChannel <- deletedBuckets
+			}
+
 		case <-ticker.C:
-			if err := s.bucketRefresh(); err != nil {
-				logging.Errorf("s.bucketRefresh(): %v\n", err)
+			deletedBuckets, err := s.bucketRefresh(nil)
+			if err != nil {
+				logging.Errorf("Refresh bucket Error")
 				selfRestart()
 				return
 			}
+
+			if len(deletedBuckets) != 0 {
+				delChannel <- deletedBuckets
+			}
+
 		case <-s.finch:
+			close(delChannel)
 			return
 		}
 	}
@@ -308,22 +376,53 @@ func (s *SuperSupervisor) getConfig() (c common.Config) {
 	return
 }
 
-func (bw *bucketWatchStruct) Refresh(retryCount int64, restPort string) error {
-	logPrefix := "bucketWatchStruct:Refresh"
-	err := bw.b.Refresh()
+// returns apps which are watching bucket. If bucket not being watched then 2nd argument will be false
+func (s *SuperSupervisor) getAppsWatchingBucket(bucketName string) ([]string, bool) {
+	s.bucketsRWMutex.RLock()
+	defer s.bucketsRWMutex.RUnlock()
+	bucketWatch, ok := s.buckets[bucketName]
+	if !ok {
+		return nil, false
+	}
+	return bucketWatch.AppNames(), true
+}
 
+func (bw *bucketWatchStruct) Refresh(retryCount int64, restPort string, np *couchbase.Pool, nHash string) error {
+	logPrefix := "bucketWatchStruct:Refresh"
+	oHash, err := bw.b.GetBucketURLVersionHash()
 	if err != nil {
+		logging.Errorf("%s Get bucket version hash error: %v", logPrefix, err)
+		return nil
+	}
+	if nHash == oHash {
+		return nil
+	}
+
+	err = bw.b.RefreshWithTerseBucket()
+	if err != nil {
+		if strings.Contains(err.Error(), "HTTP error 404 Object Not Found") {
+			return NoBucket
+		}
 		if strings.Contains(err.Error(), "Bucket uuid does not match") {
-			logging.Errorf("%s Bucket: %s out of sync. refreshing...", logPrefix, bw.b.Name)
-			err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &retryCount, commonConnectBucketOpCallback, &bw.b, bw.b.Name, restPort)
-			if err != nil {
-				logging.Errorf("%s: Could not connect to bucket %s err: %v", logPrefix, bw.b.Name, err)
-			}
+			return NoBucket
 		}
 	}
+
+	if np != nil {
+		bw.b.SetBucketUri(np.BucketURL["uri"])
+	}
+
 	return err
 }
 
 func (bw *bucketWatchStruct) Close() {
 	bw.b.Close()
+}
+
+func (bw *bucketWatchStruct) AppNames() []string {
+	appNames := make([]string, len(bw.apps))
+	for appName := range bw.apps {
+		appNames = append(appNames, appName)
+	}
+	return appNames
 }
