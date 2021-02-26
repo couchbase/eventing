@@ -8,6 +8,7 @@ import (
 	"crypto/tls"
 	"encoding/binary"
 	"encoding/json"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"hash/crc32"
@@ -2051,4 +2052,15 @@ func AppendLangCompat(path, appName string, payload []byte) ([]byte, error) {
 
 func RoundUpToNearestPowerOf2(number float64) int {
 	return 1 << uint16(math.Ceil(math.Log2(number)))
+}
+
+const OBOAuthHeader = "cb-on-behalf-of"
+
+func ComposeOBOAuthInfo(user, domain string) (oboAuthInfo string) {
+
+	if (user != "" && domain != "") {
+		return base64.StdEncoding.EncodeToString([]byte(user + ":" + domain))
+	}
+
+	return ""
 }

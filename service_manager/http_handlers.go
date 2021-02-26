@@ -323,6 +323,12 @@ func getGlobalAppLog(m *ServiceMgr, appName string, sz int64, creds http.Header)
 		return nil
 	}
 
+	oboAuthHeader := ""
+	oboAuthInfo := util.ComposeOBOAuthInfo(creds.Get("Menelaus-Auth-User"), creds.Get("Menelaus-Auth-Domain"))
+	if (oboAuthInfo != "") {
+		oboAuthHeader = "Basic " + oboAuthInfo
+	}
+
 	psz := sz
 	if len(nodes) > 1 {
 		psz = sz / int64(len(nodes))
@@ -337,6 +343,9 @@ func getGlobalAppLog(m *ServiceMgr, appName string, sz int64, creds http.Header)
 		if err != nil {
 			logging.Errorf("Got failure creating http request to %v: %v", node, err)
 			continue
+		}
+		if (oboAuthHeader != "") {
+			req.Header.Add(util.OBOAuthHeader, oboAuthInfo)
 		}
 		resp, err := client.Do(req)
 		if err != nil {
@@ -375,6 +384,11 @@ func getGlobalInsights(m *ServiceMgr, apps []string, creds http.Header) *common.
 		logging.Errorf("Got failure getting nodes", err)
 		return insights
 	}
+	oboAuthHeader := ""
+	oboAuthInfo := util.ComposeOBOAuthInfo(creds.Get("Menelaus-Auth-User"), creds.Get("Menelaus-Auth-Domain"))
+	if (oboAuthInfo != "") {
+		oboAuthHeader = "Basic " + oboAuthInfo
+	}
 	for _, node := range nodes {
 		url := "http://" + node + "/getInsight?aggregate=false"
 		client := util.NewClient(time.Second * 15)
@@ -382,6 +396,9 @@ func getGlobalInsights(m *ServiceMgr, apps []string, creds http.Header) *common.
 		if err != nil {
 			logging.Errorf("Got failure creating http request to %v: %v", node, err)
 			continue
+		}
+		if (oboAuthHeader != "") {
+			req.Header.Add(util.OBOAuthHeader, oboAuthInfo)
 		}
 		resp, err := client.Do(req)
 		if err != nil {
