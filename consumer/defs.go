@@ -103,7 +103,7 @@ type dcpMetadata struct {
 	Flag    uint32 `json:"flags"`
 	Vbucket uint16 `json:"vb"`
 	SeqNo   uint64 `json:"seq"`
-	Type    string `json:"datatype"`
+	Type    string `json:"datatype,omitempty"`
 }
 
 type vbSeqNo struct {

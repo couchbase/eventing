@@ -10,6 +10,7 @@ flatbuf/cfg/Bucket.go
 flatbuf/cfg/Config.go
 flatbuf/cfg/DepCfg.go
 flatbuf/cfg/Curl.go
+flatbuf/cfg/Constant.go
 flatbuf/header/Header.go
 flatbuf/payload/Payload.go
 flatbuf/payload/VbsThreadMap.go

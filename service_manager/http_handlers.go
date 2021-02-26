@@ -331,16 +331,12 @@ func getGlobalAppLog(m *ServiceMgr, appName string, sz int64, creds http.Header)
 	var lines []string
 	for _, node := range nodes {
 		url := "http://" + node + "/getAppLog?name=" + appName + "&aggregate=false" + "&size=" + strconv.Itoa(int(psz))
-		client := http.Client{Timeout: time.Second * 15}
+
+		client := util.NewClient(time.Second * 15)
 		req, err := http.NewRequest(http.MethodGet, url, nil)
 		if err != nil {
 			logging.Errorf("Got failure creating http request to %v: %v", node, err)
 			continue
-		}
-		for hk, hvs := range creds {
-			for _, hv := range hvs {
-				req.Header.Add(hk, hv)
-			}
 		}
 		resp, err := client.Do(req)
 		if err != nil {
@@ -381,16 +377,11 @@ func getGlobalInsights(m *ServiceMgr, apps []string, creds http.Header) *common.
 	}
 	for _, node := range nodes {
 		url := "http://" + node + "/getInsight?aggregate=false"
-		client := http.Client{Timeout: time.Second * 15}
+		client := util.NewClient(time.Second * 15)
 		req, err := http.NewRequest(http.MethodGet, url, nil)
 		if err != nil {
 			logging.Errorf("Got failure creating http request to %v: %v", node, err)
 			continue
-		}
-		for hk, hvs := range creds {
-			for _, hv := range hvs {
-				req.Header.Add(hk, hv)
-			}
 		}
 		resp, err := client.Do(req)
 		if err != nil {
