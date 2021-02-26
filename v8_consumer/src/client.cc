@@ -273,6 +273,19 @@ void AppWorker::InitUDS(const std::string &function_name,
   main_uv_loop_thr_ = std::move(m_thr);
 }
 
+void AppWorker::InitVbMapResources() {
+  vb_seq_ = std::make_shared<vb_seq_map_t>();
+  vb_locks_ = std::make_shared<vb_lock_map_t>();
+  for (int i = 0; i < num_vbuckets_; i++) {
+    (*vb_seq_)[i] = atomic_ptr_t(new std::atomic<uint64_t>(0));
+    (*vb_locks_)[i] = new std::mutex();
+  }
+  vbfilter_map_ =
+      std::make_shared<std::vector<std::vector<uint64_t>>>(num_vbuckets_);
+  processed_bucketops_ =
+      std::make_shared<std::vector<uint64_t>>(num_vbuckets_, 0);
+}
+
 void AppWorker::OnConnect(uv_connect_t *conn, int status) {
   if (status == 0) {
     LOG(logInfo) << "Client connected" << std::endl;
@@ -549,7 +562,9 @@ void AppWorker::RouteMessageWithResponse(
           V8Worker *w = new V8Worker(
               platform, handler_config, server_settings, function_name_,
               function_id_, handler_instance_id, user_prefix_, &latency_stats_,
-              &curl_latency_stats_, ns_server_port_, num_vbuckets_);
+              &curl_latency_stats_, ns_server_port_, num_vbuckets_,
+              vb_seq_.get(), vbfilter_map_.get(), processed_bucketops_.get(),
+              vb_locks_.get());
 
           LOG(logInfo) << "Init index: " << i << " V8Worker: " << w
                        << std::endl;
@@ -1061,13 +1076,14 @@ void AppWorker::EventGenLoop() {
           // Check for memory growth
           int64_t approx_memory = 0;
           for (const auto &v8_worker : worker->workers_) {
-            approx_memory += v8_worker.second->worker_queue_->GetMemory() + v8_worker.second->v8_heap_size_;
+            approx_memory += v8_worker.second->worker_queue_->GetMemory() +
+                             v8_worker.second->v8_heap_size_;
           }
 
           for (auto &v8_worker : worker->workers_) {
             if (!v8_worker.second->run_gc_.load() &&
-                      (v8_worker.second->v8_heap_size_ > MAX_V8_HEAP_SIZE ||
-                       approx_memory > worker->memory_quota_ * 0.8)) {
+                (v8_worker.second->v8_heap_size_ > MAX_V8_HEAP_SIZE ||
+                 approx_memory > worker->memory_quota_ * 0.8)) {
               v8_worker.second->run_gc_.store(true);
               std::unique_ptr<WorkerMessage> msg(new WorkerMessage);
               msg->header.event = eInternal + 1;
@@ -1138,7 +1154,8 @@ int main(int argc, char **argv) {
         << "Need at least 13 arguments: appname, ipc_type, port, "
            "feedback_port"
            "worker_id, batch_size, feedback_batch_size, diag_dir, ipv4/6, "
-           "breakpad_on, handler_uuid, user_prefix, ns_server_port, num_vbuckets, eventing_port"
+           "breakpad_on, handler_uuid, user_prefix, ns_server_port, "
+           "num_vbuckets, eventing_port"
         << std::endl;
     return 2;
   }
@@ -1171,6 +1188,8 @@ int main(int argc, char **argv) {
   AppWorker *worker = AppWorker::GetAppWorker();
   worker->SetNsServerPort(ns_server_port);
   worker->SetNumVbuckets(num_vbuckets);
+  worker->InitVbMapResources();
+
   if (std::strcmp(ipc_type.c_str(), "af_unix") == 0) {
     worker->InitUDS(appname, function_id, user_prefix, appname,
                     Localhost(false), worker_id, batch_size,

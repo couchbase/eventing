@@ -63,6 +63,7 @@ extern int64_t timer_context_size;
 using atomic_ptr_t = std::shared_ptr<std::atomic<uint64_t>>;
 // Used for checkpointing of vbucket seq nos
 typedef std::map<int, atomic_ptr_t> vb_seq_map_t;
+typedef std::map<int, std::mutex *> vb_lock_map_t;
 
 typedef struct timer_msg_s {
   std::size_t GetSize() const { return timer_entry.length(); }
@@ -224,7 +225,10 @@ public:
            const std::string &function_id,
            const std::string &function_instance_id,
            const std::string &user_prefix, Histogram *latency_stats,
-           Histogram *curl_latency_stats, const std::string &ns_server_port, const int32_t& num_vbuckets);
+           Histogram *curl_latency_stats, const std::string &ns_server_port,
+           const int32_t &num_vbuckets, vb_seq_map_t *vb_seq,
+           std::vector<std::vector<uint64_t>> *vbfilter_map,
+           std::vector<uint64_t> *processed_bucketops, vb_lock_map_t *vb_locks);
   ~V8Worker();
 
   int V8WorkerLoad(std::string source_s);
@@ -356,16 +360,19 @@ private:
 
   void UpdateV8HeapSize();
   void ForceRunGarbageCollector();
+  std::unique_lock<std::mutex> GetAndLockVbLock(int vb_no);
   Histogram *latency_stats_;
   Histogram *curl_latency_stats_;
 
   std::string src_path_;
 
-  vb_seq_map_t vb_seq_;
+  vb_seq_map_t *vb_seq_;
+  vb_lock_map_t *vb_locks_;
 
-  std::vector<std::vector<uint64_t>> vbfilter_map_;
-  std::vector<uint64_t> processed_bucketops_;
+  std::vector<std::vector<uint64_t>> *vbfilter_map_;
+  std::vector<uint64_t> *processed_bucketops_;
   std::mutex bucketops_lock_;
+
   std::mutex pause_lock_;
   v8::Isolate *isolate_;
   v8::Platform *platform_;

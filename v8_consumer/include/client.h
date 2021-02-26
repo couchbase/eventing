@@ -94,6 +94,8 @@ public:
     num_vbuckets_ = num_vbuckets;
   }
 
+  void InitVbMapResources();
+
   std::thread main_uv_loop_thr_;
   std::thread feedback_uv_loop_thr_;
   std::thread stdin_read_thr_;
@@ -188,6 +190,11 @@ private:
   std::atomic<bool> pause_consumer_;
   bool v8worker_init_done_{false};
   std::mutex workers_map_mutex_;
+
+  std::shared_ptr<vb_seq_map_t> vb_seq_;
+  std::shared_ptr<std::vector<std::vector<uint64_t>>> vbfilter_map_;
+  std::shared_ptr<std::vector<uint64_t>> processed_bucketops_;
+  std::shared_ptr<vb_lock_map_t> vb_locks_;
 };
 
 #endif
