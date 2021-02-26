@@ -189,15 +189,15 @@ Bucket::Get(const std::string &key) {
     return {std::make_unique<std::string>("Connection is not initialized"),
             nullptr, nullptr};
   }
+  const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
+  const auto max_timeout = UnwrapData(isolate_)->op_timeout;
 
   lcb_CMDGET *cmd;
   lcb_cmdget_create(&cmd);
   lcb_cmdget_collection(cmd, scope_name_.c_str(), scope_length_,
                         collection_name_.c_str(), collection_length_);
   lcb_cmdget_key(cmd, key.c_str(), key.length());
-
-  const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
-  const auto max_timeout = UnwrapData(isolate_)->op_timeout;
+  lcb_cmdget_timeout(cmd, ConvertSecondsToMicroSeconds(max_timeout));
   auto [err_code, result] =
       RetryLcbCommand(connection_, *cmd, max_retry, max_timeout, LcbGet);
   lcb_cmdget_destroy(cmd);
@@ -221,6 +221,9 @@ Bucket::GetWithMeta(const std::string &key) {
             nullptr, nullptr};
   }
 
+  const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
+  const auto max_timeout = UnwrapData(isolate_)->op_timeout;
+
   lcb_SUBDOCSPECS *specs;
   lcb_subdocspecs_create(&specs, 3);
 
@@ -241,9 +244,7 @@ Bucket::GetWithMeta(const std::string &key) {
                            collection_name_.c_str(), collection_length_);
   lcb_cmdsubdoc_key(cmd, key.c_str(), key.length());
   lcb_cmdsubdoc_specs(cmd, specs);
-
-  const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
-  const auto max_timeout = UnwrapData(isolate_)->op_timeout;
+  lcb_cmdsubdoc_timeout(cmd, ConvertSecondsToMicroSeconds(max_timeout));
   auto [err_code, result] =
       RetryLcbCommand(connection_, *cmd, max_retry, max_timeout, LcbSubdocSet);
   lcb_cmdsubdoc_destroy(cmd);
@@ -269,6 +270,9 @@ Bucket::CounterWithoutXattr(const std::string &key, uint64_t cas,
             nullptr, nullptr};
   }
 
+  const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
+  const auto max_timeout = UnwrapData(isolate_)->op_timeout;
+
   lcb_SUBDOCSPECS *spec;
   lcb_subdocspecs_create(&spec, 1);
   lcb_subdocspecs_counter(spec, 0, 0, "count", strlen("count"), delta);
@@ -282,9 +286,7 @@ Bucket::CounterWithoutXattr(const std::string &key, uint64_t cas,
   lcb_cmdsubdoc_collection(cmd, scope_name_.c_str(), scope_length_,
                            collection_name_.c_str(), collection_length_);
   lcb_cmdsubdoc_key(cmd, key.c_str(), key.length());
-
-  const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
-  const auto max_timeout = UnwrapData(isolate_)->op_timeout;
+  lcb_cmdsubdoc_timeout(cmd, ConvertSecondsToMicroSeconds(max_timeout));
   auto [err_code, result] =
       RetryLcbCommand(connection_, *cmd, max_retry, max_timeout, LcbSubdocSet);
   lcb_cmdsubdoc_destroy(cmd);
@@ -333,6 +335,9 @@ Bucket::CounterWithXattr(const std::string &key, uint64_t cas, lcb_U32 expiry,
 
   lcb_subdocspecs_counter(specs, 3, 0, "count", strlen("count"), delta);
 
+  const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
+  const auto max_timeout = UnwrapData(isolate_)->op_timeout;
+
   lcb_CMDSUBDOC *cmd;
   lcb_cmdsubdoc_create(&cmd);
   lcb_cmdsubdoc_specs(cmd, specs);
@@ -343,9 +348,7 @@ Bucket::CounterWithXattr(const std::string &key, uint64_t cas, lcb_U32 expiry,
                            collection_name_.c_str(), collection_length_);
 
   lcb_cmdsubdoc_key(cmd, key.c_str(), key.length());
-
-  const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
-  const auto max_timeout = UnwrapData(isolate_)->op_timeout;
+  lcb_cmdsubdoc_timeout(cmd, ConvertSecondsToMicroSeconds(max_timeout));
   auto [err_code, result] =
       RetryLcbCommand(connection_, *cmd, max_retry, max_timeout, LcbSubdocSet);
   lcb_cmdsubdoc_destroy(cmd);
@@ -397,6 +400,9 @@ Bucket::SetWithXattr(const std::string &key, const std::string &value,
 
   lcb_subdocspecs_replace(specs, 3, 0, "", 0, value.data(), value.size());
 
+  const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
+  const auto max_timeout = UnwrapData(isolate_)->op_timeout;
+
   lcb_CMDSUBDOC *cmd;
   lcb_cmdsubdoc_create(&cmd);
   lcb_cmdsubdoc_specs(cmd, specs);
@@ -406,9 +412,7 @@ Bucket::SetWithXattr(const std::string &key, const std::string &value,
                            collection_name_.c_str(), collection_length_);
   lcb_cmdsubdoc_key(cmd, key.data(), key.size());
   lcb_cmdsubdoc_store_semantics(cmd, op_type);
-
-  const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
-  const auto max_timeout = UnwrapData(isolate_)->op_timeout;
+  lcb_cmdsubdoc_timeout(cmd, ConvertSecondsToMicroSeconds(max_timeout));
   auto [err_code, result] =
       RetryLcbCommand(connection_, *cmd, max_retry, max_timeout, LcbSubdocSet);
   lcb_cmdsubdoc_destroy(cmd);
@@ -433,6 +437,9 @@ Bucket::SetWithoutXattr(const std::string &key, const std::string &value,
   BucketCache::Fetch().Invalidate(
       BucketCache::MakeKey(bucket_name_, scope_name_, collection_name_, key));
 
+  const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
+  const auto max_timeout = UnwrapData(isolate_)->op_timeout;
+
   lcb_CMDSTORE *cmd;
   lcb_cmdstore_create(&cmd, op_type);
   lcb_cmdstore_expiry(cmd, expiry);
@@ -442,9 +449,7 @@ Bucket::SetWithoutXattr(const std::string &key, const std::string &value,
 
   lcb_cmdstore_key(cmd, key.data(), key.size());
   lcb_cmdstore_value(cmd, value.data(), value.size());
-
-  const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
-  const auto max_timeout = UnwrapData(isolate_)->op_timeout;
+  lcb_cmdstore_timeout(cmd, ConvertSecondsToMicroSeconds(max_timeout));
   auto [err_code, result] =
       RetryLcbCommand(connection_, *cmd, max_retry, max_timeout, LcbSet);
   lcb_cmdstore_destroy(cmd);
@@ -493,6 +498,10 @@ Bucket::DeleteWithXattr(const std::string &key, uint64_t cas) {
       value_crc32_macro.c_str(), value_crc32_macro.size());
 
   lcb_subdocspecs_remove(specs, 3, 0, "", 0);
+
+  const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
+  const auto max_timeout = UnwrapData(isolate_)->op_timeout;
+
   lcb_CMDSUBDOC *cmd;
   lcb_cmdsubdoc_create(&cmd);
   lcb_cmdsubdoc_specs(cmd, specs);
@@ -502,9 +511,7 @@ Bucket::DeleteWithXattr(const std::string &key, uint64_t cas) {
   lcb_cmdsubdoc_collection(cmd, scope_name_.c_str(), scope_length_,
                            collection_name_.c_str(), collection_length_);
   lcb_cmdsubdoc_key(cmd, key.c_str(), key.length());
-
-  const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
-  const auto max_timeout = UnwrapData(isolate_)->op_timeout;
+  lcb_cmdsubdoc_timeout(cmd, ConvertSecondsToMicroSeconds(max_timeout));
   auto [err_code, result] = RetryLcbCommand(connection_, *cmd, max_retry,
                                             max_timeout, LcbSubdocDelete);
   lcb_cmdsubdoc_destroy(cmd);
@@ -527,6 +534,9 @@ Bucket::DeleteWithoutXattr(const std::string &key, uint64_t cas) {
   BucketCache::Fetch().Invalidate(
       BucketCache::MakeKey(bucket_name_, scope_name_, collection_name_, key));
 
+  const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
+  const auto max_timeout = UnwrapData(isolate_)->op_timeout;
+
   lcb_CMDREMOVE *cmd;
   lcb_cmdremove_create(&cmd);
   lcb_cmdremove_cas(cmd, cas);
@@ -534,9 +544,7 @@ Bucket::DeleteWithoutXattr(const std::string &key, uint64_t cas) {
                            collection_name_.c_str(), collection_length_);
 
   lcb_cmdremove_key(cmd, key.c_str(), key.length());
-
-  const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
-  const auto max_timeout = UnwrapData(isolate_)->op_timeout;
+  lcb_cmdremove_timeout(cmd, ConvertSecondsToMicroSeconds(max_timeout));
   auto [err_code, result] =
       RetryLcbCommand(connection_, *cmd, max_retry, max_timeout, LcbDelete);
   lcb_cmdremove_destroy(cmd);

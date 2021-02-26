@@ -248,4 +248,5 @@ std::string GetConnectionStr(const std::string &end_point,
 std::string BuildUrl(const std::string &host, const std::string &path);
 
 int64_t GetUnixTime();
+long ConvertSecondsToMicroSeconds(long time);
 #endif
