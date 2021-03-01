@@ -24,30 +24,31 @@ import (
 // NewSuperSupervisor creates the super_supervisor handle
 func NewSuperSupervisor(adminPort AdminPortConfig, eventingDir, kvPort, restPort, uuid, diagDir string, numVbuckets int) *SuperSupervisor {
 	s := &SuperSupervisor{
-		adminPort:                  adminPort,
-		appDeploymentStatus:        make(map[string]bool),
-		appProcessingStatus:        make(map[string]bool),
-		bootstrappingApps:          make(map[string]string),
-		pausingApps:                make(map[string]string),
-		CancelCh:                   make(chan struct{}, 1),
-		cleanedUpAppMap:            make(map[string]struct{}),
-		deployedApps:               make(map[string]string),
-		diagDir:                    diagDir,
-		ejectNodes:                 make([]string, 0),
-		eventingDir:                eventingDir,
-		keepNodes:                  make([]string, 0),
-		kvPort:                     kvPort,
-		locallyDeployedApps:        make(map[string]string),
-		numVbuckets:                numVbuckets,
-		producerSupervisorTokenMap: make(map[common.EventingProducer]suptree.ServiceToken),
-		restPort:                   restPort,
-		retryCount:                 60,
-		runningProducers:           make(map[string]common.EventingProducer),
-		runningProducersRWMutex:    &sync.RWMutex{},
-		supCmdCh:                   make(chan supCmdMsg, 10),
-		superSup:                   suptree.NewSimple("super_supervisor"),
-		tokenMapRWMutex:            &sync.RWMutex{},
-		uuid:                       uuid,
+		adminPort:                          adminPort,
+		appDeploymentStatus:                make(map[string]bool),
+		appProcessingStatus:                make(map[string]bool),
+		bootstrappingApps:                  make(map[string]string),
+		pausingApps:                        make(map[string]string),
+		CancelCh:                           make(chan struct{}, 1),
+		cleanedUpAppMap:                    make(map[string]struct{}),
+		deployedApps:                       make(map[string]string),
+		diagDir:                            diagDir,
+		ejectNodes:                         make([]string, 0),
+		eventingDir:                        eventingDir,
+		keepNodes:                          make([]string, 0),
+		kvPort:                             kvPort,
+		locallyDeployedApps:                make(map[string]string),
+		numVbuckets:                        numVbuckets,
+		producerSupervisorTokenMap:         make(map[common.EventingProducer]suptree.ServiceToken),
+		restPort:                           restPort,
+		retryCount:                         60,
+		runningProducers:                   make(map[string]common.EventingProducer),
+		runningProducersRWMutex:            &sync.RWMutex{},
+		supCmdCh:                           make(chan supCmdMsg, 10),
+		superSup:                           suptree.NewSimple("super_supervisor"),
+		tokenMapRWMutex:                    &sync.RWMutex{},
+		uuid:                               uuid,
+		fetchBucketInfoOnURIHashChangeOnly: 1,
 	}
 	s.appRWMutex = &sync.RWMutex{}
 	s.appListRWMutex = &sync.RWMutex{}
@@ -415,7 +416,6 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(path string, value []byte,
 	defer s.mu.RUnlock()
 	if value != nil {
 		s.serviceMgr.OptimiseLoadingCIC(false)
-		s.bucketRefresh(nil)
 
 		if string(value) == stopRebalance {
 			topologyChangeMsg.CType = common.StopRebalanceCType
@@ -767,7 +767,6 @@ func (s *SuperSupervisor) NotifyPrepareTopologyChange(ejectNodes, keepNodes []st
 		s.keepNodes = keepNodes
 	}
 
-	s.bucketRefresh(nil)
 	for _, eventingProducer := range s.runningFns() {
 		logging.Infof("%s [%d] Updating producer %p, keepNodes => %v", logPrefix, s.runningFnsCount(), eventingProducer, keepNodes)
 		eventingProducer.NotifyPrepareTopologyChange(s.ejectNodes, s.keepNodes, changeType)

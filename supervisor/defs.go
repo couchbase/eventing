@@ -90,11 +90,12 @@ type SuperSupervisor struct {
 	uuid        string
 	diagDir     string
 
-	bucketsRWMutex          *sync.RWMutex
-	servicesNotifierRetryTm uint
-	finch                   chan bool
-	buckets                 map[string]*bucketWatchStruct // Access controlled by bucketsRWMutex
-	isRebalanceOngoing      int32
+	bucketsRWMutex                     *sync.RWMutex
+	servicesNotifierRetryTm            uint
+	finch                              chan bool
+	buckets                            map[string]*bucketWatchStruct // Access controlled by bucketsRWMutex
+	fetchBucketInfoOnURIHashChangeOnly int32
+	isRebalanceOngoing                 int32
 
 	appRWMutex *sync.RWMutex
 

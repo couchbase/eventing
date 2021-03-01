@@ -322,6 +322,7 @@ type EventingSuperSup interface {
 	IncWorkerRespawnedCount()
 	WorkerRespawnedCount() uint32
 	CheckLifeCycleOpsDuringRebalance() bool
+	OptimiseBucketLoading(optimise bool)
 }
 
 type EventingServiceMgr interface {

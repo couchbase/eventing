@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/couchbase/eventing/common"
@@ -214,7 +215,7 @@ func (s *SuperSupervisor) bucketRefresh(np *couchbase.Pool) ([]string, error) {
 	defer s.bucketsRWMutex.Unlock()
 	deletedBuckets := make([]string, 0)
 	var nHash string
-	if np != nil {
+	if np != nil && (atomic.LoadInt32(&s.fetchBucketInfoOnURIHashChangeOnly) == 1) {
 		nHash, _ = np.GetBucketURLVersionHash()
 	}
 
@@ -344,6 +345,16 @@ func (s *SuperSupervisor) watchBucketChanges() {
 			return
 		}
 	}
+}
+
+func (s *SuperSupervisor) OptimiseBucketLoading(optimise bool) {
+	if optimise {
+		atomic.StoreInt32(&s.fetchBucketInfoOnURIHashChangeOnly, 1)
+		return
+	}
+	s.bucketRefresh(nil)
+	atomic.StoreInt32(&s.fetchBucketInfoOnURIHashChangeOnly, 0)
+	return
 }
 
 func (s *SuperSupervisor) getConfig() (c common.Config) {
