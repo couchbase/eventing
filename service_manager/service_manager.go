@@ -104,6 +104,7 @@ func (m *ServiceMgr) PrepareTopologyChange(change service.TopologyChange) error 
 
 	err := m.OptimiseLoadingCIC(false)
 	if err != nil {
+		m.isBalanced = false
 		logging.Errorf("%s failed: %v", logPrefix, err)
 		return err
 	}
@@ -230,5 +231,6 @@ func (m *ServiceMgr) OptimiseLoadingCIC(optimise bool) error {
 		return err
 	}
 	cic.OptimiseCICFetch(optimise)
+	m.superSup.OptimiseBucketLoading(optimise)
 	return nil
 }

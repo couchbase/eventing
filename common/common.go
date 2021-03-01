@@ -299,6 +299,7 @@ type EventingSuperSup interface {
 	VbSeqnoStats(appName string) (map[int][]map[string]interface{}, error)
 	WriteDebuggerURL(appName, url string)
 	WriteDebuggerToken(appName, token string, hostnames []string)
+	OptimiseBucketLoading(optimise bool)
 }
 
 type EventingServiceMgr interface {
