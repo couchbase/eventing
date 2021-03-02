@@ -257,15 +257,15 @@ void V8Worker::InitializeCurlBindingValues(
   }
 }
 
-V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
-                   server_settings_t *server_settings,
-                   const std::string &function_name,
-                   const std::string &function_id,
-                   const std::string &function_instance_id,
-                   const std::string &user_prefix, Histogram *latency_stats,
-                   Histogram *curl_latency_stats,
-                   const std::string &ns_server_port,
-                   const int32_t &num_vbuckets)
+V8Worker::V8Worker(
+    v8::Platform *platform, handler_config_t *h_config,
+    server_settings_t *server_settings, const std::string &function_name,
+    const std::string &function_id, const std::string &function_instance_id,
+    const std::string &user_prefix, Histogram *latency_stats,
+    Histogram *curl_latency_stats, const std::string &ns_server_port,
+    const int32_t &num_vbuckets, vb_seq_map_t *vb_seq,
+    std::vector<std::vector<uint64_t>> *vbfilter_map,
+    std::vector<uint64_t> *processed_bucketops, vb_lock_map_t *vb_locks)
     : app_name_(h_config->app_name), settings_(server_settings),
       num_vbuckets_(num_vbuckets),
       timer_reduction_ratio_(
@@ -277,7 +277,9 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
       exception_type_names_(
           {"KVError", "N1QLError", "EventingError", "CurlError", "TypeError"}),
       handler_headers_(h_config->handler_headers),
-      handler_footers_(h_config->handler_footers) {
+      handler_footers_(h_config->handler_footers), vb_seq_(vb_seq),
+      vbfilter_map_(vbfilter_map), processed_bucketops_(processed_bucketops),
+      vb_locks_(vb_locks) {
   auto config = ParseDeployment(h_config->dep_cfg.c_str());
   cb_source_bucket_.assign(config->source_bucket);
   cb_source_scope_.assign(config->source_scope);
@@ -291,11 +293,6 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
   scan_timer_.store(false);
   update_v8_heap_.store(false);
   run_gc_.store(false);
-  for (int i = 0; i < num_vbuckets_; i++) {
-    vb_seq_[i] = atomic_ptr_t(new std::atomic<uint64_t>(0));
-  }
-  vbfilter_map_.resize(num_vbuckets_);
-  processed_bucketops_.resize(num_vbuckets_, 0);
 
   v8::Isolate::CreateParams create_params;
   create_params.array_buffer_allocator =
@@ -681,10 +678,12 @@ void V8Worker::RouteMessage() {
 }
 
 void V8Worker::UpdateSeqNumLocked(const int vb, const uint64_t seq_num) {
+  auto lock = GetAndLockVbLock(vb);
   currently_processed_vb_ = vb;
   currently_processed_seqno_ = seq_num;
-  vb_seq_[vb]->store(seq_num, std::memory_order_seq_cst);
-  processed_bucketops_[vb] = seq_num;
+  (*vb_seq_)[vb]->store(seq_num, std::memory_order_seq_cst);
+  (*processed_bucketops_)[vb] = seq_num;
+  lock.unlock();
 }
 
 void V8Worker::HandleDeleteEvent(const std::unique_ptr<WorkerMessage> &msg) {
@@ -1225,7 +1224,8 @@ std::string V8Worker::Compile(std::string handler) {
 
 void V8Worker::GetBucketOpsMessages(std::vector<uv_buf_t> &messages) {
   for (int vb = 0; vb < num_vbuckets_; ++vb) {
-    auto seq = vb_seq_[vb].get()->load(std::memory_order_seq_cst);
+    auto lock = GetAndLockVbLock(vb);
+    auto seq = (*vb_seq_)[vb].get()->load(std::memory_order_seq_cst);
     if (seq > 0) {
       std::string seq_no = std::to_string(vb) + "::" + std::to_string(seq);
       auto curr_messages =
@@ -1234,8 +1234,9 @@ void V8Worker::GetBucketOpsMessages(std::vector<uv_buf_t> &messages) {
         messages.push_back(msg);
       }
       // Reset the seq no of checkpointed vb to 0
-      vb_seq_[vb].get()->compare_exchange_strong(seq, 0);
+      (*vb_seq_)[vb].get()->compare_exchange_strong(seq, 0);
     }
+    lock.unlock();
   }
 }
 
@@ -1286,25 +1287,33 @@ int V8Worker::ParseMetadataWithAck(const std::string &metadata_str, int &vb_no,
 }
 
 void V8Worker::UpdateVbFilter(int vb_no, uint64_t seq_no) {
-  vbfilter_map_[vb_no].push_back(seq_no);
+  auto lock = GetAndLockVbLock(vb_no);
+  (*vbfilter_map_)[vb_no].push_back(seq_no);
+  lock.unlock();
 }
 
 uint64_t V8Worker::GetVbFilter(int vb_no) {
-  auto &filters = vbfilter_map_[vb_no];
+  auto lock = GetAndLockVbLock(vb_no);
+  auto &filters = (*vbfilter_map_)[vb_no];
+  lock.unlock();
   if (filters.empty())
     return 0;
   return filters.front();
 }
 
 void V8Worker::EraseVbFilter(int vb_no) {
-  auto &filters = vbfilter_map_[vb_no];
+  auto lock = GetAndLockVbLock(vb_no);
+  auto &filters = (*vbfilter_map_)[vb_no];
+  lock.unlock();
   if (!filters.empty()) {
     filters.erase(filters.begin());
   }
 }
 
 void V8Worker::UpdateBucketopsSeqnoLocked(int vb_no, uint64_t seq_no) {
-  processed_bucketops_[vb_no] = seq_no;
+  auto lock = GetAndLockVbLock(vb_no);
+  (*processed_bucketops_)[vb_no] = seq_no;
+  lock.unlock();
 }
 
 void V8Worker::RemoveTimerPartition(int vb_no) {
@@ -1320,9 +1329,16 @@ void V8Worker::AddTimerPartition(int vb_no) {
 }
 
 uint64_t V8Worker::GetBucketopsSeqno(int vb_no) {
+  auto lock = GetAndLockVbLock(vb_no);
   // Reset the seq no of checkpointed vb to 0
-  vb_seq_[vb_no]->store(0, std::memory_order_seq_cst);
-  return processed_bucketops_[vb_no];
+  (*vb_seq_)[vb_no]->store(0, std::memory_order_seq_cst);
+  auto return_val = (*processed_bucketops_)[vb_no];
+  lock.unlock();
+  return return_val;
+}
+
+std::unique_lock<std::mutex> V8Worker::GetAndLockVbLock(int vb_no) {
+  return std::unique_lock<std::mutex>(*(*vb_locks_)[vb_no]);
 }
 
 void V8Worker::SetThreadExitFlag() {
