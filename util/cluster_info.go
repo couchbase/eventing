@@ -69,11 +69,13 @@ type ClusterInfoCache struct {
 }
 
 type ClusterInfoClient struct {
-	cinfo                              *ClusterInfoCache
-	clusterURL                         string
-	pool                               string
-	servicesNotifierRetryTm            uint
-	finch                              chan bool
+	cinfo                   *ClusterInfoCache
+	clusterURL              string
+	pool                    string
+	servicesNotifierRetryTm uint
+	finch                   chan bool
+
+	scn                                *ServicesChangeNotifier
 	fetchBucketInfoOnURIHashChangeOnly int32
 }
 
@@ -760,19 +762,19 @@ func (c *ClusterInfoClient) watchClusterChanges() {
 		return
 	}
 
-	scn, err := NewServicesChangeNotifier(clusterAuthURL, c.pool)
+	c.scn, err = NewServicesChangeNotifier(clusterAuthURL, c.pool)
 	if err != nil {
 		logging.Errorf("ClusterInfoClient NewServicesChangeNotifier(): %v\n", err)
 		selfRestart()
 		return
 	}
-	defer scn.Close()
+	defer c.scn.Close()
 
 	ticker := time.NewTicker(time.Duration(c.servicesNotifierRetryTm) * time.Minute)
 	defer ticker.Stop()
 
 	// For observing node services config
-	ch := scn.GetNotifyCh()
+	ch := c.scn.GetNotifyCh()
 	for {
 		select {
 		case notif, ok := <-ch:
@@ -781,7 +783,25 @@ func (c *ClusterInfoClient) watchClusterChanges() {
 				return
 			}
 
-			if notif.Type == PoolChangeNotification {
+			if notif.Type == CollectionManifestChangeNotification {
+				// Read the bucket info from msg and fetch bucket information for that bucket
+				switch (notif.Msg).(type) {
+				case *couchbase.Bucket:
+					bucket := (notif.Msg).(*couchbase.Bucket)
+					if err := c.cinfo.FetchManifestInfo(bucket.Name); err != nil {
+						logging.Errorf("cic.cinfo.FetchManifestInfo(): %v\n", err)
+						selfRestart()
+						return
+					}
+				default:
+					// Fetch full cluster info cache
+					if err := c.cinfo.FetchWithLock(false); err != nil {
+						logging.Errorf("cic.cinfo.FetchWithLock(): %v\n", err)
+						selfRestart()
+						return
+					}
+				}
+			} else if notif.Type == PoolChangeNotification {
 				optimise := (atomic.LoadInt32(&c.fetchBucketInfoOnURIHashChangeOnly) == 1)
 				if err := c.cinfo.FetchWithLock(optimise); err != nil {
 					logging.Errorf("cic.cinfo.FetchWithLock(%v): %v\n", err, optimise)
@@ -795,6 +815,8 @@ func (c *ClusterInfoClient) watchClusterChanges() {
 					return
 				}
 			}
+
+			c.checkAndObserveManifestChanges()
 
 		case <-ticker.C:
 			if err := c.cinfo.FetchWithLock(false); err != nil {
@@ -812,6 +834,18 @@ func (c *ClusterInfoClient) Close() {
 	defer func() { recover() }()
 
 	close(c.finch)
+}
+
+func (c *ClusterInfoClient) checkAndObserveManifestChanges() {
+	cinfo := c.cinfo
+	cinfo.RLock()
+	defer cinfo.RUnlock()
+
+	buckets := cinfo.pool.GetBucketList()
+	for bucketName := range buckets {
+		c.scn.RunObserveCollectionManifestChanges(bucketName)
+	}
+	c.scn.GarbageCollect(buckets)
 }
 
 func (c *ClusterInfoClient) OptimiseCICFetch(optimise bool) {
@@ -847,6 +881,19 @@ func (c *ClusterInfoCache) GetNodeCompatVersion(service string) uint32 {
 		}
 	}
 	return version
+}
+
+func (c *ClusterInfoCache) FetchManifestInfo(bucketName string) error {
+	c.Lock()
+	defer c.Unlock()
+
+	pool := &c.pool
+	manifest, err := pool.RefreshBucketManifest(bucketName)
+	if err != nil {
+		return err
+	}
+	pool.Manifest[bucketName] = manifest
+	return nil
 }
 
 func getConfig() (c common.Config) {

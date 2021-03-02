@@ -621,6 +621,7 @@ func (s *SuperSupervisor) UnwatchBucket(bucketName, appName string) {
 			delete(bucketWatch.apps, appName)
 			if len(bucketWatch.apps) == 0 {
 				bucketWatch.Close()
+				s.scn.StopObserveCollectionManifestChanges(bucketName)
 				delete(s.buckets, bucketName)
 			}
 		}
@@ -639,6 +640,31 @@ func (s *SuperSupervisor) GetBucket(bucketName, appName string) (*couchbase.Buck
 	}
 
 	return nil, fmt.Errorf("Function: %s requested bucket: %s is not in watch list", appName, bucketName)
+}
+
+func (s *SuperSupervisor) GetCurrentManifestId(bucketName string) (string, error) {
+	s.bucketsRWMutex.Lock()
+	defer s.bucketsRWMutex.Unlock()
+	bucketWatch, ok := s.buckets[bucketName]
+	if !ok {
+		return "0", fmt.Errorf("Bucket not being watched")
+	}
+	return bucketWatch.GetManifestId(), nil
+}
+
+func (s *SuperSupervisor) GetCollectionID(bucketName, scopeName, collectionName string) (uint32, error) {
+	s.bucketsRWMutex.Lock()
+	defer s.bucketsRWMutex.Unlock()
+	bucketWatch, ok := s.buckets[bucketName]
+	if !ok {
+		return 0, fmt.Errorf("Bucket not being watched")
+	}
+
+	manifest := bucketWatch.b.Manifest
+	if manifest == nil {
+		return 0, nil
+	}
+	return manifest.GetCollectionID(scopeName, collectionName)
 }
 
 func (s *SuperSupervisor) IncWorkerRespawnedCount() {

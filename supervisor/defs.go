@@ -8,6 +8,7 @@ import (
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/dcp"
 	"github.com/couchbase/eventing/suptree"
+	"github.com/couchbase/eventing/util"
 )
 
 const (
@@ -128,6 +129,7 @@ type SuperSupervisor struct {
 	runningProducersRWMutex    *sync.RWMutex
 	vbucketsToOwn              []uint16
 
+	scn        *util.ServicesChangeNotifier
 	serviceMgr common.EventingServiceMgr
 	sync.RWMutex
 }

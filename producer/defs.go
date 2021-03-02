@@ -76,11 +76,10 @@ type Producer struct {
 	numVbuckets            int
 	isPausing              bool
 	stateChangeCh          chan state
-	pollBucketInterval     time.Duration
-	pollBucketStopCh       chan struct{}
-	pollBucketTicker       *time.Ticker
+	undeployHandler        chan bool
 	retryCount             int64
 	stopCh                 chan struct{}
+	stopUndeployWaitCh     chan struct{}
 	stopChClosed           bool
 	stopProducerCh         chan struct{}
 	superSup               common.EventingSuperSup
@@ -175,6 +174,8 @@ type Producer struct {
 	workerVbucketMap   map[string][]uint16 // Access controlled by workerVbMapRWMutex
 	workerVbMapRWMutex *sync.RWMutex
 
+	srcCid  uint32
+	metaCid uint32
 	// Supervisor of workers responsible for
 	// pipelining messages to V8
 	workerSupervisor *suptree.Supervisor

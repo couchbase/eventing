@@ -112,15 +112,39 @@ func (s *SuperSupervisor) getStatuses(data []byte) (bool, bool, map[string]inter
 	return pStatus, dStatus, settings, nil
 }
 
-func (s *SuperSupervisor) getSourceAndMetaBucketNodeCount(appName string) (int, int, error) {
-	source, meta, err := s.getSourceAndMetaBucket(appName)
+func (s *SuperSupervisor) checkSourceAndMetadataKeyspaceExist(appName string) (bool, bool, error) {
+	source, meta, err := s.getSourceAndMetaKeyspace(appName)
 	if err != nil {
-		return 0, 0, err
+		return false, false, err
 	}
+
 	hostAddress := net.JoinHostPort(util.Localhost(), s.restPort)
-	sourceNodeCount := util.CountActiveKVNodes(source, hostAddress)
-	metaNodeCount := util.CountActiveKVNodes(meta, hostAddress)
-	return sourceNodeCount, metaNodeCount, nil
+	sourceExist := util.CheckKeyspaceExist(source.BucketName, source.ScopeName, source.CollectionName, hostAddress)
+	metaDataExist := util.CheckKeyspaceExist(meta.BucketName, meta.ScopeName, meta.CollectionName, hostAddress)
+	return sourceExist, metaDataExist, nil
+}
+
+func (s *SuperSupervisor) getSourceAndMetaKeyspace(appName string) (*common.Keyspace, *common.Keyspace, error) {
+	var appData []byte
+	err := util.Retry(util.NewFixedBackoff(time.Second), nil, metakvAppCallback, s, MetakvAppsPath, MetakvChecksumPath, appName, &appData)
+	if err == common.ErrRetryTimeout {
+		return nil, nil, err
+	}
+	config := cfg.GetRootAsConfig(appData, 0)
+	depcfg := config.DepCfg(new(cfg.DepCfg))
+	source := &common.Keyspace{
+		BucketName:     string(depcfg.SourceBucket()),
+		ScopeName:      string(depcfg.SourceScope()),
+		CollectionName: string(depcfg.SourceCollection()),
+	}
+
+	meta := &common.Keyspace{
+		BucketName:     string(depcfg.MetadataBucket()),
+		ScopeName:      string(depcfg.MetadataScope()),
+		CollectionName: string(depcfg.MetadataCollection()),
+	}
+
+	return source, meta, nil
 }
 
 func (s *SuperSupervisor) getSourceAndMetaBucket(appName string) (source string, meta string, err error) {
@@ -202,6 +226,9 @@ func (s *SuperSupervisor) watchBucketWithLock(bucketName, appName string) error 
 			logging.Errorf("%s: Could not connect to bucket %s err: %v", logPrefix, bucketName, err)
 			return err
 		}
+		// forcefully update the manifest of the Bucket
+		bucketWatch.RefreshBucketManifestOnUIDChange("")
+		s.scn.RunObserveCollectionManifestChanges(bucketName)
 		bucketWatch.apps = make(map[string]struct{})
 		s.buckets[bucketName] = bucketWatch
 	}
@@ -231,6 +258,18 @@ func (s *SuperSupervisor) bucketRefresh(np *couchbase.Pool) ([]string, error) {
 	return deletedBuckets, nil
 }
 
+func (s *SuperSupervisor) FetchBucketManifestInfo(bucketName string, muid string) (bool, error) {
+	s.bucketsRWMutex.Lock()
+	defer s.bucketsRWMutex.Unlock()
+
+	bucketWatch, ok := s.buckets[bucketName]
+	if !ok {
+		return false, nil
+	}
+
+	return bucketWatch.RefreshBucketManifestOnUIDChange(muid)
+}
+
 func (s *SuperSupervisor) undeployFunctionsOnDeletedBkts(deletedBuckets []string) {
 	logPrefix := "SuperSupervisor::undeployFunctionsOnDeletedBkts"
 	logging.Infof("%s Undeploying functions due to bucket delete: %v", logPrefix, deletedBuckets)
@@ -244,10 +283,40 @@ func (s *SuperSupervisor) undeployFunctionsOnDeletedBkts(deletedBuckets []string
 		for _, appName := range appNames {
 			p, ok := s.runningProducers[appName]
 			if !ok {
+				util.Retry(util.NewExponentialBackoff(), &s.retryCount, undeployFunctionCallback, s, appName)
 				continue
 			}
 			skipMetadataCleanup := (p.MetadataBucket() == bucketName)
-			s.StopProducer(appName, skipMetadataCleanup, true)
+			p.UndeployHandler(skipMetadataCleanup)
+		}
+	}
+}
+
+func (s *SuperSupervisor) checkDeletedCid(bucketName string) {
+	appNames, ok := s.getAppsWatchingBucket(bucketName)
+	if !ok {
+		return
+	}
+
+	for _, appName := range appNames {
+		p, ok := s.runningProducers[appName]
+		if !ok {
+			// possible that app didn't get spawned yet
+			util.Retry(util.NewExponentialBackoff(), &s.retryCount, undeployFunctionCallback, s, appName)
+			continue
+		}
+
+		mCid := p.GetMetadataCid()
+		cid, err := s.GetCollectionID(p.MetadataBucket(), p.MetadataScope(), p.MetadataCollection())
+		if err != nil || cid != mCid {
+			p.UndeployHandler(true)
+			continue
+		}
+
+		sCid := p.GetSourceCid()
+		cid, err = s.GetCollectionID(p.SourceBucket(), p.SourceScope(), p.SourceCollection())
+		if err != nil || cid != sCid {
+			p.UndeployHandler(false)
 		}
 	}
 }
@@ -289,19 +358,19 @@ func (s *SuperSupervisor) watchBucketChanges() {
 		return
 	}
 
-	scn, err := util.NewServicesChangeNotifier(clusterAuthURL, "default")
+	s.scn, err = util.NewServicesChangeNotifier(clusterAuthURL, "default")
 	if err != nil {
 		logging.Errorf("ClusterInfoClient NewServicesChangeNotifier(): %v\n", err)
 		selfRestart()
 		return
 	}
-	defer scn.Close()
+	defer s.scn.Close()
 
 	ticker := time.NewTicker(time.Duration(s.servicesNotifierRetryTm) * time.Minute)
 	defer ticker.Stop()
 
 	// For observing node services config
-	ch := scn.GetNotifyCh()
+	ch := s.scn.GetNotifyCh()
 	for {
 		select {
 		case notif, ok := <-ch:
@@ -309,9 +378,19 @@ func (s *SuperSupervisor) watchBucketChanges() {
 				selfRestart()
 				return
 			}
+			if notif.Type == util.CollectionManifestChangeNotification {
+				bucket := (notif.Msg).(*couchbase.Bucket)
+				changed, err := s.FetchBucketManifestInfo(bucket.Name, bucket.CollectionManifestUID)
+				if err != nil {
+					logging.Errorf("cic.cinfo.FetchManifestInfo(): %v\n", err)
+					selfRestart()
+					return
+				}
+				if changed {
+					s.checkDeletedCid(bucket.Name)
+				}
+			}
 
-			// Process only PoolChangeNotification as any change to
-			// ClusterMembership is reflected only in PoolChangeNotification
 			if notif.Type != util.PoolChangeNotification {
 				continue
 			}
@@ -414,6 +493,13 @@ func (bw *bucketWatchStruct) Refresh(retryCount int64, restPort string, np *couc
 	return err
 }
 
+func (bw *bucketWatchStruct) RefreshBucketManifestOnUIDChange(muid string) (bool, error) {
+	if muid != "" && bw.b.Manifest.UID == muid {
+		return false, nil
+	}
+	return true, bw.b.RefreshBucketManifest()
+}
+
 func (bw *bucketWatchStruct) Close() {
 	bw.b.Close()
 }
@@ -424,4 +510,8 @@ func (bw *bucketWatchStruct) AppNames() []string {
 		appNames = append(appNames, appName)
 	}
 	return appNames
+}
+
+func (bw *bucketWatchStruct) GetManifestId() string {
+	return bw.b.Manifest.UID
 }

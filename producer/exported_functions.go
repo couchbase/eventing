@@ -221,6 +221,14 @@ func (p *Producer) SourceBucket() string {
 	return p.handlerConfig.SourceKeyspace.BucketName
 }
 
+func (p *Producer) GetSourceCid() uint32 {
+	return p.srcCid
+}
+
+func (p *Producer) GetMetadataCid() uint32 {
+	return p.metaCid
+}
+
 // SourceScope returns the source scope for event handler
 func (p *Producer) SourceScope() string {
 	return p.handlerConfig.SourceKeyspace.ScopeName
@@ -1174,4 +1182,8 @@ func (p *Producer) AppendCurlLatencyStats(deltas common.StatsData) {
 
 func (p *Producer) AppendLatencyStats(deltas common.StatsData) {
 	p.latencyStats.Append(deltas)
+}
+
+func (p *Producer) UndeployHandler(skipMetadataCleanup bool) {
+	p.undeployHandler <- skipMetadataCleanup
 }

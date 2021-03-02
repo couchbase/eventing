@@ -235,13 +235,13 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 				state := s.GetAppState(appName)
 
 				if state == common.AppStateUndeployed || state == common.AppStatePaused {
-					sourceNodeCount, metaNodeCount, err := s.getSourceAndMetaBucketNodeCount(appName)
+					sourceExist, metaExist, err := s.checkSourceAndMetadataKeyspaceExist(appName)
 					if err != nil {
-						logging.Errorf("%s [%d] getSourceAndMetaBucketNodeCount failed for Function: %s  runningProducer: %v",
+						logging.Errorf("%s [%d] checkSourceAndMetadataKeyspaceExists failed for Function: %s  runningProducer: %v",
 							logPrefix, s.runningFnsCount(), appName, s.runningFns()[appName])
 						return nil
 					}
-					if sourceNodeCount < 1 || metaNodeCount < 1 {
+					if !sourceExist || !metaExist {
 						util.Retry(util.NewExponentialBackoff(), &s.retryCount, undeployFunctionCallback, s, appName)
 						s.appRWMutex.Lock()
 						s.appDeploymentStatus[appName] = false
@@ -470,14 +470,14 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(path string, value []byte,
 			if _, ok := s.runningFns()[appName]; !ok {
 
 				if deploymentStatus && processingStatus {
-					sourceNodeCount, metaNodeCount, err := s.getSourceAndMetaBucketNodeCount(appName)
+					sourceExist, metaExist, err := s.checkSourceAndMetadataKeyspaceExist(appName)
 					if err != nil {
 						logging.Errorf("%s [%d] getSourceAndMetaBucketNodeCount failed for Function: %s  runningProducer: %v",
 							logPrefix, s.runningFnsCount(), appName, s.runningFns()[appName])
 						continue
 					}
 
-					if sourceNodeCount < 1 || metaNodeCount < 1 {
+					if !sourceExist || !metaExist {
 						util.Retry(util.NewExponentialBackoff(), &s.retryCount, undeployFunctionCallback, s, appName)
 						logging.Errorf("%s [%d] Source bucket or metadata bucket is deleted, Function: %s is undeployed",
 							logPrefix, s.runningFnsCount(), appName)

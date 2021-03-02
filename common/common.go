@@ -198,6 +198,10 @@ type EventingProducer interface {
 	SpanBlobDump() map[string]interface{}
 	Serve()
 	SourceBucket() string
+	SourceScope() string
+	SourceCollection() string
+	GetSourceCid() uint32
+	GetMetadataCid() uint32
 	SrcMutation() bool
 	Stop(context string)
 	StopProducer()
@@ -205,6 +209,7 @@ type EventingProducer interface {
 	String() string
 	SetTrapEvent(value bool)
 	TimerDebugStats() map[int]map[string]interface{}
+	UndeployHandler(skipMetaCleanup bool)
 	UpdateMemoryQuota(quota int64)
 	UsingTimer() bool
 	VbDcpEventsRemainingToProcess() map[int]int64
@@ -299,6 +304,8 @@ type EventingSuperSup interface {
 	GetLocallyDeployedApps() map[string]string
 	GetMetaStoreStats(appName string) map[string]uint64
 	GetBucket(bucketName, appName string) (*couchbase.Bucket, error)
+	GetCollectionID(bucketName, scopeName, collectionName string) (uint32, error)
+	GetCurrentManifestId(bucketName string) (string, error)
 	GetSeqsProcessed(appName string) map[int]int64
 	InternalVbDistributionStats(appName string) map[string]string
 	KillAllConsumers()

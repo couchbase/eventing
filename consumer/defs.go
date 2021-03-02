@@ -120,7 +120,7 @@ type Consumer struct {
 	builderPool    *sync.Pool
 	breakpadOn     bool
 	uuid           string
-	collectionID   uint32
+	srcCid         uint32
 	retryCount     *int64
 
 	handlerFooters []string

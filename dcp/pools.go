@@ -124,8 +124,10 @@ type Bucket struct {
 
 	// These are used for JSON IO, but isn't used for processing
 	// since it needs to be swapped out safely.
-	VBSMJson  VBucketServerMap `json:"vBucketServerMap"`
-	NodesJSON []Node           `json:"nodes"`
+	VBSMJson              VBucketServerMap `json:"vBucketServerMap"`
+	NodesJSON             []Node           `json:"nodes"`
+	Manifest              *collections.CollectionManifest
+	CollectionManifestUID string `json:"collectionsManifestUid,omitempty"`
 
 	pool        *Pool
 	commonSufix string
@@ -357,6 +359,21 @@ func (c *Client) RunObservePool(pool string, callb func(interface{}) error, canc
 	return c.runObserveStreamingEndpoint(path, decoder, callb, cancel)
 }
 
+func (c *Client) RunObserveCollectionManifestChanges(pool, bucket string, callb func(interface{}) error, cancel chan bool) error {
+
+	path := "/pools/" + pool + "/bs/" + bucket
+	decoder := func(bs []byte) (interface{}, error) {
+		var b Bucket
+		var err error
+		if err = json.Unmarshal(bs, &b); err != nil {
+			logging.Errorf("RunObserveCollectionManifestChanges: Error while decoding the response from path: %s, response body: %s, err: %v", path, string(bs), err)
+		}
+		return &b, err
+	}
+
+	return c.runObserveStreamingEndpoint(path, decoder, callb, cancel)
+}
+
 // NodeServices streaming API based observe-callback wrapper
 func (c *Client) RunObserveNodeServices(pool string, callb func(interface{}) error, cancel chan bool) error {
 
@@ -568,6 +585,16 @@ func (b *Bucket) RefreshWithTerseBucket() error {
 	return nil
 }
 
+func (b *Bucket) RefreshBucketManifest() error {
+	pool := b.pool
+	manifest, err := pool.RefreshBucketManifest(b.Name)
+	if err != nil {
+		return err
+	}
+	b.Manifest = manifest
+	return nil
+}
+
 func (b *Bucket) init(nb *Bucket) {
 	connHost, _, _ := net.SplitHostPort(b.pool.client.BaseURL.Host)
 	for i := range nb.NodesJSON {
@@ -688,6 +715,28 @@ loop:
 	return nil
 }
 
+func (p *Pool) RefreshBucketManifest(bucket string) (*collections.CollectionManifest, error) {
+	retryCount := 0
+retry:
+	manifest := &collections.CollectionManifest{}
+	err := p.client.parseURLResponse("pools/default/buckets/"+bucket+"/scopes", manifest)
+	if err != nil {
+		// bucket list is out of sync with cluster bucket list
+		// bucket might have got deleted.
+		if strings.Contains(err.Error(), "HTTP error 404") {
+			logging.Warnf("cluster_info: Out of sync for bucket %s. Retrying..", bucket)
+			time.Sleep(1 * time.Millisecond)
+			retryCount++
+			if retryCount > 5 {
+				return nil, err
+			}
+			goto retry
+		}
+		return nil, err
+	}
+	return manifest, nil
+}
+
 func (p *Pool) GetServerGroups() (groups ServerGroups, err error) {
 	err = p.client.parseURLResponse(p.ServerGroupsUri, &groups)
 	return
@@ -797,6 +846,14 @@ func (p *Pool) GetBucket(name string) (*Bucket, error) {
 	}
 	runtime.SetFinalizer(&rv, bucketFinalizer)
 	return &rv, nil
+}
+
+func (p *Pool) GetBucketList() map[string]struct{} {
+	bucketList := make(map[string]struct{})
+	for bucketName := range p.BucketMap {
+		bucketList[bucketName] = struct{}{}
+	}
+	return bucketList
 }
 
 func (p *Pool) GetCollectionID(bucket, scope, collection string) (uint32, error) {

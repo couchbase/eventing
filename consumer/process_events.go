@@ -408,7 +408,7 @@ func (c *Consumer) startDcp(flogs couchbase.FailoverLog) error {
 		return err
 	}
 
-	vbSeqnos, err := util.GetSeqnos(c.producer.NsServerHostPort(), "default", c.sourceKeyspace.BucketName, c.collectionID)
+	vbSeqnos, err := util.GetSeqnos(c.producer.NsServerHostPort(), "default", c.sourceKeyspace.BucketName, c.srcCid)
 	if err != nil && c.dcpStreamBoundary != common.DcpEverything {
 		logging.Errorf("%s [%s:%s:%d] Failed to fetch vb seqnos, err: %v", logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
 		return nil
@@ -1064,7 +1064,7 @@ func (c *Consumer) handleFailoverLog() {
 						case <-c.stopConsumerCh:
 							return
 						default:
-							vbSeqNos, err := util.GetSeqnos(c.producer.NsServerHostPort(), "default", c.sourceKeyspace.BucketName, c.collectionID)
+							vbSeqNos, err := util.GetSeqnos(c.producer.NsServerHostPort(), "default", c.sourceKeyspace.BucketName, c.srcCid)
 							if err == nil {
 								break vbLabel
 							}
@@ -1412,7 +1412,7 @@ func (c *Consumer) filterMutations(e *cb.DcpEvent) bool {
 	c.filterVbEventsRWMutex.RUnlock()
 
 	c.vbProcessingStats.updateVbStat(e.VBucket, "last_read_seq_no", e.Seqno)
-	if c.collectionID != e.CollectionID {
+	if c.srcCid != e.CollectionID {
 		c.checkAndSendNoOp(e.Seqno, e.VBucket)
 		return true
 	}
