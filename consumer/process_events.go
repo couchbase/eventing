@@ -96,7 +96,11 @@ func (c *Consumer) processDCPEvents() {
 					c.sendXattrDoc(e, functionInstanceID)
 
 				case dcpDatatypeBinXattr:
-					if c.binaryDocAllowed && c.checkTransactionMutationAllowed(e) {
+					if c.binaryDocAllowed {
+						if !c.allowTransactionMutations && c.isTransactionMutation(e) {
+							c.suppressedDCPMutationCounter++
+							continue
+						}
 						c.sendXattrDoc(e, functionInstanceID)
 					}
 
@@ -1416,6 +1420,6 @@ func (c *Consumer) filterMutations(e *cb.DcpEvent) bool {
 	return false
 }
 
-func (c *Consumer) checkTransactionMutationAllowed(e *cb.DcpEvent) bool {
-	return c.allowTransactionMutations && bytes.HasPrefix(e.Key, cb.TransactionMutationPrefix)
+func (c *Consumer) isTransactionMutation(e *cb.DcpEvent) bool {
+	return bytes.HasPrefix(e.Key, cb.TransactionMutationPrefix)
 }
