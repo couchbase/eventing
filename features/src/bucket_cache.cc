@@ -35,11 +35,10 @@ BucketCache &BucketCache::Fetch() {
 }
 
 BucketCache::BucketCache(size_t maxSize, millis maxAge)
-    : max_size_(maxSize), max_age_(maxAge), size_(0), mutex_(),
+    : mutex_(), size_(0), max_size_(maxSize), max_age_(maxAge),
       rnd_(std::random_device()()) {}
 
 BucketCache::~BucketCache() {}
-
 
 void BucketCache::SetMaxSize(size_t maxSize) {
   LOG(logInfo) << "Setting bucket cache max size to " << maxSize << std::endl;
@@ -49,7 +48,8 @@ void BucketCache::SetMaxSize(size_t maxSize) {
 }
 
 void BucketCache::SetMaxAge(millis maxAge) {
-  LOG(logInfo) << "Setting bucket cache max age to " << maxAge.count() << " milliseconds" << std::endl;
+  LOG(logInfo) << "Setting bucket cache max age to " << maxAge.count()
+               << " milliseconds" << std::endl;
   std::unique_lock lock(mutex_);
   max_age_ = maxAge;
   LockedTrim();

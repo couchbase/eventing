@@ -678,7 +678,7 @@ void Crc64Function(const v8::FunctionCallbackInfo<v8::Value> &args) {
   }
 
   char crc_str[32] = {0};
-  std::sprintf(crc_str, "%016lx", crc);
+  std::sprintf(crc_str, "%016lx", (unsigned long)crc);
   args.GetReturnValue().Set(v8Str(isolate, crc_str));
 }
 
@@ -743,8 +743,7 @@ CompilationInfo BuildCompileInfo(v8::Isolate *isolate,
   v8::HandleScope handle_scope(isolate);
   CompilationInfo info;
 
-  const char *exception_string =
-      JSONStringify(isolate, try_catch->Exception()).c_str();
+  std::string exception_string(JSONStringify(isolate, try_catch->Exception()));
   v8::Handle<v8::Message> message = try_catch->Message();
 
   info.compile_success = false;

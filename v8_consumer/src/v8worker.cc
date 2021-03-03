@@ -271,15 +271,13 @@ V8Worker::V8Worker(
       timer_reduction_ratio_(
           int(num_vbuckets / h_config->num_timer_partitions)),
       latency_stats_(latency_stats), curl_latency_stats_(curl_latency_stats),
-      platform_(platform), function_name_(function_name),
-      function_id_(function_id), user_prefix_(user_prefix),
-      ns_server_port_(ns_server_port),
+      vb_seq_(vb_seq), vb_locks_(vb_locks), vbfilter_map_(vbfilter_map),
+      processed_bucketops_(processed_bucketops), platform_(platform),
+      function_name_(function_name), function_id_(function_id),
+      user_prefix_(user_prefix), ns_server_port_(ns_server_port),
       exception_type_names_(
           {"KVError", "N1QLError", "EventingError", "CurlError", "TypeError"}),
-      handler_headers_(h_config->handler_headers),
-      handler_footers_(h_config->handler_footers), vb_seq_(vb_seq),
-      vbfilter_map_(vbfilter_map), processed_bucketops_(processed_bucketops),
-      vb_locks_(vb_locks) {
+      handler_headers_(h_config->handler_headers) {
   auto config = ParseDeployment(h_config->dep_cfg.c_str());
   cb_source_bucket_.assign(config->source_bucket);
   cb_source_scope_.assign(config->source_scope);
