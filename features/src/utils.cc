@@ -199,8 +199,7 @@ std::string ExceptionString(v8::Isolate *isolate,
   // and its location
   if (!v8exception_info.file.empty()) {
 
-    os << "Location: " << v8exception_info.file << ":" << v8exception_info.line
-       << " " << std::endl;
+    os << "Line: " << v8exception_info.line << " " << std::endl;
 
     if (!v8exception_info.srcLine.empty()) {
       os << "Code: " << v8exception_info.srcLine << " " << std::endl;
@@ -221,6 +220,7 @@ V8ExceptionInfo GetV8ExceptionInfo(v8::Isolate *isolate,
                                    v8::TryCatch *try_catch) {
 
   V8ExceptionInfo v8exception_info;
+  auto offset = UnwrapData(isolate)->insight_line_offset;
   v8::HandleScope handle_scope(isolate);
 
   // Extract exception object
@@ -249,7 +249,8 @@ V8ExceptionInfo GetV8ExceptionInfo(v8::Isolate *isolate,
     v8::String::Utf8Value file(isolate, message->GetScriptResourceName());
 
     v8exception_info.file = ToCString(file);
-    v8exception_info.line = message->GetLineNumber(context).FromMaybe(0);
+    auto line = message->GetLineNumber(context).FromMaybe(0) - offset;
+    v8exception_info.line = line > 0 ? line : 0;
 
     // Extract source code
     auto maybe_srcline = message->GetSourceLine(context);

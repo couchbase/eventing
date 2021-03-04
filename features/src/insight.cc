@@ -29,7 +29,9 @@ void CodeInsight::AccumulateLog(const std::string &log) {
                                                  v8::StackTrace::kLineNumber);
   if (stack->GetFrameCount() < 1)
     return;
-  auto line = stack->GetFrame(isolate_, 0)->GetLineNumber();
+  auto offset = UnwrapData(isolate_)->insight_line_offset;
+  auto line = stack->GetFrame(isolate_, 0)->GetLineNumber() - offset;
+  line = line > 0 ? line : 0;
   std::lock_guard<std::mutex> lock(lock_);
   auto &entry = insight_[line];
   entry.last_log_ = log;
@@ -37,11 +39,13 @@ void CodeInsight::AccumulateLog(const std::string &log) {
 
 void CodeInsight::AccumulateException(v8::TryCatch &try_catch) {
   auto context = isolate_->GetCurrentContext();
+  auto offset = UnwrapData(isolate_)->insight_line_offset;
   auto emsg = ExceptionString(isolate_, context, &try_catch);
   v8::Local<v8::Message> msg = try_catch.Message();
   if (msg.IsEmpty())
     return;
-  auto line = msg->GetLineNumber(context).FromMaybe(0);
+  auto line = msg->GetLineNumber(context).FromMaybe(0) - offset;
+  line = line > 0 ? line : 0;
   std::lock_guard<std::mutex> lock(lock_);
   auto &entry = insight_[line];
   entry.err_count_++;
