@@ -164,7 +164,7 @@ ApplicationModel.prototype.getDefaultModel = function() {
       processing_status: false,
       deployment_status: false,
       description: '',
-      worker_count: 3,
+      worker_count: 1,
       execution_timeout: 60,
       user_prefix: 'eventing',
       n1ql_consistency: 'none',
@@ -199,7 +199,7 @@ ApplicationModel.prototype.fillWithMissingDefaults = function() {
 ApplicationModel.prototype.initializeDefaults = function() {
   this.depcfg = this.getDefaultModel().depcfg;
   this.settings = {};
-  this.settings.worker_count = 3;
+  this.settings.worker_count = 1;
   this.settings.execution_timeout = 60;
   this.settings.user_prefix = 'eventing';
   this.settings.n1ql_consistency = 'none';

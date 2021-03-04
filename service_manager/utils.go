@@ -110,7 +110,7 @@ func (m *ServiceMgr) fillMissingWithDefaults(appName string, settings map[string
 	fillMissingDefault(app, settings, "tick_duration", float64(60000))
 	fillMissingDefault(app, settings, "timer_context_size", float64(1024))
 	fillMissingDefault(app, settings, "undeploy_routine_count", float64(6))
-	fillMissingDefault(app, settings, "worker_count", float64(3))
+	fillMissingDefault(app, settings, "worker_count", float64(1))
 	fillMissingDefault(app, settings, "worker_feedback_queue_cap", float64(500))
 	fillMissingDefault(app, settings, "worker_queue_cap", float64(100*1000))
 	fillMissingDefault(app, settings, "worker_queue_mem_cap", float64(1024))

@@ -103,7 +103,7 @@
       "type": "integer",
       "description": "number of worker processes handler utilizes on each eventing node",
       "minimum": 1,
-      "default": 3
+      "default": 1
     },
     "n1ql_prepare_all": {
       "type": "boolean",
