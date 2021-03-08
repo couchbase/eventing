@@ -93,6 +93,7 @@ Error Bucket::Connect() {
   }
 
   auto utils = UnwrapData(isolate_)->utils;
+  const auto max_timeout = UnwrapData(isolate_)->op_timeout;
 
   auto conn_str_info = utils->GetConnectionString(bucket_name_);
   if (!conn_str_info.is_valid) {
@@ -151,7 +152,7 @@ Error Bucket::Connect() {
                        SubDocumentLookupCallback);
 
   // TODO : Need to make timeout configurable
-  lcb_U32 lcb_timeout = 2500000; // 2.5s
+  lcb_U32 lcb_timeout = ConvertSecondsToMicroSeconds(max_timeout);
   result =
       RetryWithFixedBackoff(5, 200, IsRetriable, lcb_cntl, connection_,
                             LCB_CNTL_SET, LCB_CNTL_OP_TIMEOUT, &lcb_timeout);
