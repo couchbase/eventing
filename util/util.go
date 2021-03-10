@@ -295,11 +295,12 @@ func LocalEventingServiceHost(auth, hostaddress string) (string, error) {
 }
 
 func CheckKeyspaceExist(bucket, scope, collection, hostaddress string) bool {
-	//TODO: Optimise to get collection id from streaming rest api
-	cinfo, err := FetchNewClusterInfoCache(hostaddress)
+	cic, err := FetchClusterInfoClient(hostaddress)
 	if err != nil {
 		return true
 	}
+
+	cinfo := cic.GetClusterInfoCache()
 	cinfo.RLock()
 	defer cinfo.RUnlock()
 	kvAddrs, err := cinfo.GetNodesByBucket(bucket)

@@ -18,6 +18,7 @@ type NotificationType int
 const (
 	ServiceChangeNotification NotificationType = iota
 	PoolChangeNotification
+	CollectionManifestChangeNotification
 )
 
 var (
@@ -57,7 +58,18 @@ func (instance *serviceNotifierInstance) getNotifyCallback(t NotificationType) f
 			Msg:  msg,
 		}
 
-		logging.Infof("serviceChangeNotifier: received %s", notifMsg)
+		if t == CollectionManifestChangeNotification {
+			switch (msg).(type) {
+			case *couchbase.Bucket:
+				bucket := (msg).(*couchbase.Bucket)
+				logging.Infof("serviceChangeNotifier: received %s for bucket: %s", notifMsg, bucket.Name)
+			default:
+				errMsg := "Invalid msg type with CollectionManifestChangeNotification"
+				return errors.New(errMsg)
+			}
+		} else {
+			logging.Infof("serviceChangeNotifier: received %s", notifMsg)
+		}
 
 		for id, w := range instance.waiters {
 			select {
@@ -88,6 +100,15 @@ func (instance *serviceNotifierInstance) RunServicesObserver() {
 	err := instance.client.RunObserveNodeServices(instance.pool, servicesCallback, nil)
 	if err != nil {
 		logging.Warnf("servicesChangeNotifier: Connection terminated for services notifier instance of %s, %s (%v)", instance.DebugStr(), instance.pool, err)
+	}
+	instance.cleanup()
+}
+
+func (instance *serviceNotifierInstance) RunObserveCollectionManifestChanges(bucket string, stopChan chan bool) {
+	collectionChangeCallback := instance.getNotifyCallback(CollectionManifestChangeNotification)
+	err := instance.client.RunObserveCollectionManifestChanges(instance.pool, bucket, collectionChangeCallback, stopChan)
+	if err != nil {
+		logging.Warnf("servicesChangeNotifier: Connection terminated for collection manifest notifier instance of %s, %s, bucket: %s, (%v)", instance.DebugStr(), instance.pool, bucket, err)
 	}
 	instance.cleanup()
 }
@@ -127,6 +148,8 @@ func (n Notification) String() string {
 	var t string = "ServiceChangeNotification"
 	if n.Type == PoolChangeNotification {
 		t = "PoolChangeNotification"
+	} else if n.Type == CollectionManifestChangeNotification {
+		t = "CollectionManifestChangeNotification"
 	}
 	return t
 }
@@ -136,6 +159,7 @@ type ServicesChangeNotifier struct {
 	instance *serviceNotifierInstance
 	ch       chan Notification
 	cancel   chan bool
+	buckets  map[string]chan bool
 }
 
 func init() {
@@ -177,11 +201,36 @@ func NewServicesChangeNotifier(clusterUrl, pool string) (*ServicesChangeNotifier
 		ch:       make(chan Notification, 1),
 		cancel:   make(chan bool),
 		id:       notifier.waiterCount,
+		buckets:  make(map[string]chan bool),
 	}
 
 	notifier.waiters[scn.id] = scn.ch
 
 	return scn, nil
+}
+
+func (sn *ServicesChangeNotifier) RunObserveCollectionManifestChanges(bucketName string) {
+	if _, ok := sn.buckets[bucketName]; ok {
+		return
+	}
+	sn.buckets[bucketName] = make(chan bool, 1)
+	go sn.instance.RunObserveCollectionManifestChanges(bucketName, sn.buckets[bucketName])
+}
+
+func (sn *ServicesChangeNotifier) StopObserveCollectionManifestChanges(bucketName string) {
+	if _, ok := sn.buckets[bucketName]; !ok {
+		return
+	}
+	close(sn.buckets[bucketName])
+	delete(sn.buckets, bucketName)
+}
+
+func (sn *ServicesChangeNotifier) GarbageCollect(bucketlist map[string]struct{}) {
+	for bucketName := range sn.buckets {
+		if _, ok := bucketlist[bucketName]; !ok {
+			sn.StopObserveCollectionManifestChanges(bucketName)
+		}
+	}
 }
 
 // Call Get() method to block wait and obtain next services Config

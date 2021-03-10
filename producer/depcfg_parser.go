@@ -187,12 +187,6 @@ func (p *Producer) parseDepcfg() error {
 		p.handlerConfig.NumTimerPartitions = p.numVbuckets
 	}
 
-	if val, ok := settings["poll_bucket_interval"]; ok {
-		p.pollBucketInterval = time.Duration(val.(float64)) * time.Second
-	} else {
-		p.pollBucketInterval = 10 * time.Second
-	}
-
 	if val, ok := settings["sock_batch_size"]; ok {
 		p.handlerConfig.SocketWriteBatchSize = int(val.(float64))
 	} else {

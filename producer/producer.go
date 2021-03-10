@@ -47,7 +47,7 @@ func NewProducer(appName, debuggerPort, eventingPort, eventingSSLPort, eventingD
 		isPausing:                    false,
 		stateChangeCh:                make(chan state, 1),
 		plannerNodeMappingsRWMutex:   &sync.RWMutex{},
-		pollBucketStopCh:             make(chan struct{}, 1),
+		undeployHandler:              make(chan bool, 2),
 		MemoryQuota:                  memoryQuota,
 		retryCount:                   -1,
 		runningConsumersRWMutex:      &sync.RWMutex{},
@@ -57,6 +57,7 @@ func NewProducer(appName, debuggerPort, eventingPort, eventingSSLPort, eventingD
 		isUsingTimer:                 true,
 		statsRWMutex:                 &sync.RWMutex{},
 		stopCh:                       make(chan struct{}, 1),
+		stopUndeployWaitCh:           make(chan struct{}, 1),
 		superSup:                     superSup,
 		topologyChangeCh:             make(chan *common.TopologyChangeMsg, 10),
 		uuid:                         uuid,
@@ -82,7 +83,6 @@ func NewProducer(appName, debuggerPort, eventingPort, eventingSSLPort, eventingD
 	p.processConfig.EventingPort = eventingPort
 	p.processConfig.EventingSSLPort = eventingSSLPort
 	p.processConfig.BreakpadOn = util.BreakpadOn()
-
 	p.eventingNodeUUIDs = append(p.eventingNodeUUIDs, uuid)
 	return p
 }
@@ -114,6 +114,19 @@ func (p *Producer) Serve() {
 		return
 	}
 
+	go p.undeployHandlerWait()
+	p.srcCid, err = p.superSup.GetCollectionID(p.handlerConfig.SourceKeyspace.BucketName, p.handlerConfig.SourceKeyspace.ScopeName, p.handlerConfig.SourceKeyspace.CollectionName)
+	if err != nil {
+		logging.Errorf("%s [%s:%d] Error in getting source collection Id: %v", err)
+		return
+	}
+
+	p.metaCid, err = p.superSup.GetCollectionID(p.metadataKeyspace.BucketName, p.metadataKeyspace.ScopeName, p.metadataKeyspace.CollectionName)
+	if err != nil {
+		logging.Errorf("%s [%s:%d] Error in getting metadata collection Id: %v", err)
+		return
+	}
+
 	n1qlParams := "{ 'consistency': '" + p.handlerConfig.N1qlConsistency + "' }"
 	p.app.ParsedAppCode, _ = parser.TranspileQueries(p.app.AppCode, n1qlParams)
 
@@ -129,8 +142,6 @@ func (p *Producer) Serve() {
 		p.seqsNoProcessed[i] = 0
 	}
 	p.seqsNoProcessedRWMutex.Unlock()
-
-	go p.pollForDeletedVbs()
 
 	p.appLogWriter, err = openAppLog(p.appLogPath, 0640, p.appLogMaxSize, p.appLogMaxFiles)
 	if err != nil {
@@ -375,6 +386,7 @@ func (p *Producer) Stop(context string) {
 
 	p.isTerminateRunning = true
 
+	close(p.stopUndeployWaitCh)
 	p.latencyStats.Close()
 	p.curlLatencyStats.Close()
 
@@ -431,8 +443,6 @@ func (p *Producer) Stop(context string) {
 		close(p.stopCh)
 		p.stopChClosed = true
 	}
-
-	close(p.pollBucketStopCh)
 
 	if p.workerSupervisor != nil {
 		p.workerSupervisor.Stop(p.appName)
@@ -878,44 +888,17 @@ func (p *Producer) updateAppLogSetting(settings map[string]interface{}) {
 	updateApplogSetting(p.appLogWriter, p.appLogMaxFiles, p.appLogMaxSize)
 }
 
-func (p *Producer) pollForDeletedVbs() {
-	logPrefix := "Producer::pollForDeletedVbs"
-
-	p.pollBucketTicker = time.NewTicker(p.pollBucketInterval)
+func (p *Producer) undeployHandlerWait() {
 	updateMetakv := true
-	deleteMetaKv := true
-
 	for {
 		select {
-		case <-p.pollBucketTicker.C:
-
-			if p.lazyUndeploy {
-				if !p.superSup.CheckLifeCycleOpsDuringRebalance() {
-					p.superSup.StopProducer(p.appName, deleteMetaKv, updateMetakv)
-				}
-				continue
+		case skipMetadataCleanup := <-p.undeployHandler:
+			if !p.lazyUndeploy {
+				p.lazyUndeploy = true
+				p.superSup.StopProducer(p.appName, skipMetadataCleanup, updateMetakv)
 			}
 
-			hostAddress := net.JoinHostPort(util.Localhost(), p.GetNsServerPort())
-			metadataKeyspaceExist := util.CheckKeyspaceExist(p.MetadataBucket(), p.MetadataScope(), p.MetadataCollection(), hostAddress)
-			srcKeyspaceExist := util.CheckKeyspaceExist(p.SourceBucket(), p.SourceScope(), p.SourceCollection(), hostAddress)
-
-			if !(srcKeyspaceExist && metadataKeyspaceExist) {
-				logging.Infof("%s [%s:%d] Stopping running producer source Keyspace: srcKeyspaceExist: %t metadataKeyspaceExist: %t",
-					logPrefix, p.appName, p.LenRunningConsumers(), srcKeyspaceExist, metadataKeyspaceExist)
-
-				// if rebalance ongoing set the flag and continue
-				if p.superSup.CheckLifeCycleOpsDuringRebalance() {
-					// remove it from bootstrap list
-					deleteMetaKv = !metadataKeyspaceExist
-					p.lazyUndeploy = true
-				} else {
-					p.superSup.StopProducer(p.appName, !metadataKeyspaceExist, updateMetakv)
-				}
-			}
-
-		case <-p.pollBucketStopCh:
-			p.pollBucketTicker.Stop()
+		case <-p.stopUndeployWaitCh:
 			return
 		}
 	}

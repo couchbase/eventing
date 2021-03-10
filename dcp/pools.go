@@ -18,6 +18,7 @@ import (
 	"sort"
 	"strings"
 	"sync/atomic"
+	"time"
 	"unsafe"
 
 	"github.com/couchbase/eventing/common/collections"
@@ -123,8 +124,10 @@ type Bucket struct {
 
 	// These are used for JSON IO, but isn't used for processing
 	// since it needs to be swapped out safely.
-	VBSMJson  VBucketServerMap `json:"vBucketServerMap"`
-	NodesJSON []Node           `json:"nodes"`
+	VBSMJson              VBucketServerMap `json:"vBucketServerMap"`
+	NodesJSON             []Node           `json:"nodes"`
+	Manifest              *collections.CollectionManifest
+	CollectionManifestUID string `json:"collectionsManifestUid,omitempty"`
 
 	pool        *Pool
 	commonSufix string
@@ -194,6 +197,14 @@ func (b Bucket) getConnPools() []*connectionPool {
 		return *(*[]*connectionPool)(ptr)
 	}
 	return nil
+}
+
+func (b *Bucket) GetBucketURLVersionHash() (string, error) {
+	return b.pool.GetBucketURLVersionHash()
+}
+
+func (b *Bucket) SetBucketUri(nUri string) {
+	b.pool.BucketURL["uri"] = nUri
 }
 
 func (b *Bucket) replaceConnPools(with []*connectionPool) {
@@ -343,6 +354,21 @@ func (c *Client) RunObservePool(pool string, callb func(interface{}) error, canc
 			logging.Errorf("RunObservePool: Error while decoding the response from path: %s, response body: %s, err: %v", path, string(bs), err)
 		}
 		return &pool, err
+	}
+
+	return c.runObserveStreamingEndpoint(path, decoder, callb, cancel)
+}
+
+func (c *Client) RunObserveCollectionManifestChanges(pool, bucket string, callb func(interface{}) error, cancel chan bool) error {
+
+	path := "/pools/" + pool + "/bs/" + bucket
+	decoder := func(bs []byte) (interface{}, error) {
+		var b Bucket
+		var err error
+		if err = json.Unmarshal(bs, &b); err != nil {
+			logging.Errorf("RunObserveCollectionManifestChanges: Error while decoding the response from path: %s, response body: %s, err: %v", path, string(bs), err)
+		}
+		return &b, err
 	}
 
 	return c.runObserveStreamingEndpoint(path, decoder, callb, cancel)
@@ -531,12 +557,41 @@ func GetBucketList(baseU string) (bInfo []BucketInfo, err error) {
 func (b *Bucket) Refresh() error {
 	pool := b.pool
 	tmpb := &Bucket{}
-	err := pool.client.parseURLResponse(b.URI, tmpb)
+
+	// Unescape the b.URI as it pool.client.parseURLResponse will again escape it.
+	bucketURI, err1 := url.PathUnescape(b.URI)
+	if err1 != nil {
+		return fmt.Errorf("Malformed bucket URI path %v, error %v", b.URI, err1)
+	}
+
+	err := pool.client.parseURLResponse(bucketURI, tmpb)
 	if err != nil {
 		return err
 	}
 	b.init(tmpb)
 
+	return nil
+}
+
+func (b *Bucket) RefreshWithTerseBucket() error {
+	pool := b.pool
+
+	_, tmpb, err := pool.getTerseBucket(b.Name)
+	if err != nil {
+		return err
+	}
+
+	b.init(tmpb)
+	return nil
+}
+
+func (b *Bucket) RefreshBucketManifest() error {
+	pool := b.pool
+	manifest, err := pool.RefreshBucketManifest(b.Name)
+	if err != nil {
+		return err
+	}
+	b.Manifest = manifest
 	return nil
 }
 
@@ -558,9 +613,67 @@ func (b *Bucket) init(nb *Bucket) {
 	atomic.StorePointer(&b.nodeList, unsafe.Pointer(&nb.NodesJSON))
 }
 
-func (p *Pool) refresh() (err error) {
-	p.BucketMap = make(map[string]Bucket)
-	p.Manifest = make(map[string]*collections.CollectionManifest)
+func (p *Pool) getTerseBucket(bucketn string) (bool, *Bucket, error) {
+	nb := &Bucket{}
+	err := p.client.parseURLResponse(p.BucketURL["terseBucketsBase"]+bucketn, nb)
+	if err != nil {
+		// bucket list is out of sync with cluster bucket list
+		// bucket might have got deleted.
+		if strings.Contains(err.Error(), "HTTP error 404") {
+			return true, nil, err
+		}
+		return false, nil, err
+	}
+	return false, nb, nil
+}
+
+func (p *Pool) getCollectionManifest(bucketn string, version uint32) (retry bool,
+	manifest *collections.CollectionManifest, err error) {
+	if version >= collections.COLLECTION_SUPPORTED_VERSION {
+		// For each bucket, update collection manifest
+		manifest = &collections.CollectionManifest{}
+		err = p.client.parseURLResponse("pools/default/buckets/"+bucketn+"/scopes", manifest)
+		if err != nil {
+			// bucket list is out of sync with cluster bucket list
+			// bucket might have got deleted.
+			if strings.Contains(err.Error(), "HTTP error 404") {
+				retry = true
+				return
+			}
+			return
+		}
+	}
+
+	return
+}
+
+// refreshBucket only calls terseBucket endpoint to fetch the bucket info.
+func (p *Pool) refreshBucket(bucketn string) error {
+	retryCount := 0
+loop:
+	retry, nb, err := p.getTerseBucket(bucketn)
+	if retry {
+		retryCount++
+		if retryCount > 5 {
+			return err
+		}
+		logging.Warnf("cluster_info: Out of sync for bucket %s. Retrying to getTerseBucket. retry count %v", bucketn, retryCount)
+		time.Sleep(5 * time.Millisecond)
+		goto loop
+	}
+	if err != nil {
+		return err
+	}
+	nb.pool = p
+	nb.init(nb)
+	p.BucketMap[nb.Name] = *nb
+
+	return nil
+}
+
+func (p *Pool) Refresh() (err error) {
+	bucketMap := make(map[string]Bucket)
+	manifestMap := make(map[string]*collections.CollectionManifest)
 
 	version := p.GetClusterCompatVersion()
 loop:
@@ -570,44 +683,98 @@ loop:
 		return err
 	}
 	for _, b := range buckets {
-		nb := &Bucket{}
-		err = p.client.parseURLResponse(p.BucketURL["terseBucketsBase"]+b.Name, nb)
+		retry, nb, err := p.getTerseBucket(b.Name)
+		if retry {
+			logging.Warnf("cluster_info: Out of sync for bucket %s. Retrying..", b.Name)
+			goto loop
+		}
 		if err != nil {
-			// bucket list is out of sync with cluster bucket list
-			// bucket might have got deleted.
-			if strings.Contains(err.Error(), "HTTP error 404") {
-				logging.Warnf("cluster_info: Out of sync for bucket %s. Retrying..", b.Name)
-				goto loop
-			}
 			return err
 		}
-		b.pool = p
-		b.init(nb)
-		p.BucketMap[b.Name] = b
-		manifest := &collections.CollectionManifest{}
+		nb.pool = p
+		nb.init(nb)
+		bucketMap[nb.Name] = *nb
+
+		retry, manifest, err := p.getCollectionManifest(b.Name, version)
+		if retry {
+			logging.Warnf("cluster_info: Out of sync for bucket %s. Retrying for getBucketManifest..", b.Name)
+			time.Sleep(5 * time.Millisecond)
+			goto loop
+		}
+		if err != nil {
+			return err
+		}
 
 		if version >= collections.COLLECTION_SUPPORTED_VERSION {
-			err = p.client.parseURLResponse("pools/default/buckets/"+b.Name+"/scopes", manifest)
-			if err != nil {
-				// bucket list is out of sync with cluster bucket list
-				// bucket might have got deleted.
-				if strings.Contains(err.Error(), "HTTP error 404") {
-					logging.Warnf("cluster_info: Out of sync for bucket %s. Retrying..", b.Name)
-					goto loop
-				}
-				return err
-			}
-			p.Manifest[b.Name] = manifest
+			manifestMap[b.Name] = manifest
 		}
 	}
+
+	p.BucketMap = bucketMap
+	p.Manifest = manifestMap
 	return nil
 }
 
-func (p *Pool) GetServerGroups() (groups ServerGroups, err error) {
+func (p *Pool) RefreshBucketManifest(bucket string) (*collections.CollectionManifest, error) {
+	retryCount := 0
+retry:
+	manifest := &collections.CollectionManifest{}
+	err := p.client.parseURLResponse("pools/default/buckets/"+bucket+"/scopes", manifest)
+	if err != nil {
+		// bucket list is out of sync with cluster bucket list
+		// bucket might have got deleted.
+		if strings.Contains(err.Error(), "HTTP error 404") {
+			logging.Warnf("cluster_info: Out of sync for bucket %s. Retrying..", bucket)
+			time.Sleep(1 * time.Millisecond)
+			retryCount++
+			if retryCount > 5 {
+				return nil, err
+			}
+			goto retry
+		}
+		return nil, err
+	}
+	return manifest, nil
+}
 
+func (p *Pool) GetServerGroups() (groups ServerGroups, err error) {
 	err = p.client.parseURLResponse(p.ServerGroupsUri, &groups)
 	return
+}
 
+// GetBucketURLVersionHash will prase the p.BucketURI and extract version hash from it
+// Parses /pools/default/buckets?v=<$ver>&uuid=<$uid> and returns $ver
+func (p *Pool) GetBucketURLVersionHash() (string, error) {
+	b := p.BucketURL["uri"]
+	u, err := url.Parse(b)
+	if err != nil {
+		return "", fmt.Errorf("Unable to parse BucketURL: %v in PoolChangeNotification", b)
+	}
+	m, err := url.ParseQuery(u.RawQuery)
+	if err != nil {
+		return "", fmt.Errorf("Unable to extract version hash from BucketURL: %v in PoolChangeNotification", b)
+	}
+	return m["v"][0], nil
+}
+
+func (c *Client) CallPoolURI(name string) (p Pool, err error) {
+	var poolURI string
+	for _, p := range c.Info.Pools {
+		if p.Name == name {
+			poolURI = p.URI
+			break
+		}
+	}
+	if poolURI == "" {
+		return p, errors.New("No pool named " + name)
+	}
+
+	if err = c.parseURLResponse(poolURI, &p); err != nil {
+		return
+	}
+
+	p.client = *c
+	return
 }
 
 // GetPool gets a pool from within the couchbase cluster (usually
@@ -627,7 +794,7 @@ func (c *Client) GetPool(name string) (p Pool, err error) {
 
 	p.client = *c
 
-	err = p.refresh()
+	err = p.Refresh()
 	return
 }
 
@@ -679,6 +846,14 @@ func (p *Pool) GetBucket(name string) (*Bucket, error) {
 	}
 	runtime.SetFinalizer(&rv, bucketFinalizer)
 	return &rv, nil
+}
+
+func (p *Pool) GetBucketList() map[string]struct{} {
+	bucketList := make(map[string]struct{})
+	for bucketName := range p.BucketMap {
+		bucketList[bucketName] = struct{}{}
+	}
+	return bucketList
 }
 
 func (p *Pool) GetCollectionID(bucket, scope, collection string) (uint32, error) {

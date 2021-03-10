@@ -24,30 +24,31 @@ import (
 // NewSuperSupervisor creates the super_supervisor handle
 func NewSuperSupervisor(adminPort AdminPortConfig, eventingDir, kvPort, restPort, uuid, diagDir string, numVbuckets int) *SuperSupervisor {
 	s := &SuperSupervisor{
-		adminPort:                  adminPort,
-		appDeploymentStatus:        make(map[string]bool),
-		appProcessingStatus:        make(map[string]bool),
-		bootstrappingApps:          make(map[string]string),
-		pausingApps:                make(map[string]string),
-		CancelCh:                   make(chan struct{}, 1),
-		cleanedUpAppMap:            make(map[string]struct{}),
-		deployedApps:               make(map[string]string),
-		diagDir:                    diagDir,
-		ejectNodes:                 make([]string, 0),
-		eventingDir:                eventingDir,
-		keepNodes:                  make([]string, 0),
-		kvPort:                     kvPort,
-		locallyDeployedApps:        make(map[string]string),
-		numVbuckets:                numVbuckets,
-		producerSupervisorTokenMap: make(map[common.EventingProducer]suptree.ServiceToken),
-		restPort:                   restPort,
-		retryCount:                 60,
-		runningProducers:           make(map[string]common.EventingProducer),
-		runningProducersRWMutex:    &sync.RWMutex{},
-		supCmdCh:                   make(chan supCmdMsg, 10),
-		superSup:                   suptree.NewSimple("super_supervisor"),
-		tokenMapRWMutex:            &sync.RWMutex{},
-		uuid:                       uuid,
+		adminPort:                          adminPort,
+		appDeploymentStatus:                make(map[string]bool),
+		appProcessingStatus:                make(map[string]bool),
+		bootstrappingApps:                  make(map[string]string),
+		pausingApps:                        make(map[string]string),
+		CancelCh:                           make(chan struct{}, 1),
+		cleanedUpAppMap:                    make(map[string]struct{}),
+		deployedApps:                       make(map[string]string),
+		diagDir:                            diagDir,
+		ejectNodes:                         make([]string, 0),
+		eventingDir:                        eventingDir,
+		keepNodes:                          make([]string, 0),
+		kvPort:                             kvPort,
+		locallyDeployedApps:                make(map[string]string),
+		numVbuckets:                        numVbuckets,
+		producerSupervisorTokenMap:         make(map[common.EventingProducer]suptree.ServiceToken),
+		restPort:                           restPort,
+		retryCount:                         60,
+		runningProducers:                   make(map[string]common.EventingProducer),
+		runningProducersRWMutex:            &sync.RWMutex{},
+		supCmdCh:                           make(chan supCmdMsg, 10),
+		superSup:                           suptree.NewSimple("super_supervisor"),
+		tokenMapRWMutex:                    &sync.RWMutex{},
+		uuid:                               uuid,
+		fetchBucketInfoOnURIHashChangeOnly: 1,
 	}
 	s.appRWMutex = &sync.RWMutex{}
 	s.appListRWMutex = &sync.RWMutex{}
@@ -230,26 +231,26 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 
 			switch processingStatus {
 			case true:
-				sourceNodeCount, metaNodeCount, err := s.getSourceAndMetaBucketNodeCount(appName)
-				if err != nil {
-					logging.Errorf("%s [%d] getSourceAndMetaBucketNodeCount failed for Function: %s  runningProducer: %v",
-						logPrefix, s.runningFnsCount(), appName, s.runningFns()[appName])
-					return nil
-				}
-				if sourceNodeCount < 1 || metaNodeCount < 1 {
-					util.Retry(util.NewExponentialBackoff(), &s.retryCount, undeployFunctionCallback, s, appName)
-					s.appRWMutex.Lock()
-					s.appDeploymentStatus[appName] = false
-					s.appProcessingStatus[appName] = false
-					s.appRWMutex.Unlock()
-					logging.Errorf("%s [%d] Source bucket or metadata bucket is deleted, Function: %s is undeployed",
-						logPrefix, s.runningFnsCount(), appName)
-					return nil
-				}
 				logging.Infof("%s [%d] Function: %s begin deployment process", logPrefix, s.runningFnsCount(), appName)
 				state := s.GetAppState(appName)
 
 				if state == common.AppStateUndeployed || state == common.AppStatePaused {
+					sourceExist, metaExist, err := s.checkSourceAndMetadataKeyspaceExist(appName)
+					if err != nil {
+						logging.Errorf("%s [%d] checkSourceAndMetadataKeyspaceExists failed for Function: %s  runningProducer: %v",
+							logPrefix, s.runningFnsCount(), appName, s.runningFns()[appName])
+						return nil
+					}
+					if !sourceExist || !metaExist {
+						util.Retry(util.NewExponentialBackoff(), &s.retryCount, undeployFunctionCallback, s, appName)
+						s.appRWMutex.Lock()
+						s.appDeploymentStatus[appName] = false
+						s.appProcessingStatus[appName] = false
+						s.appRWMutex.Unlock()
+						logging.Errorf("%s [%d] Source bucket or metadata bucket is deleted, Function: %s is undeployed",
+							logPrefix, s.runningFnsCount(), appName)
+						return nil
+					}
 
 					s.appListRWMutex.Lock()
 					if _, ok := s.bootstrappingApps[appName]; ok {
@@ -271,11 +272,6 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 					resumed := false
 					if state == common.AppStatePaused {
 						if p, ok := s.runningFns()[appName]; ok {
-							err = s.WatchBucket(p.SourceBucket(), appName)
-							if err != nil {
-								return err
-							}
-
 							p.ResumeProducer()
 							p.NotifySupervisor()
 							resumed = true
@@ -342,7 +338,6 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 
 						p.PauseProducer()
 						p.NotifySupervisor()
-						s.UnwatchBucket(p.SourceBucket(), appName)
 						logging.Infof("%s [%d] Function: %s Cleaned up running Eventing.Producer instance", logPrefix, s.runningFnsCount(), appName)
 
 					}
@@ -420,6 +415,8 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(path string, value []byte,
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if value != nil {
+		s.serviceMgr.OptimiseLoadingCIC(false)
+
 		if string(value) == stopRebalance {
 			topologyChangeMsg.CType = common.StopRebalanceCType
 		} else if string(value) == startFailover {
@@ -470,17 +467,17 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(path string, value []byte,
 			logging.Infof("%s [%d] Function: %s deployment_status: %t processing_status: %t runningProducer: %v",
 				logPrefix, s.runningFnsCount(), appName, deploymentStatus, processingStatus, s.runningFns()[appName])
 
-			sourceNodeCount, metaNodeCount, err := s.getSourceAndMetaBucketNodeCount(appName)
-			if err != nil {
-				logging.Errorf("%s [%d] getSourceAndMetaBucketNodeCount failed for Function: %s  runningProducer: %v",
-					logPrefix, s.runningFnsCount(), appName, s.runningFns()[appName])
-				continue
-			}
-
 			if _, ok := s.runningFns()[appName]; !ok {
 
 				if deploymentStatus && processingStatus {
-					if sourceNodeCount < 1 || metaNodeCount < 1 {
+					sourceExist, metaExist, err := s.checkSourceAndMetadataKeyspaceExist(appName)
+					if err != nil {
+						logging.Errorf("%s [%d] getSourceAndMetaBucketNodeCount failed for Function: %s  runningProducer: %v",
+							logPrefix, s.runningFnsCount(), appName, s.runningFns()[appName])
+						continue
+					}
+
+					if !sourceExist || !metaExist {
 						util.Retry(util.NewExponentialBackoff(), &s.retryCount, undeployFunctionCallback, s, appName)
 						logging.Errorf("%s [%d] Source bucket or metadata bucket is deleted, Function: %s is undeployed",
 							logPrefix, s.runningFnsCount(), appName)
@@ -549,6 +546,10 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(path string, value []byte,
 				}
 			}
 		}
+	} else {
+		// Empty value means no rebalance. We clear out the value from topologyChange when rebalance completes
+		// Need to think about it in mixed mode cluster
+		s.serviceMgr.OptimiseLoadingCIC(true)
 	}
 
 	return nil

@@ -142,6 +142,7 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		workerVbucketMapRWMutex:         &sync.RWMutex{},
 	}
 
+	consumer.srcCid = p.GetSourceCid()
 	consumer.binaryDocAllowed = consumer.checkBinaryDocAllowed()
 	consumer.builderPool = &sync.Pool{
 		New: func() interface{} {
@@ -180,17 +181,7 @@ func (c *Consumer) Serve() {
 
 	c.cppWorkerThrPartitionMap()
 
-	cid, err := c.getCollectionID()
-	if err != nil {
-		logging.Infof("%s [%s:%s:%d] failed to getCollectionID: for bucket: %s scope: %s collection: %s error: %v", logPrefix, c.workerName,
-			c.tcpPort, c.Pid(), c.sourceKeyspace.BucketName, c.sourceKeyspace.ScopeName, c.sourceKeyspace.CollectionName, err)
-		c.isBootstrapping = false
-		c.signalBootstrapFinishCh <- struct{}{}
-		return
-	}
-	c.collectionID = cid
-
-	err = util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), c.retryCount, getKvNodesFromVbMap, c)
+	err := util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), c.retryCount, getKvNodesFromVbMap, c)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 		return
@@ -561,32 +552,6 @@ func (c *Consumer) getKvNodes() []string {
 	return kvNodes
 }
 
-func (c *Consumer) getCollectionID() (uint32, error) {
-	hostAddress := net.JoinHostPort(util.Localhost(), c.nsServerPort)
-	cinfo, err := util.FetchNewClusterInfoCache(hostAddress)
-	if err != nil {
-		return 0, err
-	}
-
-	cid, err := cinfo.GetCollectionID(c.sourceKeyspace.BucketName,
-		c.sourceKeyspace.ScopeName,
-		c.sourceKeyspace.CollectionName)
-	if err != nil {
-		return 0, err
-	}
-
-	return cid, nil
-}
-
-func (c *Consumer) getManifestUID(bucket string) (string, error) {
-	hostAddress := net.JoinHostPort(util.Localhost(), c.nsServerPort)
-	cic, err := util.FetchClusterInfoClient(hostAddress)
-	if err != nil {
-		return "0", err
-	}
-
-	cinfo := cic.GetClusterInfoCache()
-	cinfo.RLock()
-	defer cinfo.RUnlock()
-	return cinfo.GetManifestID(bucket)
+func (c *Consumer) getManifestUID(bucketName string) (string, error) {
+	return c.superSup.GetCurrentManifestId(bucketName)
 }

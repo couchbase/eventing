@@ -1,12 +1,14 @@
 package supervisor
 
 import (
+	"errors"
 	"sync"
 	"time"
 
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/dcp"
 	"github.com/couchbase/eventing/suptree"
+	"github.com/couchbase/eventing/util"
 )
 
 const (
@@ -44,6 +46,8 @@ const (
 
 //TODO: move it to common package
 const bucketOpRetryInterval = time.Duration(1000) * time.Millisecond
+
+var NoBucket = errors.New("Bucket not found")
 
 const (
 	supCmdType int8 = iota
@@ -87,11 +91,12 @@ type SuperSupervisor struct {
 	uuid        string
 	diagDir     string
 
-	bucketsRWMutex          *sync.RWMutex
-	servicesNotifierRetryTm uint
-	finch                   chan bool
-	buckets                 map[string]*bucketWatchStruct // Access controlled by bucketsRWMutex
-	isRebalanceOngoing      int32
+	bucketsRWMutex                     *sync.RWMutex
+	servicesNotifierRetryTm            uint
+	finch                              chan bool
+	buckets                            map[string]*bucketWatchStruct // Access controlled by bucketsRWMutex
+	fetchBucketInfoOnURIHashChangeOnly int32
+	isRebalanceOngoing                 int32
 
 	appRWMutex *sync.RWMutex
 
@@ -124,6 +129,7 @@ type SuperSupervisor struct {
 	runningProducersRWMutex    *sync.RWMutex
 	vbucketsToOwn              []uint16
 
+	scn        *util.ServicesChangeNotifier
 	serviceMgr common.EventingServiceMgr
 	sync.RWMutex
 }
