@@ -208,7 +208,7 @@ func (p *Producer) parseDepcfg() error {
 	if val, ok := settings["worker_count"]; ok {
 		p.handlerConfig.WorkerCount = int(val.(float64))
 	} else {
-		p.handlerConfig.WorkerCount = 3
+		p.handlerConfig.WorkerCount = 1
 	}
 
 	if val, ok := settings["worker_feedback_queue_cap"]; ok {

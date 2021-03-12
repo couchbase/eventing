@@ -119,7 +119,7 @@ private:
 
   void HandleBucketOpFailure(lcb_INSTANCE *connection, lcb_STATUS error);
   Info SetErrorObject(v8::Local<v8::Object> &response_obj, std::string name,
-                      std::string desc, lcb_STATUS error,
+                      std::string desc, uint16_t error_code,
                       const char *error_type, bool value);
 
   v8::Isolate *isolate_;

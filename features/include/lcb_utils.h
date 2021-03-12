@@ -31,6 +31,7 @@ struct Result {
   uint32_t exptime{0};
   int64_t subdoc_counter{0};
   uint64_t counter{0};
+  uint16_t error_code{0};
 };
 
 constexpr int def_lcb_retry_count = 6;

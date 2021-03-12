@@ -71,6 +71,14 @@ void GetCallback(lcb_INSTANCE *instance, int, const lcb_RESPBASE *rb) {
     LOG(logError) << "Bucket: LCB_GET breaking out" << std::endl;
     lcb_breakout(instance);
   }
+
+  if (result->rc != LCB_SUCCESS) {
+    const lcb_KEY_VALUE_ERROR_CONTEXT *ctx = nullptr;
+    lcb_respget_error_context(resp, &ctx);
+    lcb_errctx_kv_status_code(ctx, &result->error_code);
+    return;
+  }
+
   lcb_respget_cas(resp, &result->cas);
   lcb_respget_datatype(resp, &result->datatype);
 
@@ -94,6 +102,13 @@ void SetCallback(lcb_INSTANCE *instance, int cbtype, const lcb_RESPBASE *rb) {
     lcb_breakout(instance);
   }
 
+  if (result->rc != LCB_SUCCESS) {
+    const lcb_KEY_VALUE_ERROR_CONTEXT *ctx = nullptr;
+    lcb_respstore_error_context(resp, &ctx);
+    lcb_errctx_kv_status_code(ctx, &result->error_code);
+    return;
+  }
+
   lcb_respstore_cas(resp, &result->cas);
 
   LOG(logTrace) << "Bucket: LCB_STORE callback "
@@ -112,24 +127,29 @@ void SubDocumentCallback(lcb_INSTANCE *instance, int cbtype,
     lcb_breakout(instance);
   }
 
-  if (result->rc == LCB_SUCCESS) {
-    auto total = lcb_respsubdoc_result_size(resp);
-    for (size_t index = 0; index < total; index++) {
-      result->rc = lcb_respsubdoc_result_status(resp, index);
-      if (result->rc != LCB_SUCCESS) {
-        LOG(logTrace) << "Bucket: LCB_SDMUTATE callback "
-                      << lcb_strerror_short(result->rc) << std::endl;
-        return;
-      }
-      const char *value;
-      size_t nvalue;
-      std::string temp;
+  if (result->rc != LCB_SUCCESS) {
+    const lcb_KEY_VALUE_ERROR_CONTEXT *ctx = nullptr;
+    lcb_respsubdoc_error_context(resp, &ctx);
+    lcb_errctx_kv_status_code(ctx, &result->error_code);
+    return;
+  }
 
-      lcb_respsubdoc_result_value(resp, index, &value, &nvalue);
-      if (nvalue != 0) {
-        temp.assign(value, nvalue);
-        result->subdoc_counter = std::stoll(temp, nullptr, 10);
-      }
+  auto total = lcb_respsubdoc_result_size(resp);
+  for (size_t index = 0; index < total; index++) {
+    result->rc = lcb_respsubdoc_result_status(resp, index);
+    if (result->rc != LCB_SUCCESS) {
+      LOG(logTrace) << "Bucket: LCB_SDMUTATE callback "
+                    << lcb_strerror_short(result->rc) << std::endl;
+      return;
+    }
+    const char *value;
+    size_t nvalue;
+    std::string temp;
+
+    lcb_respsubdoc_result_value(resp, index, &value, &nvalue);
+    if (nvalue != 0) {
+      temp.assign(value, nvalue);
+      result->subdoc_counter = std::stoll(temp, nullptr, 10);
     }
   }
   lcb_respsubdoc_cas(resp, &result->cas);
@@ -150,39 +170,44 @@ void SubDocumentLookupCallback(lcb_INSTANCE *instance, int cbtype,
     lcb_breakout(instance);
   }
 
-  if (result->rc == LCB_SUCCESS) {
-    auto total = lcb_respsubdoc_result_size(resp);
-    for (size_t index = 0; index < total; index++) {
-      result->rc = lcb_respsubdoc_result_status(resp, 0);
-      if (result->rc != LCB_SUCCESS) {
-        return;
-      }
+  if (result->rc != LCB_SUCCESS) {
+    const lcb_KEY_VALUE_ERROR_CONTEXT *ctx = nullptr;
+    lcb_respsubdoc_error_context(resp, &ctx);
+    lcb_errctx_kv_status_code(ctx, &result->error_code);
+    return;
+  }
 
-      const char *cValue;
-      size_t nValue;
-      lcb_respsubdoc_result_value(resp, index, &cValue, &nValue);
+  auto total = lcb_respsubdoc_result_size(resp);
+  for (size_t index = 0; index < total; index++) {
+    result->rc = lcb_respsubdoc_result_status(resp, 0);
+    if (result->rc != LCB_SUCCESS) {
+      return;
+    }
 
-      if (index == 0) {
-        std::string value;
-        value.assign(cValue, nValue);
-        result->exptime = std::stoul(value, nullptr, 10);
-      } else if (index == 1) {
-        // 0x00: raw, 0x01 json, 0x05: jsonXattr, 0x04: rawXattr
-        // Default it to binary doc
-        result->datatype = BINARY_DOC;
-        auto json = nlohmann::json::parse(cValue);
-        auto values = json.get<std::vector<std::string>>();
-        for (const auto &type : values) {
-          if (type == "json") {
-            result->datatype = result->datatype | JSON_DOC;
-          }
-          if (type == "xattr") {
-            result->datatype = result->datatype | XATTR_DOC;
-          }
+    const char *cValue;
+    size_t nValue;
+    lcb_respsubdoc_result_value(resp, index, &cValue, &nValue);
+
+    if (index == 0) {
+      std::string value;
+      value.assign(cValue, nValue);
+      result->exptime = std::stoul(value, nullptr, 10);
+    } else if (index == 1) {
+      // 0x00: raw, 0x01 json, 0x05: jsonXattr, 0x04: rawXattr
+      // Default it to binary doc
+      result->datatype = BINARY_DOC;
+      auto json = nlohmann::json::parse(cValue);
+      auto values = json.get<std::vector<std::string>>();
+      for (const auto &type : values) {
+        if (type == "json") {
+          result->datatype = result->datatype | JSON_DOC;
         }
-      } else {
-        result->value.assign(cValue, nValue);
+        if (type == "xattr") {
+          result->datatype = result->datatype | XATTR_DOC;
+        }
       }
+    } else {
+      result->value.assign(cValue, nValue);
     }
   }
 
@@ -203,6 +228,13 @@ void DeleteCallback(lcb_INSTANCE *instance, int cbtype,
     lcb_breakout(instance);
   }
 
+  if (result->rc != LCB_SUCCESS) {
+    const lcb_KEY_VALUE_ERROR_CONTEXT *ctx = nullptr;
+    lcb_respremove_error_context(resp, &ctx);
+    lcb_errctx_kv_status_code(ctx, &result->error_code);
+    return;
+  }
+
   lcb_respremove_cas(resp, &result->cas);
 
   LOG(logTrace) << "Bucket: LCB_DEL callback " << lcb_strerror_short(result->rc)
@@ -219,6 +251,13 @@ void counter_callback(lcb_INSTANCE *instance, int cbtype,
   if (result->rc == LCB_ERR_PROTOCOL_ERROR) {
     LOG(logError) << "Bucket: LCB_COUNTER breaking out" << std::endl;
     lcb_breakout(instance);
+  }
+
+  if (result->rc != LCB_SUCCESS) {
+    const lcb_KEY_VALUE_ERROR_CONTEXT *ctx = nullptr;
+    lcb_respcounter_error_context(resp, &ctx);
+    lcb_errctx_kv_status_code(ctx, &result->error_code);
+    return;
   }
 
   lcb_respcounter_value(resp, &result->counter);
