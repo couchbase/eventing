@@ -325,7 +325,7 @@ func getGlobalAppLog(m *ServiceMgr, appName string, sz int64, creds http.Header)
 
 	oboAuthHeader := ""
 	oboAuthInfo := util.ComposeOBOAuthInfo(creds.Get("Menelaus-Auth-User"), creds.Get("Menelaus-Auth-Domain"))
-	if (oboAuthInfo != "") {
+	if oboAuthInfo != "" {
 		oboAuthHeader = "Basic " + oboAuthInfo
 	}
 
@@ -344,7 +344,7 @@ func getGlobalAppLog(m *ServiceMgr, appName string, sz int64, creds http.Header)
 			logging.Errorf("Got failure creating http request to %v: %v", node, err)
 			continue
 		}
-		if (oboAuthHeader != "") {
+		if oboAuthHeader != "" {
 			req.Header.Add(util.OBOAuthHeader, oboAuthInfo)
 		}
 		resp, err := client.Do(req)
@@ -386,7 +386,7 @@ func getGlobalInsights(m *ServiceMgr, apps []string, creds http.Header) *common.
 	}
 	oboAuthHeader := ""
 	oboAuthInfo := util.ComposeOBOAuthInfo(creds.Get("Menelaus-Auth-User"), creds.Get("Menelaus-Auth-Domain"))
-	if (oboAuthInfo != "") {
+	if oboAuthInfo != "" {
 		oboAuthHeader = "Basic " + oboAuthInfo
 	}
 	for _, node := range nodes {
@@ -397,7 +397,7 @@ func getGlobalInsights(m *ServiceMgr, apps []string, creds http.Header) *common.
 			logging.Errorf("Got failure creating http request to %v: %v", node, err)
 			continue
 		}
-		if (oboAuthHeader != "") {
+		if oboAuthHeader != "" {
 			req.Header.Add(util.OBOAuthHeader, oboAuthInfo)
 		}
 		resp, err := client.Do(req)
@@ -3918,6 +3918,13 @@ func (m *ServiceMgr) createApplications(r *http.Request, appList *[]application,
 		err = m.assignFunctionInstanceID(app.Name, &app, info)
 		if err != nil {
 			infoList = append(infoList, info)
+			continue
+		}
+
+		if m.checkIfDeployed(app.Name) && isImport {
+			info.Code = m.statusCodes.errAppDeployed.Code
+			info.Info = fmt.Sprintf("Function: %s another function with same name is already present, skipping import request", app.Name)
+			logging.Errorf("%s %s", logPrefix, info.Info)
 			continue
 		}
 
