@@ -293,6 +293,7 @@ func (s *SuperSupervisor) undeployFunctionsOnDeletedBkts(deletedBuckets []string
 }
 
 func (s *SuperSupervisor) checkDeletedCid(bucketName string) {
+	logPrefix := "SuperSupervisor::checkDeletedCid"
 	appNames, ok := s.getAppsWatchingBucket(bucketName)
 	if !ok {
 		return
@@ -302,6 +303,7 @@ func (s *SuperSupervisor) checkDeletedCid(bucketName string) {
 		p, ok := s.runningProducers[appName]
 		if !ok {
 			// possible that app didn't get spawned yet
+			logging.Infof("%s Undeploying %s Reason: Not in running producer", logPrefix, appName)
 			util.Retry(util.NewExponentialBackoff(), &s.retryCount, undeployFunctionCallback, s, appName)
 			continue
 		}
@@ -309,6 +311,7 @@ func (s *SuperSupervisor) checkDeletedCid(bucketName string) {
 		mCid := p.GetMetadataCid()
 		cid, err := s.GetCollectionID(p.MetadataBucket(), p.MetadataScope(), p.MetadataCollection())
 		if err != nil || cid != mCid {
+			logging.Infof("%s Undeploying %s Reason: metadata collection delete err: %v", logPrefix, appName, err)
 			p.UndeployHandler(true)
 			continue
 		}
@@ -316,6 +319,7 @@ func (s *SuperSupervisor) checkDeletedCid(bucketName string) {
 		sCid := p.GetSourceCid()
 		cid, err = s.GetCollectionID(p.SourceBucket(), p.SourceScope(), p.SourceCollection())
 		if err != nil || cid != sCid {
+			logging.Infof("%s Undeploying %s Reason: source collection delete err: %v", logPrefix, appName, err)
 			p.UndeployHandler(false)
 		}
 	}
@@ -505,7 +509,7 @@ func (bw *bucketWatchStruct) Close() {
 }
 
 func (bw *bucketWatchStruct) AppNames() []string {
-	appNames := make([]string, len(bw.apps))
+	appNames := make([]string, 0, len(bw.apps))
 	for appName := range bw.apps {
 		appNames = append(appNames, appName)
 	}
