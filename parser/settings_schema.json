@@ -54,6 +54,12 @@
       "minimum": 0,
       "default": 0
     },
+    "lcb_timeout": {
+      "type": "integer",
+      "description": "maximum time the lcb command is waited until completion before we terminate the request(in seconds)",
+      "minimum": 1,
+      "default": 5
+    },
     "log_level": {
       "type": "string",
       "description": "level of detail in system logging",

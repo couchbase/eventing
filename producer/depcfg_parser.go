@@ -241,6 +241,12 @@ func (p *Producer) parseDepcfg() error {
 		p.handlerConfig.LcbRetryCount = 0
 	}
 
+	if val, ok := settings["lcb_timeout"]; ok {
+		p.handlerConfig.LcbTimeout = int(val.(float64))
+	} else {
+		p.handlerConfig.LcbTimeout = 5
+	}
+
 	if val, ok := settings["bucket_cache_size"]; ok {
 		p.handlerConfig.BucketCacheSize = int64(val.(float64))
 	} else {

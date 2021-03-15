@@ -158,6 +158,7 @@ typedef struct handler_config_s {
   std::string lang_compat;
   int execution_timeout;
   int lcb_retry_count;
+  int lcb_timeout;
   int lcb_inst_capacity;
   int num_timer_partitions;
   bool skip_lcb_bootstrap;

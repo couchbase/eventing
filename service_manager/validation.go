@@ -1030,6 +1030,11 @@ func (m *ServiceMgr) validateSettings(appName string, settings map[string]interf
 		return
 	}
 
+	// libcouchbase configurations
+	if info = m.validatePositiveInteger("lcb_timeout", settings); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
 	if info = m.validateNonNegativeInteger("lcb_retry_count", settings); info.Code != m.statusCodes.ok.Code {
 		return
 	}
