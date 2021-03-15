@@ -14,7 +14,7 @@ import (
 
 var maybe_n1ql = regexp.MustCompile(
 	`(?iU)` +
-		`((?:alter|build|create|` +
+		`((\([[:space:]]*)?(?:alter|build|create|` +
 		// 'delete' is a js keyword, so look for 'delete from'
 		`delete[[:space:]]+from[[:space:]]+(?:[[:word:]][[:punct:]]?)+` +
 		`|drop|execute|explain|from|grant|infer|` +
