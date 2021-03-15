@@ -730,7 +730,9 @@ void BucketOps::InsertOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
   }
 
   v8::Local<v8::Object> response_obj = v8::Object::New(isolate);
-  if (result->rc == LCB_ERR_DOCUMENT_EXISTS) {
+  // Cas mismatch check is due to CCBC-1382
+  if (result->rc == LCB_ERR_DOCUMENT_EXISTS ||
+      result->rc == LCB_ERR_CAS_MISMATCH) {
     info = bucket_ops->SetErrorObject(
         response_obj, "LCB_KEY_EEXISTS",
         "The document key already exists in the server.", result->error_code,

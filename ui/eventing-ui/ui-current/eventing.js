@@ -1515,8 +1515,7 @@ angular.module('eventing', [
                 self.codeInsight = {};
                 Object.keys(insight.lines).forEach(function(pos) {
                   var info = insight.lines[pos];
-                  var srcline = parseInt(pos) -
-                    1; // ace is 0 indexed, v8 is 1 indexed
+                  var srcline = parseInt(pos);
                   var msg, type;
                   if (info.error_count > 0) {
                     msg = info.error_msg;
