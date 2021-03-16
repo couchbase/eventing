@@ -56,6 +56,7 @@ table Payload {
   is_binary:bool; //dcp mutation value is binary or json
 
   curl_max_allowed_resp_size:int64; // max allowed size of curl response
+  lcb_timeout:int;
 }
 
 root_type Payload;

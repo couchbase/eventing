@@ -435,6 +435,7 @@ func (m *ServiceMgr) getDebuggerURL(w http.ResponseWriter, r *http.Request) {
 
 	if m.checkIfDeployed(appName) {
 		debugURL, _ := m.superSup.GetDebuggerURL(appName)
+		debugURL = strings.Replace(debugURL, "[::1]", "127.0.0.1", -1)
 		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
 		fmt.Fprintf(w, "%s", debugURL)
 		return

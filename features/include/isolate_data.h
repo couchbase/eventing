@@ -48,6 +48,7 @@ struct IsolateData {
   long op_timeout{0};
   lcb_QUERY_CONSISTENCY n1ql_consistency = LCB_QUERY_CONSISTENCY_NONE;
   int lcb_retry_count{0};
+  int lcb_timeout{5};
   uint32_t insight_line_offset{1};
   bool n1ql_prepare_all{false};
 

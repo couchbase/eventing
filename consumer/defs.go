@@ -168,6 +168,7 @@ type Consumer struct {
 	executeTimerRoutineCount   int
 	executionTimeout           int
 	lcbRetryCount              int
+	lcbTimeout                 int
 	filterVbEvents             map[uint16]struct{} // Access controlled by filterVbEventsRWMutex
 	filterVbEventsRWMutex      *sync.RWMutex
 	filterDataCh               chan *vbSeqNo

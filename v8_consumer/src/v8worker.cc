@@ -246,6 +246,7 @@ void V8Worker::InitializeIsolateData(const server_settings_t *server_settings,
   data_.n1ql_prepare_all = h_config->n1ql_prepare_all;
   data_.lang_compat = new LanguageCompatibility(h_config->lang_compat);
   data_.lcb_retry_count = h_config->lcb_retry_count;
+  data_.lcb_timeout = ConvertSecondsToMicroSeconds(h_config->lcb_timeout);
   data_.insight_line_offset = h_config->handler_headers.size();
 
   data_.bucket_ops = new BucketOps(isolate_, context);
