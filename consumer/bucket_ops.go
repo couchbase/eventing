@@ -882,6 +882,13 @@ var acquireDebuggerTokenCallback = func(args ...interface{}) error {
 		return nil
 	}
 
+	if err != nil {
+		logging.Errorf("%s [%s:%s:%d] Key: %s, failed to get debugger token from metadata bucket, err: %v",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), key, err)
+		*success = false
+		return err // Retry until timeout or until we get a relatable error
+	}
+
 	err = result.Content(&instance)
 	if err != nil {
 		logging.Errorf("%s [%s:%s:%d] Key: %s, failed to get doc from metadata bucket, err: %v",
