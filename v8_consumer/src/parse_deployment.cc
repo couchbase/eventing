@@ -18,11 +18,15 @@ deployment_config *ParseDeployment(const char *app_code) {
 
   auto dep_cfg = app_cfg->depCfg();
   config->metadata_bucket = dep_cfg->metadataBucket()->str();
-  config->metadata_scope = dep_cfg->metadataScope()->str();
-  config->metadata_collection = dep_cfg->metadataCollection()->str();
+  config->metadata_scope =
+      checkAndReturnDefaultForScopeOrCollection(dep_cfg->metadataScope()->str(), "_default");
+  config->metadata_collection =
+      checkAndReturnDefaultForScopeOrCollection(dep_cfg->metadataCollection()->str(), "_default");
   config->source_bucket = dep_cfg->sourceBucket()->str();
-  config->source_scope = dep_cfg->sourceScope()->str();
-  config->source_collection = dep_cfg->sourceCollection()->str();
+  config->source_scope =
+      checkAndReturnDefaultForScopeOrCollection(dep_cfg->sourceScope()->str(), "_default");
+  config->source_collection =
+      checkAndReturnDefaultForScopeOrCollection(dep_cfg->sourceCollection()->str(), "_default");
 
   auto buckets = dep_cfg->buckets();
 
@@ -31,8 +35,10 @@ deployment_config *ParseDeployment(const char *app_code) {
   for (flatbuffers::uoffset_t i = 0; i < buckets->size(); i++) {
     std::vector<std::string> bucket_info;
     bucket_info.push_back(buckets->Get(i)->bucketName()->str());
-    bucket_info.push_back(buckets->Get(i)->scopeName()->str());
-    bucket_info.push_back(buckets->Get(i)->collectionName()->str());
+    bucket_info.push_back(
+        checkAndReturnDefaultForScopeOrCollection(buckets->Get(i)->scopeName()->str(), "_default"));
+    bucket_info.push_back(checkAndReturnDefaultForScopeOrCollection(
+        buckets->Get(i)->collectionName()->str(), "_default"));
     bucket_info.push_back(buckets->Get(i)->alias()->str());
     bucket_alias.push_back(buckets->Get(i)->alias()->str());
 
@@ -85,4 +91,12 @@ std::vector<std::string> ToStringArray(
   }
 
   return handler_headers;
+}
+
+std::string checkAndReturnDefaultForScopeOrCollection(const std::string &key,
+                                  const std::string &defaultValue) {
+  if (key == "") {
+    return defaultValue;
+  }
+  return key;
 }

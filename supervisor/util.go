@@ -135,14 +135,14 @@ func (s *SuperSupervisor) getSourceAndMetaKeyspace(appName string) (*common.Keys
 	depcfg := config.DepCfg(new(cfg.DepCfg))
 	source := &common.Keyspace{
 		BucketName:     string(depcfg.SourceBucket()),
-		ScopeName:      string(depcfg.SourceScope()),
-		CollectionName: string(depcfg.SourceCollection()),
+		ScopeName:      common.CheckAndReturnDefaultForScopeOrCollection(string(depcfg.SourceScope())),
+		CollectionName: common.CheckAndReturnDefaultForScopeOrCollection(string(depcfg.SourceCollection())),
 	}
 
 	meta := &common.Keyspace{
 		BucketName:     string(depcfg.MetadataBucket()),
-		ScopeName:      string(depcfg.MetadataScope()),
-		CollectionName: string(depcfg.MetadataCollection()),
+		ScopeName:      common.CheckAndReturnDefaultForScopeOrCollection(string(depcfg.MetadataScope())),
+		CollectionName: common.CheckAndReturnDefaultForScopeOrCollection(string(depcfg.MetadataCollection())),
 	}
 
 	return source, meta, nil

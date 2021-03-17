@@ -6,9 +6,9 @@ import (
 	"crypto/md5"
 	"crypto/rand"
 	"crypto/tls"
+	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"hash/crc32"
@@ -1829,10 +1829,10 @@ func ParseFunctionPayload(data []byte, fnName string) cm.Application {
 
 	depcfg.MetadataBucket = string(dcfg.MetadataBucket())
 	depcfg.SourceBucket = string(dcfg.SourceBucket())
-	depcfg.SourceScope = string(dcfg.SourceScope())
-	depcfg.SourceCollection = string(dcfg.SourceCollection())
-	depcfg.MetadataCollection = string(dcfg.MetadataCollection())
-	depcfg.MetadataScope = string(dcfg.MetadataScope())
+	depcfg.SourceScope = cm.CheckAndReturnDefaultForScopeOrCollection(string(dcfg.SourceScope()))
+	depcfg.SourceCollection = cm.CheckAndReturnDefaultForScopeOrCollection(string(dcfg.SourceCollection()))
+	depcfg.MetadataCollection = cm.CheckAndReturnDefaultForScopeOrCollection(string(dcfg.MetadataCollection()))
+	depcfg.MetadataScope = cm.CheckAndReturnDefaultForScopeOrCollection(string(dcfg.MetadataScope()))
 
 	var buckets []cm.Bucket
 	b := new(cfg.Bucket)
@@ -1843,8 +1843,8 @@ func ParseFunctionPayload(data []byte, fnName string) cm.Application {
 				Alias:          string(b.Alias()),
 				BucketName:     string(b.BucketName()),
 				Access:         string(config.Access(i)),
-				ScopeName:      string(b.ScopeName()),
-				CollectionName: string(b.CollectionName()),
+				ScopeName:      cm.CheckAndReturnDefaultForScopeOrCollection(string(b.ScopeName())),
+				CollectionName: cm.CheckAndReturnDefaultForScopeOrCollection(string(b.CollectionName())),
 			}
 			buckets = append(buckets, newBucket)
 		}
@@ -2059,7 +2059,7 @@ const OBOAuthHeader = "cb-on-behalf-of"
 
 func ComposeOBOAuthInfo(user, domain string) (oboAuthInfo string) {
 
-	if (user != "" && domain != "") {
+	if user != "" && domain != "" {
 		return base64.StdEncoding.EncodeToString([]byte(user + ":" + domain))
 	}
 

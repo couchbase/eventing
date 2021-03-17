@@ -1477,10 +1477,10 @@ func (m *ServiceMgr) parseFunctionPayload(data []byte, fnName string) applicatio
 
 	depcfg.MetadataBucket = string(dcfg.MetadataBucket())
 	depcfg.SourceBucket = string(dcfg.SourceBucket())
-	depcfg.SourceScope = string(dcfg.SourceScope())
-	depcfg.SourceCollection = string(dcfg.SourceCollection())
-	depcfg.MetadataCollection = string(dcfg.MetadataCollection())
-	depcfg.MetadataScope = string(dcfg.MetadataScope())
+	depcfg.SourceScope = common.CheckAndReturnDefaultForScopeOrCollection(string(dcfg.SourceScope()))
+	depcfg.SourceCollection = common.CheckAndReturnDefaultForScopeOrCollection(string(dcfg.SourceCollection()))
+	depcfg.MetadataCollection = common.CheckAndReturnDefaultForScopeOrCollection(string(dcfg.MetadataCollection()))
+	depcfg.MetadataScope = common.CheckAndReturnDefaultForScopeOrCollection(string(dcfg.MetadataScope()))
 
 	var buckets []bucket
 	b := new(cfg.Bucket)
@@ -1491,8 +1491,8 @@ func (m *ServiceMgr) parseFunctionPayload(data []byte, fnName string) applicatio
 				Alias:          string(b.Alias()),
 				BucketName:     string(b.BucketName()),
 				Access:         string(config.Access(i)),
-				ScopeName:      string(b.ScopeName()),
-				CollectionName: string(b.CollectionName()),
+				ScopeName:      common.CheckAndReturnDefaultForScopeOrCollection(string(b.ScopeName())),
+				CollectionName: common.CheckAndReturnDefaultForScopeOrCollection(string(b.CollectionName())),
 			}
 			buckets = append(buckets, newBucket)
 		}
@@ -3206,27 +3206,14 @@ func (m *ServiceMgr) addDefaultVersionIfMissing(app *application) {
 }
 
 func (m *ServiceMgr) addDefaultDeploymentConfig(app *application) {
-	if app.DeploymentConfig.SourceScope == "" {
-		app.DeploymentConfig.SourceScope = "_default"
-	}
-	if app.DeploymentConfig.SourceCollection == "" {
-		app.DeploymentConfig.SourceCollection = "_default"
-	}
-	if app.DeploymentConfig.MetadataScope == "" {
-		app.DeploymentConfig.MetadataScope = "_default"
-	}
-	if app.DeploymentConfig.MetadataCollection == "" {
-		app.DeploymentConfig.MetadataCollection = "_default"
-	}
+	app.DeploymentConfig.SourceScope = common.CheckAndReturnDefaultForScopeOrCollection(app.DeploymentConfig.SourceScope)
+	app.DeploymentConfig.SourceCollection = common.CheckAndReturnDefaultForScopeOrCollection(app.DeploymentConfig.SourceCollection)
+	app.DeploymentConfig.MetadataScope = common.CheckAndReturnDefaultForScopeOrCollection(app.DeploymentConfig.MetadataScope)
+	app.DeploymentConfig.MetadataCollection = common.CheckAndReturnDefaultForScopeOrCollection(app.DeploymentConfig.MetadataCollection)
 
 	for i := range app.DeploymentConfig.Buckets {
-		if app.DeploymentConfig.Buckets[i].ScopeName == "" {
-			app.DeploymentConfig.Buckets[i].ScopeName = "_default"
-		}
-
-		if app.DeploymentConfig.Buckets[i].CollectionName == "" {
-			app.DeploymentConfig.Buckets[i].CollectionName = "_default"
-		}
+		app.DeploymentConfig.Buckets[i].ScopeName = common.CheckAndReturnDefaultForScopeOrCollection(app.DeploymentConfig.Buckets[i].ScopeName)
+		app.DeploymentConfig.Buckets[i].CollectionName = common.CheckAndReturnDefaultForScopeOrCollection(app.DeploymentConfig.Buckets[i].CollectionName)
 	}
 }
 

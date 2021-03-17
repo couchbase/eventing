@@ -55,11 +55,25 @@ func (p *Producer) parseDepcfg() error {
 		return err
 	}
 
+	p.handlerConfig.SourceKeyspace.BucketName = string(depcfg.SourceBucket())
+	p.handlerConfig.SourceKeyspace.ScopeName = common.CheckAndReturnDefaultForScopeOrCollection(string(depcfg.SourceScope()))
+	p.handlerConfig.SourceKeyspace.CollectionName = common.CheckAndReturnDefaultForScopeOrCollection(string(depcfg.SourceCollection()))
+	p.cfgData = string(cfgData)
+	p.metadataKeyspace.BucketName = string(depcfg.MetadataBucket())
+	p.metadataKeyspace.ScopeName = common.CheckAndReturnDefaultForScopeOrCollection(string(depcfg.MetadataScope()))
+	p.metadataKeyspace.CollectionName = common.CheckAndReturnDefaultForScopeOrCollection(string(depcfg.MetadataCollection()))
+
 	p.isSrcMutation = false
 	binding := new(cfg.Bucket)
 	for idx := 0; idx < depcfg.BucketsLength(); idx++ {
 		if depcfg.Buckets(binding, idx) {
-			if string(binding.BucketName()) == string(depcfg.SourceBucket()) && string(config.Access(idx)) == "rw" {
+			scopeName := common.CheckAndReturnDefaultForScopeOrCollection(string(binding.ScopeName()))
+			collectionName := common.CheckAndReturnDefaultForScopeOrCollection(string(binding.CollectionName()))
+
+			if string(binding.BucketName()) == p.handlerConfig.SourceKeyspace.BucketName &&
+				scopeName == p.handlerConfig.SourceKeyspace.ScopeName &&
+				collectionName == p.handlerConfig.SourceKeyspace.CollectionName &&
+				string(config.Access(idx)) == "rw" {
 				p.isSrcMutation = true
 				break
 			}
@@ -67,14 +81,6 @@ func (p *Producer) parseDepcfg() error {
 	}
 
 	p.auth = fmt.Sprintf("%s:%s", user, password)
-
-	p.handlerConfig.SourceKeyspace.BucketName = string(depcfg.SourceBucket())
-	p.handlerConfig.SourceKeyspace.ScopeName = string(depcfg.SourceScope())
-	p.handlerConfig.SourceKeyspace.CollectionName = string(depcfg.SourceCollection())
-	p.cfgData = string(cfgData)
-	p.metadataKeyspace.BucketName = string(depcfg.MetadataBucket())
-	p.metadataKeyspace.ScopeName = string(depcfg.MetadataScope())
-	p.metadataKeyspace.CollectionName = string(depcfg.MetadataCollection())
 
 	settingsPath := metakvAppSettingsPath + p.appName
 	sData, sErr := util.MetakvGet(settingsPath)
