@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/couchbase/eventing/common"
+	"github.com/couchbase/eventing/common/collections"
 	"github.com/couchbase/eventing/dcp"
 	"github.com/couchbase/eventing/gen/flatbuf/cfg"
 	"github.com/couchbase/eventing/logging"
@@ -227,7 +228,7 @@ func (s *SuperSupervisor) watchBucketWithLock(bucketName, appName string) error 
 			return err
 		}
 		// forcefully update the manifest of the Bucket
-		bucketWatch.RefreshBucketManifestOnUIDChange("")
+		bucketWatch.RefreshBucketManifestOnUIDChange("", s.restPort)
 		s.scn.RunObserveCollectionManifestChanges(bucketName)
 		bucketWatch.apps = make(map[string]struct{})
 		s.buckets[bucketName] = bucketWatch
@@ -267,7 +268,7 @@ func (s *SuperSupervisor) FetchBucketManifestInfo(bucketName string, muid string
 		return false, nil
 	}
 
-	return bucketWatch.RefreshBucketManifestOnUIDChange(muid)
+	return bucketWatch.RefreshBucketManifestOnUIDChange(muid, s.restPort)
 }
 
 func (s *SuperSupervisor) undeployFunctionsOnDeletedBkts(deletedBuckets []string) {
@@ -494,10 +495,25 @@ func (bw *bucketWatchStruct) Refresh(retryCount int64, restPort string, np *couc
 		bw.b.SetBucketUri(np.BucketURL["uri"])
 	}
 
+	bw.RefreshBucketManifestOnUIDChange("", restPort)
 	return err
 }
 
-func (bw *bucketWatchStruct) RefreshBucketManifestOnUIDChange(muid string) (bool, error) {
+func (bw *bucketWatchStruct) RefreshBucketManifestOnUIDChange(muid, restPort string) (bool, error) {
+	hostAddress := net.JoinHostPort(util.Localhost(), restPort)
+	cic, err := util.FetchClusterInfoClient(hostAddress)
+	if err != nil {
+		return false, err
+	}
+	cinfo := cic.GetClusterInfoCache()
+	cinfo.RLock()
+	version := cinfo.GetNodeCompatVersion("")
+	cinfo.RUnlock()
+
+	if version < collections.COLLECTION_SUPPORTED_VERSION {
+		return false, nil
+	}
+
 	if muid != "" && bw.b.Manifest.UID == muid {
 		return false, nil
 	}
@@ -517,5 +533,8 @@ func (bw *bucketWatchStruct) AppNames() []string {
 }
 
 func (bw *bucketWatchStruct) GetManifestId() string {
+	if bw.b.Manifest == nil {
+		return "0"
+	}
 	return bw.b.Manifest.UID
 }
