@@ -226,7 +226,12 @@ angular.module('eventing', [
         var ret = '-';
         var ary_a = self.deployedStats.stats['eventing/' + app + '/' + a];
         if (ary_a && ary_a.aggregate && ary_a.aggregate.length > 0) {
-          var val_a = ary_a.aggregate[ary_a.aggregate.length - 1];
+          var val_a = null;
+          // sometimes the most recent stat is null, try to look into the past
+          for (var i = ary_a.aggregate.length - 1; i>=0; i--) {
+              val_a = ary_a.aggregate[i];
+              if (val_a !== null) break;
+          }
           if (!isNaN(val_a)) {
             ret = val_a;
             if (val_a > 999999) {
@@ -239,7 +244,7 @@ angular.module('eventing', [
         }
         self.appList[app].cluster_stats[tag] = ret;
         self.appList[app].cluster_stats[tag + '_gt_zero'] = false;
-        if (!isNaN(ret) && ret > 0) {
+        if (!isNaN(val_a) && val_a > 0) {
           self.appList[app].cluster_stats[tag + '_gt_zero'] = true;
         }
         return ret;
