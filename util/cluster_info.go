@@ -15,7 +15,7 @@ import (
 
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/common/collections"
-	"github.com/couchbase/eventing/dcp"
+	couchbase "github.com/couchbase/eventing/dcp"
 	"github.com/couchbase/eventing/logging"
 )
 
@@ -522,7 +522,10 @@ func (c *ClusterInfoCache) GetExternalIPOfThisNode(hostnames []string) (string, 
 		if !node.ThisNode {
 			continue
 		}
-
+		hostnameWithAltAddr := strings.Split(hostnames[i], "<TOK>")
+		if len(hostnameWithAltAddr) > 1 {
+			return hostnameWithAltAddr[1], nil
+		}
 		hostIp, _, err := net.SplitHostPort(hostnames[i])
 		if err != nil {
 			return "", err
