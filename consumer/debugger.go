@@ -12,11 +12,12 @@ import (
 	"sync"
 	"time"
 
+	"runtime/debug"
+
 	"github.com/couchbase/eventing/common"
 	cb "github.com/couchbase/eventing/dcp/transport/client"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
-	"runtime/debug"
 )
 
 var (
@@ -316,6 +317,7 @@ func (c *Consumer) startDebugger(e *cb.DcpEvent, instance common.DebuggerInstanc
 }
 
 // ResolveHostname returns external IP address of this node.
+// Looks through the alternate addresses as well. Returns alt addr if found.
 // In-case of failure returns 127.0.0.1
 func (c *Consumer) ResolveHostname(instance common.DebuggerInstance) string {
 	logPrefix := "Consumer::ResolveHostname"
