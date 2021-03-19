@@ -40,4 +40,6 @@ deployment_config *ParseDeployment(const char *app_name);
 std::vector<std::string> ToStringArray(
     const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>> *from);
 
+std::string checkAndReturnDefaultForScopeOrCollection(const std::string &key,
+                                  const std::string &defaultValue);
 #endif

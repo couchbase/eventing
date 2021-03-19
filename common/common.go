@@ -518,3 +518,10 @@ func (dst *Insight) Accumulate(src *Insight) {
 func GetDefaultHandlerHeaders() []string {
 	return []string{"'use strict';"}
 }
+
+func CheckAndReturnDefaultForScopeOrCollection(key string) string {
+	if key == "" {
+		return "_default"
+	}
+	return key
+}

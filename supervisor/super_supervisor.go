@@ -242,13 +242,13 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 						return nil
 					}
 					if !sourceExist || !metaExist {
+						logging.Errorf("%s [%d] Source KeySpace or Metadata Keyspace is deleted, Function: %s Begin undeploy process",
+							logPrefix, s.runningFnsCount(), appName)
 						util.Retry(util.NewExponentialBackoff(), &s.retryCount, undeployFunctionCallback, s, appName)
 						s.appRWMutex.Lock()
 						s.appDeploymentStatus[appName] = false
 						s.appProcessingStatus[appName] = false
 						s.appRWMutex.Unlock()
-						logging.Errorf("%s [%d] Source bucket or metadata bucket is deleted, Function: %s is undeployed",
-							logPrefix, s.runningFnsCount(), appName)
 						return nil
 					}
 
@@ -478,9 +478,9 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(path string, value []byte,
 					}
 
 					if !sourceExist || !metaExist {
-						util.Retry(util.NewExponentialBackoff(), &s.retryCount, undeployFunctionCallback, s, appName)
-						logging.Errorf("%s [%d] Source bucket or metadata bucket is deleted, Function: %s is undeployed",
+						logging.Errorf("%s [%d] Source Keyspace or Metadata Keyspace is deleted, Function: %s Begin undeploy process",
 							logPrefix, s.runningFnsCount(), appName)
+						util.Retry(util.NewExponentialBackoff(), &s.retryCount, undeployFunctionCallback, s, appName)
 						continue
 					}
 					logging.Infof("%s [%d] Function: %s begin deployment process", logPrefix, s.runningFnsCount(), appName)

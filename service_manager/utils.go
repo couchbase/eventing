@@ -608,21 +608,14 @@ func (m *ServiceMgr) getFunctionList(query url.Values) (fnlist functionList, inf
 	m.fnMu.RLock()
 	defer m.fnMu.RUnlock()
 	bucket := query.Get("source_bucket")
-	scope := query.Get("source_scope")
-	collection := query.Get("source_collection")
+	scope := common.CheckAndReturnDefaultForScopeOrCollection(query.Get("source_scope"))
+	collection := common.CheckAndReturnDefaultForScopeOrCollection(query.Get("source_collection"))
 	keyspace := make(map[common.Keyspace]struct{})
 	if bucket == "" {
 		for currKeyspace := range m.bucketFunctionMap {
 			keyspace[currKeyspace] = struct{}{}
 		}
 	} else {
-		if scope == "" {
-			scope = "_default"
-		}
-		if collection == "" {
-			collection = "_default"
-		}
-
 		sourceKeyspace := common.Keyspace{BucketName: bucket,
 			ScopeName:      scope,
 			CollectionName: collection,

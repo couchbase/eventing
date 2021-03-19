@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/couchbase/eventing/common"
+	"github.com/couchbase/eventing/common/collections"
 	"github.com/couchbase/eventing/dcp"
 	"github.com/couchbase/eventing/logging"
 )
@@ -867,11 +868,12 @@ func (c *ClusterInfoCache) GetManifestID(bucket string) (string, error) {
 	return c.pool.GetManifestID(bucket)
 }
 
+// empty string as argument gives cluster compact version of all services in the cluster
 func (c *ClusterInfoCache) GetNodeCompatVersion(service string) uint32 {
 	version := (uint32)(math.MaxUint32)
 	for _, n := range c.nodes {
 		for _, s := range n.Services {
-			if s == service {
+			if service == "" || s == service {
 				v := uint32(n.ClusterCompatibility / 65536)
 				if v < version {
 					version = v
@@ -887,12 +889,15 @@ func (c *ClusterInfoCache) FetchManifestInfo(bucketName string) error {
 	c.Lock()
 	defer c.Unlock()
 
-	pool := &c.pool
-	manifest, err := pool.RefreshBucketManifest(bucketName)
-	if err != nil {
-		return err
+	compactVersion := c.GetNodeCompatVersion("")
+	if compactVersion >= collections.COLLECTION_SUPPORTED_VERSION {
+		pool := &c.pool
+		manifest, err := pool.RefreshBucketManifest(bucketName)
+		if err != nil {
+			return err
+		}
+		pool.Manifest[bucketName] = manifest
 	}
-	pool.Manifest[bucketName] = manifest
 	return nil
 }
 
