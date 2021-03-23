@@ -22,7 +22,7 @@
   white-space: pre-wrap;
 }
 
-mn-statistics-chart {
+.eventing-charts mn-statistics-chart {
   width:32% !important;
   box-sizing: border-box !important;
 }
