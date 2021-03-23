@@ -427,7 +427,7 @@ func (m *ServiceMgr) getSourceAndDestinationsFromDepCfg(cfg *depCfg) (src common
 	return src, dest
 }
 
-// GetNodesHostname returns hostnames of all nodes
+// GetNodesHostname returns hostnames of all nodes with alternate Addresses if any
 func GetNodesHostname(data map[string]interface{}) []string {
 	hostnames := make([]string, 0)
 
@@ -438,6 +438,13 @@ func GetNodesHostname(data map[string]interface{}) []string {
 	for _, value := range nodes {
 		nodeInfo := value.(map[string]interface{})
 		if hostname, exists := nodeInfo["hostname"].(string); exists {
+			if info, altExists := nodeInfo["alternateAddresses"].(map[string]interface{}); altExists {
+				if external, extExists := info["external"].(map[string]interface{}); extExists {
+					if extHostname, hExists := external["hostname"].(string); hExists {
+						hostname = hostname + "<TOK>" + extHostname
+					}
+				}
+			}
 			hostnames = append(hostnames, hostname)
 		}
 	}
