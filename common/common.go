@@ -74,6 +74,12 @@ const (
 	MetakvConfigPath      = MetakvEventingPath + "settings/config"
 )
 
+// DCP Flags for Open Connection (opcode 0x50)
+const (
+	IncludeXATTRs = uint32(0x4)
+	NoValue       = uint32(0x8)
+)
+
 type DebuggerInstance struct {
 	Token           string   `json:"token"`             // An ID for a debugging session
 	Host            string   `json:"host"`              // The node where debugger has been spawned
