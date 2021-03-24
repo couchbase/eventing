@@ -7,8 +7,9 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
-	"gopkg.in/couchbase/gocb.v1"
+	"github.com/couchbase/gocb/v2"
 )
 
 func testFlexReset(handler string, t *testing.T) {
@@ -307,22 +308,33 @@ func TestN1QLGraceSufficientTimeOut(t *testing.T) {
 	}
 
 	//Check onupdate success in result
-	cluster, _ := gocb.Connect("couchbase://127.0.0.1:12000")
-	cluster.Authenticate(gocb.PasswordAuthenticator{
+
+	cluster, err := gocb.Connect("couchbase://127.0.0.1:12000", gocb.ClusterOptions{
 		Username: rbacuser,
 		Password: rbacpass,
 	})
-	bucket, err := cluster.OpenBucket(dstBucket, "")
 	if err != nil {
-		fmt.Println("Bucket open, err: ", err)
+		fmt.Println("Error connecting to cluster, err: ", err)
+		failAndCollectLogs(t, "Connecting to cluster failed")
+		return
+	}
+	bucket := cluster.Bucket(dstBucket)
+	err = bucket.WaitUntilReady(5*time.Second, nil)
+	if err != nil {
+		fmt.Printf("Error connecting to bucket %s  err: %s \n", dstBucket, err)
 		failAndCollectLogs(t, "Error open result bucket")
 		return
 	}
-	defer bucket.Close()
 	var val string
-	_, err = bucket.Get("result_key", &val)
+	collection := bucket.DefaultCollection()
+	getResult, err := collection.Get("result_key", nil)
 	if err != nil {
 		failAndCollectLogs(t, "Error getting result from bucket:", err)
+		return
+	}
+
+	if err := getResult.Content(&val); err != nil {
+		t.Error("Error converting result to string:", err)
 		return
 	}
 

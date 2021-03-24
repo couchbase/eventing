@@ -2,13 +2,14 @@ package eventing
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"math/rand"
 	"time"
 
 	"github.com/couchbase/cbauth/metakv"
-	"gopkg.in/couchbase/gocb.v1"
+	"github.com/couchbase/gocb/v2"
 )
 
 type user struct {
@@ -40,17 +41,22 @@ func random(min int, max int) int {
 func mangleCheckpointBlobs(appName, prefix string, start, end int) {
 	time.Sleep(15 * time.Second)
 
-	cluster, _ := gocb.Connect("couchbase://127.0.0.1:12000")
-	cluster.Authenticate(gocb.PasswordAuthenticator{
+	cluster, err := gocb.Connect("couchbase://127.0.0.1:12000", gocb.ClusterOptions{
 		Username: rbacuser,
 		Password: rbacpass,
 	})
-	bucket, err := cluster.OpenBucket(metaBucket, "")
 	if err != nil {
-		fmt.Println("Bucket open, err:", err)
+		fmt.Println("Error connecting to cluster, err: ", err)
 		return
 	}
-	defer bucket.Close()
+
+	bucket := cluster.Bucket(metaBucket)
+	err = bucket.WaitUntilReady(5*time.Second, nil)
+	if err != nil {
+		fmt.Printf("Error connecting to bucket %s  err: %s \n", metaBucket, err)
+		return
+	}
+	collection := bucket.DefaultCollection()
 
 	// Grab functionID from metakv
 	metakvPath := fmt.Sprintf("/eventing/tempApps/%s/0", appName)
@@ -95,13 +101,14 @@ func mangleCheckpointBlobs(appName, prefix string, start, end int) {
 			Timestamp:      time.Now().String(),
 		}
 
-		_, err := bucket.MutateIn(docID, 0, uint32(0)).
-			ArrayAppend("ownership_history", entry, true).
-			UpsertEx("assigned_worker", worker, gocb.SubdocFlagCreatePath).
-			UpsertEx("current_vb_owner", ownerNode, gocb.SubdocFlagCreatePath).
-			UpsertEx("dcp_stream_status", possibleDcpStreamStates[random(0, len(possibleDcpStreamStates))], gocb.SubdocFlagCreatePath).
-			// UpsertEx("node_uuid", possibleNodeUUIDs[random(0, len(possibleNodeUUIDs))], gocb.SubdocFlagCreatePath).
-			Execute()
+		blob := make([]gocb.MutateInSpec, 0)
+		upsertOptions := &gocb.UpsertSpecOptions{CreatePath: true}
+		blob = append(blob, gocb.ArrayAppendSpec("ownership_history", entry, &gocb.ArrayAppendSpecOptions{CreatePath: true}))
+		blob = append(blob, gocb.UpsertSpec("assigned_worker", worker, upsertOptions))
+		blob = append(blob, gocb.UpsertSpec("current_vb_owner", ownerNode, upsertOptions))
+		blob = append(blob, gocb.UpsertSpec("dcp_stream_status", possibleDcpStreamStates[random(0, len(possibleDcpStreamStates))], upsertOptions))
+		_, err = collection.MutateIn(docID, blob, nil)
+
 		if err != nil {
 			log.Printf("DocID: %s err: %v\n", docID, err)
 		}
@@ -113,17 +120,21 @@ func mangleCheckpointBlobs(appName, prefix string, start, end int) {
 func purgeCheckpointBlobs(appName, prefix string, start, end int) {
 	time.Sleep(15 * time.Second) // Hopefully enough time for bootstrap loop to exit on new node
 
-	cluster, _ := gocb.Connect("couchbase://127.0.0.1:12000")
-	cluster.Authenticate(gocb.PasswordAuthenticator{
+	cluster, err := gocb.Connect("couchbase://127.0.0.1:12000", gocb.ClusterOptions{
 		Username: rbacuser,
 		Password: rbacpass,
 	})
-	bucket, err := cluster.OpenBucket(metaBucket, "")
 	if err != nil {
-		fmt.Println("Bucket open, err:", err)
+		fmt.Println("Error connecting to cluster, err: ", err)
 		return
 	}
-	defer bucket.Close()
+	bucket := cluster.Bucket(metaBucket)
+	err = bucket.WaitUntilReady(5*time.Second, nil)
+	if err != nil {
+		fmt.Printf("Error connecting to bucket %s  err: %s \n", metaBucket, err)
+		return
+	}
+	collection := bucket.DefaultCollection()
 
 	// Grab functionID from metakv
 	metakvPath := fmt.Sprintf("/eventing/tempApps/%s/0", appName)
@@ -142,7 +153,7 @@ func purgeCheckpointBlobs(appName, prefix string, start, end int) {
 
 	for vb := start; vb <= end; vb++ {
 		docID := fmt.Sprintf("%s::%d::%s::vb::%d", prefix, uint64(app["function_id"].(float64)), appName, vb)
-		_, err = bucket.Remove(docID, 0)
+		_, err = collection.Remove(docID, nil)
 		if err != nil {
 			log.Printf("DocID: %s err: %v\n", docID, err)
 		}
@@ -158,16 +169,20 @@ func pumpBucketOpsSrc(ops opsType, srcBucket string, rate *rateLimit) {
 		ops.count = itemCount
 	}
 
-	cluster, _ := gocb.Connect("couchbase://127.0.0.1:12000")
-	cluster.Authenticate(gocb.PasswordAuthenticator{
+	cluster, err := gocb.Connect("couchbase://127.0.0.1:12000", gocb.ClusterOptions{
 		Username: rbacuser,
 		Password: rbacpass,
 	})
-	bucket, err := cluster.OpenBucket(srcBucket, "")
 	if err != nil {
 		panic(fmt.Sprintf("Bucket open, err: %s", err))
 	}
-	defer bucket.Close()
+	bucket := cluster.Bucket(srcBucket)
+	err = bucket.WaitUntilReady(5*time.Second, nil)
+	if err != nil {
+		fmt.Printf("Error connecting to bucket %s  err: %s \n", srcBucket, err)
+		return
+	}
+	collection := bucket.DefaultCollection()
 
 	bin := []byte{1, 2, 3, 4, 0, 5, 6, 0, 7}
 	u := user{
@@ -180,12 +195,14 @@ func pumpBucketOpsSrc(ops opsType, srcBucket string, rate *rateLimit) {
 		for i := 0; i < ops.count; i++ {
 			u.ID = i + ops.startIndex
 			if !ops.writeXattrs {
+				upsertOptions := &gocb.UpsertOptions{Expiry: time.Duration(ops.expiry)}
+				upsertOptionsBinary := &gocb.UpsertOptions{Expiry: time.Duration(ops.expiry), Transcoder: &gocb.RawBinaryTranscoder{}}
 
 			retryOp1:
 				if ops.isBinary {
-					_, err = bucket.Upsert(fmt.Sprintf("doc_id_%d", i+ops.startIndex), bin, uint32(ops.expiry))
+					_, err = collection.Upsert(fmt.Sprintf("doc_id_%d", i+ops.startIndex), bin, upsertOptionsBinary)
 				} else {
-					_, err = bucket.Upsert(fmt.Sprintf("doc_id_%d", i+ops.startIndex), u, uint32(ops.expiry))
+					_, err = collection.Upsert(fmt.Sprintf("doc_id_%d", i+ops.startIndex), u, upsertOptions)
 				}
 				if err != nil {
 					time.Sleep(time.Second)
@@ -194,10 +211,15 @@ func pumpBucketOpsSrc(ops opsType, srcBucket string, rate *rateLimit) {
 			} else {
 
 			retryOp2:
-				_, err := bucket.MutateIn(fmt.Sprintf("doc_id_%d", i+ops.startIndex), 0, uint32(ops.expiry)).
-					UpsertEx(fmt.Sprintf("test_%s", ops.xattrPrefix), "user xattr test value", gocb.SubdocFlagXattr|gocb.SubdocFlagCreatePath).
-					UpsertEx("normalproperty", "normal property value", gocb.SubdocFlagNone).
-					Execute()
+
+				mutateIn := make([]gocb.MutateInSpec, 0)
+				upsertOptions := &gocb.MutateInOptions{Expiry: time.Duration(ops.expiry)}
+				upsertSpecOptionsBothSet := &gocb.UpsertSpecOptions{CreatePath: true, IsXattr: true}
+				upsertSpecOptionsNoneSet := &gocb.UpsertSpecOptions{CreatePath: false, IsXattr: false}
+				mutateIn = append(mutateIn, gocb.UpsertSpec(fmt.Sprintf("test_%s", ops.xattrPrefix), "user xattr test value", upsertSpecOptionsBothSet))
+				mutateIn = append(mutateIn, gocb.UpsertSpec("normalproperty", "normal property value", upsertSpecOptionsNoneSet))
+				_, err = collection.MutateIn(fmt.Sprintf("doc_id_%d", i+ops.startIndex), mutateIn, upsertOptions)
+
 				if err != nil {
 					time.Sleep(time.Second)
 					goto retryOp2
@@ -209,8 +231,8 @@ func pumpBucketOpsSrc(ops opsType, srcBucket string, rate *rateLimit) {
 			for i := 0; i < ops.count; i++ {
 
 			retryOp3:
-				_, err := bucket.Remove(fmt.Sprintf("doc_id_%d", i), 0)
-				if err != nil && err != gocb.ErrKeyNotFound {
+				_, err := collection.Remove(fmt.Sprintf("doc_id_%d", i), nil)
+				if err != nil && !errors.Is(err, gocb.ErrDocumentNotFound) {
 					time.Sleep(time.Second)
 					goto retryOp3
 				}
@@ -227,8 +249,8 @@ func pumpBucketOpsSrc(ops opsType, srcBucket string, rate *rateLimit) {
 				if ops.delete {
 
 				retryOp4:
-					_, err := bucket.Remove(fmt.Sprintf("doc_id_%d", u.ID), 0)
-					if err != nil && err != gocb.ErrKeyNotFound {
+					_, err := collection.Remove(fmt.Sprintf("doc_id_%d", u.ID), nil)
+					if err != nil && !errors.Is(err, gocb.ErrDocumentNotFound) {
 						time.Sleep(time.Second)
 						goto retryOp4
 					}
@@ -236,10 +258,13 @@ func pumpBucketOpsSrc(ops opsType, srcBucket string, rate *rateLimit) {
 					if !ops.writeXattrs {
 
 					retryOp5:
+						upsertOptions := &gocb.UpsertOptions{Expiry: time.Duration(ops.expiry)}
+						upsertOptionsBinary := &gocb.UpsertOptions{Expiry: time.Duration(ops.expiry), Transcoder: &gocb.RawBinaryTranscoder{}}
+
 						if ops.isBinary {
-							_, err = bucket.Upsert(fmt.Sprintf("doc_id_%d", i+ops.startIndex), bin, uint32(ops.expiry))
+							_, err = collection.Upsert(fmt.Sprintf("doc_id_%d", i+ops.startIndex), bin, upsertOptionsBinary)
 						} else {
-							_, err = bucket.Upsert(fmt.Sprintf("doc_id_%d", i+ops.startIndex), u, uint32(ops.expiry))
+							_, err = collection.Upsert(fmt.Sprintf("doc_id_%d", i+ops.startIndex), u, upsertOptions)
 						}
 						if err != nil {
 							time.Sleep(time.Second)
@@ -248,10 +273,14 @@ func pumpBucketOpsSrc(ops opsType, srcBucket string, rate *rateLimit) {
 					} else {
 
 					retryOp6:
-						_, err := bucket.MutateIn(fmt.Sprintf("doc_id_%d", i+ops.startIndex), 0, uint32(ops.expiry)).
-							UpsertEx(fmt.Sprintf("test_%s", ops.xattrPrefix), "user xattr test value", gocb.SubdocFlagXattr|gocb.SubdocFlagCreatePath).
-							UpsertEx("normalproperty", "normal property value", gocb.SubdocFlagNone).
-							Execute()
+						mutateIn := make([]gocb.MutateInSpec, 0)
+						upsertOptions := &gocb.MutateInOptions{Expiry: time.Duration(ops.expiry)}
+						upsertSpecOptionsBothSet := &gocb.UpsertSpecOptions{CreatePath: true, IsXattr: true}
+						upsertSpecOptionsNoneSet := &gocb.UpsertSpecOptions{CreatePath: false, IsXattr: false}
+						mutateIn = append(mutateIn, gocb.UpsertSpec(fmt.Sprintf("test_%s", ops.xattrPrefix), "user xattr test value", upsertSpecOptionsBothSet))
+						mutateIn = append(mutateIn, gocb.UpsertSpec("normalproperty", "normal property value", upsertSpecOptionsNoneSet))
+						_, err = collection.MutateIn(fmt.Sprintf("doc_id_%d", i+ops.startIndex), mutateIn, upsertOptions)
+
 						if err != nil {
 							time.Sleep(time.Second)
 							goto retryOp6
