@@ -665,24 +665,20 @@ func (s *SuperSupervisor) AppsRetryCallback(path string, value []byte, rev inter
 func (s *SuperSupervisor) spawnApp(appName string) error {
 	logPrefix := "SuperSupervisor::spawnApp"
 
-	source, metadata, err := s.getSourceAndMetaBucket(appName)
-	if err != nil {
-		return err
-	}
-	err = s.WatchBucket(source, appName)
-	if err != nil {
-		return err
-	}
-	err = s.WatchBucket(metadata, appName)
-	if err != nil {
-		s.UnwatchBucket(source, appName)
-		return err
-	}
-
 	metakvAppHostPortsPath := fmt.Sprintf("%s%s/", metakvProducerHostPortsPath, appName)
 
 	p := producer.NewProducer(appName, s.adminPort.DebuggerPort, s.adminPort.HTTPPort, s.adminPort.SslPort, s.eventingDir,
 		s.kvPort, metakvAppHostPortsPath, s.restPort, s.uuid, s.diagDir, s.memoryQuota, s.numVbuckets, s)
+
+	err := s.WatchBucket(p.SourceBucket(), appName)
+	if err != nil {
+		return err
+	}
+	err = s.WatchBucket(p.MetadataBucket(), appName)
+	if err != nil {
+		s.UnwatchBucket(p.SourceBucket(), appName)
+		return err
+	}
 
 	logging.Infof("%s [%d] Function: %s spawning up, memory quota: %d", logPrefix, s.runningFnsCount(), appName, s.memoryQuota)
 

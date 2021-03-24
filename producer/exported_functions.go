@@ -222,11 +222,11 @@ func (p *Producer) SourceBucket() string {
 }
 
 func (p *Producer) GetSourceCid() uint32 {
-	return p.srcCid
+	return atomic.LoadUint32(&p.srcCid)
 }
 
 func (p *Producer) GetMetadataCid() uint32 {
-	return p.metaCid
+	return atomic.LoadUint32(&p.metaCid)
 }
 
 // SourceScope returns the source scope for event handler

@@ -647,7 +647,7 @@ func (s *SuperSupervisor) GetCurrentManifestId(bucketName string) (string, error
 	defer s.bucketsRWMutex.Unlock()
 	bucketWatch, ok := s.buckets[bucketName]
 	if !ok {
-		return "0", fmt.Errorf("Bucket not being watched")
+		return "0", common.BucketNotWatched
 	}
 	return bucketWatch.GetManifestId(), nil
 }
@@ -657,7 +657,7 @@ func (s *SuperSupervisor) GetCollectionID(bucketName, scopeName, collectionName 
 	defer s.bucketsRWMutex.Unlock()
 	bucketWatch, ok := s.buckets[bucketName]
 	if !ok {
-		return 0, fmt.Errorf("Bucket not being watched")
+		return 0, common.BucketNotWatched
 	}
 
 	manifest := bucketWatch.b.Manifest

@@ -3,6 +3,7 @@ package producer
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"net"
 	"os"
 	"runtime"
@@ -16,6 +17,7 @@ import (
 	"github.com/couchbase/cbauth"
 	"github.com/couchbase/cbauth/service"
 	"github.com/couchbase/eventing/common"
+	"github.com/couchbase/eventing/common/collections"
 	"github.com/couchbase/eventing/consumer"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/parser"
@@ -84,13 +86,26 @@ func NewProducer(appName, debuggerPort, eventingPort, eventingSSLPort, eventingD
 	p.processConfig.EventingSSLPort = eventingSSLPort
 	p.processConfig.BreakpadOn = util.BreakpadOn()
 	p.eventingNodeUUIDs = append(p.eventingNodeUUIDs, uuid)
+	p.parseDepcfg()
+
+	atomic.StoreUint32(&p.srcCid, math.MaxUint32)
+	atomic.StoreUint32(&p.metaCid, math.MaxUint32)
 	return p
 }
 
 // Serve implements suptree.Service interface
 func (p *Producer) Serve() {
 	logPrefix := "Producer::Serve"
+
+	var err error
 	defer func() {
+		if err == common.BucketNotWatched || err == collections.SCOPE_NOT_FOUND || err == collections.COLLECTION_NOT_FOUND {
+			p.bootstrapFinishCh <- struct{}{}
+			p.isBootstrapping = false
+			p.notifyInitCh <- struct{}{}
+			p.notifySupervisorCh <- struct{}{}
+		}
+
 		if p.retryCount >= 0 {
 			p.notifyInitCh <- struct{}{}
 			p.bootstrapFinishCh <- struct{}{}
@@ -103,29 +118,35 @@ func (p *Producer) Serve() {
 	p.isBootstrapping = true
 	logging.Infof("%s [%s:%d] Bootstrapping status: %t", logPrefix, p.appName, p.LenRunningConsumers(), p.isBootstrapping)
 
-	err := p.parseDepcfg()
-	if err == common.ErrRetryTimeout {
-		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
-		return
-	}
-
 	if err != nil {
 		logging.Fatalf("%s [%s:%d] Failure parsing depcfg, err: %v", logPrefix, p.appName, p.LenRunningConsumers(), err)
 		return
 	}
 
 	go p.undeployHandlerWait()
-	p.srcCid, err = p.superSup.GetCollectionID(p.handlerConfig.SourceKeyspace.BucketName, p.handlerConfig.SourceKeyspace.ScopeName, p.handlerConfig.SourceKeyspace.CollectionName)
-	if err != nil {
-		logging.Errorf("%s [%s:%d] Error in getting source collection Id: %v", err)
+	srcCid, err := p.superSup.GetCollectionID(p.handlerConfig.SourceKeyspace.BucketName, p.handlerConfig.SourceKeyspace.ScopeName, p.handlerConfig.SourceKeyspace.CollectionName)
+	if err == common.BucketNotWatched || err == collections.SCOPE_NOT_FOUND || err == collections.COLLECTION_NOT_FOUND {
+		p.undeployHandler <- false
+		logging.Errorf("%s [%s] source scope or collection not found %v", logPrefix, p.appName, err)
 		return
 	}
+	if err != nil {
+		logging.Errorf("%s [%s] Error in getting source collection Id: %v", logPrefix, p.appName, err)
+		return
+	}
+	atomic.StoreUint32(&p.srcCid, srcCid)
 
-	p.metaCid, err = p.superSup.GetCollectionID(p.metadataKeyspace.BucketName, p.metadataKeyspace.ScopeName, p.metadataKeyspace.CollectionName)
-	if err != nil {
-		logging.Errorf("%s [%s:%d] Error in getting metadata collection Id: %v", err)
+	metaCid, err := p.superSup.GetCollectionID(p.metadataKeyspace.BucketName, p.metadataKeyspace.ScopeName, p.metadataKeyspace.CollectionName)
+	if err == common.BucketNotWatched || err == collections.SCOPE_NOT_FOUND || err == collections.COLLECTION_NOT_FOUND {
+		p.undeployHandler <- true
+		logging.Errorf("%s [%s] metadata scope or collection not found %v", logPrefix, p.appName, err)
 		return
 	}
+	if err != nil {
+		logging.Errorf("%s [%s] Error in getting metadata collection Id: %v", logPrefix, p.appName, err)
+		return
+	}
+	atomic.StoreUint32(&p.metaCid, metaCid)
 
 	n1qlParams := "{ 'consistency': '" + p.handlerConfig.N1qlConsistency + "' }"
 	p.app.ParsedAppCode, _ = parser.TranspileQueries(p.app.AppCode, n1qlParams)

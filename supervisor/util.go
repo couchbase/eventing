@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net"
 	"runtime"
 	"sort"
@@ -310,6 +311,9 @@ func (s *SuperSupervisor) checkDeletedCid(bucketName string) {
 		}
 
 		mCid := p.GetMetadataCid()
+		if mCid == math.MaxUint32 {
+			continue
+		}
 		cid, err := s.GetCollectionID(p.MetadataBucket(), p.MetadataScope(), p.MetadataCollection())
 		if err != nil || cid != mCid {
 			logging.Infof("%s Undeploying %s Reason: metadata collection delete err: %v", logPrefix, appName, err)
@@ -318,6 +322,9 @@ func (s *SuperSupervisor) checkDeletedCid(bucketName string) {
 		}
 
 		sCid := p.GetSourceCid()
+		if sCid == math.MaxUint32 {
+			continue
+		}
 		cid, err = s.GetCollectionID(p.SourceBucket(), p.SourceScope(), p.SourceCollection())
 		if err != nil || cid != sCid {
 			logging.Infof("%s Undeploying %s Reason: source collection delete err: %v", logPrefix, appName, err)

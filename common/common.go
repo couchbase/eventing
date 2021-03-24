@@ -8,6 +8,8 @@ import (
 	couchbase "github.com/couchbase/eventing/dcp"
 )
 
+var BucketNotWatched = errors.New("Bucket not being watched")
+
 type DcpStreamBoundary string
 
 const (
