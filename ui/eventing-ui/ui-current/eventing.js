@@ -57,6 +57,7 @@ angular.module('eventing', [
       self.disableEditButton = false;
       self.appListStaleCount = 0;
       self.statusPollMillis = 2000;
+      self.pollingCount = 0;
       self.deployedStats = null;
       self.annotationList = []
 
@@ -209,8 +210,18 @@ angular.module('eventing', [
               fetchCpuCount();
             }
 
+
+            // Fetch at the beginning of every cycle
+            if(self.pollingCount == 0)
+              fetchDeployedStats(statsConfig);
             // Only does the fetch if we have one or more items deploying or deployed in the UI
-            fetchDeployedStats(statsConfig);
+            self.pollingCount += 1;
+            // Fetch DeployesdStats once every scrapeInterval/2 seconds
+            ApplicationService.server.getScrapeInterval().then(function(value){
+              if (self.pollingCount >= ((value * 1000) / (self.statusPollMillis * 2))) {
+                self.pollingCount = 0;
+              }
+            });
 
           }).catch(function(errResponse) {
             self.errorCode = errResponse && errResponse.status || 500;
@@ -2229,6 +2240,13 @@ angular.module('eventing', [
               console.log("error getting insight", response);
               return {};
             });
+          },
+          getScrapeInterval: function() {
+            return $http.get("/settings/metrics/").then(
+              function(response){
+                return response.data.scrapeInterval ? response.data.scrapeInterval : 10;
+              }
+            )
           }
         },
         convertBindingToConfig: function(bindings) {
