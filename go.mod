@@ -38,7 +38,7 @@ require (
 	github.com/couchbase/gomemcached v0.1.2
 	github.com/couchbase/goutils v0.0.0-20210118111533-e33d3ffb5401
 	github.com/couchbase/query v0.0.0-20210323234224-e303a18be4a1
-	github.com/google/flatbuffers v1.12.0
+	github.com/google/flatbuffers v0.0.0-20200312223339-6df40a247173
 	github.com/mitchellh/go-ps v1.0.0
 	github.com/pkg/errors v0.9.1
 	github.com/santhosh-tekuri/jsonschema v1.2.4
