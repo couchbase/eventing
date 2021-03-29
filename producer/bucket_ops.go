@@ -3,14 +3,15 @@ package producer
 import (
 	"errors"
 	"fmt"
+	"net"
+	"time"
+
 	"github.com/couchbase/eventing/common"
-	"github.com/couchbase/eventing/dcp"
+	couchbase "github.com/couchbase/eventing/dcp"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
 	"github.com/couchbase/gocb/v2"
 	"github.com/couchbase/gocbcore/v9"
-	"net"
-	"time"
 )
 
 var getFailoverLogOpCallback = func(args ...interface{}) error {
@@ -50,7 +51,7 @@ var cleanupMetadataCallback = func(args ...interface{}) error {
 		return err
 	}
 
-	*dcpFeed, err = (*b).StartDcpFeedOver(feedName, uint32(0), 0, kvNodeAddrs, 0xABCD, p.dcpConfig)
+	*dcpFeed, err = (*b).StartDcpFeedOver(feedName, uint32(0), common.NoValue, kvNodeAddrs, 0xABCD, p.dcpConfig)
 	if err != nil {
 		logging.Errorf("%s [%s:%d] Failed to start dcp feed for bucket: %s, err: %v",
 			logPrefix, p.appName, p.LenRunningConsumers(), p.metadataKeyspace.BucketName, err)

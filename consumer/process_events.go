@@ -1362,7 +1362,7 @@ func (c *Consumer) handleStreamEnd(vBucket uint16, last_processed_seqno uint64) 
 func (c *Consumer) processAndSendDcpDelOrExpMessage(e *cb.DcpEvent, functionInstanceID string, checkRecursiveEvent bool) bool {
 	logPrefix := "Consumer::processAndSendDcpMessage"
 	switch e.Datatype {
-	case uint8(includeXATTRs):
+	case uint8(common.IncludeXATTRs):
 		xattrLen := binary.BigEndian.Uint32(e.Value[0:4])
 		if c.producer.SrcMutation() && checkRecursiveEvent {
 			if isRecursive, err := c.isRecursiveDCPEvent(e, functionInstanceID); err == nil && isRecursive == true {
