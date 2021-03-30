@@ -1450,6 +1450,7 @@ angular.module('eventing', [
         isDebugOn = false,
         debugScope = $scope.$new(true),
         app = ApplicationService.local.getAppByName($stateParams.appName);
+      var startTime = 0;
 
       debugScope.appName = app.appname;
 
@@ -1562,9 +1563,13 @@ angular.module('eventing', [
         if (self.editorDisabled) {
           var keyboardDisable = function(data, hash, keyString, keyCode,
             event) {
-            ApplicationService.server.showWarningAlert(
-              'The function is deployed. Please undeploy or pause the function in order to edit'
-            );
+            var nowTime = new Date().getTime();
+            if ((nowTime - startTime) > 5 * 1e3){ // Refresh Rate of 5 seconds
+              startTime = nowTime;
+              ApplicationService.server.showWarningAlert(
+                'The function is deployed. Please undeploy or pause the function in order to edit'
+              );
+            }
           };
           editor.keyBinding.addKeyboardHandler(keyboardDisable);
         }
