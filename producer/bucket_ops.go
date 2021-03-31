@@ -231,6 +231,32 @@ var setOpCallback = func(args ...interface{}) error {
 	return err
 }
 
+var openDcpStreamFromZero = func(args ...interface{}) error {
+	logPrefix := "Producer::openDcpStreamFromZero"
+
+	dcpFeed := args[0].(*couchbase.DcpFeed)
+	vb := args[1].(uint16)
+	vbuuid := args[2].(uint64)
+	p := args[3].(*Producer)
+	id := args[4].(int)
+	keyspaceExist := args[5].(*bool)
+
+	err := dcpFeed.DcpRequestStream(vb, uint16(vb), uint32(0), vbuuid, uint64(0),
+		uint64(0xFFFFFFFFFFFFFFFF), uint64(0), uint64(0xFFFFFFFFFFFFFFFF), "0")
+	if err != nil {
+		logging.Errorf("%s [%s:%d:id_%d] vb: %d failed to request stream error: %v",
+			logPrefix, p.appName, p.LenRunningConsumers(), id, vb, err)
+
+		hostAddress := net.JoinHostPort(util.Localhost(), p.GetNsServerPort())
+		*keyspaceExist = util.CheckKeyspaceExist(p.MetadataBucket(), p.MetadataScope(), p.MetadataCollection(), hostAddress)
+		if !(*keyspaceExist) {
+			return nil
+		}
+
+	}
+	return err
+}
+
 var getOpCallback = func(args ...interface{}) error {
 	logPrefix := "Producer::getOpCallback"
 

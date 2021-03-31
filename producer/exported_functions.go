@@ -685,6 +685,7 @@ func (p *Producer) cleanupMetadataImpl(id int, vbsToCleanup []uint16, undeployWG
 
 	var wg sync.WaitGroup
 	wg.Add(1)
+	defer wg.Wait()
 
 	rw := &sync.RWMutex{}
 	receivedVbSeqNos := make(map[uint16]uint64)
@@ -756,12 +757,10 @@ func (p *Producer) cleanupMetadataImpl(id int, vbsToCleanup []uint16, undeployWG
 	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, getFailoverLogOpCallback, p, &b, &flogs, vbs)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%d:id_%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers(), id)
+		dcpFeed.Close()
 		return err
 	}
-
-	start, snapStart, snapEnd := uint64(0), uint64(0), uint64(0xFFFFFFFFFFFFFFFF)
-	flags := uint32(0)
-	end := uint64(0xFFFFFFFFFFFFFFFF)
+	keyspaceExist := true
 
 	logging.Infof("%s [%s:%d:id_%d] Going to start DCP streams from metadata bucket: %s, vbs len: %d dump: %s",
 		logPrefix, p.appName, p.LenRunningConsumers(), id, p.metadataKeyspace.BucketName, len(vbs), util.Condense(vbs))
@@ -770,16 +769,19 @@ func (p *Producer) cleanupMetadataImpl(id int, vbsToCleanup []uint16, undeployWG
 		if !cleanupVbs[vb] {
 			continue
 		}
+
 		vbuuid, _, _ := flog.Latest()
 
 		logging.Debugf("%s [%s:%d:id_%d] vb: %d starting DCP feed",
 			logPrefix, p.appName, p.LenRunningConsumers(), id, vb)
 
-		opaque := uint16(vb)
-		err := dcpFeed.DcpRequestStream(vb, opaque, flags, vbuuid, start, end, snapStart, snapEnd, "0")
-		if err != nil {
-			logging.Errorf("%s [%s:%d:id_%d] vb: %d failed to request stream",
+		util.Retry(util.NewFixedBackoff(time.Second), &p.retryCount, openDcpStreamFromZero, dcpFeed, vb, vbuuid, p, id, &keyspaceExist)
+		if !keyspaceExist {
+			// No need to update receivedVbSeqNos since metadata keyspace is already deleted.
+			logging.Infof("%s [%s:%d:id_%d] vb: %d Exiting cleanup routind due to keyspace delete",
 				logPrefix, p.appName, p.LenRunningConsumers(), id, vb)
+			dcpFeed.Close()
+			return nil
 		}
 	}
 
@@ -838,8 +840,6 @@ func (p *Producer) cleanupMetadataImpl(id int, vbsToCleanup []uint16, undeployWG
 			}
 		}
 	}(&wg, dcpFeed)
-
-	wg.Wait()
 	return nil
 }
 
