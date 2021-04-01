@@ -34,6 +34,10 @@ const (
 )
 
 const (
+	includeXATTRs = uint32(4)
+)
+
+const (
 	udsSockPathLimit     = 100
 	noOpMsgSendThreshold = 200
 
