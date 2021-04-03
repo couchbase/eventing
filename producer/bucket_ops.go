@@ -3,15 +3,14 @@ package producer
 import (
 	"errors"
 	"fmt"
-	"net"
-	"time"
-
 	"github.com/couchbase/eventing/common"
-	couchbase "github.com/couchbase/eventing/dcp"
+	"github.com/couchbase/eventing/dcp"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
 	"github.com/couchbase/gocb/v2"
 	"github.com/couchbase/gocbcore/v9"
+	"net"
+	"time"
 )
 
 var getFailoverLogOpCallback = func(args ...interface{}) error {
@@ -51,7 +50,7 @@ var cleanupMetadataCallback = func(args ...interface{}) error {
 		return err
 	}
 
-	*dcpFeed, err = (*b).StartDcpFeedOver(feedName, uint32(0), common.NoValue, kvNodeAddrs, 0xABCD, p.dcpConfig)
+	*dcpFeed, err = (*b).StartDcpFeedOver(feedName, uint32(0), 0, kvNodeAddrs, 0xABCD, p.dcpConfig)
 	if err != nil {
 		logging.Errorf("%s [%s:%d] Failed to start dcp feed for bucket: %s, err: %v",
 			logPrefix, p.appName, p.LenRunningConsumers(), p.metadataKeyspace.BucketName, err)
@@ -227,6 +226,32 @@ var setOpCallback = func(args ...interface{}) error {
 	if err != nil {
 		logging.Errorf("%s [%s:%d] Bucket set failed for key: %ru , err: %v",
 			logPrefix, p.appName, p.LenRunningConsumers(), key.Raw(), err)
+	}
+	return err
+}
+
+var openDcpStreamFromZero = func(args ...interface{}) error {
+	logPrefix := "Producer::openDcpStreamFromZero"
+
+	dcpFeed := args[0].(*couchbase.DcpFeed)
+	vb := args[1].(uint16)
+	vbuuid := args[2].(uint64)
+	p := args[3].(*Producer)
+	id := args[4].(int)
+	keyspaceExist := args[5].(*bool)
+
+	err := dcpFeed.DcpRequestStream(vb, uint16(vb), uint32(0), vbuuid, uint64(0),
+		uint64(0xFFFFFFFFFFFFFFFF), uint64(0), uint64(0xFFFFFFFFFFFFFFFF), "0")
+	if err != nil {
+		logging.Errorf("%s [%s:%d:id_%d] vb: %d failed to request stream error: %v",
+			logPrefix, p.appName, p.LenRunningConsumers(), id, vb, err)
+
+		hostAddress := net.JoinHostPort(util.Localhost(), p.GetNsServerPort())
+		*keyspaceExist = util.CheckKeyspaceExist(p.MetadataBucket(), p.MetadataScope(), p.MetadataCollection(), hostAddress)
+		if !(*keyspaceExist) {
+			return nil
+		}
+
 	}
 	return err
 }

@@ -770,7 +770,7 @@ var startDCPFeedOpCallback = func(args ...interface{}) error {
 
 	var err error
 	dcpFeed, err := c.cbBucket.StartDcpFeedOver(
-		feedName, uint32(0), common.IncludeXATTRs, []string{kvHostPort}, 0xABCD, c.dcpConfig)
+		feedName, uint32(0), includeXATTRs, []string{kvHostPort}, 0xABCD, c.dcpConfig)
 
 	if err != nil {
 		logging.Errorf("%s [%s:%s:%d] Failed to start dcp feed for bucket: %v from kv node: %rs, err: %v",
@@ -830,7 +830,7 @@ var populateDcpFeedVbEntriesCallback = func(args ...interface{}) error {
 		startFeed := func() error {
 			var err error
 			feed, err = c.cbBucket.StartDcpFeedOver(
-				feedName, uint32(0), common.IncludeXATTRs, []string{kvHost}, 0xABCD, c.dcpConfig)
+				feedName, uint32(0), includeXATTRs, []string{kvHost}, 0xABCD, c.dcpConfig)
 			if err != nil {
 				logging.Errorf("%s [%s:%s:%d] Failed to start dcp feed, err: %v",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
