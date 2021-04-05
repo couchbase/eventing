@@ -46,7 +46,7 @@ func TestTopologyEventingRebInWhenExistingEventingNodeProcessingMutations(t *tes
 	log.Println("Comparing item count post create/update operations")
 	eventCount := verifyBucketOps(rl.count, statsLookupRetryCounter)
 	if rl.count != eventCount {
-		t.Error("For", "TestTopologyEventingRebInWhenExistingEventingNodeProcessingMutations",
+		failAndCollectLogs(t, "For", "TestTopologyEventingRebInWhenExistingEventingNodeProcessingMutations",
 			"expected", rl.count,
 			"got", eventCount,
 			"UpdateOp")
@@ -58,7 +58,7 @@ func TestTopologyEventingRebInWhenExistingEventingNodeProcessingMutations(t *tes
 
 	eventCount = verifyBucketOps(0, statsLookupRetryCounter)
 	if eventCount != 0 {
-		t.Error("For", "TestTopologyEventingRebInWhenExistingEventingNodeProcessingMutations",
+		failAndCollectLogs(t, "For", "TestTopologyEventingRebInWhenExistingEventingNodeProcessingMutations",
 			"expected", 0,
 			"got", eventCount,
 			"DeleteOp")

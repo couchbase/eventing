@@ -24,7 +24,7 @@ func testFlexReset(handler string, t *testing.T) {
 
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter*2)
 	if itemCount != eventCount {
-		t.Error("For", functionName,
+		failAndCollectLogs(t, "For", functionName,
 			"expected", itemCount,
 			"got", eventCount,
 		)
@@ -40,19 +40,19 @@ func TestRecursiveMutationN1QL(t *testing.T) {
 	flushFunctionAndBucket(functionName)
 	mainStoreResponse := createAndDeployFunction(functionName, handler, &commonSettings{})
 	if mainStoreResponse.err != nil {
-		t.Errorf("Unable to POST to main store, err : %v\n", mainStoreResponse.err)
+		failAndCollectLogsf(t, "Unable to POST to main store, err : %v\n", mainStoreResponse.err)
 		return
 	}
 
 	var response map[string]interface{}
 	err := json.Unmarshal(mainStoreResponse.body, &response)
 	if err != nil {
-		t.Errorf("Failed to unmarshal response from Main store, err : %v\n", err)
+		failAndCollectLogsf(t, "Failed to unmarshal response from Main store, err : %v\n", err)
 		return
 	}
 
 	if response["name"].(string) != "ERR_INTER_BUCKET_RECURSION" {
-		t.Error("Compilation must fail")
+		failAndCollectLogs(t, "Compilation must fail")
 		return
 	}
 }
@@ -77,7 +77,7 @@ func TestN1QLLabelledBreak(t *testing.T) {
 	expectedCount := itemCount * 2
 	eventCount := verifyBucketOps(expectedCount, statsLookupRetryCounter*2)
 	if expectedCount != eventCount {
-		t.Error("For", "N1QLLabelledBreak",
+		failAndCollectLogs(t, "For", "N1QLLabelledBreak",
 			"expected", expectedCount,
 			"got", eventCount,
 		)
@@ -97,7 +97,7 @@ func TestN1QLUnlabelledBreak(t *testing.T) {
 	expectedCount := itemCount * 2
 	eventCount := verifyBucketOps(expectedCount, statsLookupRetryCounter*2)
 	if expectedCount != eventCount {
-		t.Error("For", "N1QLUnlabelledBreak",
+		failAndCollectLogs(t, "For", "N1QLUnlabelledBreak",
 			"expected", expectedCount,
 			"got", eventCount,
 		)
@@ -117,7 +117,7 @@ func TestN1QLThrowStatement(t *testing.T) {
 	expectedCount := itemCount * 2
 	eventCount := verifyBucketOps(expectedCount, statsLookupRetryCounter*2)
 	if expectedCount != eventCount {
-		t.Error("For", "N1QLThrowStatement",
+		failAndCollectLogs(t, "For", "N1QLThrowStatement",
 			"expected", expectedCount,
 			"got", eventCount,
 		)
@@ -137,7 +137,7 @@ func TestN1QLNestedForLoop(t *testing.T) {
 	expectedCount := itemCount
 	eventCount := verifyBucketOps(expectedCount, statsLookupRetryCounter*2)
 	if expectedCount != eventCount {
-		t.Error("For", "N1QLNestedForLoop",
+		failAndCollectLogs(t, "For", "N1QLNestedForLoop",
 			"expected", expectedCount,
 			"got", eventCount,
 		)
@@ -162,7 +162,7 @@ func TestN1QLAutoClose(t *testing.T) {
 	expectedCount := itemCount
 	eventCount := verifyBucketOps(expectedCount, statsLookupRetryCounter*2)
 	if expectedCount != eventCount {
-		t.Error("For", "N1QLAutoClose",
+		failAndCollectLogs(t, "For", "N1QLAutoClose",
 			"expected", expectedCount,
 			"got", eventCount,
 		)
@@ -182,7 +182,7 @@ func TestN1QLPosParams(t *testing.T) {
 	expectedCount := itemCount
 	eventCount := verifyBucketOps(expectedCount, statsLookupRetryCounter*2)
 	if expectedCount != eventCount {
-		t.Error("For", t.Name(),
+		failAndCollectLogs(t, "For", t.Name(),
 			"expected", expectedCount,
 			"got", eventCount,
 		)
@@ -202,7 +202,7 @@ func TestN1QLExhaustConnPool(t *testing.T) {
 	expectedCount := 100
 	eventCount := verifyBucketOps(expectedCount, statsLookupRetryCounter*2)
 	if expectedCount != eventCount {
-		t.Error("For", t.Name(),
+		failAndCollectLogs(t, "For", t.Name(),
 			"expected", expectedCount,
 			"got", eventCount,
 		)
@@ -238,7 +238,7 @@ func TestN1QLGraceLowTimeOut(t *testing.T) {
 	pumpBucketOpsSrc(opsType{count: 1}, "default", &rateLimit{})
 	eventCount := verifyBucketOps(30001, statsLookupRetryCounter*2)
 	if eventCount != 30001 {
-		t.Error("For", "TestN1QLGraceLowTimeOut",
+		failAndCollectLogs(t, "For", "TestN1QLGraceLowTimeOut",
 			"expected", 3001,
 			"got", eventCount,
 		)
@@ -254,20 +254,20 @@ func TestN1QLGraceLowTimeOut(t *testing.T) {
 	bucket, err := cluster.OpenBucket(dstBucket, "")
 	if err != nil {
 		fmt.Println("Bucket open, err: ", err)
-		t.Error("Error open result bucket")
+		failAndCollectLogs(t, "Error open result bucket")
 		return
 	}
 	defer bucket.Close()
 	var val string
 	_, err = bucket.Get("result_key", &val)
 	if err != nil {
-		t.Error("Error getting result from bucket:", err)
+		failAndCollectLogs(t, "Error getting result from bucket:", err)
 		return
 	}
 
 	if !strings.Contains(val, "Timeout 15s exceeded") {
 		fmt.Println("Result Value: ", val)
-		t.Error("Error: Expected timeout error from n1ql")
+		failAndCollectLogs(t, "Error: Expected timeout error from n1ql")
 	}
 
 	dumpStats()
@@ -299,7 +299,7 @@ func TestN1QLGraceSufficientTimeOut(t *testing.T) {
 	pumpBucketOpsSrc(opsType{count: 1}, "default", &rateLimit{})
 	eventCount := verifyBucketOps(30001, statsLookupRetryCounter*2)
 	if eventCount != 30001 {
-		t.Error("For", "TestN1QLGraceLowTimeOut",
+		failAndCollectLogs(t, "For", "TestN1QLGraceLowTimeOut",
 			"expected", 30001,
 			"got", eventCount,
 		)
@@ -315,20 +315,20 @@ func TestN1QLGraceSufficientTimeOut(t *testing.T) {
 	bucket, err := cluster.OpenBucket(dstBucket, "")
 	if err != nil {
 		fmt.Println("Bucket open, err: ", err)
-		t.Error("Error open result bucket")
+		failAndCollectLogs(t, "Error open result bucket")
 		return
 	}
 	defer bucket.Close()
 	var val string
 	_, err = bucket.Get("result_key", &val)
 	if err != nil {
-		t.Error("Error getting result from bucket:", err)
+		failAndCollectLogs(t, "Error getting result from bucket:", err)
 		return
 	}
 
 	if !strings.Contains(val, "onupdate success") {
 		fmt.Println("Result Value: ", val)
-		t.Error("Error: Expected onupdate success")
+		failAndCollectLogs(t, "Error: Expected onupdate success")
 	}
 
 	dumpStats()
@@ -349,7 +349,7 @@ func TestN1QLQueryConsistency(t *testing.T) {
 
 	eventCount := verifyBucketCount(itemCount, statsLookupRetryCounter, "hello-world")
 	if itemCount != eventCount {
-		t.Error("For", t.Name(),
+		failAndCollectLogs(t, "For", t.Name(),
 			"expected", itemCount,
 			"got", eventCount,
 		)

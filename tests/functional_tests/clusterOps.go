@@ -2,6 +2,7 @@ package eventing
 
 import (
 	"log"
+	"os/exec"
 	"testing"
 	"time"
 )
@@ -41,7 +42,7 @@ func eventingRebIn(t *testing.T, handler, testName string, itemCount, opsPSec, r
 
 	if validate {
 		if eventCount != rl.count {
-			t.Error("For", testName,
+			failAndCollectLogs(t, "For", testName,
 				"expected", rl.count,
 				"got", eventCount,
 				"UpdateOp")
@@ -56,7 +57,7 @@ func eventingRebIn(t *testing.T, handler, testName string, itemCount, opsPSec, r
 
 		if validate {
 			if eventCount != 0 {
-				t.Error("For", testName,
+				failAndCollectLogs(t, "For", testName,
 					"expected", 0,
 					"got", eventCount,
 					"DeleteOp")
@@ -101,7 +102,7 @@ func eventingRebOut(t *testing.T, handler, testName string, itemCount, opsPSec, 
 
 	if validate {
 		if eventCount != rl.count {
-			t.Error("For", testName,
+			failAndCollectLogs(t, "For", testName,
 				"expected", rl.count,
 				"got", eventCount,
 				"UpdateOp")
@@ -116,7 +117,7 @@ func eventingRebOut(t *testing.T, handler, testName string, itemCount, opsPSec, 
 
 		if validate {
 			if eventCount != 0 {
-				t.Error("For", testName,
+				failAndCollectLogs(t, "For", testName,
 					"expected", 0,
 					"got", eventCount,
 					"DeleteOp")
@@ -167,7 +168,7 @@ func eventingSwapReb(t *testing.T, handler, testName string, itemCount, opsPSec,
 
 	if validate {
 		if eventCount != rl.count {
-			t.Error("For", testName,
+			failAndCollectLogs(t, "For", testName,
 				"expected", rl.count,
 				"got", eventCount,
 				"UpdateOp")
@@ -182,7 +183,7 @@ func eventingSwapReb(t *testing.T, handler, testName string, itemCount, opsPSec,
 
 		if validate {
 			if eventCount != 0 {
-				t.Error("For", testName,
+				failAndCollectLogs(t, "For", testName,
 					"expected", 0,
 					"got", eventCount,
 					"DeleteOp")
@@ -227,7 +228,7 @@ func kvRebIn(t *testing.T, handler, testName string, itemCount, opsPSec, retryCo
 
 	if validate {
 		if eventCount != rl.count {
-			t.Error("For", testName,
+			failAndCollectLogs(t, "For", testName,
 				"expected", rl.count,
 				"got", eventCount,
 				"UpdateOp")
@@ -242,7 +243,7 @@ func kvRebIn(t *testing.T, handler, testName string, itemCount, opsPSec, retryCo
 
 		if validate {
 			if eventCount != 0 {
-				t.Error("For", testName,
+				failAndCollectLogs(t, "For", testName,
 					"expected", 0,
 					"got", eventCount,
 					"DeleteOp")
@@ -287,7 +288,7 @@ func kvRebOut(t *testing.T, handler, testName string, itemCount, opsPSec, retryC
 
 	if validate {
 		if eventCount != rl.count {
-			t.Error("For", testName,
+			failAndCollectLogs(t, "For", testName,
 				"expected", rl.count,
 				"got", eventCount,
 				"UpdateOp")
@@ -302,7 +303,7 @@ func kvRebOut(t *testing.T, handler, testName string, itemCount, opsPSec, retryC
 
 		if validate {
 			if eventCount != 0 {
-				t.Error("For", testName,
+				failAndCollectLogs(t, "For", testName,
 					"expected", 0,
 					"got", eventCount,
 					"DeleteOp")
@@ -353,7 +354,7 @@ func kvSwapReb(t *testing.T, handler, testName string, itemCount, opsPSec, retry
 
 	if validate {
 		if eventCount != rl.count {
-			t.Error("For", testName,
+			failAndCollectLogs(t, "For", testName,
 				"expected", rl.count,
 				"got", eventCount,
 				"UpdateOp")
@@ -368,7 +369,7 @@ func kvSwapReb(t *testing.T, handler, testName string, itemCount, opsPSec, retry
 
 		if validate {
 			if eventCount != 0 {
-				t.Error("For", testName,
+				failAndCollectLogs(t, "For", testName,
 					"expected", 0,
 					"got", eventCount,
 					"DeleteOp")
@@ -377,4 +378,20 @@ func kvSwapReb(t *testing.T, handler, testName string, itemCount, opsPSec, retry
 	}
 
 	flushFunctionAndBucket(functionName)
+}
+
+func failAndCollectLogs(t *testing.T, args ...interface{}) {
+	cmd := exec.Command("./collectLogs.sh", t.Name())
+	if err := cmd.Run(); err != nil {
+		log.Printf("Error collecting log for test: %s error: %v", t.Name(), err)
+	}
+	t.Error(args...)
+}
+
+func failAndCollectLogsf(t *testing.T, errorString string, args ...interface{}) {
+	cmd := exec.Command("./collectLogs.sh", t.Name())
+	if err := cmd.Run(); err != nil {
+		log.Printf("Error collecting log for test: %s error: %v", t.Name(), err)
+	}
+	t.Errorf(errorString, args...)
 }

@@ -22,7 +22,7 @@ func testEnoent(itemCount int, handler string, settings *commonSettings, t *test
 	pumpBucketOps(opsType{count: itemCount}, &rateLimit{})
 	eventCount := verifyBucketOps(expectedCount, statsLookupRetryCounter)
 	if expectedCount != eventCount {
-		t.Error("For", "TestError",
+		failAndCollectLogs(t, "For", "TestError",
 			"expected", expectedCount,
 			"got", eventCount,
 		)
@@ -36,19 +36,19 @@ func TestStrictMode(t *testing.T) {
 	handler := "octal_literal"
 	response := createAndDeployFunction(t.Name(), handler, &commonSettings{})
 	if response.err != nil {
-		t.Errorf("Unable to POST, err : %v\n", response.err)
+		failAndCollectLogsf(t, "Unable to POST, err : %v\n", response.err)
 		return
 	}
 
 	var responseBody map[string]interface{}
 	err := json.Unmarshal(response.body, &responseBody)
 	if err != nil {
-		t.Errorf("Failed to unmarshal responseBody, err : %v\n", err)
+		failAndCollectLogsf(t, "Failed to unmarshal responseBody, err : %v\n", err)
 		return
 	}
 
 	if responseBody["name"].(string) != "ERR_HANDLER_COMPILATION" {
-		t.Error("Compilation must fail")
+		failAndCollectLogs(t, "Compilation must fail")
 		return
 	}
 }
@@ -62,7 +62,7 @@ func TestDataTypes(t *testing.T) {
 	pumpBucketOps(opsType{count: 1}, &rateLimit{})
 	eventCount := verifyBucketOps(expectedCount, statsLookupRetryCounter)
 	if expectedCount != eventCount {
-		t.Error("For", t.Name(),
+		failAndCollectLogs(t, "For", t.Name(),
 			"expected", expectedCount,
 			"got", eventCount,
 		)
@@ -102,7 +102,7 @@ func TestError(t *testing.T) {
 	pumpBucketOps(opsType{count: itemCount}, &rateLimit{})
 	eventCount := verifyBucketOps(expectedCount, statsLookupRetryCounter)
 	if expectedCount != eventCount {
-		t.Error("For", "TestError",
+		failAndCollectLogs(t, "For", "TestError",
 			"expected", expectedCount,
 			"got", eventCount,
 		)
@@ -125,7 +125,7 @@ func TestCRLF(t *testing.T) {
 	pumpBucketOps(opsType{count: itemCount}, &rateLimit{})
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
 	if itemCount != eventCount {
-		t.Error("For", "TestCRLF",
+		failAndCollectLogs(t, "For", "TestCRLF",
 			"expected", itemCount,
 			"got", eventCount,
 		)
@@ -158,12 +158,12 @@ func TestImportExport(t *testing.T) {
 
 	exportResponse, err := makeRequest("GET", strings.NewReader(""), exportFunctionsURL)
 	if err != nil {
-		t.Errorf("Unable to export Functions %v, err : %v\n", exportFunctionsURL, err)
+		failAndCollectLogsf(t, "Unable to export Functions %v, err : %v\n", exportFunctionsURL, err)
 		return
 	}
 	err = parser.ValidateHandlerListSchema(exportResponse)
 	if err != nil {
-		t.Errorf("Unable to validate export: %v, data: %s", err, exportResponse)
+		failAndCollectLogsf(t, "Unable to validate export: %v, data: %s", err, exportResponse)
 	}
 
 	flushFunction(functionName1)
@@ -171,7 +171,7 @@ func TestImportExport(t *testing.T) {
 
 	_, err = makeRequest("POST", strings.NewReader(string(exportResponse)), importFunctionsURL)
 	if err != nil {
-		t.Errorf("Unable import Functions,  err : %v\n", err)
+		failAndCollectLogsf(t, "Unable import Functions,  err : %v\n", err)
 		return
 	}
 
@@ -180,29 +180,29 @@ func TestImportExport(t *testing.T) {
 
 	response, err := makeRequest("GET", strings.NewReader(""), functionsURL)
 	if err != nil {
-		t.Errorf("Unable to list Functions err : %v\n", err)
+		failAndCollectLogsf(t, "Unable to list Functions err : %v\n", err)
 		return
 	}
 
 	err = parser.ValidateHandlerListSchema(response)
 	if err != nil {
-		t.Errorf("Unable to validate re-export: %v, data: %s", err, exportResponse)
+		failAndCollectLogsf(t, "Unable to validate re-export: %v, data: %s", err, exportResponse)
 	}
 
 	var functionsList []map[string]interface{}
 	err = json.Unmarshal(response, &functionsList)
 	if err != nil {
-		t.Errorf("Unable to unmarshal response err %v\n", err)
+		failAndCollectLogsf(t, "Unable to unmarshal response err %v\n", err)
 		return
 	}
 
 	if !functionExists(functionName1, functionsList) {
-		t.Errorf("Import/Export failed for %v", functionName1)
+		failAndCollectLogsf(t, "Import/Export failed for %v", functionName1)
 		return
 	}
 
 	if !functionExists(functionName2, functionsList) {
-		t.Errorf("Import/Export failed for %v", functionName2)
+		failAndCollectLogsf(t, "Import/Export failed for %v", functionName2)
 		return
 	}
 
@@ -231,7 +231,7 @@ func TestDeployUndeployLoopNonDefaultSettings(t *testing.T) {
 		pumpBucketOps(opsType{}, &rateLimit{})
 		eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
 		if itemCount != eventCount {
-			t.Error("For", "DeployUndeployLoopNonDefaultSettings",
+			failAndCollectLogs(t, "For", "DeployUndeployLoopNonDefaultSettings",
 				"expected", itemCount,
 				"got", eventCount,
 			)
@@ -262,7 +262,7 @@ func TestOnUpdateN1QLOp(t *testing.T) {
 	pumpBucketOps(opsType{}, &rateLimit{})
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
 	if itemCount != eventCount {
-		t.Error("For", "OnUpdateN1QLOp",
+		failAndCollectLogs(t, "For", "OnUpdateN1QLOp",
 			"expected", itemCount,
 			"got", eventCount,
 		)
@@ -283,7 +283,7 @@ func TestOnUpdateBucketOpDefaultSettings(t *testing.T) {
 	pumpBucketOps(opsType{}, &rateLimit{})
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
 	if itemCount != eventCount {
-		t.Error("For", "OnUpdateBucketOpDefaultSettings",
+		failAndCollectLogs(t, "For", "OnUpdateBucketOpDefaultSettings",
 			"expected", itemCount,
 			"got", eventCount,
 		)
@@ -304,7 +304,7 @@ func TestOnUpdateBucketOpNonDefaultSettings(t *testing.T) {
 	pumpBucketOps(opsType{}, &rateLimit{})
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
 	if itemCount != eventCount {
-		t.Error("For", "OnUpdateBucketOpNonDefaultSettings",
+		failAndCollectLogs(t, "For", "OnUpdateBucketOpNonDefaultSettings",
 			"expected", itemCount,
 			"got", eventCount,
 		)
@@ -325,7 +325,7 @@ func TestOnUpdateBucketOpDefaultSettings10K(t *testing.T) {
 	pumpBucketOps(opsType{}, &rateLimit{})
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
 	if itemCount != eventCount {
-		t.Error("For", "OnUpdateBucketOpDefaultSettings",
+		failAndCollectLogs(t, "For", "OnUpdateBucketOpDefaultSettings",
 			"expected", itemCount,
 			"got", eventCount,
 		)
@@ -346,7 +346,7 @@ func TestOnUpdateBucketOpDefaultSettings100K(t *testing.T) {
 	pumpBucketOps(opsType{}, &rateLimit{})
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
 	if itemCount != eventCount {
-		t.Error("For", "OnUpdateBucketOpDefaultSettings",
+		failAndCollectLogs(t, "For", "OnUpdateBucketOpDefaultSettings",
 			"expected", itemCount,
 			"got", eventCount,
 		)
@@ -367,7 +367,7 @@ func TestOnDeleteBucketOp(t *testing.T) {
 	pumpBucketOps(opsType{delete: true}, &rateLimit{})
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
 	if itemCount != eventCount {
-		t.Error("For", "OnDeleteBucketOp",
+		failAndCollectLogs(t, "For", "OnDeleteBucketOp",
 			"expected", itemCount,
 			"got", eventCount,
 		)
@@ -388,7 +388,7 @@ func TestOnDeleteBucketOp5K(t *testing.T) {
 	pumpBucketOps(opsType{delete: true}, &rateLimit{})
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
 	if itemCount != eventCount {
-		t.Error("For", "OnDeleteBucketOp",
+		failAndCollectLogs(t, "For", "OnDeleteBucketOp",
 			"expected", itemCount,
 			"got", eventCount,
 		)
@@ -409,7 +409,7 @@ func TestTimerBucketOp(t *testing.T) {
 	pumpBucketOps(opsType{}, &rateLimit{})
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
 	if itemCount != eventCount {
-		t.Error("For", "TimerBucketOp",
+		failAndCollectLogs(t, "For", "TimerBucketOp",
 			"expected", itemCount,
 			"got", eventCount,
 		)
@@ -430,7 +430,7 @@ func TestTimerInPastBucketOp(t *testing.T) {
 	pumpBucketOps(opsType{}, &rateLimit{})
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
 	if itemCount != eventCount {
-		t.Error("For", "TestTimerInPastBucketOp",
+		failAndCollectLogs(t, "For", "TestTimerInPastBucketOp",
 			"expected", itemCount,
 			"got", eventCount,
 		)
@@ -454,7 +454,7 @@ func TestDeployUndeployLoopTimer(t *testing.T) {
 		pumpBucketOps(opsType{}, &rateLimit{})
 		eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
 		if itemCount != eventCount {
-			t.Error("For", "DeployUndeployLoopTimer",
+			failAndCollectLogs(t, "For", "DeployUndeployLoopTimer",
 				"expected", itemCount,
 				"got", eventCount,
 			)
@@ -494,7 +494,7 @@ func TestMultipleHandlers(t *testing.T) {
 	pumpBucketOps(opsType{}, &rateLimit{})
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
 	if itemCount != eventCount {
-		t.Error("For", "MultipleHandlers UpdateOp",
+		failAndCollectLogs(t, "For", "MultipleHandlers UpdateOp",
 			"expected", itemCount,
 			"got", eventCount,
 		)
@@ -503,7 +503,7 @@ func TestMultipleHandlers(t *testing.T) {
 	pumpBucketOps(opsType{delete: true}, &rateLimit{})
 	eventCount = verifyBucketOps(itemCount*2, statsLookupRetryCounter)
 	if eventCount != itemCount*2 {
-		t.Error("For", "MultipleHandlers DeleteOp",
+		failAndCollectLogs(t, "For", "MultipleHandlers DeleteOp",
 			"expected", itemCount*2,
 			"got", eventCount,
 		)
@@ -537,7 +537,7 @@ func TestPauseResumeLoopDefaultSettings(t *testing.T) {
 		pumpBucketOps(opsType{startIndex: itemCount * i}, &rateLimit{})
 		eventCount := verifyBucketOps(itemCount*(i+1), statsLookupRetryCounter)
 		if itemCount*(i+1) != eventCount {
-			t.Error("For", "PauseAndResumeLoopDefaultSettings",
+			failAndCollectLogs(t, "For", "PauseAndResumeLoopDefaultSettings",
 				"expected", itemCount*(i+1),
 				"got", eventCount,
 			)
@@ -572,7 +572,7 @@ func TestPauseResumeLoopNonDefaultSettings(t *testing.T) {
 		pumpBucketOps(opsType{startIndex: itemCount * i}, &rateLimit{})
 		eventCount := verifyBucketOps(itemCount*(i+1), statsLookupRetryCounter)
 		if itemCount*(i+1) != eventCount {
-			t.Error("For", "PauseAndResumeLoopNonDefaultSettings",
+			failAndCollectLogs(t, "For", "PauseAndResumeLoopNonDefaultSettings",
 				"expected", itemCount*(i+1),
 				"got", eventCount,
 			)
@@ -602,7 +602,7 @@ func TestPauseAndResumeWithWorkerCountChange(t *testing.T) {
 	pumpBucketOps(opsType{}, &rateLimit{})
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
 	if itemCount != eventCount {
-		t.Error("For", "TestPauseAndResumeWithWorkerCountChange",
+		failAndCollectLogs(t, "For", "TestPauseAndResumeWithWorkerCountChange",
 			"expected", itemCount,
 			"got", eventCount,
 		)
@@ -619,7 +619,7 @@ func TestPauseAndResumeWithWorkerCountChange(t *testing.T) {
 	pumpBucketOps(opsType{count: itemCount * 2}, &rateLimit{})
 	eventCount = verifyBucketOps(itemCount*2, statsLookupRetryCounter)
 	if itemCount*2 != eventCount {
-		t.Error("For", "TestPauseAndResumeWithWorkerCountChange",
+		failAndCollectLogs(t, "For", "TestPauseAndResumeWithWorkerCountChange",
 			"expected", itemCount*2,
 			"got", eventCount,
 		)
@@ -641,7 +641,7 @@ func TestPauseResumeWithEventingReb(t *testing.T) {
 	pumpBucketOps(opsType{}, &rateLimit{})
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
 	if itemCount != eventCount {
-		t.Error("For", "TestPauseResumeWithEventingReb",
+		failAndCollectLogs(t, "For", "TestPauseResumeWithEventingReb",
 			"expected", itemCount,
 			"got", eventCount,
 		)
@@ -662,7 +662,7 @@ func TestPauseResumeWithEventingReb(t *testing.T) {
 	pumpBucketOps(opsType{count: itemCount * 2}, &rateLimit{})
 	eventCount = verifyBucketOps(itemCount*2, statsLookupRetryCounter)
 	if itemCount*2 != eventCount {
-		t.Error("For", "TestPauseResumeWithEventingReb",
+		failAndCollectLogs(t, "For", "TestPauseResumeWithEventingReb",
 			"expected", itemCount*2,
 			"got", eventCount,
 		)
@@ -688,7 +688,7 @@ func TestBucketDeleteAfterPause(t *testing.T) {
 	pumpBucketOps(opsType{}, &rateLimit{})
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
 	if itemCount != eventCount {
-		t.Error("For", "TestPauseWithBucketDelete",
+		failAndCollectLogs(t, "For", "TestPauseWithBucketDelete",
 			"expected", itemCount,
 			"got", eventCount,
 		)
@@ -755,7 +755,7 @@ func TestCommentUnCommentOnDelete(t *testing.T) {
 	pumpBucketOps(opsType{}, &rateLimit{})
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
 	if itemCount != eventCount {
-		t.Error("For", "CommentUnCommentOnDelete",
+		failAndCollectLogs(t, "For", "CommentUnCommentOnDelete",
 			"expected", itemCount,
 			"got", eventCount,
 		)
@@ -774,7 +774,7 @@ func TestCommentUnCommentOnDelete(t *testing.T) {
 	pumpBucketOps(opsType{delete: true}, &rateLimit{})
 	eventCount = verifyBucketOps(0, statsLookupRetryCounter)
 	if eventCount != 0 {
-		t.Error("For", "CommentUnCommentOnDelete",
+		failAndCollectLogs(t, "For", "CommentUnCommentOnDelete",
 			"expected", 0,
 			"got", eventCount,
 		)
@@ -799,7 +799,7 @@ func TestCPPWorkerCleanup(t *testing.T) {
 	pumpBucketOps(opsType{}, &rateLimit{})
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
 	if itemCount != eventCount {
-		t.Error("For", "CPPWorkerCleanup",
+		failAndCollectLogs(t, "For", "CPPWorkerCleanup",
 			"expected", itemCount,
 			"got", eventCount,
 		)
@@ -824,7 +824,7 @@ func TestWithUserXattrs(t *testing.T) {
 	pumpBucketOps(opsType{writeXattrs: true, xattrPrefix: "_2"}, &rateLimit{})
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
 	if itemCount != eventCount {
-		t.Error("For", "WithUserXattrs",
+		failAndCollectLogs(t, "For", "WithUserXattrs",
 			"expected", itemCount,
 			"got", eventCount,
 		)
@@ -846,7 +846,7 @@ func TestEventProcessingPostBucketFlush(t *testing.T) {
 	pumpBucketOps(opsType{}, &rateLimit{})
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
 	if itemCount != eventCount {
-		t.Error("For", "TestEventProcessingPostBucketFlush",
+		failAndCollectLogs(t, "For", "TestEventProcessingPostBucketFlush",
 			"expected", itemCount,
 			"got", eventCount,
 		)
@@ -861,7 +861,7 @@ func TestEventProcessingPostBucketFlush(t *testing.T) {
 	pumpBucketOps(opsType{count: itemCount * 5}, &rateLimit{})
 	eventCount = verifyBucketOps(itemCount*5, statsLookupRetryCounter)
 	if itemCount*5 != eventCount {
-		t.Error("For", "TestEventProcessingPostBucketFlush",
+		failAndCollectLogs(t, "For", "TestEventProcessingPostBucketFlush",
 			"expected", itemCount*5,
 			"got", eventCount,
 		)
@@ -1022,13 +1022,13 @@ func TestDeleteBeforeUndeploy(t *testing.T) {
 
 	resp, _ := deleteFunction(functionName)
 	if resp.httpResponseCode == 200 {
-		t.Error("Expected ERR_APP_NOT_UNDEPLOYED got", resp.Name)
+		failAndCollectLogs(t, "Expected ERR_APP_NOT_UNDEPLOYED got", resp.Name)
 	}
 
 	setSettings(functionName, false, false, &commonSettings{})
 	resp, _ = deleteFunction(functionName)
 	if resp.httpResponseCode != 200 {
-		t.Error("Expected Delete successful ", resp.httpResponseCode, resp.Name)
+		failAndCollectLogs(t, "Expected Delete successful ", resp.httpResponseCode, resp.Name)
 	}
 
 	flushFunctionAndBucket(functionName)
@@ -1053,7 +1053,7 @@ func TestUndeployWhenTimersAreFired(t *testing.T) {
 	time.Sleep(100 * time.Second)
 	itemCount, err := getBucketItemCount(metaBucket)
 	if itemCount != 0 && err == nil {
-		t.Error("Item count in metadata bucket after undeploy", itemCount)
+		failAndCollectLogs(t, "Item count in metadata bucket after undeploy", itemCount)
 	}
 
 	flushFunctionAndBucket(functionName)
@@ -1070,7 +1070,7 @@ func TestUndeployWithKVFailover(t *testing.T) {
 	pumpBucketOps(opsType{}, &rateLimit{})
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
 	if itemCount != eventCount {
-		t.Error("For", "TimerBucketOp",
+		failAndCollectLogs(t, "For", "TimerBucketOp",
 			"expected", itemCount,
 			"got", eventCount,
 		)
@@ -1106,7 +1106,7 @@ func TestBucketFlushWhileFnDeployed(t *testing.T) {
 	pumpBucketOps(opsType{count: itemCount * 4}, &rateLimit{})
 	eventCount := verifyBucketOps(itemCount*4, statsLookupRetryCounter)
 	if itemCount*4 != eventCount {
-		t.Error("For", "TestBucketFlushWhileFnDeployed",
+		failAndCollectLogs(t, "For", "TestBucketFlushWhileFnDeployed",
 			"expected", itemCount*4,
 			"got", eventCount,
 		)
@@ -1123,7 +1123,7 @@ func TestBucketFlushWhileFnDeployed(t *testing.T) {
 	pumpBucketOps(opsType{count: itemCount * 2}, &rateLimit{})
 	eventCount = verifyBucketOps(itemCount*2, statsLookupRetryCounter)
 	if itemCount*2 != eventCount {
-		t.Error("For", "TestBucketFlushWhileFnDeployed",
+		failAndCollectLogs(t, "For", "TestBucketFlushWhileFnDeployed",
 			"expected", itemCount*2,
 			"got", eventCount,
 		)
@@ -1152,7 +1152,7 @@ func TestTimerOverwrite(t *testing.T) {
 	pumpBucketOps(opsType{}, &rateLimit{})
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
 	if itemCount != eventCount {
-		t.Error("For", "TimerBucketOp",
+		failAndCollectLogs(t, "For", "TimerBucketOp",
 			"expected", itemCount,
 			"got", eventCount,
 		)
@@ -1166,7 +1166,7 @@ func TestTimerOverwrite(t *testing.T) {
 	}
 
 	if itemCountB != itemCountA {
-		t.Error("Expected", itemCountB, "got", itemCountA)
+		failAndCollectLogs(t, "Expected", itemCountB, "got", itemCountA)
 	}
 
 	dumpStats()
@@ -1201,7 +1201,7 @@ func TestUndeployBackdoorDuringBootstrap(t *testing.T) {
 	dumpStats()
 	resp, _ := deleteFunction(functionName)
 	if resp.httpResponseCode != 200 {
-		t.Error("Expected 200 response code, got code", resp.httpResponseCode, resp.Name)
+		failAndCollectLogs(t, "Expected 200 response code, got code", resp.httpResponseCode, resp.Name)
 	}
 
 	flushFunctionAndBucket(functionName)
@@ -1220,7 +1220,7 @@ func TestOnUpdateSrcMutation(t *testing.T) {
 	pumpBucketOps(opsType{}, &rateLimit{})
 	eventCount := verifySourceBucketOps(itemCount*2, statsLookupRetryCounter)
 	if itemCount*2 != eventCount {
-		t.Error("For", "OnUpdateSrcBucketMutations",
+		failAndCollectLogs(t, "For", "OnUpdateSrcBucketMutations",
 			"expected", itemCount*2,
 			"got", eventCount,
 		)
@@ -1242,7 +1242,7 @@ func TestOnDeleteSrcMutation(t *testing.T) {
 	time.Sleep(time.Second * 10)
 	eventCount := verifySourceBucketOps(itemCount, statsLookupRetryCounter)
 	if itemCount != eventCount {
-		t.Error("For", "OnDeleteSrcBucketMutations",
+		failAndCollectLogs(t, "For", "OnDeleteSrcBucketMutations",
 			"expected", itemCount,
 			"got", eventCount,
 		)
@@ -1263,7 +1263,7 @@ func TestOnUpdateSrcMutationWithTimer(t *testing.T) {
 	pumpBucketOps(opsType{}, &rateLimit{})
 	eventCount := verifySourceBucketOps(itemCount*2, statsLookupRetryCounter)
 	if itemCount*2 != eventCount {
-		t.Error("For", "OnUpdateSrcBucketMutations",
+		failAndCollectLogs(t, "For", "OnUpdateSrcBucketMutations",
 			"expected", itemCount*2,
 			"got", eventCount,
 		)
@@ -1284,7 +1284,7 @@ func TestOnDeleteSrcMutationsWithTimer(t *testing.T) {
 	pumpBucketOps(opsType{delete: true}, &rateLimit{})
 	eventCount := verifySourceBucketOps(itemCount, statsLookupRetryCounter)
 	if itemCount != eventCount {
-		t.Error("For", "OnDeleteSrcBucketMutations",
+		failAndCollectLogs(t, "For", "OnDeleteSrcBucketMutations",
 			"expected", itemCount,
 			"got", eventCount,
 		)
@@ -1318,12 +1318,12 @@ func TestInterHandlerRecursion(t *testing.T) {
 	var response map[string]interface{}
 	err := json.Unmarshal(resp.body, &response)
 	if err != nil {
-		t.Errorf("Failed to unmarshal response, err : %v\n", err)
+		failAndCollectLogsf(t, "Failed to unmarshal response, err : %v\n", err)
 		return
 	}
 
 	if response["name"].(string) != "ERR_INTER_FUNCTION_RECURSION" {
-		t.Errorf("Deployment must fail")
+		failAndCollectLogsf(t, "Deployment must fail")
 		return
 	}
 }
@@ -1361,12 +1361,12 @@ func TestInterBucketRecursion(t *testing.T) {
 	var response map[string]interface{}
 	err := json.Unmarshal(resp.body, &response)
 	if err != nil {
-		t.Errorf("Failed to unmarshal response, err : %v\n", err)
+		failAndCollectLogsf(t, "Failed to unmarshal response, err : %v\n", err)
 		return
 	}
 
 	if response["name"].(string) != "ERR_INTER_BUCKET_RECURSION" {
-		t.Error("Deployment must fail")
+		failAndCollectLogs(t, "Deployment must fail")
 		return
 	}
 }
@@ -1378,7 +1378,7 @@ func TestLargeHandler(t *testing.T) {
 	payload := fmt.Sprintf("{\"force_compress\":%v}", false)
 	_, err := configChange(payload)
 	if err != nil {
-		t.Errorf("Failed to change setting force_compress, err : %v\n", err)
+		failAndCollectLogsf(t, "Failed to change setting force_compress, err : %v\n", err)
 		return
 	}
 	log.Printf("Changed force_compress value to false")
@@ -1387,20 +1387,20 @@ func TestLargeHandler(t *testing.T) {
 	var response map[string]interface{}
 	err2 := json.Unmarshal(resp.body, &response)
 	if err2 != nil {
-		t.Errorf("Failed to unmarshal response, err : %v\n", err)
+		failAndCollectLogsf(t, "Failed to unmarshal response, err : %v\n", err)
 		return
 	}
 
 	// Eventing should throw error since length of code is greater than max function size
 	if resString, ok := response["name"].(string); !ok || resString != "ERR_APPCODE_SIZE" {
-		t.Error("Deployment must fail")
+		failAndCollectLogs(t, "Deployment must fail")
 		return
 	}
 
 	payload = fmt.Sprintf("{\"force_compress\":%v}", true)
 	_, err = configChange(payload)
 	if err != nil {
-		t.Errorf("Failed to change setting force_compress, err : %v\n", err)
+		failAndCollectLogsf(t, "Failed to change setting force_compress, err : %v\n", err)
 		return
 	}
 	log.Printf("Changed force_compress value to true")
@@ -1409,13 +1409,13 @@ func TestLargeHandler(t *testing.T) {
 
 	err2 = json.Unmarshal(resp.body, &response)
 	if err2 != nil {
-		t.Errorf("Failed to unmarshal response, err : %v\n", err)
+		failAndCollectLogsf(t, "Failed to unmarshal response, err : %v\n", err)
 		return
 	}
 
 	//change force_compress to true. Eventing should store the function and deployment should succeed.
 	if resCode, ok := response["code"].(float64); !ok || resCode != 0 {
-		t.Errorf("Deployment must pass")
+		failAndCollectLogsf(t, "Deployment must pass")
 		return
 	}
 	waitForDeployToFinish(functionName)
@@ -1440,7 +1440,7 @@ func TestAllowInterHandlerRecursion(t *testing.T) {
 	payload := fmt.Sprintf("{\"allow_interbucket_recursion\":%v}", true)
 	_, err := configChange(payload)
 	if err != nil {
-		t.Errorf("Failed to change setting allow_interbucket_recursion, err : %v\n", err)
+		failAndCollectLogsf(t, "Failed to change setting allow_interbucket_recursion, err : %v\n", err)
 		return
 	}
 
@@ -1453,7 +1453,7 @@ func TestAllowInterHandlerRecursion(t *testing.T) {
 
 	status := getFnStatus(functionName2)
 	if status != "deployed" {
-		t.Errorf("%s must be deployed", functionName2)
+		failAndCollectLogsf(t, "%s must be deployed", functionName2)
 	}
 
 	log.Printf("%s is deployed", functionName2)
@@ -1461,7 +1461,7 @@ func TestAllowInterHandlerRecursion(t *testing.T) {
 	payload = fmt.Sprintf("{\"allow_interbucket_recursion\":%v}", false)
 	_, err = configChange(payload)
 	if err != nil {
-		t.Errorf("Failed to change setting allow_interbucket_recursion, err : %v\n", err)
+		failAndCollectLogsf(t, "Failed to change setting allow_interbucket_recursion, err : %v\n", err)
 		return
 	}
 }
@@ -1475,7 +1475,7 @@ func TestAllowInterBucketRecursion(t *testing.T) {
 	payload := fmt.Sprintf("{\"allow_interbucket_recursion\":%v}", true)
 	_, err := configChange(payload)
 	if err != nil {
-		t.Errorf("Failed to change setting allow_interbucket_recursion, err : %v\n", err)
+		failAndCollectLogsf(t, "Failed to change setting allow_interbucket_recursion, err : %v\n", err)
 		return
 	}
 
@@ -1507,7 +1507,7 @@ func TestAllowInterBucketRecursion(t *testing.T) {
 
 	status := getFnStatus(functionName2)
 	if status != "deployed" {
-		t.Errorf("%s must be deployed", functionName2)
+		failAndCollectLogsf(t, "%s must be deployed", functionName2)
 	}
 
 	log.Printf("%s is deployed", functionName2)
@@ -1515,7 +1515,7 @@ func TestAllowInterBucketRecursion(t *testing.T) {
 	payload = fmt.Sprintf("{\"allow_interbucket_recursion\":%v}", false)
 	_, err = configChange(payload)
 	if err != nil {
-		t.Errorf("Failed to change setting allow_interbucket_recursion, err : %v\n", err)
+		failAndCollectLogsf(t, "Failed to change setting allow_interbucket_recursion, err : %v\n", err)
 		return
 	}
 }
@@ -1532,7 +1532,7 @@ func TestInterBucketRecursion2(t *testing.T) {
 	payload := fmt.Sprintf("{\"allow_interbucket_recursion\":%v}", true)
 	_, err := configChange(payload)
 	if err != nil {
-		t.Errorf("Failed to change setting allow_interbucket_recursion, err : %v\n", err)
+		failAndCollectLogsf(t, "Failed to change setting allow_interbucket_recursion, err : %v\n", err)
 		return
 	}
 
@@ -1580,7 +1580,7 @@ func TestInterBucketRecursion2(t *testing.T) {
 	settings.aliasHandles = []string{"bucket4", "bucket2"}
 	resp = createAndDeployFunction(functionName3, jsFileName, settings)
 	if resp.err != nil {
-		t.Errorf("Failed to deploy function3: %v\n", resp.err)
+		failAndCollectLogsf(t, "Failed to deploy function3: %v\n", resp.err)
 		payload := fmt.Sprintf("{\"allow_interbucket_recursion\":%v}", false)
 		configChange(payload)
 		return
@@ -1589,14 +1589,14 @@ func TestInterBucketRecursion2(t *testing.T) {
 
 	status := getFnStatus(functionName3)
 	if status != "deployed" {
-		t.Errorf("%s must be deployed", functionName3)
+		failAndCollectLogsf(t, "%s must be deployed", functionName3)
 		return
 	}
 
 	payload = fmt.Sprintf("{\"allow_interbucket_recursion\":%v}", false)
 	_, err = configChange(payload)
 	if err != nil {
-		t.Errorf("Failed to change setting allow_interbucket_recursion, err : %v\n", err)
+		failAndCollectLogsf(t, "Failed to change setting allow_interbucket_recursion, err : %v\n", err)
 		return
 	}
 
@@ -1608,12 +1608,12 @@ func TestInterBucketRecursion2(t *testing.T) {
 	var response map[string]interface{}
 	err = json.Unmarshal(resp.body, &response)
 	if err != nil {
-		t.Errorf("Failed to unmarshal response, err : %v\n", err)
+		failAndCollectLogsf(t, "Failed to unmarshal response, err : %v\n", err)
 		return
 	}
 
 	if response["name"].(string) != "ERR_INTER_BUCKET_RECURSION" {
-		t.Error("Deployment must fail")
+		failAndCollectLogs(t, "Deployment must fail")
 		return
 	}
 }
@@ -1723,7 +1723,7 @@ func TestN1QLRecursion(t *testing.T) {
 	waitForDeployToFinish(functionName1)
 	status := getFnStatus(functionName1)
 	if status != "deployed" {
-		t.Errorf("%s must be deployed", functionName1)
+		failAndCollectLogsf(t, "%s must be deployed", functionName1)
 	}
 	log.Printf("%s is deployed", functionName1)
 
@@ -1733,7 +1733,7 @@ func TestN1QLRecursion(t *testing.T) {
 	waitForDeployToFinish(functionName3)
 	status = getFnStatus(functionName3)
 	if status != "deployed" {
-		t.Errorf("%s must be deployed", functionName3)
+		failAndCollectLogsf(t, "%s must be deployed", functionName3)
 	}
 	log.Printf("%s is deployed", functionName3)
 
@@ -1754,12 +1754,12 @@ func TestN1QLRecursion(t *testing.T) {
 	var response map[string]interface{}
 	err = json.Unmarshal(resp.body, &response)
 	if err != nil {
-		t.Errorf("Failed to unmarshal response, err : %v\n", err)
+		failAndCollectLogsf(t, "Failed to unmarshal response, err : %v\n", err)
 		return
 	}
 
 	if response["name"].(string) != "ERR_INTER_BUCKET_RECURSION" {
-		t.Errorf("Deployment of %s must fail", functionName2)
+		failAndCollectLogsf(t, "Deployment of %s must fail", functionName2)
 		return
 	}
 	log.Printf("Success: %s is not deployed", functionName2)
@@ -1814,7 +1814,7 @@ func TestN1QLAllowRecursion(t *testing.T) {
 	waitForDeployToFinish(functionName1)
 	status := getFnStatus(functionName1)
 	if status != "deployed" {
-		t.Errorf("%s must be deployed", functionName1)
+		failAndCollectLogsf(t, "%s must be deployed", functionName1)
 	}
 	log.Printf("%s is deployed", functionName1)
 
@@ -1824,7 +1824,7 @@ func TestN1QLAllowRecursion(t *testing.T) {
 	waitForDeployToFinish(functionName3)
 	status = getFnStatus(functionName3)
 	if status != "deployed" {
-		t.Errorf("%s must be deployed", functionName3)
+		failAndCollectLogsf(t, "%s must be deployed", functionName3)
 	}
 	log.Printf("%s is deployed", functionName3)
 
@@ -1842,7 +1842,7 @@ func TestN1QLAllowRecursion(t *testing.T) {
 	payload := fmt.Sprintf("{\"allow_interbucket_recursion\":%v}", true)
 	_, err = configChange(payload)
 	if err != nil {
-		t.Errorf("Failed to change setting allow_interbucket_recursion, err : %v\n", err)
+		failAndCollectLogsf(t, "Failed to change setting allow_interbucket_recursion, err : %v\n", err)
 		return
 	}
 
@@ -1852,13 +1852,13 @@ func TestN1QLAllowRecursion(t *testing.T) {
 	waitForDeployToFinish(functionName2)
 	status = getFnStatus(functionName2)
 	if status != "deployed" {
-		t.Errorf("%s must be deployed after allow_interbucket_recursion", functionName2)
+		failAndCollectLogsf(t, "%s must be deployed after allow_interbucket_recursion", functionName2)
 	}
 
 	payload = fmt.Sprintf("{\"allow_interbucket_recursion\":%v}", false)
 	_, err = configChange(payload)
 	if err != nil {
-		t.Errorf("Failed to change setting allow_interbucket_recursion, err : %v\n", err)
+		failAndCollectLogsf(t, "Failed to change setting allow_interbucket_recursion, err : %v\n", err)
 		return
 	}
 
@@ -1884,7 +1884,7 @@ func TestOnDeleteExpiryBucketOp(t *testing.T) {
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
 
 	if itemCount != eventCount {
-		t.Error("For", "OnDeleteExpiryBucketOp",
+		failAndCollectLogs(t, "For", "OnDeleteExpiryBucketOp",
 			"expected", itemCount,
 			"got", eventCount,
 		)
@@ -1905,7 +1905,7 @@ func TestOnDeleteExpiryBucketOp(t *testing.T) {
 	eventCount = verifyBucketOps(totalItems, statsLookupRetryCounter)
 
 	if totalItems != eventCount {
-		t.Error("For", "OnDeleteExpiryBucketOp",
+		failAndCollectLogs(t, "For", "OnDeleteExpiryBucketOp",
 			"expected", itemCount,
 			"got", eventCount,
 		)
@@ -1939,7 +1939,7 @@ func TestTimerOverWriteSameReference(t *testing.T) {
 	eventCount := verifyBucketOps(expectedItems, statsLookupRetryCounter)
 
 	if expectedItems != eventCount {
-		t.Error("For", "TestTimerOverWriteSameReference",
+		failAndCollectLogs(t, "For", "TestTimerOverWriteSameReference",
 			"expected", expectedItems,
 			"got", eventCount,
 		)
@@ -1953,7 +1953,7 @@ func TestTimerOverWriteSameReference(t *testing.T) {
 	}
 
 	if itemCountB != itemCountA {
-		t.Error("Expected", itemCountB, "got", itemCountA)
+		failAndCollectLogs(t, "Expected", itemCountB, "got", itemCountA)
 	}
 
 	dumpStats()
@@ -1980,7 +1980,7 @@ func TestCancelTimerBucketop(t *testing.T) {
 	eventCount := verifyBucketOps(expectedItems, statsLookupRetryCounter)
 
 	if expectedItems != eventCount {
-		t.Error("For", "TestCancelTimerBucketop",
+		failAndCollectLogs(t, "For", "TestCancelTimerBucketop",
 			"expected", expectedItems,
 			"got", eventCount,
 		)
@@ -1998,7 +1998,7 @@ func TestJSExpiryDate(t *testing.T) {
 	pumpBucketOps(opsType{count: itemCount, expiry: 2147483640}, &rateLimit{})
 	eventCount := verifySourceBucketOps(itemCount, statsLookupRetryCounter)
 	if eventCount != itemCount {
-		t.Error("For", "TestJSExpiryDate",
+		failAndCollectLogs(t, "For", "TestJSExpiryDate",
 			"pumped", itemCount,
 			"seen", eventCount,
 		)
@@ -2010,7 +2010,7 @@ func TestJSExpiryDate(t *testing.T) {
 
 	eventCount = verifySourceBucketOps(0, statsLookupRetryCounter)
 	if eventCount != 0 {
-		t.Error("For", "TestJSExpiryDate",
+		failAndCollectLogs(t, "For", "TestJSExpiryDate",
 			"expected", 0,
 			"got", eventCount,
 		)
@@ -2036,7 +2036,7 @@ func TestBinaryDoc(t *testing.T) {
 	pumpBucketOps(opsType{count: itemCount, isBinary: true}, &rateLimit{})
 	eventCount := verifyBucketCount(0, statsLookupRetryCounter, dstBucket)
 	if eventCount != 0 {
-		t.Error("For", "TestBinaryDoc",
+		failAndCollectLogs(t, "For", "TestBinaryDoc",
 			"expected", 0,
 			"got", eventCount,
 		)
@@ -2049,7 +2049,7 @@ func TestBinaryDoc(t *testing.T) {
 	pumpBucketOps(opsType{delete: true}, &rateLimit{count: itemCount, limit: true, opsPSec: 1})
 	eventCount = verifyBucketCount(itemCount, statsLookupRetryCounter, dstBucket)
 	if eventCount != itemCount {
-		t.Error("For", "TestBinaryDoc",
+		failAndCollectLogs(t, "For", "TestBinaryDoc",
 			"expected", 0,
 			"got", eventCount,
 		)
@@ -2078,7 +2078,7 @@ func TestConstantBindings(t *testing.T) {
 	pumpBucketOps(opsType{count: itemCount}, &rateLimit{})
 	eventCount := verifyBucketCount(expectedCount, statsLookupRetryCounter, dstBucket)
 	if expectedCount != eventCount {
-		t.Error("For", "TestConstantBindings",
+		failAndCollectLogs(t, "For", "TestConstantBindings",
 			"expected", expectedCount,
 			"got", eventCount,
 		)

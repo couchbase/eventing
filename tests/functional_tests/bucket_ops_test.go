@@ -17,7 +17,7 @@ func testPumpDoc(itemCount, expectedCount int, bucket string, deleteDoc bool,
 	pumpBucketOps(opsType{count: itemCount, delete: deleteDoc}, &rateLimit{})
 	eventCount := verifyBucketCount(expectedCount, statsLookupRetryCounter, bucket)
 	if expectedCount != eventCount {
-		t.Error("For", "TestError",
+		failAndCollectLogs(t, "For", "TestError",
 			"expected", expectedCount,
 			"got", eventCount,
 		)
@@ -39,7 +39,7 @@ func testPumpDocExpiry(itemCount, expectedCount int, bucket string,
 
 	eventCount := verifyBucketCount(expectedCount, statsLookupRetryCounter, bucket)
 	if expectedCount != eventCount {
-		t.Error("For", "TestError",
+		failAndCollectLogs(t, "For", "TestError",
 			"expected", expectedCount,
 			"got", eventCount,
 		)
