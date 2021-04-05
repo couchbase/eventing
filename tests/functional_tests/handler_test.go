@@ -34,7 +34,7 @@ func testEnoent(itemCount int, handler string, settings *commonSettings, t *test
 
 func TestStrictMode(t *testing.T) {
 	handler := "octal_literal"
-	response := createAndDeployFunction(t.Name(), handler, &commonSettings{})
+	response := createAndDeployFunctionWithoutChecks(t.Name(), handler, &commonSettings{})
 	if response.err != nil {
 		failAndCollectLogsf(t, "Unable to POST, err : %v\n", response.err)
 		return
@@ -320,7 +320,7 @@ func TestOnUpdateBucketOpDefaultSettings10K(t *testing.T) {
 	time.Sleep(5 * time.Second)
 	handler := "bucket_op_on_update"
 	flushFunctionAndBucket(functionName)
-	createAndDeployLargeFunction(functionName, handler, &commonSettings{}, 10*1024)
+	createAndDeployLargeFunction(functionName, handler, &commonSettings{}, 10*1024, true)
 
 	pumpBucketOps(opsType{}, &rateLimit{})
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
@@ -341,7 +341,7 @@ func TestOnUpdateBucketOpDefaultSettings100K(t *testing.T) {
 	time.Sleep(5 * time.Second)
 	handler := "bucket_op_on_update"
 	flushFunctionAndBucket(functionName)
-	createAndDeployLargeFunction(functionName, handler, &commonSettings{}, 100*1024)
+	createAndDeployLargeFunction(functionName, handler, &commonSettings{}, 100*1024, true)
 
 	pumpBucketOps(opsType{}, &rateLimit{})
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
@@ -383,7 +383,7 @@ func TestOnDeleteBucketOp5K(t *testing.T) {
 	time.Sleep(5 * time.Second)
 	handler := "bucket_op_on_delete"
 	flushFunctionAndBucket(functionName)
-	createAndDeployLargeFunction(functionName, handler, &commonSettings{}, 5*1024)
+	createAndDeployLargeFunction(functionName, handler, &commonSettings{}, 5*1024, true)
 
 	pumpBucketOps(opsType{delete: true}, &rateLimit{})
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
@@ -1186,7 +1186,7 @@ func TestUndeployBackdoorDuringBootstrap(t *testing.T) {
 
 	handler := "bucket_op_on_update"
 	flushFunctionAndBucket(functionName)
-	createAndDeployLargeFunction(functionName, handler, &commonSettings{workerCount: 1}, 10*1024)
+	createAndDeployLargeFunction(functionName, handler, &commonSettings{workerCount: 1}, 10*1024, true)
 
 	go pumpBucketOps(opsType{}, &rateLimit{})
 
@@ -1309,10 +1309,10 @@ func TestInterHandlerRecursion(t *testing.T) {
 		flushFunctionAndBucket(functionName2)
 	}()
 
-	resp := createAndDeployFunction(functionName1, handler1, &commonSettings{srcMutationEnabled: true})
+	resp := createAndDeployFunctionWithoutChecks(functionName1, handler1, &commonSettings{srcMutationEnabled: true})
 	log.Printf("response body %s err %v", string(resp.body), resp.err)
 	waitForDeployToFinish(functionName1)
-	resp = createAndDeployFunction(functionName2, handler2, &commonSettings{srcMutationEnabled: true})
+	resp = createAndDeployFunctionWithoutChecks(functionName2, handler2, &commonSettings{srcMutationEnabled: true})
 	log.Printf("response body %s err %v", string(resp.body), resp.err)
 
 	var response map[string]interface{}
@@ -1340,7 +1340,7 @@ func TestInterBucketRecursion(t *testing.T) {
 		metaBucket:   metaBucket,
 		sourceBucket: srcBucket,
 	}
-	resp := createAndDeployFunction(functionName1, jsFileName, setting1)
+	resp := createAndDeployFunctionWithoutChecks(functionName1, jsFileName, setting1)
 	log.Printf("response body %s err %v", string(resp.body), resp.err)
 
 	setting2 := &commonSettings{
@@ -1349,7 +1349,7 @@ func TestInterBucketRecursion(t *testing.T) {
 		metaBucket:   metaBucket,
 		sourceBucket: dstBucket,
 	}
-	resp = createAndDeployFunction(functionName2, jsFileName, setting2)
+	resp = createAndDeployFunctionWithoutChecks(functionName2, jsFileName, setting2)
 
 	defer func() {
 		// Required, otherwise function delete request in subsequent call would fail
@@ -1382,7 +1382,7 @@ func TestLargeHandler(t *testing.T) {
 		return
 	}
 	log.Printf("Changed force_compress value to false")
-	resp := createAndDeployLargeFunction(functionName, jsFileName, &commonSettings{}, 128*1024)
+	resp := createAndDeployLargeFunction(functionName, jsFileName, &commonSettings{}, 128*1024, false)
 
 	var response map[string]interface{}
 	err2 := json.Unmarshal(resp.body, &response)
@@ -1405,7 +1405,7 @@ func TestLargeHandler(t *testing.T) {
 	}
 	log.Printf("Changed force_compress value to true")
 
-	resp = createAndDeployLargeFunction(functionName, jsFileName, &commonSettings{}, 128*1024)
+	resp = createAndDeployLargeFunction(functionName, jsFileName, &commonSettings{}, 128*1024, false)
 
 	err2 = json.Unmarshal(resp.body, &response)
 	if err2 != nil {
@@ -1565,12 +1565,12 @@ func TestInterBucketRecursion2(t *testing.T) {
 		metaBucket:   metaBucket,
 		sourceBucket: "bucket1",
 	}
-	resp := createAndDeployFunction(functionName1, jsFileName, settings)
+	resp := createAndDeployFunctionWithoutChecks(functionName1, jsFileName, settings)
 	waitForDeployToFinish(functionName1)
 
 	settings.sourceBucket = "bucket2"
 	settings.aliasSources = []string{"bucket3"}
-	resp = createAndDeployFunction(functionName2, jsFileName, settings)
+	resp = createAndDeployFunctionWithoutChecks(functionName2, jsFileName, settings)
 	waitForDeployToFinish(functionName2)
 
 	// this deployment will cause the inter bucket recursion between function2 and function3
@@ -1578,7 +1578,7 @@ func TestInterBucketRecursion2(t *testing.T) {
 	settings.sourceBucket = "bucket3"
 	settings.aliasSources = []string{"bucket4", "bucket2"}
 	settings.aliasHandles = []string{"bucket4", "bucket2"}
-	resp = createAndDeployFunction(functionName3, jsFileName, settings)
+	resp = createAndDeployFunctionWithoutChecks(functionName3, jsFileName, settings)
 	if resp.err != nil {
 		failAndCollectLogsf(t, "Failed to deploy function3: %v\n", resp.err)
 		payload := fmt.Sprintf("{\"allow_interbucket_recursion\":%v}", false)
@@ -1604,7 +1604,7 @@ func TestInterBucketRecursion2(t *testing.T) {
 	settings.sourceBucket = "bucket4"
 	settings.aliasSources = []string{"bucket1"}
 	settings.aliasHandles = []string{"bucket1"}
-	resp = createAndDeployFunction(functionName4, jsFileName, settings)
+	resp = createAndDeployFunctionWithoutChecks(functionName4, jsFileName, settings)
 	var response map[string]interface{}
 	err = json.Unmarshal(resp.body, &response)
 	if err != nil {
@@ -1718,7 +1718,7 @@ func TestN1QLRecursion(t *testing.T) {
 	bucketFlush("bucket-3")
 
 	jsFileName := "n1ql_1_2"
-	resp := createAndDeployFunction(functionName1, jsFileName, setting1)
+	resp := createAndDeployFunctionWithoutChecks(functionName1, jsFileName, setting1)
 	log.Printf("response body %s err %v", string(resp.body), resp.err)
 	waitForDeployToFinish(functionName1)
 	status := getFnStatus(functionName1)
@@ -1728,7 +1728,7 @@ func TestN1QLRecursion(t *testing.T) {
 	log.Printf("%s is deployed", functionName1)
 
 	jsFileName = "n1ql_3_1"
-	resp = createAndDeployFunction(functionName3, jsFileName, setting3)
+	resp = createAndDeployFunctionWithoutChecks(functionName3, jsFileName, setting3)
 	log.Printf("response body %s err %v", string(resp.body), resp.err)
 	waitForDeployToFinish(functionName3)
 	status = getFnStatus(functionName3)
@@ -1748,7 +1748,7 @@ func TestN1QLRecursion(t *testing.T) {
 	}()
 
 	jsFileName = "n1ql_2_3"
-	resp = createAndDeployFunction(functionName2, jsFileName, setting2)
+	resp = createAndDeployFunctionWithoutChecks(functionName2, jsFileName, setting2)
 	log.Printf("response body %s err %v", string(resp.body), resp.err)
 
 	var response map[string]interface{}

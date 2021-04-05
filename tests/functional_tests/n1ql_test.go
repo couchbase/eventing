@@ -38,7 +38,7 @@ func TestRecursiveMutationN1QL(t *testing.T) {
 	functionName := t.Name()
 	handler := "n1ql_insert_same_src"
 	flushFunctionAndBucket(functionName)
-	mainStoreResponse := createAndDeployFunction(functionName, handler, &commonSettings{})
+	mainStoreResponse := createAndDeployFunctionWithoutChecks(functionName, handler, &commonSettings{})
 	if mainStoreResponse.err != nil {
 		failAndCollectLogsf(t, "Unable to POST to main store, err : %v\n", mainStoreResponse.err)
 		return

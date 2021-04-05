@@ -9,15 +9,20 @@ import (
 	"math/rand"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/couchbase/eventing/parser"
+	"github.com/couchbase/eventing/util"
 	"github.com/mitchellh/go-ps"
 )
 
 const (
 	lettersAndDigits = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 )
+
+type RestCallbackFunc func(arg ...interface{}) (response *restResponse)
+type SettingsCallbackFunc func(arg ...interface{}) (*responseSchema, error)
 
 func checkIfProcessRunning(processName string) error {
 	res, err := ps.Processes()
@@ -66,7 +71,11 @@ func setRetryCounter(handler string) {
 	log.Println("set retry counter, response", resp)
 }
 
-func postToEventingEndpoint(context, url string, payload []byte) (response *restResponse) {
+var postToEventingEndpoint = func(args ...interface{}) (response *restResponse) {
+	context := args[0].(string)
+	url := args[1].(string)
+	payload := args[2].([]byte)
+
 	response = &restResponse{}
 	req, err := http.NewRequest("POST", url, bytes.NewBuffer(payload))
 	if err != nil {
@@ -105,7 +114,7 @@ func createPadding(paddingCount int) string {
 	return "/*" + string(pad) + "*/"
 }
 
-func createAndDeployLargeFunction(appName, hFileName string, settings *commonSettings, paddingCount int) (storeResponse *restResponse) {
+func createAndDeployLargeFunction(appName, hFileName string, settings *commonSettings, paddingCount int, withRetry bool) (storeResponse *restResponse) {
 	waitForIndexes()
 
 	sCount, _ := getBucketItemCount(srcBucket)
@@ -176,13 +185,20 @@ func createAndDeployLargeFunction(appName, hFileName string, settings *commonSet
 	if err != nil {
 		panic(fmt.Sprintf("handler failed schema: %v, data: %s", err, data))
 	}
-
-	storeResponse = postToEventingEndpoint("Post to main store", functionsURL+"/"+appName, data)
+	if withRetry {
+		storeResponse = RetryREST(util.NewFixedBackoff(restTimeout), restRetryCount, postToEventingEndpoint, "Post to main store", functionsURL+"/"+appName, data)
+	} else {
+		storeResponse = postToEventingEndpoint("Post to main store", functionsURL+"/"+appName, data)
+	}
 	return
 }
 
 func createAndDeployFunction(appName, hFileName string, settings *commonSettings) *restResponse {
-	return createAndDeployLargeFunction(appName, hFileName, settings, 0)
+	return createAndDeployLargeFunction(appName, hFileName, settings, 0, true)
+}
+
+func createAndDeployFunctionWithoutChecks(appName, hFileName string, settings *commonSettings) *restResponse {
+	return createAndDeployLargeFunction(appName, hFileName, settings, 0, false)
 }
 
 func createFunction(deploymentStatus, processingStatus bool, id int, s *commonSettings,
@@ -372,7 +388,20 @@ func setSettings(fnName string, deploymentStatus, processingStatus bool, s *comm
 		panic(fmt.Sprintf("settings failed schema: %v, data: %s", err, data))
 	}
 
-	req, err := http.NewRequest("POST", functionsURL+"/"+fnName+"/settings", bytes.NewBuffer(data))
+	res = RetrySettings(util.NewFixedBackoff(restTimeout), restRetryCount, setSettingsCallback, "POST", functionsURL+"/"+fnName+"/settings", data)
+
+	log.Printf("Function: %s update settings: %+v requested, response code: %d dump: %+v\n",
+		fnName, settings, res.httpResponseCode, res)
+	return res, nil
+}
+
+var setSettingsCallback = func(args ...interface{}) (*responseSchema, error) {
+	method := args[0].(string)
+	url := args[1].(string)
+	data := args[2].([]byte)
+	res := &responseSchema{}
+
+	req, err := http.NewRequest(method, url, bytes.NewBuffer(data))
 	if err != nil {
 		log.Println("Undeploy request framing::", err)
 		return res, err
@@ -395,8 +424,6 @@ func setSettings(fnName string, deploymentStatus, processingStatus bool, s *comm
 	}
 
 	err = json.Unmarshal(data, res)
-	log.Printf("Function: %s update settings: %+v requested, response code: %d dump: %s\n",
-		fnName, settings, resp.StatusCode, string(data))
 	return res, nil
 }
 
@@ -550,7 +577,7 @@ func getBucketItemCount(bucketName string) (int, error) {
 
 func bucketFlush(bucketName string) {
 	flushEndpoint := fmt.Sprintf("http://127.0.0.1:9000/pools/default/buckets/%s/controller/doFlush", bucketName)
-	postToEventingEndpoint("Bucket flush", flushEndpoint, nil)
+	postToEventingEndpoint("Bucket flush", flushEndpoint, []byte{})
 	time.Sleep(5 * time.Second)
 	waitForIndexes()
 }
@@ -819,4 +846,67 @@ func goroutineDump(url string) error {
 
 	log.Printf("%s\n", string(data))
 	return nil
+}
+
+func RetryREST(b util.Backoff, retryCount int, callback RestCallbackFunc, args ...interface{}) *restResponse {
+	var next time.Duration
+	retries := 0
+
+	for {
+		response := callback(args...)
+
+		if response == nil {
+			continue
+		}
+
+		var responseBody map[string]interface{}
+		err := json.Unmarshal(response.body, &responseBody)
+		if err != nil || responseBody == nil || len(responseBody) == 0 {
+			continue
+		}
+
+		if value, ok := responseBody["name"].(string); !ok || !strings.Contains(value, "ERR_") {
+			return response
+		}
+
+		if retryCount != -1 && retries >= retryCount {
+			panic(fmt.Sprintf("REST request failed after retry count exceeded, response: %v", responseBody))
+		}
+
+		if next = b.NextBackoff(); next == util.Stop {
+			panic(fmt.Sprintf("REST request failed after timeout, response: %v", responseBody))
+		}
+
+		time.Sleep(next)
+		retries++
+	}
+}
+
+func RetrySettings(b util.Backoff, retryCount int, callback SettingsCallbackFunc, args ...interface{}) *responseSchema {
+	var next time.Duration
+	retries := 0
+
+	for {
+		response, err := callback(args...)
+
+		if err == nil && response != nil {
+
+			if value := response.Name; !strings.Contains(value, "ERR_") ||
+				strings.Contains(value, "ERR_APP_NOT_FOUND") || strings.Contains(value, "ERR_APP_NOT_DEPLOYED") {
+				// Need to make exceptions for APP_NOT_FOUND and APP_NOT_DEPLOYED because we use it to flush functions
+				return response
+			}
+
+			if retryCount != -1 && retries >= retryCount {
+				panic(fmt.Sprintf("Settings REST request failed after retry count exceeded, response: %v", response))
+			}
+
+			if next = b.NextBackoff(); next == util.Stop {
+				panic(fmt.Sprintf("Settings REST request failed after timeout, response: %v", response))
+			}
+		}
+
+		time.Sleep(next)
+		retries++
+	}
 }
