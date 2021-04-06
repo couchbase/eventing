@@ -30,10 +30,12 @@ replace github.com/couchbase/query-ee => ../query-ee
 
 replace github.com/couchbase/eventing => ./empty
 
+replace github.com/couchbase/gocbcore/v9 => github.com/couchbase/gocbcore/v9 v9.0.5
+
 require (
 	github.com/couchbase/cbauth v0.0.0-20201026062450-0eaf917092a2
 	github.com/couchbase/go-couchbase v0.0.0-20210323165529-9e59ca6b464b
-	github.com/couchbase/gocb/v2 v2.2.3-0.20210324071519-d174e08d8ea4
+	github.com/couchbase/gocb/v2 v2.1.5
 	github.com/couchbase/gocbcore/v9 v9.1.4-0.20210325182448-577aecce6dc6
 	github.com/couchbase/gomemcached v0.1.2
 	github.com/couchbase/goutils v0.0.0-20210118111533-e33d3ffb5401
