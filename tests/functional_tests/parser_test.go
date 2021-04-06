@@ -71,6 +71,11 @@ var snippet_inputs = []string{
 	`DELETE from dst_bucket.scope_1.coll_4 USE KEYS "newDocID2";`,
 	`var curl=SELECT CURL("http://localhost:8091/pools/default/buckets",{"header":"authorization: Basic HelloWorldAbcdefghijklmnopqrstuvwxyz==",
 		  "request":"GET"});`,
+	`var query = (SELECT * FROM src_bucket WHERE NOT (NUMERIC_FIELD IS NOT NULL) ORDER BY NUMERIC_FIELD_LIST, STRING_FIELD_LIST, BOOL_FIELD_LIST DESC)
+		UNION
+		(SELECT * FROM src_bucket WHERE
+			(NUMERIC_FIELD IS NULL OR ((STRING_FIELD IS NOT NULL) OR (STRING_FIELD <= STRING_VALUES)) AND (STRING_FIELD NOT BETWEEN LOWER_BOUND_VALUE and UPPER_BOUND_VALUE))
+			ORDER BY STRING_FIELD_LIST);`,
 }
 
 var snippet_outputs = []string{
@@ -135,6 +140,11 @@ var snippet_outputs = []string{
 	`N1QL('DELETE from dst_bucket.scope_1.coll_4 USE KEYS \"newDocID2\";', {});`,
 	`var curl=N1QL('SELECT CURL(\"http://localhost:8091/pools/default/buckets\",{\"header\":\"authorization: Basic HelloWorldAbcdefghijklmnopqrstuvwxyz==\",\n' +
 		  '\"request\":\"GET\"});', {});`,
+	`var query = N1QL('(SELECT * FROM src_bucket WHERE NOT (NUMERIC_FIELD IS NOT NULL) ORDER BY NUMERIC_FIELD_LIST, STRING_FIELD_LIST, BOOL_FIELD_LIST DESC)\n' +
+		'UNION\n' +
+		'(SELECT * FROM src_bucket WHERE\n' +
+			'(NUMERIC_FIELD IS NULL OR ((STRING_FIELD IS NOT NULL) OR (STRING_FIELD <= STRING_VALUES)) AND (STRING_FIELD NOT BETWEEN LOWER_BOUND_VALUE and UPPER_BOUND_VALUE))\n' +
+			'ORDER BY STRING_FIELD_LIST);', {});`,
 }
 
 const template = `

@@ -18,7 +18,9 @@ var maybe_n1ql = regexp.MustCompile(
 		// 'delete' is a js keyword, so look for 'delete from'
 		`delete[[:space:]]+from[[:space:]]+(?:[[:word:]][[:punct:]]?)+` +
 		`|drop|execute|explain|from|grant|infer|` +
-		`insert|merge|prepare|rename|select|` +
+		// 'with' is a js keyword, so look for 'with alias as'
+		`with[[:space:]]+([[:word:]]|[[:punct:]])+(?:[[:space:]]+as\(?)` +
+		`|insert|merge|prepare|rename|select|` +
 		`revoke|update|upsert)[[:space:]]+` +
 		`[^;]+;)`)
 
