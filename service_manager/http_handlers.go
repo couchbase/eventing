@@ -780,8 +780,10 @@ func (m *ServiceMgr) getDeployedApps(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "%s", string(data))
 }
 
-// Returns list of apps that are running i.e. they may be undergoing undeploy(one ore more nodes)
-// or are deployed on all nodes
+// Returns list of apps that:
+// * may be undergoing undeploy on one ore more nodes,
+// * maybe undergoing bootstrap on one or more nodes or
+// * are already deployed on all nodes
 func (m *ServiceMgr) getRunningApps(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "ServiceMgr::getRunningApps"
 

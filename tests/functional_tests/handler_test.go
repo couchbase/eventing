@@ -488,6 +488,9 @@ func TestMultipleHandlers(t *testing.T) {
 	createAndDeployFunction(functionName1, handler1, &commonSettings{})
 	createAndDeployFunction(functionName2, handler2, &commonSettings{})
 
+	waitForDeployToFinish(functionName1)
+	waitForDeployToFinish(functionName2)
+
 	pumpBucketOps(opsType{}, &rateLimit{})
 	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
 	if itemCount != eventCount {
