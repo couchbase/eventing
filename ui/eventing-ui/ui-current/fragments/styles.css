@@ -21,12 +21,3 @@
 .log-message-row {
   white-space: pre-wrap;
 }
-
-.eventing-charts mn-statistics-chart {
-  width:32% !important;
-  box-sizing: border-box !important;
-}
-
-.mn-detail-stats-parent {
-  margin-top: 10px !important;
-}
