@@ -671,8 +671,7 @@ func (p *Producer) KillAndRespawnEventingConsumer(c common.EventingConsumer) {
 		logPrefix, p.appName, p.LenRunningConsumers(), indexToPurge, consumerIndex, c)
 
 	c.NotifyWorker()
-	token := p.getSupervisorToken(c)
-	p.workerSupervisor.Remove(token)
+	p.stopAndDeleteConsumer(c)
 
 	logging.Infof("%s [%s:%d] IndexToPurge: %d ConsumerIndex: %d Closing down listener handles",
 		logPrefix, p.appName, p.LenRunningConsumers(), indexToPurge, consumerIndex)
