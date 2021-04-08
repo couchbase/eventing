@@ -22,7 +22,7 @@ import (
 	"unsafe"
 
 	"github.com/couchbase/eventing/common/collections"
-	"github.com/couchbase/eventing/dcp/transport/client"
+	memcached "github.com/couchbase/eventing/dcp/transport/client"
 	"github.com/couchbase/eventing/logging"
 )
 
@@ -106,7 +106,6 @@ type Bucket struct {
 	vBucketServerMap unsafe.Pointer // *VBucketServerMap
 	nodeList         unsafe.Pointer // *[]Node
 
-	AuthType            string                 `json:"authType"`
 	Capabilities        []string               `json:"bucketCapabilities"`
 	CapabilitiesVersion string                 `json:"bucketCapabilitiesVer"`
 	Type                string                 `json:"bucketType"`
@@ -114,7 +113,6 @@ type Bucket struct {
 	NodeLocator         string                 `json:"nodeLocator"`
 	Quota               map[string]float64     `json:"quota,omitempty"`
 	Replicas            int                    `json:"replicaNumber"`
-	Password            string                 `json:"saslPassword"`
 	URI                 string                 `json:"uri"`
 	StreamingURI        string                 `json:"streamingUri"`
 	LocalRandomKeyURI   string                 `json:"localRandomKeyUri,omitempty"`
@@ -524,34 +522,6 @@ func ConnectWithAuth(baseU string, ah AuthHandler) (c Client, err error) {
 // created from the userinfo in the URL if provided.
 func Connect(baseU string) (Client, error) {
 	return ConnectWithAuth(baseU, basicAuthFromURL(baseU))
-}
-
-//Get SASL buckets
-type BucketInfo struct {
-	Name     string // name of bucket
-	Password string // SASL password of bucket
-}
-
-func GetBucketList(baseU string) (bInfo []BucketInfo, err error) {
-
-	c := &Client{}
-	c.BaseURL, err = ParseURL(baseU)
-	if err != nil {
-		return
-	}
-	c.ah = basicAuthFromURL(baseU)
-
-	var buckets []Bucket
-	err = c.parseURLResponse("/pools/default/buckets", &buckets)
-	if err != nil {
-		return
-	}
-	bInfo = make([]BucketInfo, 0)
-	for _, bucket := range buckets {
-		bucketInfo := BucketInfo{Name: bucket.Name, Password: bucket.Password}
-		bInfo = append(bInfo, bucketInfo)
-	}
-	return bInfo, err
 }
 
 func (b *Bucket) Refresh() error {
