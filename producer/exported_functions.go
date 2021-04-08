@@ -1013,8 +1013,11 @@ func (p *Producer) RemoveConsumerToken(workerName string) {
 
 func (p *Producer) stopAndDeleteConsumer(c common.EventingConsumer) {
 	p.tokenRWMutex.RLock()
-	token := p.consumerSupervisorTokenMap[c]
+	token, exists := p.consumerSupervisorTokenMap[c]
 	p.tokenRWMutex.RUnlock()
+	if !exists {
+		return
+	}
 	p.workerSupervisor.Remove(token)
 
 	p.tokenRWMutex.Lock()
@@ -1026,12 +1029,6 @@ func (p *Producer) addToSupervisorTokenMap(c common.EventingConsumer, token supt
 	p.tokenRWMutex.Lock()
 	defer p.tokenRWMutex.Unlock()
 	p.consumerSupervisorTokenMap[c] = token
-}
-
-func (p *Producer) getSupervisorToken(c common.EventingConsumer) suptree.ServiceToken {
-	p.tokenRWMutex.RLock()
-	defer p.tokenRWMutex.RUnlock()
-	return p.consumerSupervisorTokenMap[c]
 }
 
 // IsPlannerRunning returns planner execution status
