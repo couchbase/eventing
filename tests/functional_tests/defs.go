@@ -1,6 +1,10 @@
 package eventing
 
-import "github.com/couchbase/eventing/common"
+import (
+	"time"
+
+	"github.com/couchbase/eventing/common"
+)
 
 const (
 	srcBucket  = "default"
@@ -85,6 +89,11 @@ const (
 const (
 	rlItemCount = 100000
 	rlOpsPSec   = 100
+)
+
+const (
+	restTimeout    = time.Second * 5
+	restRetryCount = 10
 )
 
 const (

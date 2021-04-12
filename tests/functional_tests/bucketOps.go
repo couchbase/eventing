@@ -165,8 +165,7 @@ func pumpBucketOpsSrc(ops opsType, srcBucket string, rate *rateLimit) {
 	})
 	bucket, err := cluster.OpenBucket(srcBucket, "")
 	if err != nil {
-		fmt.Println("Bucket open, err:", err)
-		return
+		panic(fmt.Sprintf("Bucket open, err: %s", err))
 	}
 	defer bucket.Close()
 

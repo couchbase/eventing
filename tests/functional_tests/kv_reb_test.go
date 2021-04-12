@@ -545,7 +545,7 @@ func TestBootstrapAfterKVHardFailover(t *testing.T) {
 	rebalanceFromRest([]string{""})
 	err := waitForRebalanceFinish()
 	if err == nil {
-		t.Errorf("Rebalance didn't fail when bootstrap was in progress")
+		failAndCollectLogsf(t, "Rebalance didn't fail when bootstrap was in progress")
 	}
 
 	waitForDeployToFinish(handler)
