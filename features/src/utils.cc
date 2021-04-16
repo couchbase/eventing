@@ -823,3 +823,14 @@ int64_t GetUnixTime() {
 // If this function is used for LCB_XXX_timeout which takes in a uint32_t
 // the return value loses precision and is capped at 4294 seconds
 long ConvertSecondsToMicroSeconds(long time) { return time * 1e6; }
+
+// Replaces param:count occurences of param:search with param:replace inplace
+void ReplaceSubstringsInPlace(std::string &subject, const std::string &search,
+                              const std::string &replace, int count = -1) {
+  size_t pos = 0;
+  while (((pos = subject.find(search, pos)) != std::string::npos) &&
+         count != 0) {
+    count--;
+    subject.replace(pos, search.length(), replace);
+  }
+}

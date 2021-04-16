@@ -409,6 +409,7 @@ public:
 
   CurlRequest NewRequest(const CurlBinding &binding,
                          const v8::FunctionCallbackInfo<v8::Value> &args);
+  Info CheckIfRestrictedURL(const CurlRequest &request);
 
 private:
   Info ExtractEncoding(const v8::Local<v8::Value> &encoding_val,
