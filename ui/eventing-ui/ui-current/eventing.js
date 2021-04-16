@@ -11,6 +11,7 @@ import uiAce from "/ui/libs/ui-ace.js";
 import mnPoolDefault from "/ui/app/components/mn_pool_default.js";
 import mnJquery from "/ui/app/components/mn_jquery.js";
 import mnPermissions from "/ui/app/components/mn_permissions.js";
+import mnSelect from "/ui/app/components/directives/mn_select/mn_select.js";
 
 import Adapter from "./adapter.js";
 
@@ -34,7 +35,8 @@ angular.module('eventing', [
     uiRouter,
     mnPoolDefault,
     mnJquery,
-    mnPermissions
+    mnPermissions,
+    mnSelect
   ])
   // Controller for the summary page.
   .controller('SummaryCtrl', ['$q', '$scope', '$rootScope', '$state',
@@ -1102,8 +1104,9 @@ angular.module('eventing', [
       };
 
       self.isFormInvalid = function() {
-        return FormValidationService.isFormInvalid(self, $scope.bindings,
-          $scope.formCtrl.createAppForm.source_bucket.$viewValue);
+        return $scope.formCtrl.createAppForm.source_bucket &&
+          FormValidationService.isFormInvalid(
+            self, $scope.bindings, $scope.formCtrl.createAppForm.source_bucket.$viewValue);
       };
 
       self.isFuncNameUndefined = function() {
@@ -2468,12 +2471,12 @@ angular.module('eventing', [
             form.timer_context_size.$error.min ||
             form.timer_context_size.$error.max ||
             form.timer_context_size.$error.isnan ||
-            formCtrl.metadataBuckets.indexOf(form.metadata_bucket.$viewValue) === -1 ||
-            formCtrl.metadataScopes.indexOf(form.metadata_scope.$viewValue) === -1 ||
-            formCtrl.metadataCollections.indexOf(form.metadata_collection.$viewValue) === -1 ||
-            formCtrl.sourceBuckets.indexOf(form.source_bucket.$viewValue) === -1 ||
-            formCtrl.sourceScopes.indexOf(form.source_scope.$viewValue) === -1 ||
-            formCtrl.sourceCollections.indexOf(form.source_collection.$viewValue) === -1 ||
+            !formCtrl.metadataBuckets.includes(form.metadata_bucket && form.metadata_bucket.$viewValue) ||
+            !formCtrl.metadataScopes.includes(form.metadata_scope && form.metadata_scope.$viewValue) ||
+            !formCtrl.metadataCollections.includes(form.metadata_collection && form.metadata_collection.$viewValue) ||
+            !formCtrl.sourceBuckets.includes(form.source_bucket && form.source_bucket.$viewValue) ||
+            !formCtrl.sourceScopes.includes(form.source_scope && form.source_scope.$viewValue) ||
+            !formCtrl.sourceCollections.includes(form.source_collection && form.source_collection.$viewValue) ||
             form.appname.$error.appnameInvalid || bindingError ||
             hostnameError ||
             form.dcp_stream_boundary.$error || constantLiteralError;

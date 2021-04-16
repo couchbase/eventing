@@ -28,25 +28,35 @@
           <span class="icon fa-info fa-stack-1x"></span>
         </span>
         <div class="row items-bottom">
-          <select ng-disabled="!(appModel.status == 'undeployed') && !formCtrl.isDialog"
+          <mn-select
+            mn-disabled="!(appModel.status == 'undeployed') && !formCtrl.isDialog"
             ng-model="appModel.depcfg.source_bucket"
             ng-init="formCtrl.populateSourceScopes(appModel.depcfg.source_bucket)"
-            ng-change="formCtrl.populateSourceScopes(appModel.depcfg.source_bucket)"
-            ng-options="bucket for bucket in formCtrl.sourceBuckets"
-            name="source_bucket" class="margin-right-quarter">
-          </select>
-          <select ng-disabled="!(appModel.status == 'undeployed') && !formCtrl.isDialog"
+            on-select="formCtrl.populateSourceScopes(selectedOption)"
+            values="formCtrl.sourceBuckets"
+            name="source_bucket"
+            class="margin-right-quarter width-12"
+            has-search="true">
+          </mn-select>
+          <mn-select
+            mn-disabled="!(appModel.status == 'undeployed') && !formCtrl.isDialog"
             ng-model="appModel.depcfg.source_scope"
+            values="formCtrl.sourceScopes"
             ng-init="formCtrl.populateSourceCollections(appModel.depcfg.source_scope)"
-            ng-change="formCtrl.populateSourceCollections(appModel.depcfg.source_scope)"
-            ng-options="scope for scope in formCtrl.sourceScopes"
-            name="source_scope" class="margin-right-quarter">
-          </select>
-          <select ng-disabled="!(appModel.status == 'undeployed') && !formCtrl.isDialog"
+            on-select="formCtrl.populateSourceCollections(selectedOption)"
+            has-search="true"
+            name="source_scope"
+            class="margin-right-quarter width-12">
+          </mn-select>
+          <mn-select
+            name="source_collection"
+            class="width-12"
+            mn-disabled="!(appModel.status == 'undeployed') && !formCtrl.isDialog"
             ng-model="appModel.depcfg.source_collection"
-            ng-options="collection for collection in formCtrl.sourceCollections"
-            name="source_collection">
-          </select>
+            values="formCtrl.sourceCollections"
+            has-search="true"
+            mn-horizontal-align="'right'">
+          </mn-select>
         </div>
 
         <div class="error field-error"
@@ -70,25 +80,35 @@
         </span>
 
         <div class="row items-bottom">
-          <select ng-disabled="!(appModel.status == 'undeployed') && !formCtrl.isDialog"
+          <mn-select
+            mn-disabled="!(appModel.status == 'undeployed') && !formCtrl.isDialog"
             ng-model="appModel.depcfg.metadata_bucket"
             ng-init="formCtrl.populateMetadataScopes(appModel.depcfg.metadata_bucket)"
-            ng-change="formCtrl.populateMetadataScopes(appModel.depcfg.metadata_bucket)"
-            ng-options="bucket for bucket in formCtrl.metadataBuckets"
-            name="metadata_bucket" class="margin-right-quarter">
-          </select>
-          <select ng-disabled="!(appModel.status == 'undeployed') && !formCtrl.isDialog"
+            on-select="formCtrl.populateMetadataScopes(selectedOption)"
+            values="formCtrl.metadataBuckets"
+            has-search="true"
+            name="metadata_bucket"
+            class="margin-right-quarter width-12">
+          </mn-select>
+          <mn-select
+            mn-disabled="!(appModel.status == 'undeployed') && !formCtrl.isDialog"
             ng-model="appModel.depcfg.metadata_scope"
             ng-init="formCtrl.populateMetadataCollections(appModel.depcfg.metadata_scope)"
-            ng-change="formCtrl.populateMetadataCollections(appModel.depcfg.metadata_scope)"
-            ng-options="scope for scope in formCtrl.metadataScopes"
-            name="metadata_scope" class="margin-right-quarter">
-          </select>
-          <select ng-disabled="!(appModel.status == 'undeployed') && !formCtrl.isDialog"
+            on-select="formCtrl.populateMetadataCollections(selectedOption)"
+            values="formCtrl.metadataScopes"
+            has-search="true"
+            name="metadata_scope"
+            class="margin-right-quarter width-12">
+          </mn-select>
+          <mn-select
+            mn-disabled="!(appModel.status == 'undeployed') && !formCtrl.isDialog"
             ng-model="appModel.depcfg.metadata_collection"
-            ng-options="collection for collection in formCtrl.metadataCollections"
-            name="metadata_collection">
-          </select>
+            values="formCtrl.metadataCollections"
+            has-search="true"
+            name="metadata_collection"
+            mn-horizontal-align="'right'"
+            class="width-12">
+          </mn-select>
         </div>
         <div class="error field-error"
           ng-show="formCtrl.srcMetaSameBucket(appModel)">
