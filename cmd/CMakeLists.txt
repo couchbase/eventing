@@ -38,7 +38,8 @@ IF(BUILD_ENTERPRISE)
     LIST(APPEND CGO_LIBRARY_DIRS ${evaluator_BINARY_DIR})
 ENDIF()
 
-GoModBuild (TARGET eventing-producer PACKAGE github.com/couchbase/eventing/cmd/producer
+GoInstall(TARGET eventing-producer PACKAGE github.com/couchbase/eventing/cmd/producer
+  GOPATH "${PROJECT_SOURCE_DIR}/../../../../.." "${GODEPSDIR}"
   INSTALL_PATH bin OUTPUT eventing-producer
   CGO_INCLUDE_DIRS "${CGO_INCLUDE_DIRS}"
   CGO_LIBRARY_DIRS "${CGO_LIBRARY_DIRS}"
