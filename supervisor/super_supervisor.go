@@ -264,6 +264,10 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 					s.appListRWMutex.Unlock()
 
 					if err := util.MetaKvDelete(MetakvAppsRetryPath+appName, nil); err != nil {
+						util.Retry(util.NewExponentialBackoff(), &s.retryCount, undeployFunctionCallback, s, appName)
+						s.appListRWMutex.Lock()
+						delete(s.bootstrappingApps, appName)
+						s.appListRWMutex.Unlock()
 						logging.Errorf("%s [%d] Function: %s failed to delete from metakv retry path, err : %v",
 							logPrefix, s.runningFnsCount(), appName, err)
 						return err
@@ -281,6 +285,9 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 					if !resumed {
 						err = s.spawnApp(appName)
 						if err != nil {
+							s.appListRWMutex.Lock()
+							delete(s.bootstrappingApps, appName)
+							s.appListRWMutex.Unlock()
 							logging.Errorf("%s [%d] Function: %s spawning error: %v", logPrefix, s.runningFnsCount(), appName, err)
 							return nil
 						}
@@ -672,11 +679,13 @@ func (s *SuperSupervisor) spawnApp(appName string) error {
 
 	err := s.WatchBucket(p.SourceBucket(), appName)
 	if err != nil {
+		util.Retry(util.NewExponentialBackoff(), &s.retryCount, undeployFunctionCallback, s, appName)
 		return err
 	}
 	err = s.WatchBucket(p.MetadataBucket(), appName)
 	if err != nil {
 		s.UnwatchBucket(p.SourceBucket(), appName)
+		util.Retry(util.NewExponentialBackoff(), &s.retryCount, undeployFunctionCallback, s, appName)
 		return err
 	}
 
