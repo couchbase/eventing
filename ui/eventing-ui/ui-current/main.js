@@ -1,5 +1,6 @@
 import angular from "/ui/web_modules/angular.js";
 import app from "/ui/app/app.js";
+import { mnLazyload } from "/ui/app/mn.app.imports.js";
 
 import { NgModule } from '/ui/web_modules/@angular/core.js';
 import { UIRouterUpgradeModule } from '/ui/web_modules/@uirouter/angular-hybrid.js';
@@ -27,14 +28,8 @@ class EventingUI {
             states: [{
               name: "app.admin.eventing.**",
               url: "/eventing",
-              lazyLoad: ($transition$) => {
-                return import(
-                  '/_p/ui/event/ui-current/eventing.js').then(
-                  m => {
-                    $transition$.injector().get('$ocLazyLoad')
-                      .load({ name: 'eventing' });
-                  });
-              }
+              lazyLoad: ($transition$) =>
+                mnLazyload('/_p/ui/event/ui-current/eventing.js', 'eventing', $transition$)
             }]
           })
         ]
