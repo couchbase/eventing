@@ -372,29 +372,35 @@
                 <small> bucket.scope.collection</small>
               </label>
               <div class="row items-bottom">
-                <select
-                  ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
+                <mn-select
+                  mn-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
                   ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].name"
-                  ng-change="formCtrl.populateScope((formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].name, $index)"
-                  ng-options="bucket for bucket in formCtrl.sourceBuckets">
-                  <option value=""></option>
-                </select>
+                  ng-init="formCtrl.populateScope((formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].name, $index)"
+                  on-select="formCtrl.populateScope(selectedOption, $index)"
+                  values="formCtrl.sourceBuckets"
+                  class="margin-right-quarter width-12"
+                  has-search="true">
+                </mn-select>
                 .
-                <select
-                  ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
+                <mn-select
+                  mn-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
                   ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].scope"
-                  ng-change="formCtrl.populateCollections((formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].scope, $index)"
-                  ng-options="scope for scope in formCtrl.scopes[$index]">
-                  <option value=""></option>
-                </select>
+                  ng-init="formCtrl.populateCollections((formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].scope, $index)"
+                  on-select="formCtrl.populateCollections(selectedOption, $index)"
+                  mn-placeholder="formCtrl.sourceBuckets == []? '' : '_default'"
+                  values="formCtrl.scopes[$index]"
+                  class="margin-right-quarter width-12"
+                  has-search="true">
+                </mn-select>
                 .
-                <select
-                  ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
+                <mn-select
+                  mn-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
                   ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].collection"
-                  ng-options="collection for collection in formCtrl.collections[$index]">
-                  <option value=""></option>
-                  <!-- empty <option> fixes layout of subsequent elements -->
-                </select>
+                  values="formCtrl.collections[$index]"
+                  class="margin-right-quarter width-12"
+                  mn-placeholder="formCtrl.sourceBuckets == []? '' : '_default'"
+                  has-search="true">
+                </mn-select>
               </div>
             </div>
             <div class="margin-left-1">

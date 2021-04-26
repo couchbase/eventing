@@ -1206,6 +1206,20 @@ angular.module('eventing', [
       // TODO : The following two lines may not be needed as we don't allow the user to edit
       //        the source and metadata buckets in the settings page.
 
+      if(appModel.depcfg.source_scope == "") {
+        appModel.depcfg.source_scope = "_default";
+      }
+      if(appModel.depcfg.metadata_scope == "") {
+        appModel.depcfg.metadata_scope = "_default";
+      }
+
+      if(appModel.depcfg.source_collection == "") {
+        appModel.depcfg.source_collection = "_default";
+      }
+      if(appModel.depcfg.metadata_collection == "") {
+        appModel.depcfg.metadata_collection = "_default";
+      }
+
       self.sourceBuckets = bucketsResolve;
       self.metadataBuckets = bucketsResolve.reverse();
       self.sourceCollections = [appModel.depcfg.source_collection];
