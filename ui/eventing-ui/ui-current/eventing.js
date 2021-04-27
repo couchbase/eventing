@@ -9,7 +9,6 @@ import ace from '/ui/libs/ace/ace-wrapper.js';
 import uiRouter from "/ui/web_modules/@uirouter/angularjs.js";
 import uiAce from "/ui/libs/ui-ace.js";
 import mnPoolDefault from "/ui/app/components/mn_pool_default.js";
-import mnJquery from "/ui/app/components/mn_jquery.js";
 import mnPermissions from "/ui/app/components/mn_permissions.js";
 import mnSelect from "/ui/app/components/directives/mn_select/mn_select.js";
 
@@ -34,7 +33,6 @@ angular.module('eventing', [
     uiAce,
     uiRouter,
     mnPoolDefault,
-    mnJquery,
     mnPermissions,
     mnSelect
   ])
@@ -784,9 +782,8 @@ angular.module('eventing', [
   ])
   // Controller for the buttons in header.
   .controller('HeaderCtrl', ['$q', '$scope', '$uibModal', '$state',
-    'mnPoolDefault', 'ApplicationService', 'jQuery',
-    function($q, $scope, $uibModal, $state, mnPoolDefault, ApplicationService,
-      $) {
+    'mnPoolDefault', 'ApplicationService',
+    function($q, $scope, $uibModal, $state, mnPoolDefault, ApplicationService) {
       var self = this;
       self.isEventingRunning = true;
 
@@ -951,7 +948,7 @@ angular.module('eventing', [
           reader.readAsText(this.files[0]);
         }
 
-        var loadConfigElement = $("#loadConfig")[0];
+        var loadConfigElement = document.getElementById("loadConfig");
         loadConfigElement.value = null;
         loadConfigElement.addEventListener('change', handleFileSelect,
           false);
@@ -1492,9 +1489,8 @@ angular.module('eventing', [
   // Controller for editing handler code.
   .controller('HandlerCtrl', ['$q', '$uibModal', '$timeout', '$state', '$scope',
     '$rootScope', '$stateParams', '$transitions', 'ApplicationService',
-    'jQuery',
     function($q, $uibModal, $timeout, $state, $scope, $rootScope,
-      $stateParams, $transitions, ApplicationService, $) {
+      $stateParams, $transitions, ApplicationService) {
       var self = this,
         isDebugOn = false,
         debugScope = $scope.$new(true),
@@ -1626,12 +1622,13 @@ angular.module('eventing', [
 
         // Make the ace editor responsive to changes in browser dimensions.
         function resizeEditor() {
-          var handlerEditor = $('#handler-editor');
+          var handlerEditor = document.getElementById('handler-editor');
           //handlerEditor.width($(window).width() * 0.85);
-          handlerEditor.height($(window).height() * 0.7);
+          if(!handlerEditor) return;
+          handlerEditor.style.height = (window.innerHeight * 0.7) + "px";
         }
 
-        $(window).resize(resizeEditor);
+        window.addEventListener('resize', resizeEditor);
         resizeEditor();
       };
 
@@ -1895,11 +1892,12 @@ angular.module('eventing', [
     }
   ])
   // Controller to copy the debug URL.
-  .controller('DebugCtrl', ['jQuery', function($) {
+  .controller('DebugCtrl', [function() {
     var self = this;
 
     self.copyUrl = function() {
-      $('#debug-url').select();
+      var element = document.getElementById("debug-url");
+      element.select();
       document.execCommand('copy');
     };
 
