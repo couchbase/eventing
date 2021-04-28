@@ -249,4 +249,6 @@ std::string BuildUrl(const std::string &host, const std::string &path);
 
 int64_t GetUnixTime();
 long ConvertSecondsToMicroSeconds(long time);
+void ReplaceSubstringsInPlace(std::string &subject, const std::string &search,
+                              const std::string &replace, int count);
 #endif
