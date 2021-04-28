@@ -16,8 +16,11 @@
     </span>
     <!--Deploy action-->
     <div ng-if="action==='deploy'">
-      <p>
-        Execute the new function for all invocations henceforth.
+      <p ng-if="settings.changeFeedBoundary == 'from_now'">
+        Deploy the function and process all new mutations.
+      </p>
+      <p ng-if="!(settings.changeFeedBoundary == 'from_now')">
+        Deploy the function and process all mutations, starting from the beginning.
       </p>
       <div class="formrow">
         Feed boundary:
