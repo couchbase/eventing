@@ -521,7 +521,7 @@ func (bw *bucketWatchStruct) RefreshBucketManifestOnUIDChange(muid, restPort str
 		return false, nil
 	}
 
-	if muid != "" && bw.b.Manifest.UID == muid {
+	if muid != "" && bw.b.Manifest != nil && bw.b.Manifest.UID == muid {
 		return false, nil
 	}
 	return true, bw.b.RefreshBucketManifest()
