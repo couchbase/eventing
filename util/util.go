@@ -294,6 +294,7 @@ func LocalEventingServiceHost(auth, hostaddress string) (string, error) {
 	return srvAddr, nil
 }
 
+// empty scope and collection argument will check for bucket existence
 func CheckKeyspaceExist(bucket, scope, collection, hostaddress string) bool {
 	cic, err := FetchClusterInfoClient(hostaddress)
 	if err != nil {
@@ -314,8 +315,12 @@ func CheckKeyspaceExist(bucket, scope, collection, hostaddress string) bool {
 	if len(kvAddrs) == 0 {
 		return false
 	}
-	_, err = cinfo.GetCollectionID(bucket, scope, collection)
-	return !(err == collections.SCOPE_NOT_FOUND || err == collections.COLLECTION_NOT_FOUND)
+
+	if scope != "" && collection != "" {
+		_, err = cinfo.GetCollectionID(bucket, scope, collection)
+		return !(err == collections.SCOPE_NOT_FOUND || err == collections.COLLECTION_NOT_FOUND)
+	}
+	return true
 }
 
 func CountActiveKVNodes(bucket, hostaddress string) int {

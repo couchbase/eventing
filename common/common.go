@@ -6,6 +6,7 @@ import (
 
 	"github.com/couchbase/cbauth/service"
 	couchbase "github.com/couchbase/eventing/dcp"
+	"github.com/couchbase/gocb/v2"
 )
 
 var BucketNotWatched = errors.New("Bucket not being watched")
@@ -306,6 +307,7 @@ type EventingSuperSup interface {
 	GetLocallyDeployedApps() map[string]string
 	GetMetaStoreStats(appName string) map[string]uint64
 	GetBucket(bucketName, appName string) (*couchbase.Bucket, error)
+	GetMetadataHandle(bucketName, scopeName, collectionName, appName string) (*gocb.Collection, error)
 	GetCollectionID(bucketName, scopeName, collectionName string) (uint32, error)
 	GetCurrentManifestId(bucketName string) (string, error)
 	GetSeqsProcessed(appName string) map[int]int64
@@ -316,7 +318,6 @@ type EventingSuperSup interface {
 	PlannerStats(appName string) []*PlannerNodeVbMapping
 	RebalanceStatus() bool
 	RebalanceTaskProgress(appName string) (*RebalanceProgress, error)
-	UnwatchBucket(bucketName, appName string)
 	RemoveProducerToken(appName string)
 	RestPort() string
 	SignalStopDebugger(appName string) error

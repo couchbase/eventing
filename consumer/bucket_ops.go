@@ -50,56 +50,6 @@ var vbTakeoverCallback = func(args ...interface{}) error {
 	return err
 }
 
-var gocbConnectMetaBucketCallback = func(args ...interface{}) error {
-	logPrefix := "Consumer::gocbConnectMetaBucketCallback"
-
-	c := args[0].(*Consumer)
-
-	if atomic.LoadUint32(&c.isTerminateRunning) == 1 {
-		logging.Tracef("%s [%s:%s:%d] Exiting as worker is terminating",
-			logPrefix, c.workerName, c.tcpPort, c.Pid())
-		return nil
-	}
-
-	kvNodes := c.getKvNodes()
-
-	connStr := "couchbase://"
-	for index, kvNode := range kvNodes {
-		if index != 0 {
-			connStr = connStr + ","
-		}
-		connStr = connStr + kvNode
-	}
-
-	if util.IsIPv6() {
-		connStr += "?ipv6=allow"
-	}
-
-	authenticator := &util.DynamicAuthenticator{Caller: logPrefix}
-	cluster, err := gocb.Connect(connStr, gocb.ClusterOptions{Authenticator: authenticator})
-	if err != nil {
-		logging.Errorf("%s [%s:%d] Connect to cluster %rm failed, err: %v",
-			logPrefix, c.workerName, c.producer.LenRunningConsumers(), connStr, err)
-		return err
-	}
-
-	bucket := cluster.Bucket(c.producer.MetadataBucket())
-	err = bucket.WaitUntilReady(5*time.Second, nil)
-	if err != nil {
-		cluster.Close(nil)
-		logging.Errorf("%s [%s:%d] Failed to connect to metadata bucket %s (bucket got deleted?) , err: %v",
-			logPrefix, c.workerName, c.producer.LenRunningConsumers(), c.producer.MetadataBucket(), err)
-		return err
-	}
-
-	c.gocbMetaHandle = bucket.Scope(c.producer.MetadataScope()).Collection(c.producer.MetadataCollection())
-	c.gocbCluster = cluster
-	logging.Infof("%s [%s:%d] Successfully connected to metadata Handle %s connStr: %rs",
-		logPrefix, c.workerName, c.producer.LenRunningConsumers(), c.producer.MetadataBucket(), connStr)
-
-	return nil
-}
-
 var setOpCallback = func(args ...interface{}) error {
 	logPrefix := "Consumer::setOpCallback"
 
