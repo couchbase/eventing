@@ -71,6 +71,8 @@ angular.module('eventing', [
         self.appList[app].warnings = getWarnings(self.appList[app]);
       }
 
+      checkAndAddDefaults();
+
       // run deployedAppsTicker() every 2 seconds, but only while Eventing view is active
       new mnPoller($scope, deployedAppsTicker).setInterval(self
         .statusPollMillis).cycle();
@@ -214,13 +216,15 @@ angular.module('eventing', [
 
 
             // Fetch at the beginning of every cycle
-            if(self.pollingCount == 0)
+            if (self.pollingCount == 0)
               fetchDeployedStats(statsConfig);
             // Only does the fetch if we have one or more items deploying or deployed in the UI
             self.pollingCount += 1;
             // Fetch DeployesdStats once every scrapeInterval/2 seconds
-            ApplicationService.server.getScrapeInterval().then(function(value){
-              if (self.pollingCount >= ((value * 1000) / (self.statusPollMillis * 2))) {
+            ApplicationService.server.getScrapeInterval().then(function(
+              value) {
+              if (self.pollingCount >= ((value * 1000) / (self
+                  .statusPollMillis * 2))) {
                 self.pollingCount = 0;
               }
             });
@@ -241,9 +245,9 @@ angular.module('eventing', [
         if (ary_a && ary_a.aggregate && ary_a.aggregate.length > 0) {
           var val_a = null;
           // sometimes the most recent stat is null, try to look into the past
-          for (var i = ary_a.aggregate.length - 1; i>=0; i--) {
-              val_a = ary_a.aggregate[i];
-              if (val_a !== null) break;
+          for (var i = ary_a.aggregate.length - 1; i >= 0; i--) {
+            val_a = ary_a.aggregate[i];
+            if (val_a !== null) break;
           }
           if (!isNaN(val_a)) {
             ret = val_a;
@@ -397,7 +401,28 @@ angular.module('eventing', [
               appname]);
           }
           self.needAppList.clear();
+          checkAndAddDefaults();
         });
+      }
+
+      function checkAndAddDefaults() {
+        for (var app of Object.keys(self.appList)) {
+          if (!self.appList[app].depcfg.source_scope) {
+            self.appList[app].depcfg.source_scope = "_default";
+          }
+
+          if (!self.appList[app].depcfg.source_collection) {
+            self.appList[app].depcfg.source_collection = "_default";
+          }
+
+          if (!self.appList[app].depcfg.metadata_scope) {
+            self.appList[app].depcfg.metadata_scope = "_default";
+          }
+
+          if (!self.appList[app].depcfg.metadata_collection) {
+            self.appList[app].depcfg.metadata_collection = "_default";
+          }
+        }
       }
 
       self.isAppListEmpty = function() {
@@ -830,7 +855,8 @@ angular.module('eventing', [
                 responseCode, response.data));
             } else {
               ApplicationService.server.showSuccessAlert(
-                'Operation successful. Update the code and save, or return back to Eventing summary page.');
+                'Operation successful. Update the code and save, or return back to Eventing summary page.'
+                );
             }
           })
           .catch(function(errResponse) { // Upon cancel.
@@ -1106,7 +1132,8 @@ angular.module('eventing', [
       self.isFormInvalid = function() {
         return $scope.formCtrl.createAppForm.source_bucket &&
           FormValidationService.isFormInvalid(
-            self, $scope.bindings, $scope.formCtrl.createAppForm.source_bucket.$viewValue);
+            self, $scope.bindings, $scope.formCtrl.createAppForm
+            .source_bucket.$viewValue);
       };
 
       self.isFuncNameUndefined = function() {
@@ -1206,17 +1233,17 @@ angular.module('eventing', [
       // TODO : The following two lines may not be needed as we don't allow the user to edit
       //        the source and metadata buckets in the settings page.
 
-      if(appModel.depcfg.source_scope == "") {
+      if (appModel.depcfg.source_scope == "") {
         appModel.depcfg.source_scope = "_default";
       }
-      if(appModel.depcfg.metadata_scope == "") {
+      if (appModel.depcfg.metadata_scope == "") {
         appModel.depcfg.metadata_scope = "_default";
       }
 
-      if(appModel.depcfg.source_collection == "") {
+      if (appModel.depcfg.source_collection == "") {
         appModel.depcfg.source_collection = "_default";
       }
-      if(appModel.depcfg.metadata_collection == "") {
+      if (appModel.depcfg.metadata_collection == "") {
         appModel.depcfg.metadata_collection = "_default";
       }
 
@@ -1335,10 +1362,11 @@ angular.module('eventing', [
         if (JSON.stringify(appModel.depcfg) !== JSON.stringify(config)) {
           $scope.appModel.depcfg = config;
           ApplicationService.tempStore.saveApp($scope.appModel);
-          ApplicationService.local.saveApp(new Application($scope.appModel));
+          ApplicationService.local.saveApp(new Application($scope
+          .appModel));
           ApplicationService.server.showWarningAlert(
             'Bindings/Settings changed. Deploy or Resume function for changes to take effect.'
-            );
+          );
         }
 
         // Update local changes.
@@ -1382,12 +1410,16 @@ angular.module('eventing', [
       };
 
       self.copyNamespace = function(destinationConfig, sourceConfig) {
-        destinationConfig["source_bucket"]       = sourceConfig["source_bucket"];
-        destinationConfig["source_scope"]        = sourceConfig["source_scope"];
-        destinationConfig["source_collection"]   = sourceConfig["source_collection"];
-        destinationConfig["metadata_bucket"]     = sourceConfig["metadata_bucket"];
-        destinationConfig["metadata_scope"]      = sourceConfig["metadata_scope"];
-        destinationConfig["metadata_collection"] = sourceConfig["metadata_collection"];
+        destinationConfig["source_bucket"] = sourceConfig["source_bucket"];
+        destinationConfig["source_scope"] = sourceConfig["source_scope"];
+        destinationConfig["source_collection"] = sourceConfig[
+          "source_collection"];
+        destinationConfig["metadata_bucket"] = sourceConfig[
+          "metadata_bucket"];
+        destinationConfig["metadata_scope"] = sourceConfig[
+        "metadata_scope"];
+        destinationConfig["metadata_collection"] = sourceConfig[
+          "metadata_collection"];
       };
 
       self.srcMetaSameBucket = function(appModel) {
@@ -1581,7 +1613,8 @@ angular.module('eventing', [
           var keyboardDisable = function(data, hash, keyString, keyCode,
             event) {
             var nowTime = new Date().getTime();
-            if ((nowTime - startTime) > 5 * 1e3){ // Refresh Rate of 5 seconds
+            if ((nowTime - startTime) > 5 *
+              1e3) { // Refresh Rate of 5 seconds
               startTime = nowTime;
               ApplicationService.server.showWarningAlert(
                 'The function is deployed. Please undeploy or pause the function in order to edit'
@@ -1675,7 +1708,8 @@ angular.module('eventing', [
                   console.error(errResponse);
                 })
                 .finally(function(response) {
-                  if (appSaved && action == 'SaveAndReturnToEventingSummary') {
+                  if (appSaved && action ==
+                    'SaveAndReturnToEventingSummary') {
                     self.warning = false;
 
                     $state.go('app.admin.eventing.summary');
@@ -1934,7 +1968,7 @@ angular.module('eventing', [
             return appManager.getAppByName(appName);
           },
           saveApp: function(appModel) {
-              appManager.pushApp(appModel);
+            appManager.pushApp(appModel);
           }
         },
         public: {
@@ -2234,7 +2268,8 @@ angular.module('eventing', [
           },
           showWarningAlert: function(message, timeout) {
             // Warnings stay on screen for 10s, can manually close using 'x'
-            timeout = timeout == undefined? 1000 * 10 : (timeout == -1 ? undefined : timeout)
+            timeout = timeout == undefined ? 1000 * 10 : (timeout == -1 ?
+              undefined : timeout)
             mnAlertsService.formatAndSetAlerts(message, 'warning', timeout);
           },
           showErrorAlert: function(message) {
@@ -2265,8 +2300,9 @@ angular.module('eventing', [
           },
           getScrapeInterval: function() {
             return $http.get("/settings/metrics/").then(
-              function(response){
-                return response.data.scrapeInterval ? response.data.scrapeInterval : 10;
+              function(response) {
+                return response.data.scrapeInterval ? response.data
+                  .scrapeInterval : 10;
               }
             )
           }
@@ -2430,7 +2466,8 @@ angular.module('eventing', [
             }
 
             if (binding.type === 'alias' && bindingsValid === true) {
-              if (binding.name === null || binding.scope === null || binding.collection === null)
+              if (binding.name === null || binding.scope === null || binding
+                .collection === null)
                 bindingError = true;
             }
 
@@ -2485,12 +2522,19 @@ angular.module('eventing', [
             form.timer_context_size.$error.min ||
             form.timer_context_size.$error.max ||
             form.timer_context_size.$error.isnan ||
-            !formCtrl.metadataBuckets.includes(form.metadata_bucket && form.metadata_bucket.$viewValue) ||
-            !formCtrl.metadataScopes.includes(form.metadata_scope && form.metadata_scope.$viewValue) ||
-            !formCtrl.metadataCollections.includes(form.metadata_collection && form.metadata_collection.$viewValue) ||
-            !formCtrl.sourceBuckets.includes(form.source_bucket && form.source_bucket.$viewValue) ||
-            !formCtrl.sourceScopes.includes(form.source_scope && form.source_scope.$viewValue) ||
-            !formCtrl.sourceCollections.includes(form.source_collection && form.source_collection.$viewValue) ||
+            !formCtrl.metadataBuckets.includes(form.metadata_bucket && form
+              .metadata_bucket.$viewValue) ||
+            !formCtrl.metadataScopes.includes(form.metadata_scope && form
+              .metadata_scope.$viewValue) ||
+            !formCtrl.metadataCollections.includes(form
+              .metadata_collection && form.metadata_collection.$viewValue
+              ) ||
+            !formCtrl.sourceBuckets.includes(form.source_bucket && form
+              .source_bucket.$viewValue) ||
+            !formCtrl.sourceScopes.includes(form.source_scope && form
+              .source_scope.$viewValue) ||
+            !formCtrl.sourceCollections.includes(form.source_collection &&
+              form.source_collection.$viewValue) ||
             form.appname.$error.appnameInvalid || bindingError ||
             hostnameError ||
             form.dcp_stream_boundary.$error || constantLiteralError;
@@ -2547,7 +2591,7 @@ angular.module('eventing', [
             ]
           },
           data: {
-            parent: {name: 'Eventing', link: 'app.admin.eventing.summary'}
+            parent: { name: 'Eventing', link: 'app.admin.eventing.summary' }
           }
         });
     }
