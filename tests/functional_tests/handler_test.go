@@ -242,6 +242,13 @@ func TestDeployUndeployLoopNonDefaultSettings(t *testing.T) {
 		log.Println("Undeploying app:", handler)
 		setSettings(functionName, false, false, &commonSettings{})
 		waitForUndeployToFinish(functionName)
+		count := verifyBucketCount(0, 5, "eventing")
+		if count != 0 {
+			failAndCollectLogs(t, "For", "DeployUndeployLoopNonDefaultSettings",
+				"expected", 0,
+				"got", count,
+			)
+		}
 		checkIfProcessRunning("eventing-con")
 		bucketFlush("default")
 		bucketFlush("hello-world")
@@ -465,6 +472,13 @@ func TestDeployUndeployLoopTimer(t *testing.T) {
 		log.Println("Undeploying app:", handler)
 		setSettings(functionName, false, false, &commonSettings{})
 		waitForUndeployToFinish(functionName)
+		count := verifyBucketCount(0, 5, "eventing")
+		if count != 0 {
+			failAndCollectLogs(t, "For", "DeployUndeployLoopTimer",
+				"expected", 0,
+				"got", count,
+			)
+		}
 		checkIfProcessRunning("eventing-con")
 		bucketFlush("default")
 		bucketFlush("hello-world")
