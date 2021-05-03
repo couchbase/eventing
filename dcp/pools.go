@@ -423,31 +423,43 @@ func (c *Client) runObserveStreamingEndpoint(path string,
 	}
 
 	reader := bufio.NewReader(res.Body)
-	defer res.Body.Close()
-	for {
-		if cancel != nil {
-			select {
-			case <-cancel:
-				break
-			default:
+
+	resChannel := make(chan []byte)
+	errorChannel := make(chan error, 1)
+	go func(resChannel chan<- []byte, errorChannel chan<- error) {
+		for {
+			bs, err := reader.ReadBytes('\n')
+			if err != nil {
+				errorChannel <- err
+				return
 			}
+			resChannel <- bs
 		}
+	}(resChannel, errorChannel)
 
-		bs, err := reader.ReadBytes('\n')
-		if err != nil {
-			return err
-		}
-		if len(bs) == 1 && bs[0] == '\n' {
-			continue
-		}
+	defer res.Body.Close()
 
-		object, err := decoder(bs)
-		if err != nil {
-			return err
-		}
+	for {
+		select {
+		case <-cancel:
+			return nil
 
-		err = callb(object)
-		if err != nil {
+		case bs := <-resChannel:
+			if len(bs) == 1 && bs[0] == '\n' {
+				continue
+			}
+
+			object, err := decoder(bs)
+			if err != nil {
+				return err
+			}
+
+			err = callb(object)
+			if err != nil {
+				return err
+			}
+
+		case err := <-errorChannel:
 			return err
 		}
 	}

@@ -357,26 +357,28 @@ func (s *SuperSupervisor) watchBucketChanges() {
 	}(delChannel)
 
 	selfRestart := func() {
+		if s.scn != nil {
+			s.scn.Close()
+		}
 		close(delChannel)
 		time.Sleep(time.Duration(s.servicesNotifierRetryTm) * time.Millisecond)
 		go s.watchBucketChanges()
 	}
 
 	hostPortAddr := net.JoinHostPort(util.Localhost(), s.restPort)
-	clusterAuthURL, err := util.ClusterAuthUrl(hostPortAddr)
-	if err != nil {
-		logging.Errorf("WatchBucketChanges ClusterAuthUrl(): %v\n", err)
-		selfRestart()
-		return
-	}
-
-	s.scn, err = util.NewServicesChangeNotifier(clusterAuthURL, "default")
+	var err error
+	s.scn, err = util.NewServicesChangeNotifier(hostPortAddr, "default")
 	if err != nil {
 		logging.Errorf("ClusterInfoClient NewServicesChangeNotifier(): %v\n", err)
 		selfRestart()
 		return
 	}
-	defer s.scn.Close()
+
+	s.bucketsRWMutex.Lock()
+	for bucketName, _ := range s.buckets {
+		s.scn.RunObserveCollectionManifestChanges(bucketName)
+	}
+	s.bucketsRWMutex.Unlock()
 
 	ticker := time.NewTicker(time.Duration(s.servicesNotifierRetryTm) * time.Minute)
 	defer ticker.Stop()

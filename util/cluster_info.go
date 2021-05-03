@@ -755,24 +755,22 @@ func (c *ClusterInfoClient) GetClusterInfoCache() *ClusterInfoCache {
 
 func (c *ClusterInfoClient) watchClusterChanges() {
 	selfRestart := func() {
+		if c.scn != nil {
+			c.scn.Close()
+		}
 		time.Sleep(time.Duration(c.servicesNotifierRetryTm) * time.Millisecond)
 		go c.watchClusterChanges()
 	}
 
-	clusterAuthURL, err := ClusterAuthUrl(c.clusterURL)
-	if err != nil {
-		logging.Errorf("ClusterInfoClient ClusterAuthUrl(): %v\n", err)
-		selfRestart()
-		return
-	}
-
-	c.scn, err = NewServicesChangeNotifier(clusterAuthURL, c.pool)
+	var err error
+	c.scn, err = NewServicesChangeNotifier(c.clusterURL, c.pool)
 	if err != nil {
 		logging.Errorf("ClusterInfoClient NewServicesChangeNotifier(): %v\n", err)
 		selfRestart()
 		return
 	}
-	defer c.scn.Close()
+
+	c.checkAndObserveManifestChanges()
 
 	ticker := time.NewTicker(time.Duration(c.servicesNotifierRetryTm) * time.Minute)
 	defer ticker.Stop()
