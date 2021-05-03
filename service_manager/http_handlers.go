@@ -1631,7 +1631,7 @@ func (m *ServiceMgr) getTempStore(appName string) (application, *runtimeInfo) {
 				logging.Errorf("%s Function: %s failed to unmarshal data from metakv, err: %v", logPrefix, appName, uErr)
 				continue
 			}
-
+			m.addDefaultDeploymentConfig(&app)
 			if app.Name == appName {
 				info.Code = m.statusCodes.ok.Code
 				// Hide some internal settings from being exported
@@ -1666,6 +1666,7 @@ func (m *ServiceMgr) getTempStoreAll() []application {
 				continue
 			}
 			m.maybeDeleteLifeCycleState(&app)
+			m.addDefaultDeploymentConfig(&app)
 			applications = append(applications, app)
 		} else if err != nil {
 			logging.Errorf("%s Function: %s failed to read data from metakv, err: %v", logPrefix, fnName, err)
