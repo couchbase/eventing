@@ -28,8 +28,7 @@ class EventingUI {
             states: [{
               name: "app.admin.eventing.**",
               url: "/eventing",
-              lazyLoad: ($transition$) =>
-                mnLazyload('/_p/ui/event/ui-current/eventing.js', 'eventing', $transition$)
+              lazyLoad: mnLazyload('/_p/ui/event/ui-current/eventing.js', 'eventing')
             }]
           })
         ]
