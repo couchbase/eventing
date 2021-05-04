@@ -225,7 +225,7 @@
           </span>
           <input type="number" name="worker_count"
             ng-model="appModel.settings.worker_count"
-            ng-init="appModel.settings.worker_count = appModel.settings.worker_count ? appModel.settings.worker_count : 3"
+            ng-init="appModel.settings.worker_count = appModel.settings.worker_count ? appModel.settings.worker_count : 1"
             ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
             min="1" max="64">
           <div class="error field-error"
