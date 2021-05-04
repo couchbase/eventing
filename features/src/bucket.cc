@@ -175,6 +175,8 @@ Error Bucket::Connect() {
 
 Error Bucket::FormatErrorAndDestroyConn(const std::string &message,
                                         const lcb_STATUS &error) const {
+  auto isolate_data = UnwrapData(isolate_);
+  AddLcbException(isolate_data, error);
   std::stringstream err_msg;
   err_msg << message << ", err: " << lcb_strerror_long(error);
   lcb_destroy(connection_);

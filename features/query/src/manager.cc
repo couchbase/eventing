@@ -130,7 +130,7 @@ void QueryFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
       }
     }
 
-    auto retriable = IsRetriable(first_row.err_code);
+    auto retriable = (first_row.err_code == LCB_ERR_DML_FAILURE) || IsRetriable(first_row.err_code);
     if (!conn_refreshed && (first_row.is_client_auth_error ||
                             first_row.err_code == LCB_ERR_HTTP || retriable)) {
       query_mgr->RefreshTopConnection();
