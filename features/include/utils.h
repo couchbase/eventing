@@ -248,7 +248,12 @@ std::string GetConnectionStr(const std::string &end_point,
 std::string BuildUrl(const std::string &host, const std::string &path);
 
 int64_t GetUnixTime();
-long ConvertSecondsToMicroSeconds(long time);
+
+// If this function is used for LCB_XXX_timeout which takes in a uint32_t
+// the return value loses precision and is capped at 4294 seconds
+inline long ConvertSecondsToMicroSeconds(long time) { return time * 1e6; }
+inline long ConvertMicroSecondsToSeconds(long time) { return time / 1e6; }
+
 void ReplaceSubstringsInPlace(std::string &subject, const std::string &search,
                               const std::string &replace, int count);
 #endif

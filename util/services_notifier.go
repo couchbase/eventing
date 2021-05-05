@@ -33,15 +33,22 @@ var singletonServicesContainer struct {
 	notifiers map[string]*serviceNotifierInstance
 }
 
+type manifestObserver struct {
+	cancelCh chan bool
+	listener map[int]struct{}
+}
+
 type serviceNotifierInstance struct {
 	sync.Mutex
-	id          string
-	clusterUrl  string
-	pool        string
-	waiterCount int
-	client      couchbase.Client
-	valid       bool
-	waiters     map[int]chan Notification
+	id              string
+	clusterUrl      string
+	pool            string
+	waiterCount     int
+	client          couchbase.Client
+	valid           bool
+	waiters         map[int]chan Notification
+	cancelCh        chan bool
+	manifestWaiters map[string]*manifestObserver
 }
 
 func (instance *serviceNotifierInstance) getNotifyCallback(t NotificationType) func(interface{}) error {
@@ -58,11 +65,13 @@ func (instance *serviceNotifierInstance) getNotifyCallback(t NotificationType) f
 			Msg:  msg,
 		}
 
+		var filterWaiter map[int]struct{}
 		if t == CollectionManifestChangeNotification {
 			switch (msg).(type) {
 			case *couchbase.Bucket:
 				bucket := (msg).(*couchbase.Bucket)
 				logging.Infof("serviceChangeNotifier: received %s for bucket: %s", notifMsg, bucket.Name)
+				filterWaiter = instance.manifestWaiters[bucket.Name].listener
 			default:
 				errMsg := "Invalid msg type with CollectionManifestChangeNotification"
 				return errors.New(errMsg)
@@ -72,6 +81,11 @@ func (instance *serviceNotifierInstance) getNotifyCallback(t NotificationType) f
 		}
 
 		for id, w := range instance.waiters {
+			if filterWaiter != nil {
+				if _, ok := filterWaiter[id]; !ok {
+					continue
+				}
+			}
 			select {
 			case w <- notifMsg:
 			case <-time.After(notifyWaitTimeout):
@@ -88,7 +102,7 @@ func (instance *serviceNotifierInstance) getNotifyCallback(t NotificationType) f
 
 func (instance *serviceNotifierInstance) RunPoolObserver() {
 	poolCallback := instance.getNotifyCallback(PoolChangeNotification)
-	err := instance.client.RunObservePool(instance.pool, poolCallback, nil)
+	err := instance.client.RunObservePool(instance.pool, poolCallback, instance.cancelCh)
 	if err != nil {
 		logging.Warnf("servicesChangeNotifier: Connection terminated for pool notifier instance of %s, %s (%v)", instance.DebugStr(), instance.pool, err)
 	}
@@ -97,7 +111,7 @@ func (instance *serviceNotifierInstance) RunPoolObserver() {
 
 func (instance *serviceNotifierInstance) RunServicesObserver() {
 	servicesCallback := instance.getNotifyCallback(ServiceChangeNotification)
-	err := instance.client.RunObserveNodeServices(instance.pool, servicesCallback, nil)
+	err := instance.client.RunObserveNodeServices(instance.pool, servicesCallback, instance.cancelCh)
 	if err != nil {
 		logging.Warnf("servicesChangeNotifier: Connection terminated for services notifier instance of %s, %s (%v)", instance.DebugStr(), instance.pool, err)
 	}
@@ -109,17 +123,27 @@ func (instance *serviceNotifierInstance) RunObserveCollectionManifestChanges(buc
 	err := instance.client.RunObserveCollectionManifestChanges(instance.pool, bucket, collectionChangeCallback, stopChan)
 	if err != nil {
 		logging.Warnf("servicesChangeNotifier: Connection terminated for collection manifest notifier instance of %s, %s, bucket: %s, (%v)", instance.DebugStr(), instance.pool, bucket, err)
+		if !CheckKeyspaceExist(bucket, "", "", instance.clusterUrl) {
+			return
+		}
+		go instance.RunObserveCollectionManifestChanges(bucket, stopChan)
+		return
 	}
-	instance.cleanup()
 }
 
 func (instance *serviceNotifierInstance) cleanup() {
 	instance.Lock()
 	defer instance.Unlock()
+
 	if !instance.valid {
 		return
 	}
 
+	close(instance.cancelCh)
+	for bucketName, manifestObserve := range instance.manifestWaiters {
+		close(manifestObserve.cancelCh)
+		delete(instance.manifestWaiters, bucketName)
+	}
 	instance.valid = false
 	singletonServicesContainer.Lock()
 	for _, w := range instance.waiters {
@@ -137,6 +161,47 @@ func (instance *serviceNotifierInstance) DebugStr() string {
 	debugStr += instance.client.BaseURL.Host
 	return debugStr
 
+}
+
+func (instance *serviceNotifierInstance) RegisterCollectionWaiter(id int, bucketName string) {
+	instance.Lock()
+	defer instance.Unlock()
+
+	manifestObserve, ok := instance.manifestWaiters[bucketName]
+	if !ok {
+		manifestObserve = &manifestObserver{
+			cancelCh: make(chan bool),
+			listener: make(map[int]struct{}),
+		}
+		go instance.RunObserveCollectionManifestChanges(bucketName, manifestObserve.cancelCh)
+		instance.manifestWaiters[bucketName] = manifestObserve
+	}
+	manifestObserve.listener[id] = struct{}{}
+}
+
+func (instance *serviceNotifierInstance) UnregisterCollectionWaiter(id int, bucketName string) {
+	instance.Lock()
+	defer instance.Unlock()
+
+	manifestObserve, ok := instance.manifestWaiters[bucketName]
+	if !ok {
+		return
+	}
+
+	if _, ok := manifestObserve.listener[id]; ok {
+		delete(manifestObserve.listener, id)
+	}
+
+	if len(manifestObserve.listener) == 0 {
+		close(manifestObserve.cancelCh)
+		delete(instance.manifestWaiters, bucketName)
+	}
+}
+
+func (instance *serviceNotifierInstance) deleteWaiter(id int) {
+	instance.Lock()
+	defer instance.Unlock()
+	delete(instance.waiters, id)
 }
 
 type Notification struct {
@@ -159,7 +224,7 @@ type ServicesChangeNotifier struct {
 	instance *serviceNotifierInstance
 	ch       chan Notification
 	cancel   chan bool
-	buckets  map[string]chan bool
+	buckets  map[string]struct{}
 }
 
 func init() {
@@ -173,17 +238,24 @@ func NewServicesChangeNotifier(clusterUrl, pool string) (*ServicesChangeNotifier
 	id := clusterUrl + "-" + pool
 
 	if _, ok := singletonServicesContainer.notifiers[id]; !ok {
-		client, err := couchbase.Connect(clusterUrl)
+		clusterAuthUrl, err := ClusterAuthUrl(clusterUrl)
+		if err != nil {
+			logging.Errorf("ClusterInfoClient ClusterAuthUrl(): %v\n", err)
+			return nil, err
+		}
+		client, err := couchbase.Connect(clusterAuthUrl)
 		if err != nil {
 			return nil, err
 		}
 		instance := &serviceNotifierInstance{
-			id:         id,
-			client:     client,
-			clusterUrl: clusterUrl,
-			pool:       pool,
-			valid:      true,
-			waiters:    make(map[int]chan Notification),
+			id:              id,
+			client:          client,
+			clusterUrl:      clusterUrl,
+			pool:            pool,
+			valid:           true,
+			waiters:         make(map[int]chan Notification),
+			cancelCh:        make(chan bool),
+			manifestWaiters: make(map[string]*manifestObserver),
 		}
 		logging.Infof("servicesChangeNotifier: Creating new notifier instance for %s, %s", instance.DebugStr(), pool)
 
@@ -201,7 +273,7 @@ func NewServicesChangeNotifier(clusterUrl, pool string) (*ServicesChangeNotifier
 		ch:       make(chan Notification, 1),
 		cancel:   make(chan bool),
 		id:       notifier.waiterCount,
-		buckets:  make(map[string]chan bool),
+		buckets:  make(map[string]struct{}),
 	}
 
 	notifier.waiters[scn.id] = scn.ch
@@ -213,15 +285,16 @@ func (sn *ServicesChangeNotifier) RunObserveCollectionManifestChanges(bucketName
 	if _, ok := sn.buckets[bucketName]; ok {
 		return
 	}
-	sn.buckets[bucketName] = make(chan bool, 1)
-	go sn.instance.RunObserveCollectionManifestChanges(bucketName, sn.buckets[bucketName])
+	sn.instance.RegisterCollectionWaiter(sn.id, bucketName)
+	sn.buckets[bucketName] = struct{}{}
 }
 
 func (sn *ServicesChangeNotifier) StopObserveCollectionManifestChanges(bucketName string) {
 	if _, ok := sn.buckets[bucketName]; !ok {
 		return
 	}
-	close(sn.buckets[bucketName])
+
+	sn.instance.UnregisterCollectionWaiter(sn.id, bucketName)
 	delete(sn.buckets, bucketName)
 }
 
@@ -254,8 +327,9 @@ func (sn *ServicesChangeNotifier) GetNotifyCh() chan Notification {
 
 // Consumer can cancel and invalidate notifier object by calling Close()
 func (sn *ServicesChangeNotifier) Close() {
-	sn.instance.Lock()
-	defer sn.instance.Unlock()
+	for bucketName, _ := range sn.buckets {
+		sn.StopObserveCollectionManifestChanges(bucketName)
+	}
 	close(sn.cancel)
-	delete(sn.instance.waiters, sn.id)
+	sn.instance.deleteWaiter(sn.id)
 }

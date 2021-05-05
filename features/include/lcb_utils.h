@@ -86,10 +86,11 @@ bool IsRetriable(lcb_STATUS error);
 template <typename CmdType, typename Callable>
 std::pair<lcb_STATUS, Result>
 RetryLcbCommand(lcb_INSTANCE *instance, CmdType &cmd, int max_retry_count,
-                uint32_t max_retry_secs, Callable &&callable) {
+                uint32_t max_retry_microsecs, Callable &&callable) {
   int retry_count = 1;
   std::pair<lcb_STATUS, Result> result;
   auto start = GetUnixTime();
+  auto max_retry_secs = ConvertMicroSecondsToSeconds(max_retry_microsecs);
 
   while (true) {
     result = callable(instance, cmd);
