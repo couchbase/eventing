@@ -2696,8 +2696,22 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 					m.sendErrorInfo(w, tempInfo)
 					return
 				}
+			} else {
+				m.sendErrorInfo(w, runtimeInfo)
+				return
 			}
+
 			runtimeInfo.Info = fmt.Sprintf("Function: %s appcode stored in the metakv.", appName)
+			deprecatedFnsList := parser.ListDeprecatedFunctions(app.AppHandlers)
+			overloadedFnsList := parser.ListOverloadedFunctions(app.AppHandlers)
+			if len(deprecatedFnsList) > 0 {
+				jsonList, _ := json.Marshal(deprecatedFnsList)
+				runtimeInfo.Info = fmt.Sprintf("%s; It uses the following APIs that are Deprecated: %s", runtimeInfo.Info, jsonList)
+			}
+			if len(overloadedFnsList) > 0 {
+				jsonList, _ := json.Marshal(overloadedFnsList)
+				runtimeInfo.Info = fmt.Sprintf("%s; The following built-in APIs are Overloaded: %s", runtimeInfo.Info, jsonList)
+			}
 			m.sendRuntimeInfo(w, runtimeInfo)
 
 		default:
