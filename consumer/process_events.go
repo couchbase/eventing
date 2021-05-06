@@ -549,45 +549,59 @@ func (c *Consumer) startDcp(flogs couchbase.FailoverLog) error {
 				vbBlob.ManifestUID = currentManifestUID
 			}
 
-			if (vbBlob.NodeUUID == c.NodeUUID() || vbBlob.NodeUUID == "") &&
-				(vbBlob.AssignedWorker == c.ConsumerName() || vbBlob.AssignedWorker == "") {
+			if vbBlob.NodeUUID == c.NodeUUID() || vbBlob.NodeUUID == "" {
+				// this specifically addresses the corner case described in MB-46092
+				c.workerVbucketMapRWMutex.RLock()
+				_, consumerPresent := c.workerVbucketMap[vbBlob.AssignedWorker]
+				c.workerVbucketMapRWMutex.RUnlock()
 
-				if c.checkIfAlreadyEnqueued(vb) {
-					continue
-				} else {
-					c.addToEnqueueMap(vb)
-				}
+				if (vbBlob.AssignedWorker == c.ConsumerName() || vbBlob.AssignedWorker == "") || !consumerPresent {
+					if c.checkIfAlreadyEnqueued(vb) {
+						continue
+					} else {
+						c.addToEnqueueMap(vb)
+					}
 
-				vbs = append(vbs, vb)
+					vbs = append(vbs, vb)
 
-				logging.Infof("%s [%s:%s:%d] vb: %d Sending streamRequestInfo size: %d",
-					logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, len(c.reqStreamCh))
+					logging.Infof("%s [%s:%s:%d] vb: %d Sending streamRequestInfo size: %d",
+						logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, len(c.reqStreamCh))
 
-				if !vbBlob.BootstrapStreamReqDone {
+					if !vbBlob.BootstrapStreamReqDone {
 
-					c.vbProcessingStats.updateVbStat(vb, "bootstrap_stream_req_done", false)
+						c.vbProcessingStats.updateVbStat(vb, "bootstrap_stream_req_done", false)
 
-					switch c.dcpStreamBoundary {
-					case common.DcpEverything:
-						c.reqStreamCh <- &streamRequestInfo{
-							vb:          vb,
-							vbBlob:      &vbBlob,
-							startSeqNo:  0,
-							manifestUID: vbBlob.ManifestUID,
+						switch c.dcpStreamBoundary {
+						case common.DcpEverything:
+							c.reqStreamCh <- &streamRequestInfo{
+								vb:          vb,
+								vbBlob:      &vbBlob,
+								startSeqNo:  0,
+								manifestUID: vbBlob.ManifestUID,
+							}
+							c.vbProcessingStats.updateVbStat(vb, "start_seq_no", 0)
+
+						case common.DcpFromNow:
+							c.reqStreamCh <- &streamRequestInfo{
+								vb:          vb,
+								vbBlob:      &vbBlob,
+								startSeqNo:  vbSeqnos[int(vb)],
+								manifestUID: vbBlob.ManifestUID,
+							}
+							c.vbProcessingStats.updateVbStat(vb, "manifest_id", vbBlob.ManifestUID)
+							c.vbProcessingStats.updateVbStat(vb, "start_seq_no", vbSeqnos[int(vb)])
+
+						case common.DcpFromPrior:
+							c.reqStreamCh <- &streamRequestInfo{
+								vb:          vb,
+								vbBlob:      &vbBlob,
+								startSeqNo:  vbBlob.LastSeqNoProcessed,
+								manifestUID: vbBlob.ManifestUID,
+							}
+							c.vbProcessingStats.updateVbStat(vb, "manifest_id", vbBlob.ManifestUID)
+							c.vbProcessingStats.updateVbStat(vb, "start_seq_no", vbBlob.LastSeqNoProcessed)
 						}
-						c.vbProcessingStats.updateVbStat(vb, "start_seq_no", 0)
-
-					case common.DcpFromNow:
-						c.reqStreamCh <- &streamRequestInfo{
-							vb:          vb,
-							vbBlob:      &vbBlob,
-							startSeqNo:  vbSeqnos[int(vb)],
-							manifestUID: vbBlob.ManifestUID,
-						}
-						c.vbProcessingStats.updateVbStat(vb, "manifest_id", vbBlob.ManifestUID)
-						c.vbProcessingStats.updateVbStat(vb, "start_seq_no", vbSeqnos[int(vb)])
-
-					case common.DcpFromPrior:
+					} else {
 						c.reqStreamCh <- &streamRequestInfo{
 							vb:          vb,
 							vbBlob:      &vbBlob,
@@ -597,18 +611,9 @@ func (c *Consumer) startDcp(flogs couchbase.FailoverLog) error {
 						c.vbProcessingStats.updateVbStat(vb, "manifest_id", vbBlob.ManifestUID)
 						c.vbProcessingStats.updateVbStat(vb, "start_seq_no", vbBlob.LastSeqNoProcessed)
 					}
-				} else {
-					c.reqStreamCh <- &streamRequestInfo{
-						vb:          vb,
-						vbBlob:      &vbBlob,
-						startSeqNo:  vbBlob.LastSeqNoProcessed,
-						manifestUID: vbBlob.ManifestUID,
-					}
-					c.vbProcessingStats.updateVbStat(vb, "manifest_id", vbBlob.ManifestUID)
-					c.vbProcessingStats.updateVbStat(vb, "start_seq_no", vbBlob.LastSeqNoProcessed)
-				}
 
-				c.vbProcessingStats.updateVbStat(vb, "timestamp", time.Now().Format(time.RFC3339))
+					c.vbProcessingStats.updateVbStat(vb, "timestamp", time.Now().Format(time.RFC3339))
+				}
 			}
 		}
 	}

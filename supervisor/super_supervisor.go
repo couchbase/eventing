@@ -23,6 +23,7 @@ import (
 
 // NewSuperSupervisor creates the super_supervisor handle
 func NewSuperSupervisor(adminPort AdminPortConfig, eventingDir, kvPort, restPort, uuid, diagDir string, numVbuckets int) *SuperSupervisor {
+	logPrefix := "SuperSupervisor::NewSupervisor"
 	s := &SuperSupervisor{
 		adminPort:                          adminPort,
 		appDeploymentStatus:                make(map[string]bool),
@@ -88,6 +89,12 @@ func NewSuperSupervisor(adminPort AdminPortConfig, eventingDir, kvPort, restPort
 	}()
 
 	go s.watchBucketChanges()
+	var err error
+	s.gocbHandlePool, err = initGoCbPool(s.retryCount, s.restPort)
+	if err != nil {
+		logging.Errorf("%s Terminating due to not being able to initialise gocb pool after %v retries error: %v", logPrefix, s.retryCount, err)
+		os.Exit(1)
+	}
 	return s
 }
 
@@ -677,14 +684,14 @@ func (s *SuperSupervisor) spawnApp(appName string) error {
 	p := producer.NewProducer(appName, s.adminPort.DebuggerPort, s.adminPort.HTTPPort, s.adminPort.SslPort, s.eventingDir,
 		s.kvPort, metakvAppHostPortsPath, s.restPort, s.uuid, s.diagDir, s.memoryQuota, s.numVbuckets, s)
 
-	err := s.WatchBucket(p.SourceBucket(), appName)
+	err := s.watchBucket(p.SourceBucket(), appName)
 	if err != nil {
 		util.Retry(util.NewExponentialBackoff(), &s.retryCount, undeployFunctionCallback, s, appName)
 		return err
 	}
-	err = s.WatchBucket(p.MetadataBucket(), appName)
+	err = s.watchBucketWithGocb(p.MetadataBucket(), appName)
 	if err != nil {
-		s.UnwatchBucket(p.SourceBucket(), appName)
+		s.unwatchBucket(p.SourceBucket(), appName)
 		util.Retry(util.NewExponentialBackoff(), &s.retryCount, undeployFunctionCallback, s, appName)
 		return err
 	}
@@ -809,8 +816,8 @@ func (s *SuperSupervisor) CleanupProducer(appName string, skipMetaCleanup bool, 
 			p.CleanupMetadataBucket(false)
 		}
 
-		s.UnwatchBucket(p.SourceBucket(), appName)
-		s.UnwatchBucket(p.MetadataBucket(), appName)
+		s.unwatchBucket(p.SourceBucket(), appName)
+		s.unwatchBucketWithGocb(p.MetadataBucket(), appName)
 
 		if updateMetakv {
 			util.Retry(util.NewExponentialBackoff(), &s.retryCount, undeployFunctionCallback, s, appName)
@@ -818,8 +825,8 @@ func (s *SuperSupervisor) CleanupProducer(appName string, skipMetaCleanup bool, 
 	} else {
 		source, metadata, err := s.getSourceAndMetaBucket(appName)
 		if err == nil {
-			s.UnwatchBucket(source, appName)
-			s.UnwatchBucket(metadata, appName)
+			s.unwatchBucket(source, appName)
+			s.unwatchBucketWithGocb(metadata, appName)
 		}
 	}
 

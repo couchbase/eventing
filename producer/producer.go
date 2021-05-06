@@ -217,10 +217,9 @@ func (p *Producer) Serve() {
 	}
 	p.workerSupervisor = suptree.New(p.appName, spec)
 	p.workerSupervisor.ServeBackground(p.appName)
-
-	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, gocbConnectMetaBucketCallback, p)
-	if err == common.ErrRetryTimeout {
-		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
+	p.metadataHandle, err = p.superSup.GetMetadataHandle(p.metadataKeyspace.BucketName, p.metadataKeyspace.ScopeName, p.metadataKeyspace.CollectionName, p.appName)
+	if err != nil {
+		logging.Errorf("%s [%s:%d] Failed to get meta data handle , err: %v", logPrefix, p.appName, p.LenRunningConsumers(), err)
 		return
 	}
 
@@ -438,13 +437,6 @@ func (p *Producer) Stop(context string) {
 
 	p.feedbackListeners = make(map[common.EventingConsumer]net.Listener)
 	p.listenerRWMutex.RUnlock()
-
-	if p.metadataCluster != nil {
-		p.metadataCluster.Close(nil)
-	}
-
-	logging.Infof("%s [%s:%d] Closed metadata bucket handle",
-		logPrefix, p.appName, p.LenRunningConsumers())
 
 	if p.stopProducerCh != nil {
 		p.stopProducerCh <- struct{}{}

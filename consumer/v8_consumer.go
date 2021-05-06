@@ -193,9 +193,9 @@ func (c *Consumer) Serve() {
 		return
 	}
 
-	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, gocbConnectMetaBucketCallback, c)
-	if err == common.ErrRetryTimeout {
-		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+	c.gocbMetaHandle, err = c.superSup.GetMetadataHandle(c.producer.MetadataBucket(), c.producer.MetadataScope(), c.producer.MetadataCollection(), c.app.AppName)
+	if err != nil {
+		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
 		return
 	}
 
@@ -365,13 +365,6 @@ func (c *Consumer) Stop(context string) {
 	atomic.StoreUint32(&c.isTerminateRunning, 1)
 
 	logging.Infof("%s [%s:%s:%d] Gracefully shutting down consumer routine",
-		logPrefix, c.workerName, c.tcpPort, c.Pid())
-
-	if c.gocbCluster != nil {
-		c.gocbCluster.Close(nil)
-	}
-
-	logging.Infof("%s [%s:%s:%d] Issued close for go-couchbase and gocb handles",
 		logPrefix, c.workerName, c.tcpPort, c.Pid())
 
 	err := c.RemoveSupervisorToken()

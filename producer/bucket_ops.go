@@ -10,7 +10,6 @@ import (
 	"github.com/couchbase/gocb/v2"
 	"github.com/couchbase/gocbcore/v9"
 	"net"
-	"time"
 )
 
 var getFailoverLogOpCallback = func(args ...interface{}) error {
@@ -74,52 +73,6 @@ var dcpGetSeqNosCallback = func(args ...interface{}) error {
 	}
 
 	return err
-}
-
-var gocbConnectMetaBucketCallback = func(args ...interface{}) error {
-	logPrefix := "Producer::gocbConnectMetaBucketCallback"
-
-	p := args[0].(*Producer)
-
-	if p.isTerminateRunning {
-		return nil
-	}
-
-	kvNodes := p.KvHostPorts()
-
-	connStr := "couchbase://"
-	for index, kvNode := range kvNodes {
-		if index != 0 {
-			connStr = connStr + ","
-		}
-		connStr = connStr + kvNode
-	}
-
-	if util.IsIPv6() {
-		connStr += "?ipv6=allow"
-	}
-
-	authenticator := &util.DynamicAuthenticator{Caller: logPrefix}
-	cluster, err := gocb.Connect(connStr, gocb.ClusterOptions{Authenticator: authenticator})
-	if err != nil {
-		logging.Errorf("%s [%s:%d] Connect to cluster %rs failed, err: %v",
-			logPrefix, p.appName, p.LenRunningConsumers(), connStr, err)
-		return err
-	}
-
-	bucket := cluster.Bucket(p.MetadataBucket())
-	err = bucket.WaitUntilReady(5*time.Second, nil)
-	if err != nil {
-		logging.Errorf("%s [%s:%d] Failed to connect to bucket %s, err: %v",
-			logPrefix, p.appName, p.LenRunningConsumers(), p.metadataKeyspace.BucketName, err)
-		return err
-	}
-
-	p.metadataHandle = bucket.Scope(p.MetadataScope()).Collection(p.MetadataCollection())
-	logging.Infof("%s [%s:%d] Connected to metadata handle %s connStr: %s",
-		logPrefix, p.appName, p.LenRunningConsumers(), p.metadataKeyspace.BucketName, connStr)
-
-	return nil
 }
 
 var clearDebuggerInstanceCallback = func(args ...interface{}) error {

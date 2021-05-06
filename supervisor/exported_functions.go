@@ -8,6 +8,7 @@ import (
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/dcp"
 	"github.com/couchbase/eventing/logging"
+	"github.com/couchbase/gocb/v2"
 )
 
 // ClearEventStats flushes event processing stats
@@ -605,29 +606,6 @@ func (s *SuperSupervisor) GetAppLog(fnName string, sz int64) []string {
 
 }
 
-func (s *SuperSupervisor) WatchBucket(bucketName, appName string) error {
-	s.bucketsRWMutex.Lock()
-	defer s.bucketsRWMutex.Unlock()
-	return s.watchBucketWithLock(bucketName, appName)
-}
-
-// UnwatchBucket removes the bucket from supervisor
-//TODO: Only unwatch bucket to which app register to watch
-func (s *SuperSupervisor) UnwatchBucket(bucketName, appName string) {
-	s.bucketsRWMutex.Lock()
-	defer s.bucketsRWMutex.Unlock()
-	if bucketWatch, ok := s.buckets[bucketName]; ok {
-		if _, ok := bucketWatch.apps[appName]; ok {
-			delete(bucketWatch.apps, appName)
-			if len(bucketWatch.apps) == 0 {
-				bucketWatch.Close()
-				s.scn.StopObserveCollectionManifestChanges(bucketName)
-				delete(s.buckets, bucketName)
-			}
-		}
-	}
-}
-
 // GetBucket returns the bucket to the caller
 func (s *SuperSupervisor) GetBucket(bucketName, appName string) (*couchbase.Bucket, error) {
 	s.bucketsRWMutex.Lock()
@@ -640,6 +618,10 @@ func (s *SuperSupervisor) GetBucket(bucketName, appName string) (*couchbase.Buck
 	}
 
 	return nil, fmt.Errorf("Function: %s requested bucket: %s is not in watch list", appName, bucketName)
+}
+
+func (s *SuperSupervisor) GetGocbHandle(bucketName, appName string) (*gocb.Bucket, error) {
+	return s.gocbHandlePool.getBucket(bucketName, appName)
 }
 
 func (s *SuperSupervisor) GetCurrentManifestId(bucketName string) (string, error) {
@@ -665,6 +647,10 @@ func (s *SuperSupervisor) GetCollectionID(bucketName, scopeName, collectionName 
 		return 0, nil
 	}
 	return manifest.GetCollectionID(scopeName, collectionName)
+}
+
+func (s *SuperSupervisor) GetMetadataHandle(bucketName, scopeName, collectionName, appName string) (*gocb.Collection, error) {
+	return s.gocbHandlePool.getBucketCollection(bucketName, scopeName, collectionName, appName)
 }
 
 func (s *SuperSupervisor) IncWorkerRespawnedCount() {
