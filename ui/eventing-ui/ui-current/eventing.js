@@ -926,6 +926,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
 
                 if (JSON.stringify(appModel.depcfg) !== JSON.stringify(config)) {
                     $scope.appModel.depcfg = config;
+                    ApplicationService.tempStore.saveAppDepcfg($scope.appModel);
                     ApplicationService.server.showWarningAlert('Bindings changed. Deploy for changes to take effect.');
                 }
 
@@ -943,7 +944,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                         ApplicationService.tempStore.isAppPaused(appName)
                             .then(function(isPaused) {
                                 if (isDeployed && isPaused) {
-                                    return ApplicationService.tempStore.saveApp($scope.appModel);
+                                    return ApplicationService.public.updateSettings($scope.appModel);
                                 } else if (isDeployed) {
                                     // deleting the dcp_stream_boundary as it is not allowed to change for a deployed app
                                     delete $scope.appModel.settings.dcp_stream_boundary;
@@ -1137,7 +1138,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                             self.warning = false;
                             ApplicationService.server.showErrorAlert('Changes cannot be saved. Function can be edited only when it is undeployed or paused');
                         } else {
-                            ApplicationService.tempStore.saveApp(app)
+                            ApplicationService.tempStore.saveAppCode(app)
                                 .then(function(response) {
                                     ApplicationService.server.showSuccessAlert('Code saved successfully!');
                                     ApplicationService.server.showWarningAlert('Deploy Or Resume for changes to take effect!');
@@ -1481,6 +1482,29 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                                 'Content-Type': 'application/json'
                             },
                             data: app
+                        });
+                    },
+                    saveAppCode: function(app) {
+                        return $http({
+                            url: '/_p/event/api/v1/functions/' + app.appname + "/appcode/",
+                            method: 'POST',
+                            headers: {
+                            'Content-Type': 'application/javascript'
+                            },
+                            data: app.appcode
+                        });
+                    },
+                    saveAppDepcfg: function(app) {
+                        return $http({
+                            url: '/_p/event/api/v1/functions/' + app.appname + "/config/",
+                            method: 'POST',
+                            mnHttp: {
+                            isNotForm: true
+                            },
+                            headers: {
+                            'Content-Type': 'application/json'
+                            },
+                            data: app.depcfg
                         });
                     },
                     isAppDeployed: function(appName) {
