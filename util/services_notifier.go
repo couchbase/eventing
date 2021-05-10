@@ -71,6 +71,11 @@ func (instance *serviceNotifierInstance) getNotifyCallback(t NotificationType) f
 			case *couchbase.Bucket:
 				bucket := (msg).(*couchbase.Bucket)
 				logging.Infof("serviceChangeNotifier: received %s for bucket: %s", notifMsg, bucket.Name)
+
+				if _, ok := instance.manifestWaiters[bucket.Name]; !ok {
+					return nil
+				}
+
 				filterWaiter = instance.manifestWaiters[bucket.Name].listener
 			default:
 				errMsg := "Invalid msg type with CollectionManifestChangeNotification"
