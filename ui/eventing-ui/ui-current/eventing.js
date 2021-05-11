@@ -1358,7 +1358,7 @@ angular.module('eventing', [
 
         if (JSON.stringify(appModel.depcfg) !== JSON.stringify(config)) {
           $scope.appModel.depcfg = config;
-          ApplicationService.tempStore.saveApp($scope.appModel);
+          ApplicationService.tempStore.saveAppDepcfg($scope.appModel);
           ApplicationService.local.saveApp(new Application($scope
           .appModel));
           ApplicationService.server.showWarningAlert(
@@ -1375,7 +1375,7 @@ angular.module('eventing', [
             ApplicationService.tempStore.isAppPaused(appName)
               .then(function(isPaused) {
                 if (isDeployed && isPaused) {
-                  return ApplicationService.tempStore.saveApp($scope
+                  return ApplicationService.public.updateSettings($scope
                     .appModel);
                 } else if (isDeployed) {
                   // deleting the dcp_stream_boundary as it is not allowed to change for a deployed app
@@ -1662,7 +1662,7 @@ angular.module('eventing', [
             } else {
               var appSaved = true
 
-              ApplicationService.tempStore.saveApp(app)
+              ApplicationService.tempStore.saveAppCode(app)
                 .then(function(response) {
                   ApplicationService.server.showSuccessAlert(
                     'Code saved successfully!');
@@ -2080,6 +2080,29 @@ angular.module('eventing', [
                 'Content-Type': 'application/json'
               },
               data: app
+            });
+          },
+          saveAppCode: function(app) {
+            return $http({
+              url: '/_p/event/api/v1/functions/' + app.appname + "/appcode/",
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/javascript'
+              },
+              data: app.appcode
+            });
+          },
+          saveAppDepcfg: function(app) {
+            return $http({
+              url: '/_p/event/api/v1/functions/' + app.appname + "/config/",
+              method: 'POST',
+              mnHttp: {
+                isNotForm: true
+              },
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              data: app.depcfg
             });
           },
           isAppDeployed: function(appName) {

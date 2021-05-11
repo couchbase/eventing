@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"math"
 	"net"
 	"time"
 
@@ -178,13 +179,6 @@ var gocbConnectCluster = func(args ...interface{}) error {
 		return err
 	}
 
-	err = cluster.WaitUntilReady(5*time.Second, nil)
-	if err != nil {
-		logging.Errorf("%s Connect to cluster %rs failed, err: %v",
-			logPrefix, connStr, err)
-		cluster.Close(nil)
-		return err
-	}
 	*gocbCluster = cluster
 	return nil
 }
@@ -198,7 +192,22 @@ var gocbConnectBucket = func(args ...interface{}) error {
 	bucketNotExist := args[4].(*bool)
 
 	bucket := cluster.Bucket(bucketName)
-	err := bucket.WaitUntilReady(5*time.Second, nil)
+	cic, err := util.FetchClusterInfoClient(hostPortAddr)
+	if err != nil {
+		logging.Errorf("%s Failed to get cluster info cache, err : %v", logPrefix, err)
+		return err
+	}
+	cinfo := cic.GetClusterInfoCache()
+	cinfo.RLock()
+	kvNodes, err := cinfo.GetAddressOfActiveKVNodes()
+	cinfo.RUnlock()
+	if err != nil {
+		logging.Errorf("%s Failed to get KV nodes addresses, err : %v", logPrefix, err)
+		return err
+	}
+
+	bucketWaitTime := time.Duration(math.Max(float64(len(kvNodes)), 5))
+	err = bucket.WaitUntilReady(bucketWaitTime*time.Second, nil)
 	if err != nil {
 		if !util.CheckKeyspaceExist(bucketName, "", "", hostPortAddr) {
 			*bucketNotExist = true
