@@ -284,13 +284,11 @@ func (c *Consumer) processDCPEvents() {
 				}
 			case mcd.DCP_STREAMEND:
 				logging.Infof("%s [%s:%s:%d] vb: %d got STREAMEND", logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket)
-
 				c.vbProcessingStats.updateVbStat(e.VBucket, "vb_stream_request_metadata_updated", false)
 				lastReadSeqNo := c.vbProcessingStats.getVbStat(e.VBucket, "last_read_seq_no").(uint64)
 				c.vbProcessingStats.updateVbStat(e.VBucket, "seq_no_at_stream_end", lastReadSeqNo)
 				c.vbProcessingStats.updateVbStat(e.VBucket, "timestamp", time.Now().Format(time.RFC3339))
 				lastSentSeqNo := c.vbProcessingStats.getVbStat(e.VBucket, "last_sent_seq_no").(uint64)
-
 				if lastSentSeqNo == 0 {
 					logging.Infof("STREAMEND without streaming any mutation last_read_seqno: %d last_sent_seqno: %d", lastReadSeqNo, lastSentSeqNo)
 					c.handleStreamEnd(e.VBucket, lastReadSeqNo)
