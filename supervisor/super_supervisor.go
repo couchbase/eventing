@@ -481,6 +481,7 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(path string, value []byte,
 					if _, ok := s.bootstrappingApps[appName]; ok {
 						logging.Infof("%s [%d] Function: %s already bootstrapping", logPrefix, s.runningFnsCount(), appName)
 						s.appListRWMutex.Unlock()
+						s.waitAndNotifyTopologyChange(appName, topologyChangeMsg)
 						continue
 					}
 
@@ -850,4 +851,35 @@ func (s *SuperSupervisor) isFnRunningFromPrimary(appName string) (bool, error) {
 	}
 
 	return false, fmt.Errorf("function not running")
+}
+
+func (s *SuperSupervisor) waitAndNotifyTopologyChange(appName string, topologyChangeMsg *common.TopologyChangeMsg) {
+	logPrefix := "SuperSupervisor::waitAndNotifyTopologyChange"
+	maxWaitTime := 2 * s.servicesNotifierRetryTm
+	ticker := time.NewTicker(time.Duration(1) * time.Second)
+	stopTicker := time.NewTicker(time.Duration(maxWaitTime) * time.Minute)
+	defer func() {
+		stopTicker.Stop()
+		ticker.Stop()
+	}()
+
+	for {
+		select {
+		case <-ticker.C:
+			s.appListRWMutex.RLock()
+			_, present := s.bootstrappingApps[appName]
+			s.appListRWMutex.RUnlock()
+			if present {
+				continue
+			}
+
+			if eventingProducer, ok := s.runningFns()[appName]; ok {
+				eventingProducer.NotifyTopologyChange(topologyChangeMsg)
+			}
+			return
+		case <-stopTicker.C:
+			logging.Errorf("%s: App %s not able to bootstrap in %v minutes", logPrefix, appName, maxWaitTime)
+			return
+		}
+	}
 }
