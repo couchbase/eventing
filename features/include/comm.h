@@ -22,9 +22,8 @@
 struct CredsInfo {
   bool is_valid;
   std::string msg;
-  std::string username {"EVENTINGINVALID"};
-  std::string password {"EVENTINGINVALID"};
-  time_t time_fetched;
+  std::string username{"EVENTINGINVALID"};
+  std::string password{"EVENTINGINVALID"};
 };
 
 struct KVNodesInfo {
@@ -41,6 +40,8 @@ public:
                const std::string &app_name, v8::Isolate *isolate);
 
   CredsInfo GetCreds(const std::string &endpoint);
+  CredsInfo GetCredsCached(const std::string &endpoint);
+  void InvalidateCache();
   KVNodesInfo GetKVNodes();
   void WriteDebuggerURL(const std::string &url);
   void Refresh();

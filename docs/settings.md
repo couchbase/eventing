@@ -32,7 +32,7 @@
 |user_prefix|eventing|Prefix for eventing system blobs written to metadata bucket|
 |vb_ownership_giveup_routine_count|3|Size of thread pool to give up vb ownership during rebalance|
 |vb_ownership_takeover_routine_count|3|Size of thread pool to take up vb ownership during rebalance|
-|worker_count|3|eventing-consumer instances to spawn for parallelism w.r.t. event processing|
+|worker_count|1|eventing-consumer instances to spawn for parallelism w.r.t. event processing|
 |worker_feedback_queue_cap|500|Capacity of timer feedback queue on eventing-consumer|
 |worker_queue_cap|100000|Capacity of queue for main loop queue on eventing-consumer|
 |allow_interbucket_recursion|false|Allow deployment of handlers with inter bucket/inter handler recursion|

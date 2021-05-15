@@ -127,3 +127,19 @@ void Communicator::WriteDebuggerURL(const std::string &url) {
                   << status << std::endl;
   }
 }
+
+CredsInfo Communicator::GetCredsCached(const std::string &endpoint) {
+  auto find = creds_cache_.find(endpoint);
+  if (find != creds_cache_.end()) {
+    return find->second;
+  }
+
+  auto credentials = GetCreds(endpoint);
+  creds_cache_[endpoint] = credentials;
+  return credentials;
+}
+
+void Communicator::InvalidateCache() {
+  creds_cache_.erase(creds_cache_.begin(), creds_cache_.end());
+  LOG(logInfo) << "Cleared credentials cache" << std::endl;
+}

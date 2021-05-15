@@ -1700,8 +1700,7 @@ angular.module('eventing', [
                 .catch(function(errResponse) {
                   appSaved = false
                   ApplicationService.server.showErrorAlert(
-                    "Changes cannot be saved. Reason: " + errResponse
-                    .data.runtime_info.info);
+                    "Changes cannot be saved. Reason: " + JSON.stringify(errResponse.data.runtime_info.info));
                   console.error(errResponse);
                 })
                 .finally(function(response) {
