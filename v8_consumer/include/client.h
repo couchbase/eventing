@@ -164,7 +164,8 @@ private:
 
   int32_t num_vbuckets_{1024};
 
-  std::map<int16_t, int16_t> partition_thr_map_;
+  std::map<int16_t, int16_t> elected_partition_thr_map_;
+  std::map<int16_t, int16_t> current_partition_thr_map_;
 
   // Controls the number of virtual partitions, in order to shard work among
   // worker threads
@@ -192,7 +193,6 @@ private:
   std::mutex workers_map_mutex_;
 
   std::shared_ptr<vb_seq_map_t> vb_seq_;
-  std::shared_ptr<std::vector<std::vector<uint64_t>>> vbfilter_map_;
   std::shared_ptr<std::vector<uint64_t>> processed_bucketops_;
   std::shared_ptr<vb_lock_map_t> vb_locks_;
 };

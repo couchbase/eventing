@@ -227,8 +227,7 @@ public:
            const std::string &user_prefix, Histogram *latency_stats,
            Histogram *curl_latency_stats, const std::string &ns_server_port,
            const int32_t &num_vbuckets, vb_seq_map_t *vb_seq,
-           std::vector<std::vector<uint64_t>> *vbfilter_map,
-           std::vector<uint64_t> *processed_bucketops, vb_lock_map_t *vb_locks);
+           std::vector<uint64_t> *processed_bucketops, vb_lock_map_t *vb_locks, int worker_idx);
   ~V8Worker();
 
   int V8WorkerLoad(std::string source_s);
@@ -270,7 +269,7 @@ public:
 
   uint64_t GetBucketopsSeqno(int vb_no);
 
-  std::unique_lock<std::mutex> GetAndLockFilterLock();
+  std::unique_lock<std::mutex> GetAndLockBucketOpsLock();
 
   int ParseMetadata(const std::string &metadata, int &vb_no,
                     uint64_t &seq_no) const;
@@ -316,6 +315,7 @@ public:
   uint64_t currently_processed_vb_;
   uint64_t currently_processed_seqno_;
   Time::time_point execute_start_time_;
+  int worker_idx_;
 
   std::thread processing_thr_;
   std::thread *terminator_thr_;
@@ -369,7 +369,7 @@ private:
   vb_seq_map_t *vb_seq_;
   vb_lock_map_t *vb_locks_;
 
-  std::vector<std::vector<uint64_t>> *vbfilter_map_;
+  std::vector<std::vector<uint64_t>> vbfilter_map_;
   std::vector<uint64_t> *processed_bucketops_;
   std::mutex bucketops_lock_;
 

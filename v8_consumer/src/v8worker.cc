@@ -211,8 +211,7 @@ V8Worker::V8Worker(
     const std::string &user_prefix, Histogram *latency_stats,
     Histogram *curl_latency_stats, const std::string &ns_server_port,
     const int32_t &num_vbuckets, vb_seq_map_t *vb_seq,
-    std::vector<std::vector<uint64_t>> *vbfilter_map,
-    std::vector<uint64_t> *processed_bucketops, vb_lock_map_t *vb_locks)
+    std::vector<uint64_t> *processed_bucketops, vb_lock_map_t *vb_locks, int worker_idx)
     : app_name_(h_config->app_name), settings_(server_settings),
       num_vbuckets_(num_vbuckets),
       timer_reduction_ratio_(
@@ -224,8 +223,8 @@ V8Worker::V8Worker(
       exception_type_names_(
           {"KVError", "N1QLError", "EventingError", "CurlError", "TypeError"}),
       handler_headers_(h_config->handler_headers),
-      handler_footers_(h_config->handler_footers), vb_seq_(vb_seq),
-      vbfilter_map_(vbfilter_map), processed_bucketops_(processed_bucketops),
+      handler_footers_(h_config->handler_footers), vb_seq_(vb_seq), worker_idx_(worker_idx),
+      processed_bucketops_(processed_bucketops),
       vb_locks_(vb_locks) {
   auto config = ParseDeployment(h_config->dep_cfg.c_str());
   cb_source_bucket_.assign(config->source_bucket);
@@ -237,6 +236,7 @@ V8Worker::V8Worker(
   scan_timer_.store(false);
   update_v8_heap_.store(false);
   run_gc_.store(false);
+  vbfilter_map_ = std::vector<std::vector<uint64_t>>(num_vbuckets_);
 
   v8::Isolate::CreateParams create_params;
   create_params.array_buffer_allocator =
@@ -650,7 +650,6 @@ void V8Worker::HandleMutationEvent(const std::unique_ptr<WorkerMessage> &msg) {
     }
     UpdateSeqNumLocked(vb, seq_num);
   }
-
   const auto doc = flatbuf::payload::GetPayload(
       static_cast<const void *>(msg->payload.payload.c_str()));
   SendUpdate(doc->value()->str(), msg->header.metadata, doc->is_binary());
@@ -1155,13 +1154,13 @@ int V8Worker::ParseMetadataWithAck(const std::string &metadata_str, int &vb_no,
 
 void V8Worker::UpdateVbFilter(int vb_no, uint64_t seq_no) {
   auto lock = GetAndLockVbLock(vb_no);
-  (*vbfilter_map_)[vb_no].push_back(seq_no);
+  vbfilter_map_[vb_no].push_back(seq_no);
   lock.unlock();
 }
 
 uint64_t V8Worker::GetVbFilter(int vb_no) {
   auto lock = GetAndLockVbLock(vb_no);
-  auto &filters = (*vbfilter_map_)[vb_no];
+  auto &filters = vbfilter_map_[vb_no];
   lock.unlock();
   if (filters.empty())
     return 0;
@@ -1170,7 +1169,7 @@ uint64_t V8Worker::GetVbFilter(int vb_no) {
 
 void V8Worker::EraseVbFilter(int vb_no) {
   auto lock = GetAndLockVbLock(vb_no);
-  auto &filters = (*vbfilter_map_)[vb_no];
+  auto &filters = vbfilter_map_[vb_no];
   lock.unlock();
   if (!filters.empty()) {
     filters.erase(filters.begin());
@@ -1308,7 +1307,7 @@ lcb_t V8Worker::GetTimerLcbHandle() const {
   return timer_store_->GetTimerStoreHandle();
 }
 
-std::unique_lock<std::mutex> V8Worker::GetAndLockFilterLock() {
+std::unique_lock<std::mutex> V8Worker::GetAndLockBucketOpsLock() {
   return std::unique_lock<std::mutex>(bucketops_lock_);
 }
 
