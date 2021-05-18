@@ -288,8 +288,6 @@ void AppWorker::InitVbMapResources() {
     (*vb_seq_)[i] = atomic_ptr_t(new std::atomic<uint64_t>(0));
     (*vb_locks_)[i] = new std::mutex();
   }
-  vbfilter_map_ =
-      std::make_shared<std::vector<std::vector<uint64_t>>>(num_vbuckets_);
   processed_bucketops_ =
       std::make_shared<std::vector<uint64_t>>(num_vbuckets_, 0);
 }
@@ -500,7 +498,7 @@ void AppWorker::RouteMessageWithResponse(
   server_settings_t *server_settings;
   handler_config_t *handler_config;
 
-  int worker_index;
+  int16_t worker_index;
   nlohmann::json estats;
   std::map<int, int64_t> agg_lcb_exceptions;
   std::string handler_instance_id;
@@ -576,8 +574,8 @@ void AppWorker::RouteMessageWithResponse(
               platform.release(), handler_config, server_settings,
               function_name_, function_id_, handler_instance_id, user_prefix_,
               &latency_stats_, &curl_latency_stats_, ns_server_port_,
-              num_vbuckets_, vb_seq_.get(), vbfilter_map_.get(),
-              processed_bucketops_.get(), vb_locks_.get());
+              num_vbuckets_, vb_seq_.get(),
+              processed_bucketops_.get(), vb_locks_.get(), i);
 
           LOG(logInfo) << "Init index: " << i << " V8Worker: " << w
                        << std::endl;
@@ -681,7 +679,7 @@ void AppWorker::RouteMessageWithResponse(
   case eDCP:
     switch (getDCPOpcode(worker_msg->header.opcode)) {
     case oDelete:
-      worker_index = partition_thr_map_[worker_msg->header.partition];
+      worker_index = current_partition_thr_map_[worker_msg->header.partition];
       if (workers_[worker_index] != nullptr) {
         enqueued_dcp_delete_msg_counter++;
         workers_[worker_index]->PushBack(std::move(worker_msg));
@@ -692,7 +690,7 @@ void AppWorker::RouteMessageWithResponse(
       }
       break;
     case oMutation:
-      worker_index = partition_thr_map_[worker_msg->header.partition];
+      worker_index = current_partition_thr_map_[worker_msg->header.partition];
       if (workers_[worker_index] != nullptr) {
         enqueued_dcp_mutation_msg_counter++;
         workers_[worker_index]->PushBack(std::move(worker_msg));
@@ -703,7 +701,7 @@ void AppWorker::RouteMessageWithResponse(
       }
       break;
     case oNoOp:
-      worker_index = partition_thr_map_[worker_msg->header.partition];
+      worker_index = current_partition_thr_map_[worker_msg->header.partition];
       if (workers_[worker_index] != nullptr) {
         workers_[worker_index]->PushBack(std::move(worker_msg));
       }
@@ -718,18 +716,17 @@ void AppWorker::RouteMessageWithResponse(
   case eFilter:
     switch (getFilterOpcode(worker_msg->header.opcode)) {
     case oVbFilter: {
-
-      worker_index = partition_thr_map_[worker_msg->header.partition];
-      auto worker = workers_[worker_index];
-      if (worker != nullptr) {
+      worker_index = current_partition_thr_map_[worker_msg->header.partition];
+      if (workers_[worker_index] != nullptr) {
         LOG(logInfo) << "Received filter event from Go "
                      << worker_msg->header.metadata << std::endl;
+        auto worker = workers_[worker_index];
         int vb_no = 0, skip_ack = 0;
         uint64_t filter_seq_no = 0;
         if (kSuccess ==
             worker->ParseMetadataWithAck(worker_msg->header.metadata, vb_no,
                                          filter_seq_no, skip_ack, true)) {
-          auto lck = worker->GetAndLockFilterLock();
+          auto lck = worker->GetAndLockBucketOpsLock();
           auto last_processed_seq_no = worker->GetBucketopsSeqno(vb_no);
           if (last_processed_seq_no < filter_seq_no) {
             worker->UpdateVbFilter(vb_no, filter_seq_no);
@@ -745,15 +742,16 @@ void AppWorker::RouteMessageWithResponse(
       }
     } break;
     case oProcessedSeqNo:
-      worker_index = partition_thr_map_[worker_msg->header.partition];
+      worker_index = elected_partition_thr_map_[worker_msg->header.partition];
       if (workers_[worker_index] != nullptr) {
         LOG(logInfo) << "Received update processed seq_no event from Go "
                      << worker_msg->header.metadata << std::endl;
+        current_partition_thr_map_[worker_msg->header.partition] = worker_index;
         int vb_no = 0;
         uint64_t seq_no = 0;
         if (kSuccess == workers_[worker_index]->ParseMetadata(
                             worker_msg->header.metadata, vb_no, seq_no)) {
-          auto lck = workers_[worker_index]->GetAndLockFilterLock();
+          auto lck = workers_[worker_index]->GetAndLockBucketOpsLock();
           workers_[worker_index]->UpdateBucketopsSeqnoLocked(vb_no, seq_no);
           workers_[worker_index]->AddTimerPartition(vb_no);
         }
@@ -770,7 +768,7 @@ void AppWorker::RouteMessageWithResponse(
     std::unordered_map<int64_t, uint64_t> lps_map;
     for (int16_t idx = 0; idx < thr_count_; ++idx) {
       auto worker = workers_[idx];
-      auto lck = worker->GetAndLockFilterLock();
+      auto lck = worker->GetAndLockBucketOpsLock();
       worker->StopTimerScan();
       auto partitions = worker->GetPartitions();
       for (auto vb : partitions) {
@@ -812,7 +810,7 @@ void AppWorker::RouteMessageWithResponse(
         for (unsigned int j = 0; j < thr_map->Get(i)->partitions()->size();
              j++) {
           auto p_id = thr_map->Get(i)->partitions()->Get(j);
-          partition_thr_map_[p_id] = thread_id;
+          elected_partition_thr_map_[p_id] = thread_id;
         }
       }
       msg_priority_ = true;
@@ -843,10 +841,10 @@ void AppWorker::RouteMessageWithResponse(
       for (int vbIdx = 0; vbIdx < numVbs;) {
         auto idx = vbIdx;
         for (; idx < vbIdx + vbsPerThread; idx++) {
-          partition_thr_map_[vbuckets[idx]] = threadId;
+          elected_partition_thr_map_[vbuckets[idx]] = threadId;
         }
         if (chuncks > 0) {
-          partition_thr_map_[vbuckets[idx]] = threadId;
+          elected_partition_thr_map_[vbuckets[idx]] = threadId;
           chuncks--;
           idx++;
         }
@@ -884,7 +882,7 @@ void AppWorker::RouteMessageWithResponse(
   case eDebugger:
     switch (getDebuggerOpcode(worker_msg->header.opcode)) {
     case oDebuggerStart:
-      worker_index = partition_thr_map_[worker_msg->header.partition];
+      worker_index = elected_partition_thr_map_[worker_msg->header.partition];
       if (workers_[worker_index] != nullptr) {
         workers_[worker_index]->PushBack(std::move(worker_msg));
         msg_priority_ = true;
@@ -894,7 +892,7 @@ void AppWorker::RouteMessageWithResponse(
       }
       break;
     case oDebuggerStop:
-      worker_index = partition_thr_map_[worker_msg->header.partition];
+      worker_index = elected_partition_thr_map_[worker_msg->header.partition];
       if (workers_[worker_index] != nullptr) {
         workers_[worker_index]->PushBack(std::move(worker_msg));
         msg_priority_ = true;
@@ -1144,8 +1142,8 @@ std::vector<std::unordered_set<int64_t>>
 AppWorker::PartitionVbuckets(const std::vector<int64_t> &vbuckets) const {
   std::vector<std::unordered_set<int64_t>> partitions(thr_count_);
   for (auto vb : vbuckets) {
-    auto it = partition_thr_map_.find(vb);
-    if (it != end(partition_thr_map_)) {
+    auto it = elected_partition_thr_map_.find(vb);
+    if (it != end(elected_partition_thr_map_)) {
       partitions[it->second].insert(vb);
     }
   }
