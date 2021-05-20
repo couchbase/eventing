@@ -24,6 +24,7 @@ struct CredsInfo {
   std::string msg;
   std::string username{"EVENTINGINVALID"};
   std::string password{"EVENTINGINVALID"};
+  time_t time_fetched;
 };
 
 struct KVNodesInfo {
