@@ -1216,9 +1216,7 @@ func (c *Consumer) processReqStreamMessages() {
 				time.Sleep(time.Second)
 
 				c.Lock()
-				if !util.Contains(msg.vb, c.vbsRemainingToRestream) {
-					c.vbsRemainingToRestream = append(c.vbsRemainingToRestream, msg.vb)
-				}
+				c.vbsRemainingToRestream = append(c.vbsRemainingToRestream, msg.vb)
 
 				if !util.Contains(msg.vb, c.vbsRemainingToCleanup) {
 					c.vbsRemainingToCleanup = append(c.vbsRemainingToCleanup, msg.vb)
@@ -1244,18 +1242,14 @@ func (c *Consumer) processReqStreamMessages() {
 				defer streamReqWG.Done()
 
 				err := c.dcpRequestStreamHandle(msg.vb, msg.vbBlob, msg.startSeqNo, msg.manifestUID)
-				if err == common.ErrRetryTimeout {
-					logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-					return
-				}
-
 				if err != nil {
 					c.Lock()
-					if !util.Contains(msg.vb, c.vbsRemainingToRestream) {
-						c.vbsRemainingToRestream = append(c.vbsRemainingToRestream, msg.vb)
-					}
+					c.vbsRemainingToRestream = append(c.vbsRemainingToRestream, msg.vb)
 					c.Unlock()
-
+					if err == common.ErrRetryTimeout {
+						logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+						return
+					}
 				} else {
 					logging.Infof("%s [%s:%s:%d] vb: %d DCP stream successfully requested", logPrefix, c.workerName, c.tcpPort, c.Pid(), msg.vb)
 				}
