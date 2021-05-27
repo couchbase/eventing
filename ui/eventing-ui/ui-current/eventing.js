@@ -14,6 +14,8 @@ import mnSelect from "/ui/app/components/directives/mn_select/mn_select.js";
 
 import Adapter from "./adapter.js";
 
+const PASSWORD_MASK = "*****";
+
 import {
   Application,
   ApplicationManager,
@@ -1224,6 +1226,13 @@ angular.module('eventing', [
         .buckets : [];
       self.bindings = ApplicationService.getBindingFromConfig(appModel
         .depcfg);
+      for(var idx = 0; idx < self.bindings.length; idx++){
+        if(self.bindings[idx].type == "url"){
+          self.bindings[idx].password = PASSWORD_MASK;
+          self.bindings[idx].bearer_key = PASSWORD_MASK;
+        }
+      }
+
       self.scopes = [];
       self.collections = [];
       self.responses = [];
@@ -1352,8 +1361,8 @@ angular.module('eventing', [
 
       self.saveSettings = function(dismissDialog, closeDialog) {
         var config = JSON.parse(JSON.stringify(appModel.depcfg));
-        Object.assign(config, ApplicationService.convertBindingToConfig(self
-          .bindings));
+
+        Object.assign(config, ApplicationService.convertBindingToConfig(self.bindings));
         self.copyNamespace(config, $scope.appModel.depcfg);
 
         if (JSON.stringify(appModel.depcfg) !== JSON.stringify(config)) {
@@ -1383,8 +1392,8 @@ angular.module('eventing', [
                   return ApplicationService.public.updateSettings($scope
                     .appModel);
                 } else {
-                  return ApplicationService.tempStore.saveApp($scope
-                    .appModel);
+                  var redacted = ApplicationService.tempStore.redactPWDApp(JSON.parse(JSON.stringify($scope.appModel)));
+                  return ApplicationService.tempStore.saveApp(redacted);
                 }
               })
               .catch(function(errResponse) {
@@ -2142,7 +2151,16 @@ angular.module('eventing', [
           deleteApp: function(appName) {
             return $http.get('/_p/event/deleteAppTempStore/?name=' +
               appName);
-          }
+          },
+          redactPWDApp: function(app) {
+            if(app.depcfg && app.depcfg.curl) {
+              for (var idx = 0; idx < app.depcfg.curl.length; idx++) {
+                app.depcfg.curl[idx].password = PASSWORD_MASK;
+                app.depcfg.curl[idx].bearer_key = PASSWORD_MASK;
+                }
+              }
+              return app;
+            }
         },
         primaryStore: {
           deleteApp: function(appName) {

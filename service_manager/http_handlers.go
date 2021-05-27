@@ -1596,11 +1596,12 @@ func (m *ServiceMgr) getTempStoreHandler(w http.ResponseWriter, r *http.Request)
 	audit.Log(auditevent.FetchDrafts, r, nil)
 	applications := m.getTempStoreAll()
 
-	// Remove the "num_timer_partitions" and don't send it to the UI
+	// Remove curl creds and "num_timer_partitions" before sending it to the UI
 	for _, app := range applications {
 		if _, ok := app.Settings["num_timer_partitions"]; ok {
 			delete(app.Settings, "num_timer_partitions")
 		}
+		redactPasswords(&app)
 	}
 
 	data, err := json.MarshalIndent(applications, "", " ")
@@ -1628,6 +1629,12 @@ func (m *ServiceMgr) getTempStore(appName string) (application, *runtimeInfo) {
 			var app application
 			uErr := json.Unmarshal(data, &app)
 			if uErr != nil {
+				if name == appName {
+					info.Code = m.statusCodes.errReadReq.Code
+					info.Info = fmt.Sprintf("Unmarshalling from metakv failed for Function: %s", appName)
+					logging.Infof("%s %s", logPrefix, info.Info)
+					return application{}, info
+				}
 				logging.Errorf("%s Function: %s failed to unmarshal data from metakv, err: %v", logPrefix, appName, uErr)
 				continue
 			}
@@ -1638,6 +1645,11 @@ func (m *ServiceMgr) getTempStore(appName string) (application, *runtimeInfo) {
 				delete(app.Settings, "handler_uuid")
 				return app, info
 			}
+		} else if name == appName {
+			info.Code = m.statusCodes.errReadReq.Code
+			info.Info = fmt.Sprintf("Reading from metakv failed for Function: %s", appName)
+			logging.Infof("%s %s", logPrefix, info.Info)
+			return application{}, info
 		}
 	}
 
@@ -1718,6 +1730,14 @@ func (m *ServiceMgr) saveTempStoreHandler(w http.ResponseWriter, r *http.Request
 	m.addDefaultDeploymentConfig(&app)
 	if info := m.validateApplication(&app); info.Code != m.statusCodes.ok.Code {
 		m.sendErrorInfo(w, info)
+		return
+	}
+
+	oldApp, oldInfo := m.getTempStore(appName)
+	if oldInfo.Code == m.statusCodes.ok.Code {
+		copyPasswords(&app, &oldApp)
+	} else if oldInfo.Code != m.statusCodes.errAppNotFoundTs.Code {
+		m.sendErrorInfo(w, oldInfo)
 		return
 	}
 
@@ -2727,6 +2747,7 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 				m.sendErrorInfo(w, info)
 				return
 			}
+			redactPasswords(&app)
 			response, err := json.MarshalIndent(app.DeploymentConfig, "", " ")
 			if err != nil {
 				info.Code = m.statusCodes.errMarshalResp.Code
@@ -2776,6 +2797,7 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			app.DeploymentConfig = config
+			copyPasswords(&app, &appCopy)
 
 			// Validate Recursion Checks and deployment configurations
 			if info = m.validateApplication(&app); info.Code != m.statusCodes.ok.Code {
@@ -3033,6 +3055,7 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 				m.sendErrorInfo(w, info)
 				return
 			}
+			redactPasswords(&app)
 
 			response, err := json.MarshalIndent(app, "", " ")
 			if err != nil {
