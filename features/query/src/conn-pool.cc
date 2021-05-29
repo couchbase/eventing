@@ -21,38 +21,6 @@
 #include "query-helper.h"
 #include "utils.h"
 
-const char *GetUsernameCached(void *cookie, const char *host, const char *port,
-                              const char *bucket) {
-  auto isolate = static_cast<v8::Isolate *>(cookie);
-  auto comm = UnwrapData(isolate)->comm;
-  auto endpoint = JoinHostPort(host, port);
-  auto info = comm->GetCredsCached(endpoint);
-  if (!info.is_valid) {
-    LOG(logError) << "Failed to get username for " << RS(host) << ":" << port
-                  << " err: " << info.msg << std::endl;
-  }
-
-  static thread_local std::string username;
-  username = info.username;
-  return username.c_str();
-}
-
-const char *GetPasswordCached(void *cookie, const char *host, const char *port,
-                              const char *bucket) {
-  auto isolate = static_cast<v8::Isolate *>(cookie);
-  auto comm = UnwrapData(isolate)->comm;
-  auto endpoint = JoinHostPort(host, port);
-  auto info = comm->GetCredsCached(endpoint);
-  if (!info.is_valid) {
-    LOG(logError) << "Failed to get password for " << RS(host) << ":" << port
-                  << " err: " << info.msg << std::endl;
-  }
-
-  static thread_local std::string password;
-  password = info.password;
-  return password.c_str();
-}
-
 Connection::Info Connection::Pool::CreateConnection() const {
   auto utils = UnwrapData(isolate_)->utils;
   auto conn_str_info = utils->GetConnectionString(src_bucket_);
@@ -77,8 +45,7 @@ Connection::Info Connection::Pool::CreateConnection() const {
   lcb_createopts_destroy(options);
 
   auto auth = lcbauth_new();
-  result = lcbauth_set_callbacks(auth, isolate_, GetUsernameCached,
-                                 GetPasswordCached);
+  result = lcbauth_set_callback(auth, isolate_, GetUsernameAndPassword);
   if (result != LCB_SUCCESS) {
     return FormatErrorAndDestroyConn("Unable to set auth callbacks", connection,
                                      result);
@@ -140,8 +107,6 @@ Connection::Info Connection::Pool::GetConnection() {
   if (pool_.empty()) {
     if (current_size_ < capacity_) {
       if (auto info = CreateConnection(); info.is_fatal) {
-        auto comm = UnwrapData(isolate_)->comm;
-        comm->InvalidateCache();
         return info;
       } else {
         pool_.push_front(info.connection);

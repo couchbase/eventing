@@ -18,42 +18,40 @@
 
 #define EVT_LOG_MSG_SIZE 1024
 
-const char *GetUsername(void *cookie, const char *host, const char *port,
-                        const char *bucket) {
-  LOG(logDebug) << "Getting username for host " << RS(host) << " port " << port
-                << std::endl;
-
-  auto endpoint = JoinHostPort(host, port);
+void GetUsernameAndPassword(lcbauth_CREDENTIALS *credentials) {
+  void *cookie;
+  lcbauth_credentials_cookie(credentials, &cookie);
   auto isolate = static_cast<v8::Isolate *>(cookie);
   auto comm = UnwrapData(isolate)->comm;
-  auto info = comm->GetCreds(endpoint);
-  if (!info.is_valid) {
-    LOG(logError) << "Failed to get username for " << RS(host) << ":" << port
-                  << " err: " << info.msg << std::endl;
-  }
 
-  static thread_local std::string username;
-  username = info.username;
-  return username.c_str();
-}
+  const char *port = nullptr;
+  size_t port_len = 0;
+  lcbauth_credentials_port(credentials, &port, &port_len);
 
-const char *GetPassword(void *cookie, const char *host, const char *port,
-                        const char *bucket) {
-  LOG(logDebug) << "Getting password for host " << RS(host) << " port " << port
-                << std::endl;
-
-  auto isolate = static_cast<v8::Isolate *>(cookie);
-  auto comm = UnwrapData(isolate)->comm;
+  const char *host = nullptr;
+  size_t host_len = 0;
+  lcbauth_credentials_hostname(credentials, &host, &host_len);
   auto endpoint = JoinHostPort(host, port);
-  auto info = comm->GetCreds(endpoint);
-  if (!info.is_valid) {
-    LOG(logError) << "Failed to get password for " << RS(host) << ":" << port
-                  << " err: " << info.msg << std::endl;
+
+  auto reason = lcbauth_credentials_reason(credentials);
+  if (reason == LCBAUTH_REASON_AUTHENTICATION_FAILURE) {
+    comm->removeCachedEntry(endpoint);
   }
 
-  static thread_local std::string password;
-  password = info.password;
-  return password.c_str();
+  auto useCacheEntry =
+      (lcbauth_credentials_service(credentials) == LCBAUTH_SERVICE_QUERY);
+  auto cached_credentials = comm->GetCredsCached(endpoint, useCacheEntry);
+  if (!cached_credentials.is_valid) {
+    lcbauth_credentials_result(credentials, LCBAUTH_RESULT_NOT_AVAILABLE);
+    return;
+  }
+
+  static thread_local std::string username, password;
+  username = cached_credentials.username;
+  password = cached_credentials.password;
+  lcbauth_credentials_username(credentials, username.c_str(), username.size());
+  lcbauth_credentials_password(credentials, password.c_str(), password.size());
+  lcbauth_credentials_result(credentials, LCBAUTH_RESULT_OK);
 }
 
 // lcb related callbacks

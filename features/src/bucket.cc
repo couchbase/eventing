@@ -117,8 +117,8 @@ Error Bucket::Connect() {
   lcb_createopts_destroy(options);
 
   auto auth = lcbauth_new();
-  result = RetryWithFixedBackoff(5, 200, IsRetriable, lcbauth_set_callbacks,
-                                 auth, isolate_, GetUsername, GetPassword);
+  result = RetryWithFixedBackoff(5, 200, IsRetriable, lcbauth_set_callback,
+                                 auth, isolate_, GetUsernameAndPassword);
   if (result != LCB_SUCCESS) {
     return FormatErrorAndDestroyConn("Unable to set auth callbacks", result);
   }
