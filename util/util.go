@@ -572,13 +572,13 @@ func GetAppStatus(urlSuffix string, nodeAddrs []string) (map[string]map[string]s
 	return appStatuses, nil
 }
 
-func ListChildren(path string) []string {
+func ListChildren(path string) ([]string, error) {
 	logPrefix := "util::ListChildren"
 
 	entries, err := metakv.ListAllChildren(path)
 	if err != nil {
 		logging.Errorf("%s Failed to fetch deployed app list from metakv, err: %v", logPrefix, err)
-		return nil
+		return nil, err
 	}
 
 	var children []string
@@ -591,7 +591,7 @@ func ListChildren(path string) []string {
 			children = append(children, child)
 		}
 	}
-	return children
+	return children, nil
 }
 
 func MetakvGet(path string) ([]byte, error) {

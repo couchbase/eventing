@@ -113,7 +113,16 @@ func (m *ServiceMgr) deletePrimaryStore(appName string) (info *runtimeInfo) {
 	logging.Infof("%s Function: %s deleting from primary store", logPrefix, appName)
 
 	checkIfDeployed := false
-	for _, app := range util.ListChildren(metakvAppsPath) {
+	children, err := util.ListChildren(metakvAppsPath)
+
+	if err != nil {
+		info.Code = m.statusCodes.errReadReq.Code
+		info.Info = fmt.Sprintf("Function: %s skipping delete request from primary store, err: %s", appName, err)
+		logging.Errorf("%s %s", logPrefix, info.Info)
+		return
+	}
+
+	for _, app := range children {
 		if app == appName {
 			checkIfDeployed = true
 		}
@@ -135,7 +144,7 @@ func (m *ServiceMgr) deletePrimaryStore(appName string) (info *runtimeInfo) {
 	}
 
 	settingPath := metakvAppSettingsPath + appName
-	err := util.MetaKvDelete(settingPath, nil)
+	err = util.MetaKvDelete(settingPath, nil)
 	if err != nil {
 		info.Code = m.statusCodes.errDelAppSettingsPs.Code
 		info.Info = fmt.Sprintf("Function: %s failed to delete settings, err: %v", appName, err)
@@ -181,7 +190,16 @@ func (m *ServiceMgr) deleteTempStore(appName string) (info *runtimeInfo) {
 	logging.Infof("%s Function: %s deleting drafts from temporary store", logPrefix, appName)
 
 	checkIfDeployed := false
-	for _, app := range util.ListChildren(metakvTempAppsPath) {
+	children, err := util.ListChildren(metakvTempAppsPath)
+
+	if err != nil {
+		info.Code = m.statusCodes.errReadReq.Code
+		info.Info = fmt.Sprintf("Function: %s skipping delete request from temp store, err: %s", appName, err)
+		logging.Errorf("%s %s", logPrefix, info.Info)
+		return
+	}
+
+	for _, app := range children {
 		if app == appName {
 			checkIfDeployed = true
 		}
@@ -1533,7 +1551,14 @@ func (m *ServiceMgr) getPrimaryStoreHandler(w http.ResponseWriter, r *http.Reque
 	logging.Infof("%s getting all functions from primary store", logPrefix)
 	audit.Log(auditevent.FetchFunctions, r, nil)
 
-	appList := util.ListChildren(metakvAppsPath)
+	appList, err := util.ListChildren(metakvAppsPath)
+	if err != nil {
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errReadReq.Code))
+		msg := fmt.Sprintf("Skipping read request from primary store, err: %s", err)
+		logging.Errorf("%s %s", logPrefix, msg)
+		fmt.Fprintf(w, "%s\n", msg)
+		return
+	}
 	respData := make([]application, len(appList))
 
 	for index, fnName := range appList {
@@ -1623,7 +1648,16 @@ func (m *ServiceMgr) getTempStore(appName string) (application, *runtimeInfo) {
 	info := &runtimeInfo{}
 	logging.Infof("%s Function: %s fetching function draft definitions", logPrefix, appName)
 
-	for _, name := range util.ListChildren(metakvTempAppsPath) {
+	children, err := util.ListChildren(metakvTempAppsPath)
+
+	if err != nil {
+		info.Code = m.statusCodes.errReadReq.Code
+		info.Info = fmt.Sprintf("Function: %s skipping read request from temp store, err: %s", appName, err)
+		logging.Errorf("%s %s", logPrefix, info.Info)
+		return application{}, info
+	}
+
+	for _, name := range children {
 		data, err := util.ReadAppContent(metakvTempAppsPath, metakvTempChecksumPath, name)
 		if err == nil && data != nil {
 			var app application
