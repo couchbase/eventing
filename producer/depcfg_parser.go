@@ -217,7 +217,9 @@ func (p *Producer) parseDepcfg() error {
 		p.handlerConfig.WorkerCount = 3
 	} else if handlerVer, err := common.FrameCouchbaseVersion(string(config.Version())); err == nil {
 		if currCouchbaseVer, err1 := common.FrameCouchbaseVersionShort("7.0.0"); err1 == nil {
-			if currCouchbaseVer.Compare(handlerVer) {
+			if currCouchbaseVer.Equals(handlerVer) {
+				p.handlerConfig.WorkerCount = 1
+			} else if currCouchbaseVer.Compare(handlerVer) {
 				p.handlerConfig.WorkerCount = 3
 			} else {
 				p.handlerConfig.WorkerCount = 1
