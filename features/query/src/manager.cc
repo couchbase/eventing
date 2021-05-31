@@ -22,6 +22,7 @@
 #include "query-iterable.h"
 #include "query-mgr.h"
 #include "utils.h"
+#include <nlohmann/json.hpp>
 
 extern std::atomic<int64_t> n1ql_op_exception_count;
 
@@ -48,6 +49,22 @@ Query::Iterable::Info Query::Manager::NewIterable(Query::Info query_info) {
   }
   iterators_[conn_info.connection] = iterator;
   return {iterator, info.object};
+}
+
+bool isRetriableDMLFailure(std::string row) {
+  auto response_json = nlohmann::json::parse(row, nullptr, false);
+  if (response_json.is_discarded())
+    return false;
+  if(response_json["errors"].is_array() && response_json["errors"].size() > 0) {
+    auto first_err = response_json["errors"][0];
+    auto err_msg = first_err["msg"].get<std::string>();
+    if (!err_msg.empty()) {
+      if (err_msg.find("unable to complete action after") != std::string::npos) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 void QueryFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
@@ -130,8 +147,9 @@ void QueryFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
       }
     }
 
-    auto retriable = (first_row.err_code == LCB_ERR_DML_FAILURE) ||
-                     IsRetriable(first_row.err_code);
+    auto retriable = (first_row.err_code == LCB_ERR_DML_FAILURE) ?
+                      isRetriableDMLFailure(first_row.query_error) :
+                      IsRetriable(first_row.err_code);
     if (!conn_refreshed && (first_row.is_client_auth_error ||
                             first_row.err_code == LCB_ERR_HTTP || retriable)) {
       if (first_row.is_client_auth_error) {

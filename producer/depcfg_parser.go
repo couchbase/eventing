@@ -213,6 +213,18 @@ func (p *Producer) parseDepcfg() error {
 
 	if val, ok := settings["worker_count"]; ok {
 		p.handlerConfig.WorkerCount = int(val.(float64))
+	} else if string(config.Version()) == "" {
+		p.handlerConfig.WorkerCount = 3
+	} else if handlerVer, err := common.FrameCouchbaseVersion(string(config.Version())); err == nil {
+		if currCouchbaseVer, err1 := common.FrameCouchbaseVersionShort("7.0.0"); err1 == nil {
+			if currCouchbaseVer.Equals(handlerVer) {
+				p.handlerConfig.WorkerCount = 1
+			} else if currCouchbaseVer.Compare(handlerVer) {
+				p.handlerConfig.WorkerCount = 3
+			} else {
+				p.handlerConfig.WorkerCount = 1
+			}
+		}
 	} else {
 		p.handlerConfig.WorkerCount = 1
 	}

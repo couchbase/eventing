@@ -57,6 +57,11 @@ func (e CouchbaseVer) Compare(need CouchbaseVer) bool {
 		(e.isEnterprise == need.isEnterprise)
 }
 
+// returns e == need
+func (e CouchbaseVer) Equals(need CouchbaseVer) bool {
+        return e.major == need.major && e.minor == need.minor && e.mpVersion == need.mpVersion && e.isEnterprise == need.isEnterprise
+}
+
 func (e CouchbaseVer) String() string {
 	return fmt.Sprintf("%d.%d", e.major, e.minor)
 }
