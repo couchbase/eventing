@@ -15,6 +15,7 @@ const (
 	METRICS_PREFIX      = "eventing_"
 	APPROX_METRIC_COUNT = 27
 	APPROX_METRIC_SIZE  = 50
+	PASSWORD_MASK       = "*****"
 )
 
 const (

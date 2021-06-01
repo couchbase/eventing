@@ -1112,3 +1112,25 @@ func applicationAdapter(app *application) (common.Application, error) {
 	}
 	return appConverted, nil
 }
+
+func redactPasswords(app *application) {
+	for idx, _ := range app.DeploymentConfig.Curl {
+		app.DeploymentConfig.Curl[idx].BearerKey = PASSWORD_MASK
+		app.DeploymentConfig.Curl[idx].Password = PASSWORD_MASK
+	}
+}
+
+func copyPasswords(newApp, oldApp *application) {
+	for idx, newBinding := range newApp.DeploymentConfig.Curl {
+		for _, binding := range oldApp.DeploymentConfig.Curl {
+			if newBinding.Value == binding.Value {
+				if newBinding.Password == PASSWORD_MASK {
+					newApp.DeploymentConfig.Curl[idx].Password = binding.Password
+				}
+				if newBinding.BearerKey == PASSWORD_MASK {
+					newApp.DeploymentConfig.Curl[idx].BearerKey = binding.BearerKey
+				}
+			}
+		}
+	}
+}

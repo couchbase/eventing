@@ -15,7 +15,7 @@ import (
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/producer"
-	"github.com/couchbase/eventing/service_manager"
+	servicemanager "github.com/couchbase/eventing/service_manager"
 	"github.com/couchbase/eventing/suptree"
 	"github.com/couchbase/eventing/util"
 	"github.com/pkg/errors"
@@ -461,7 +461,24 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(path string, value []byte,
 		// one app is doing bootstrap. When next rebalance request comes in, on n_1 it needs to
 		// deploy the missing apps that aren't running on it.
 
-		appsInPrimaryStore := util.ListChildren(MetakvAppsPath)
+		start := time.Now()
+	retryRead:
+
+		appsInPrimaryStore, err := util.ListChildren(MetakvAppsPath)
+
+		if err != nil {
+			now := time.Now()
+			if now.Sub(start) < 2*time.Second {
+				logging.Errorf("%s [%d] Error Reading from Primary Store, error: %s RETRYING.", logPrefix, s.runningFnsCount(), err)
+				// Fixed backoff of 100ms
+				time.Sleep(100 * time.Millisecond)
+				goto retryRead
+			} else {
+				// Fall through just like before the 'retryRead' retry loop changes were made
+				logging.Errorf("%s [%d] Error Reading from Primary Store, error: %s .", logPrefix, s.runningFnsCount(), err)
+			}
+		}
+
 		logging.Infof("%s [%d] Apps in primary store: %v, running apps: %v",
 			logPrefix, s.runningFnsCount(), appsInPrimaryStore, s.runningFns())
 
