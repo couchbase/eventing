@@ -15,6 +15,9 @@ import (
 // ErrorInvalidVbucket
 var ErrorInvalidVbucket = errors.New("dcp.invalidVbucket")
 
+// ErrorInvalidFeed
+var ErrorInvalidFeed = errors.New("dcp.invalidFeed")
+
 // ErrorFailoverLog
 var ErrorFailoverLog = errors.New("dcp.failoverLog")
 
@@ -461,7 +464,7 @@ func (feed *DcpFeed) dcpRequestStream(
 		fmsg := "%v ##%x len(feed.nodeFeeds[master]) is 0." +
 			" Master node for vb: %d is %v\n"
 		logging.Errorf(fmsg, prefix, opaque, vb, master)
-		return ErrorInvalidVbucket
+		return ErrorInvalidFeed
 	}
 
 	feed.reConnectToNodes(feed.opaque, feed.flags, feed.config)
