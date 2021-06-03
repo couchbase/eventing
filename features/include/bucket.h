@@ -103,6 +103,26 @@ private:
   Error FormatErrorAndDestroyConn(const std::string &message,
                                   const lcb_STATUS &error) const;
 
+  bool MaybeRecreateConnOnAuthErr(const lcb_STATUS &status, bool should_check_autherr);
+
+  template <typename CmdType, typename Callable>
+  std::pair<lcb_STATUS, Result> TryLcbCmdWithRefreshConnIfNecessary(CmdType &cmd, int max_retry_count,
+                                                                    uint32_t max_retry_microsecs,
+                                                                    Callable &&callable) {
+    auto [err_code, result] =
+      RetryLcbCommand(connection_, cmd, max_retry_count, max_retry_microsecs, callable);
+
+    if (err_code != LCB_SUCCESS) {
+      return {err_code, result};
+    } else if (MaybeRecreateConnOnAuthErr(result.rc, true)) {
+      auto [err_code, result] =
+        RetryLcbCommand(connection_, cmd, max_retry_count, max_retry_microsecs, callable);
+      return {err_code, result};
+    } else {
+      return {err_code, result};
+    }
+  }
+
   v8::Isolate *isolate_{nullptr};
   std::string bucket_name_;
   std::string scope_name_;
