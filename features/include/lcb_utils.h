@@ -37,11 +37,7 @@ struct Result {
 constexpr int def_lcb_retry_count = 6;
 constexpr int def_lcb_retry_timeout = 0;
 
-const char *GetUsername(void *cookie, const char *host, const char *port,
-                        const char *bucket);
-
-const char *GetPassword(void *cookie, const char *host, const char *port,
-                        const char *bucket);
+void GetUsernameAndPassword(lcbauth_CREDENTIALS *credentials);
 
 // lcb related callbacks
 void GetCallback(lcb_INSTANCE *instance, int, const lcb_RESPBASE *rb);

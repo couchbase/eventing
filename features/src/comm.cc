@@ -128,27 +128,20 @@ void Communicator::WriteDebuggerURL(const std::string &url) {
   }
 }
 
-// Note: The decision to fetch entries older than 10 seconds is
-// based on the fact that as of 7.0 eventing rebalance takes at-least
-// 13 seconds to run. Hence, its not possible to squeeze in a rebalance out
-// followed by in operation within 10 seconds timeframe which addresses MB-45967
-CredsInfo Communicator::GetCredsCached(const std::string &endpoint) {
-  auto time_now = GetUnixTime();
+CredsInfo Communicator::GetCredsCached(const std::string &endpoint,
+                                       bool useCachedEntry) {
   auto find = creds_cache_.find(endpoint);
-  if (find != creds_cache_.end() && (find->second.time_fetched >= time_now - 10)) {
+  if (useCachedEntry && find != creds_cache_.end()) {
     return find->second;
   }
 
   auto credentials = GetCreds(endpoint);
-  credentials.time_fetched = time_now;
-  if (credentials.is_valid) {
+  if (useCachedEntry && credentials.is_valid) {
     creds_cache_[endpoint] = credentials;
   }
-  // sends back "EVENTINGINVALID" in case of failure
   return credentials;
 }
 
-void Communicator::InvalidateCache() {
-  creds_cache_.erase(creds_cache_.begin(), creds_cache_.end());
-  LOG(logInfo) << "Cleared credentials cache" << std::endl;
+void Communicator::removeCachedEntry(const std::string &endpoint) {
+  creds_cache_.erase(endpoint);
 }
