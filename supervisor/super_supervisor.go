@@ -556,14 +556,12 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(path string, value []byte,
 						}
 
 						s.deleteFromCleanupApps(appName)
-
-						s.appListRWMutex.Lock()
-						logging.Infof("%s [%d] Function: %s deleting from bootstrap list", logPrefix, s.runningFnsCount(), appName)
-						delete(s.bootstrappingApps, appName)
-						s.appListRWMutex.Unlock()
-
 						eventingProducer.NotifyTopologyChange(topologyChangeMsg)
 					}
+					s.appListRWMutex.Lock()
+					logging.Infof("%s [%d] Function: %s deleting from bootstrap list", logPrefix, s.runningFnsCount(), appName)
+					delete(s.bootstrappingApps, appName)
+					s.appListRWMutex.Unlock()
 					logging.Infof("%s [%d] Function: %s deployment done", logPrefix, s.runningFnsCount(), appName)
 				} else {
 					s.appRWMutex.Lock()
