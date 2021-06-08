@@ -462,9 +462,12 @@ func (feed *DcpFeed) dcpRequestStream(
 		return ErrorInvalidVbucket
 	} else if len(feed.nodeFeeds[master]) == 0 {
 		fmsg := "%v ##%x len(feed.nodeFeeds[master]) is 0." +
-			" Master node for vb: %d is %v\n"
-		logging.Errorf(fmsg, prefix, opaque, vb, master)
-		return ErrorInvalidFeed
+			" Master node for vb: %d is %v nodeFeeds length %d"
+		logging.Errorf(fmsg, prefix, opaque, vb, master, len(feed.nodeFeeds))
+		if len(feed.nodeFeeds) == 0 {
+			return ErrorInvalidFeed
+		}
+		return ErrorInvalidVbucket
 	}
 
 	feed.reConnectToNodes(feed.opaque, feed.flags, feed.config)
