@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net"
 
+	"github.com/couchbase/cbauth/metakv"
 	"github.com/couchbase/cbauth/service"
 	couchbase "github.com/couchbase/eventing/dcp"
 	"github.com/couchbase/gocb/v2"
@@ -314,7 +315,7 @@ type EventingSuperSup interface {
 	InternalVbDistributionStats(appName string) map[string]string
 	KillAllConsumers()
 	NotifyPrepareTopologyChange(ejectNodes, keepNodes []string, changeType service.TopologyChangeType)
-	TopologyChangeNotifCallback(path string, value []byte, rev interface{}) error
+	TopologyChangeNotifCallback(kve metakv.KVEntry) error
 	PlannerStats(appName string) []*PlannerNodeVbMapping
 	RebalanceStatus() bool
 	RebalanceTaskProgress(appName string) (*RebalanceProgress, error)

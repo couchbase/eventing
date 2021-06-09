@@ -270,7 +270,7 @@ func (m *ServiceMgr) initService() {
 	go func(m *ServiceMgr) {
 		cancelCh := make(chan struct{})
 		for {
-			err := metakv.RunObserveChildren(metakvChecksumPath, m.primaryStoreCsumPathCallback, cancelCh)
+			err := metakv.RunObserveChildrenV2(metakvChecksumPath, m.primaryStoreCsumPathCallback, cancelCh)
 			if err != nil {
 				logging.Errorf("%s metakv observe error for primary store, err: %v. Retrying...", logPrefix, err)
 				time.Sleep(2 * time.Second)
@@ -281,7 +281,7 @@ func (m *ServiceMgr) initService() {
 	go func(m *ServiceMgr) {
 		cancelCh := make(chan struct{})
 		for {
-			err := metakv.RunObserveChildren(metakvTempAppsPath, m.tempStoreAppsPathCallback, cancelCh)
+			err := metakv.RunObserveChildrenV2(metakvTempAppsPath, m.tempStoreAppsPathCallback, cancelCh)
 			if err != nil {
 				logging.Errorf("%s metakv observe error for temp store, err: %v. Retrying...", logPrefix, err)
 				time.Sleep(2 * time.Second)
@@ -292,7 +292,7 @@ func (m *ServiceMgr) initService() {
 	go func(m *ServiceMgr) {
 		cancelCh := make(chan struct{})
 		for {
-			err := metakv.RunObserveChildren(metakvAppSettingsPath, m.settingChangeCallback, cancelCh)
+			err := metakv.RunObserveChildrenV2(metakvAppSettingsPath, m.settingChangeCallback, cancelCh)
 			if err != nil {
 				logging.Errorf("%s metakv observe error for setting store, err: %v. Retrying...", logPrefix, err)
 				time.Sleep(2 * time.Second)
@@ -302,12 +302,12 @@ func (m *ServiceMgr) initService() {
 	go m.watchFailoverEvents()
 }
 
-func (m *ServiceMgr) primaryStoreCsumPathCallback(path string, value []byte, rev interface{}) error {
+func (m *ServiceMgr) primaryStoreCsumPathCallback(kve metakv.KVEntry) error {
 	logPrefix := "ServiceMgr::primaryStoreCsumPathCallback"
 
-	logging.Infof("%s path: %s encoded value size: %d", logPrefix, path, len(value))
+	logging.Infof("%s path: %s encoded value size: %d", logPrefix, kve.Path, len(kve.Value))
 
-	splitRes := strings.Split(path, "/")
+	splitRes := strings.Split(kve.Path, "/")
 	if len(splitRes) != 4 {
 		return nil
 	}
@@ -316,7 +316,7 @@ func (m *ServiceMgr) primaryStoreCsumPathCallback(path string, value []byte, rev
 	m.fnMu.Lock()
 	defer m.fnMu.Unlock()
 
-	if len(value) > 0 {
+	if len(kve.Value) > 0 {
 		//Read application from metakv
 		//NOTE WELL: Please do not access settings from this callback. While saving to primary store, we write app->csum->settings, in that order
 		//So by the time we hit this code, settings are likely not available or stale, so, do not access them
@@ -346,12 +346,12 @@ func (m *ServiceMgr) primaryStoreCsumPathCallback(path string, value []byte, rev
 	return nil
 }
 
-func (m *ServiceMgr) tempStoreAppsPathCallback(path string, value []byte, rev interface{}) error {
+func (m *ServiceMgr) tempStoreAppsPathCallback(kve metakv.KVEntry) error {
 	logPrefix := "ServiceMgr::tempStoreAppsPathCallback"
 
-	logging.Infof("%s path: %s encoded value size: %d", logPrefix, path, len(value))
+	logging.Infof("%s path: %s encoded value size: %d", logPrefix, kve.Path, len(kve.Value))
 
-	splitRes := strings.Split(path, "/")
+	splitRes := strings.Split(kve.Path, "/")
 	if len(splitRes) != 5 {
 		return nil
 	}
@@ -360,7 +360,7 @@ func (m *ServiceMgr) tempStoreAppsPathCallback(path string, value []byte, rev in
 	m.fnMu.Lock()
 	defer m.fnMu.Unlock()
 
-	if len(value) > 0 {
+	if len(kve.Value) > 0 {
 		m.fnsInTempStore[fnName] = struct{}{}
 		logging.Infof("%s Added function: %s to fnsInTempStore", logPrefix, fnName)
 	} else {
@@ -371,14 +371,14 @@ func (m *ServiceMgr) tempStoreAppsPathCallback(path string, value []byte, rev in
 	return nil
 }
 
-func (m *ServiceMgr) settingChangeCallback(path string, value []byte, rev interface{}) error {
+func (m *ServiceMgr) settingChangeCallback(kve metakv.KVEntry) error {
 	logPrefix := "ServiceMgr::settingChangeCallback"
 
-	logging.Infof("%s path: %s encoded value size: %d", logPrefix, path, len(value))
+	logging.Infof("%s path: %s encoded value size: %d", logPrefix, kve.Path, len(kve.Value))
 
-	pathTokens := strings.Split(path, "/")
+	pathTokens := strings.Split(kve.Path, "/")
 	if len(pathTokens) != 4 {
-		logging.Errorf("%s Invalid setting path, path: %s", logPrefix, path)
+		logging.Errorf("%s Invalid setting path, path: %s", logPrefix, kve.Path)
 		return nil
 	}
 
@@ -397,7 +397,7 @@ func (m *ServiceMgr) settingChangeCallback(path string, value []byte, rev interf
 		cfg = app.DeploymentConfig
 	}
 
-	if value == nil {
+	if kve.Value == nil {
 		source := common.Keyspace{BucketName: cfg.SourceBucket,
 			ScopeName:      cfg.SourceScope,
 			CollectionName: cfg.SourceCollection,
@@ -411,7 +411,7 @@ func (m *ServiceMgr) settingChangeCallback(path string, value []byte, rev interf
 	}
 
 	settings := make(map[string]interface{})
-	err := json.Unmarshal(value, &settings)
+	err := json.Unmarshal(kve.Value, &settings)
 	if err != nil {
 		logging.Errorf("%s [%s] Failed to unmarshal settings received from metakv, err: %v",
 			logPrefix, functionName, err)
