@@ -17,7 +17,7 @@ func main() {
 
 	logging.Infof("Started eventing producer version: %v", util.EventingVer())
 
-	util.SetIPv6(flags.ipv6)
+	util.SetIPFlags(flags.ipv6, flags.ipv4)
 
 	audit.Init(flags.restPort)
 
