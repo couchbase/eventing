@@ -1700,6 +1700,7 @@ func (m *ServiceMgr) getTempStore(appName string) (application, *runtimeInfo) {
 				continue
 			}
 			m.addDefaultDeploymentConfig(&app)
+			m.maybeReplaceFromPrior(&app)
 			if app.Name == appName {
 				info.Code = m.statusCodes.ok.Code
 				// Hide some internal settings from being exported
@@ -1740,6 +1741,7 @@ func (m *ServiceMgr) getTempStoreAll() []application {
 			}
 			m.maybeDeleteLifeCycleState(&app)
 			m.addDefaultDeploymentConfig(&app)
+			m.maybeReplaceFromPrior(&app)
 			applications = append(applications, app)
 		} else if err != nil {
 			logging.Errorf("%s Function: %s failed to read data from metakv, err: %v", logPrefix, fnName, err)
@@ -3349,6 +3351,12 @@ func (m *ServiceMgr) addLifeCycleStateByFunctionState(app *application) {
 func (m *ServiceMgr) maybeDeleteLifeCycleState(app *application) {
 	// Resetting it to nil won't make it available during export since 'omitempty' is used in the definition
 	app.Metainfo = nil
+}
+
+func (m *ServiceMgr) maybeReplaceFromPrior(app *application) {
+	if value, ok := app.Settings["dcp_stream_boundary"]; ok && value == "from_prior" {
+		app.Settings["dcp_stream_boundary"] = "everything"
+	}
 }
 
 func (m *ServiceMgr) notifyRetryToAllProducers(appName string, r *retry) (info *runtimeInfo) {
