@@ -3184,7 +3184,7 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 			}
 
 			if _, ok := app.Settings["language_compatibility"]; !ok {
-				app.Settings["language_compatibility"] = common.LanguageCompatibility[len(common.LanguageCompatibility)-1]
+				app.Settings["language_compatibility"] = common.LanguageCompatibility[0]
 			}
 
 			runtimeInfo := m.savePrimaryStore(&app)

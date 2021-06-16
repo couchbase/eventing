@@ -687,7 +687,7 @@ std::string GetConnectionStr(const std::string &end_point,
                              const std::string &bucket_name) {
   std::stringstream conn_str;
   conn_str << "couchbase://" << end_point << '/' << bucket_name
-           << "?select_bucket=true&detailed_errcodes=1";
+           << "?select_bucket=true&detailed_errcodes=1&dnssrv=off";
   if (IsIPv6()) {
     conn_str << "&ipv6=allow";
   }
