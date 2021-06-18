@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/couchbase/cbauth"
+	"github.com/couchbase/cbauth/metakv"
 	"github.com/couchbase/cbauth/service"
 	"github.com/couchbase/eventing/audit"
 	"github.com/couchbase/eventing/common"
@@ -4290,7 +4291,7 @@ func (m *ServiceMgr) triggerInternalRebalance(w http.ResponseWriter, r *http.Req
 		path := "rebalance_request_from_rest"
 		value := []byte(startRebalance)
 		logging.Errorf("%s triggering rebalance processing from rest path: %v, value:%v", logPrefix, path, value)
-		m.superSup.TopologyChangeNotifCallback(path, value, m.state.rev)
+		m.superSup.TopologyChangeNotifCallback(metakv.KVEntry{Path: path, Value: value, Rev: m.state.rev})
 	} else {
 		info.Code = m.statusCodes.errRequestedOpFailed.Code
 		info.Info = fmt.Sprintf("%v", err)

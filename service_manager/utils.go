@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/couchbase/cbauth/metakv"
 	"github.com/couchbase/cbauth/service"
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/gen/flatbuf/cfg"
@@ -781,7 +782,7 @@ func (m *ServiceMgr) watchFailoverEvents() {
 							path := metakvRebalanceTokenPath + m.failoverChangeId
 							value := []byte(startFailover)
 							logging.Infof("%s triggering failover processing path: %v, value:%v", logPrefix, path, value)
-							m.superSup.TopologyChangeNotifCallback(path, value, m.state.rev)
+							m.superSup.TopologyChangeNotifCallback(metakv.KVEntry{Path: path, Value: value, Rev: m.state.rev})
 						}
 					}
 				}

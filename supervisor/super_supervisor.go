@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/couchbase/cbauth/metakv"
 	"github.com/couchbase/cbauth/service"
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/logging"
@@ -127,47 +128,47 @@ func (s *SuperSupervisor) checkIfNodeInCluster() bool {
 }
 
 // DebuggerCallback gets invoked to signal start of debug session
-func (s *SuperSupervisor) DebuggerCallback(path string, value []byte, rev interface{}) error {
+func (s *SuperSupervisor) DebuggerCallback(kve metakv.KVEntry) error {
 	logPrefix := "SuperSupervisor::DebuggerCallback"
 
-	logging.Infof("%s [%d] path => %s encoded value size => %v", logPrefix, s.runningFnsCount(), path, string(value))
+	logging.Infof("%s [%d] path => %s encoded value size => %v", logPrefix, s.runningFnsCount(), kve.Path, string(kve.Value))
 
 	if !s.checkIfNodeInCluster() && s.runningFnsCount() == 0 {
 		logging.Infof("%s [%d] Node not part of cluster. Exiting callback", logPrefix, s.runningFnsCount())
 		return nil
 	}
 
-	if value == nil {
+	if kve.Value == nil {
 		logging.Errorf("%s [%d] value is nil", logPrefix, s.runningFnsCount())
 		return nil
 	}
 
-	appName := util.GetAppNameFromPath(path)
+	appName := util.GetAppNameFromPath(kve.Path)
 	p, exists := s.runningFns()[appName]
 	if !exists || p == nil {
 		logging.Errorf("%s [%d] Function %s not found", logPrefix, s.runningFnsCount(), appName)
 		return nil
 	}
-	p.SignalStartDebugger(string(value))
+	p.SignalStartDebugger(string(kve.Value))
 
-	util.Retry(util.NewFixedBackoff(time.Second), nil, metakvDeleteCallback, s, path)
+	util.Retry(util.NewFixedBackoff(time.Second), nil, metakvDeleteCallback, s, kve.Path)
 	return nil
 }
 
 // EventHandlerLoadCallback is registered as callback from metakv observe calls on event handlers path
-func (s *SuperSupervisor) EventHandlerLoadCallback(path string, value []byte, rev interface{}) error {
+func (s *SuperSupervisor) EventHandlerLoadCallback(kve metakv.KVEntry) error {
 	logPrefix := "SuperSupervisor::EventHandlerLoadCallback"
 
-	logging.Infof("%s [%d] path => %s encoded value size => %v", logPrefix, s.runningFnsCount(), path, len(value))
+	logging.Infof("%s [%d] path => %s encoded value size => %v", logPrefix, s.runningFnsCount(), kve.Path, len(kve.Value))
 
 	if !s.checkIfNodeInCluster() && s.runningFnsCount() == 0 {
 		logging.Infof("%s [%d] Node not part of cluster. Exiting callback", logPrefix, s.runningFnsCount())
 		return nil
 	}
 
-	if value == nil {
+	if kve.Value == nil {
 		// Delete application request
-		splitRes := strings.Split(path, "/")
+		splitRes := strings.Split(kve.Path, "/")
 		appName := splitRes[len(splitRes)-1]
 		msg := supCmdMsg{
 			ctx: appName,
@@ -180,7 +181,7 @@ func (s *SuperSupervisor) EventHandlerLoadCallback(path string, value []byte, re
 }
 
 // SettingsChangeCallback is registered as callback from metakv observe calls on event handler settings path
-func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev interface{}) error {
+func (s *SuperSupervisor) SettingsChangeCallback(kve metakv.KVEntry) error {
 	logPrefix := "SuperSupervisor::SettingsChangeCallback"
 
 	if !s.checkIfNodeInCluster() && s.runningFnsCount() == 0 {
@@ -188,24 +189,24 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 		return nil
 	}
 
-	if value != nil {
+	if kve.Value != nil {
 		sValue := make(map[string]interface{})
-		err := json.Unmarshal(value, &sValue)
+		err := json.Unmarshal(kve.Value, &sValue)
 		if err != nil {
 			logging.Errorf("%s [%d] Failed to unmarshal settings received, err: %v",
 				logPrefix, s.runningFnsCount(), err)
 			return nil
 		}
 
-		logging.Infof("%s [%d] Path => %s value => %#v", logPrefix, s.runningFnsCount(), path, sValue)
+		logging.Infof("%s [%d] Path => %s value => %#v", logPrefix, s.runningFnsCount(), kve.Path, sValue)
 
-		appName := util.GetAppNameFromPath(path)
+		appName := util.GetAppNameFromPath(kve.Path)
 		msg := supCmdMsg{
 			ctx: appName,
 			cmd: cmdSettingsUpdate,
 		}
 
-		processingStatus, deploymentStatus, _, err := s.getStatuses(value)
+		processingStatus, deploymentStatus, _, err := s.getStatuses(kve.Value)
 		if err != nil {
 			return nil
 		}
@@ -224,9 +225,9 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 			logPrefix, s.runningFnsCount(), appName, s.GetAppState(appName), deploymentStatus, processingStatus)
 
 		/*
-			Undeployed	S1 	deployment_status: false 	processing_status: false
-			Deployed	S2 	deployment_status: true 	processing_status: true
-			Paused		S3 	deployment_status: true 	processing_status: false
+			Undeployed	S1	deployment_status: false	processing_status: false
+			Deployed	S2	deployment_status: true		processing_status: true
+			Paused		S3	deployment_status: true		processing_status: false
 
 			Possible state transitions:
 
@@ -410,10 +411,10 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 }
 
 // TopologyChangeNotifCallback is registered to notify any changes in MetaKvRebalanceTokenPath
-func (s *SuperSupervisor) TopologyChangeNotifCallback(path string, value []byte, rev interface{}) error {
+func (s *SuperSupervisor) TopologyChangeNotifCallback(kve metakv.KVEntry) error {
 	logPrefix := "SuperSupervisor::TopologyChangeNotifCallback"
 
-	logging.Infof("%s [%d] Path => %s value => %s", logPrefix, s.runningFnsCount(), path, string(value))
+	logging.Infof("%s [%d] Path => %s value => %s", logPrefix, s.runningFnsCount(), kve.Path, string(kve.Value))
 
 	if !s.checkIfNodeInCluster() && s.runningFnsCount() == 0 {
 		logging.Infof("%s [%d] Node not part of cluster. Exiting callback", logPrefix, s.runningFnsCount())
@@ -424,16 +425,16 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(path string, value []byte,
 	defer atomic.StoreInt32(&s.isRebalanceOngoing, 0)
 
 	topologyChangeMsg := &common.TopologyChangeMsg{}
-	topologyChangeMsg.MsgSource = path
+	topologyChangeMsg.MsgSource = kve.Path
 
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	if value != nil {
+	if kve.Value != nil {
 		s.serviceMgr.OptimiseLoadingCIC(false)
 
-		if string(value) == stopRebalance {
+		if string(kve.Value) == stopRebalance {
 			topologyChangeMsg.CType = common.StopRebalanceCType
-		} else if string(value) == startFailover {
+		} else if string(kve.Value) == startFailover {
 			failoverNotifTs, _ := s.serviceMgr.GetFailoverStatus()
 			if failoverNotifTs == 0 {
 				logging.Infof("%s failover processing is already taken care of. Exiting callback", logPrefix)
@@ -450,7 +451,7 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(path string, value []byte,
 
 		// Reset the failoverNotifTs, which got set to signify failover action on the cluster
 		s.serviceMgr.ResetFailoverStatus()
-		if string(value) == startFailover {
+		if string(kve.Value) == startFailover {
 			logging.Infof("%s failover processing completed", logPrefix)
 			return nil
 		}
@@ -586,20 +587,20 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(path string, value []byte,
 }
 
 // GlobalConfigChangeCallback observes the metakv path where Eventing related global configs are written to
-func (s *SuperSupervisor) GlobalConfigChangeCallback(path string, value []byte, rev interface{}) error {
+func (s *SuperSupervisor) GlobalConfigChangeCallback(kve metakv.KVEntry) error {
 	logPrefix := "SuperSupervisor::GlobalConfigChangeCallback"
 
-	logging.Infof("%s [%d] Path => %s value => %s", logPrefix, s.runningFnsCount(), path, string(value))
+	logging.Infof("%s [%d] Path => %s value => %s", logPrefix, s.runningFnsCount(), kve.Path, string(kve.Value))
 
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	if value == nil {
+	if kve.Value == nil {
 		logging.Errorf("%s [%d] Got empty value for global config", logPrefix, s.runningFnsCount())
 		return nil
 	}
 
 	var config common.Config
-	err := json.Unmarshal(value, &config)
+	err := json.Unmarshal(kve.Value, &config)
 	if err != nil {
 		logging.Errorf("%s [%d] Failed to unmarshal supplied config, err: %v", logPrefix, s.runningFnsCount(), err)
 		return err
@@ -669,14 +670,14 @@ func (s *SuperSupervisor) updateQuotaForRunningFns() {
 }
 
 // AppsRetryCallback informs all running functions to update the retry counter
-func (s *SuperSupervisor) AppsRetryCallback(path string, value []byte, rev interface{}) error {
+func (s *SuperSupervisor) AppsRetryCallback(kve metakv.KVEntry) error {
 	logPrefix := "SuperSupervisor::AppsRetryCallback"
-	if value == nil {
+	if kve.Value == nil {
 		return errors.New("value is empty")
 	}
 
-	appName := util.GetAppNameFromPath(path)
-	retryValue, err := strconv.Atoi(string(value))
+	appName := util.GetAppNameFromPath(kve.Path)
+	retryValue, err := strconv.Atoi(string(kve.Value))
 	if err != nil {
 		logging.Infof("%s [%d] Unable to parse retry value as a number, err : %v", logPrefix, s.runningFnsCount(), retryValue)
 		return err
