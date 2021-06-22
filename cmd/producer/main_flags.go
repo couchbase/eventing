@@ -21,7 +21,8 @@ type Flags struct {
 	debugPort     string
 	uuid          string
 	diagDir       string
-	ipv6          bool
+	ipv6          string
+	ipv4          string
 	numVbuckets   int
 }
 
@@ -71,9 +72,13 @@ func initFlags() {
 		"debugPort", "9140",
 		"Port assigned to debugger")
 
-	fset.BoolVar(&flags.ipv6,
-		"ipv6", false,
-		"Enable ipv6 mode")
+	fset.StringVar(&flags.ipv6,
+		"ipv6", "optional",
+		"Conditionally Enable ipv6 mode")
+
+	fset.StringVar(&flags.ipv4,
+		"ipv4", "required",
+		"Conditionally Enable ipv4 mode")
 
 	fset.IntVar(&flags.numVbuckets,
 		"vbuckets", 1024,
