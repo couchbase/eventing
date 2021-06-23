@@ -265,6 +265,8 @@ func (s *SuperSupervisor) undeployFunctionsOnDeletedBkts(deletedBuckets []string
 }
 
 func (s *SuperSupervisor) watchBucketChanges() {
+	logPrefix := "SuperSupervisor::watchBucketChanges"
+
 	config := s.getConfig()
 	s.servicesNotifierRetryTm = 5
 	if tm, ok := config["service_notifier_timeout"]; ok {
@@ -293,6 +295,17 @@ func (s *SuperSupervisor) watchBucketChanges() {
 		go s.watchBucketChanges()
 	}
 
+	deletedBuckets, err := s.bucketRefresh(nil)
+        if err != nil {
+                logging.Errorf("%s Error in bucket Refresh: %v", logPrefix, err)
+                selfRestart()
+                return
+        }
+
+        if len(deletedBuckets) != 0 {
+                delChannel <- deletedBuckets
+        }
+
 	hostPortAddr := net.JoinHostPort(util.Localhost(), s.restPort)
 	clusterAuthURL, err := util.ClusterAuthUrl(hostPortAddr)
 	if err != nil {
@@ -318,6 +331,7 @@ func (s *SuperSupervisor) watchBucketChanges() {
 		select {
 		case notif, ok := <-ch:
 			if !ok {
+				logging.Errorf("%s ServicesChangeNotifier channel closed. Restarting..", logPrefix)
 				selfRestart()
 				return
 			}
@@ -331,7 +345,7 @@ func (s *SuperSupervisor) watchBucketChanges() {
 			np := notif.Msg.(*couchbase.Pool)
 			deletedBuckets, err := s.bucketRefresh(np)
 			if err != nil {
-				logging.Errorf("Refresh bucket Error")
+				logging.Errorf("%s Error in bucket Refresh: %v", logPrefix, err)
 				selfRestart()
 				return
 			}
@@ -343,7 +357,7 @@ func (s *SuperSupervisor) watchBucketChanges() {
 		case <-ticker.C:
 			deletedBuckets, err := s.bucketRefresh(nil)
 			if err != nil {
-				logging.Errorf("Refresh bucket Error")
+				logging.Errorf("%s Error in bucket Refresh: %v", logPrefix, err)
 				selfRestart()
 				return
 			}

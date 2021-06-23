@@ -748,10 +748,18 @@ func (c *ClusterInfoClient) GetClusterInfoCache() *ClusterInfoCache {
 }
 
 func (c *ClusterInfoClient) watchClusterChanges() {
+	logPrefix := "ClusterInfoClient::watchClusterChanges"
+
 	selfRestart := func() {
 		time.Sleep(time.Duration(c.servicesNotifierRetryTm) * time.Millisecond)
 		go c.watchClusterChanges()
 	}
+
+	if err := c.cinfo.FetchWithLock(false); err != nil {
+                logging.Errorf("cic.cinfo.FetchWithLock(): %v\n", err)
+                selfRestart()
+                return
+        }
 
 	clusterAuthURL, err := ClusterAuthUrl(c.clusterURL)
 	if err != nil {
@@ -777,6 +785,7 @@ func (c *ClusterInfoClient) watchClusterChanges() {
 		select {
 		case notif, ok := <-ch:
 			if !ok {
+				logging.Errorf("%s ServicesChangeNotifier channel closed. Restarting..", logPrefix)
 				selfRestart()
 				return
 			}
