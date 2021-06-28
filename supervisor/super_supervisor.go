@@ -45,6 +45,8 @@ func NewSuperSupervisor(adminPort AdminPortConfig, eventingDir, kvPort, restPort
 		retryCount:                         60,
 		runningProducers:                   make(map[string]common.EventingProducer),
 		runningProducersRWMutex:            &sync.RWMutex{},
+		securitySetting:                    nil,
+		securityMutex:                      &sync.RWMutex{},
 		supCmdCh:                           make(chan supCmdMsg, 10),
 		superSup:                           suptree.NewSimple("super_supervisor"),
 		tokenMapRWMutex:                    &sync.RWMutex{},
@@ -90,7 +92,7 @@ func NewSuperSupervisor(adminPort AdminPortConfig, eventingDir, kvPort, restPort
 
 	go s.watchBucketChanges()
 	var err error
-	s.gocbHandlePool, err = initGoCbPool(s.retryCount, s.restPort)
+	s.gocbHandlePool, err = initGoCbPool(s.retryCount, s.restPort, s)
 	if err != nil {
 		logging.Errorf("%s Terminating due to not being able to initialise gocb pool after %v retries error: %v", logPrefix, s.retryCount, err)
 		os.Exit(1)

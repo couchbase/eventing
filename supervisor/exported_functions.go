@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/couchbase/eventing/common"
-	"github.com/couchbase/eventing/dcp"
+	couchbase "github.com/couchbase/eventing/dcp"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/gocb/v2"
 )
@@ -663,4 +663,27 @@ func (s *SuperSupervisor) WorkerRespawnedCount() uint32 {
 
 func (s *SuperSupervisor) CheckLifeCycleOpsDuringRebalance() bool {
 	return s.serviceMgr.CheckLifeCycleOpsDuringRebalance()
+}
+
+// SetSecuritySetting Sets the new security settings and returns whether reload is required or not
+func (s *SuperSupervisor) SetSecuritySetting(setting *common.SecuritySetting) bool {
+	s.securityMutex.Lock()
+	defer s.securityMutex.Unlock()
+	if s.securitySetting != nil {
+		// TODO: 7.0.1 Change return value based on EncryptData and DisableNonSSLPorts since both can change
+		if s.securitySetting.EncryptData == false && setting.EncryptData == false {
+			s.securitySetting = setting
+			return false
+		}
+		s.securitySetting = setting
+		return true
+	}
+	s.securitySetting = setting
+	return false
+}
+
+func (s *SuperSupervisor) GetSecuritySetting() *common.SecuritySetting {
+	s.securityMutex.RLock()
+	defer s.securityMutex.RUnlock()
+	return s.securitySetting
 }

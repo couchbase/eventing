@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/couchbase/eventing/common"
-	"github.com/couchbase/eventing/dcp"
+	couchbase "github.com/couchbase/eventing/dcp"
 	"github.com/couchbase/eventing/suptree"
 	"github.com/couchbase/eventing/util"
 	"github.com/couchbase/gocb/v2"
@@ -146,4 +146,7 @@ type SuperSupervisor struct {
 
 	gocbHandlePool *gocbPool
 	sync.RWMutex
+
+	securitySetting *common.SecuritySetting // access controlled by securityMutex
+	securityMutex   *sync.RWMutex
 }
