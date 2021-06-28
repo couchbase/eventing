@@ -33,7 +33,6 @@ func NewTLSClient(timeout time.Duration, config *common.SecuritySetting) *Client
 			Transport: &http.Transport{
 				TLSClientConfig: &tls.Config{
 					RootCAs:            config.RootCAs,
-					InsecureSkipVerify: true,
 				},
 			},
 		}}
