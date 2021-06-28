@@ -84,6 +84,7 @@ type ServiceMgr struct {
 	certFile                string
 	config                  util.ConfigHolder
 	clusterEncryptionConfig *cbauth.ClusterEncryptionConfig
+	configMutex             *sync.RWMutex
 	ejectNodeUUIDs          []string
 	eventingNodeAddrs       []string
 	failoverMu              *sync.RWMutex

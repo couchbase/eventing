@@ -52,7 +52,9 @@ func (m *ServiceMgr) UpdateNodeToNodeEncryptionLevel() error {
 		logging.Errorf("Unable to retrieve node-to-node encryption settings: %v", err)
 		return err
 	}
+	m.configMutex.Lock()
 	m.clusterEncryptionConfig = &cryptoConfig
+	m.configMutex.Unlock()
 	logging.Infof("Updating node-to-node encryption level: %+v", cryptoConfig)
 	return nil
 }

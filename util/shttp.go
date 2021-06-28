@@ -1,13 +1,17 @@
 package util
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
 
 	"github.com/couchbase/cbauth"
+	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/logging"
 )
 
@@ -19,6 +23,32 @@ var DefaultClient = &Client{}
 
 func NewClient(timeout time.Duration) *Client {
 	return &Client{http.Client{Timeout: timeout}}
+}
+
+func NewTLSClient(timeout time.Duration, config *common.SecuritySetting) *Client {
+	cert, err := ioutil.ReadFile(config.CertFile)
+	if err != nil {
+		return &Client{http.Client{
+			Timeout: timeout,
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{
+					RootCAs:            config.RootCAs,
+					InsecureSkipVerify: true,
+				},
+			},
+		}}
+	}
+	caPool := x509.NewCertPool()
+	caPool.AppendCertsFromPEM(cert)
+
+	return &Client{http.Client{
+		Timeout: timeout,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				RootCAs: caPool,
+			},
+		},
+	}}
 }
 
 func (c *Client) Do(req *http.Request) (*http.Response, error) {

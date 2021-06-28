@@ -45,7 +45,7 @@ func (m *ServiceMgr) checkIfDeployedAndRunning(appName string) bool {
 	mhVersion := common.CouchbaseVerMap["mad-hatter"]
 	if m.compareEventingVersion(mhVersion) {
 		logPrefix := "ServiceMgr::CheckIfDeployedAndRunning"
-		bootstrapStatus, err := util.GetAggBootstrapAppStatus(net.JoinHostPort(util.Localhost(), m.adminHTTPPort), appName)
+		bootstrapStatus, err := util.GetAggBootstrapAppStatus(net.JoinHostPort(util.Localhost(), m.adminHTTPPort), appName, true)
 		if err != nil {
 			logging.Errorf("%s %s", logPrefix, err)
 			return false
