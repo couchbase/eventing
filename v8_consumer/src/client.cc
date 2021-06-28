@@ -555,6 +555,7 @@ void AppWorker::RouteMessageWithResponse(
       server_settings->eventing_sslport.assign(
           payload->curr_eventing_sslport()->str());
       server_settings->host_addr.assign(payload->curr_host()->str());
+      server_settings->certFile.assign(payload->certFile()->str());
 
       handler_instance_id = payload->function_instance_id()->str();
       handler_config->curl_max_allowed_resp_size =

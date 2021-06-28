@@ -1,6 +1,7 @@
 package common
 
 import (
+	"crypto/x509"
 	"errors"
 	"net"
 
@@ -136,6 +137,14 @@ type Credential struct {
 	Username  string `json:"username"`
 	Password  string `json:"password"`
 	BearerKey string `json:"bearer_key"`
+}
+
+type SecuritySetting struct {
+	EncryptData        bool
+	DisableNonSSLPorts bool
+	CertFile           string
+	KeyFile            string
+	RootCAs            *x509.CertPool
 }
 
 var ErrRetryTimeout = errors.New("retry timeout")
@@ -321,6 +330,8 @@ type EventingSuperSup interface {
 	RebalanceTaskProgress(appName string) (*RebalanceProgress, error)
 	RemoveProducerToken(appName string)
 	RestPort() string
+	SetSecuritySetting(setting *SecuritySetting) bool
+	GetSecuritySetting() *SecuritySetting
 	SignalStopDebugger(appName string) error
 	SpanBlobDump(appName string) (interface{}, error)
 	StopProducer(appName string, skipMetaCleanup bool, updateMetakv bool)

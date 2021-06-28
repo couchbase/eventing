@@ -156,11 +156,19 @@ func GetConnectionStr(kvVBMap map[uint16]string) string {
 	return connBuffer.String()
 }
 
-func GetCluster(caller, connstr string) (*gocb.Cluster, error) {
+func GetCluster(caller, connstr string, s common.EventingSuperSup) (*gocb.Cluster, error) {
 	logging.Infof("Connecting to cluster %rs", connstr)
 
 	authenticator := &DynamicAuthenticator{Caller: caller}
-	conn, err := gocb.Connect(connstr, gocb.ClusterOptions{Authenticator: authenticator})
+	clusterOptions := gocb.ClusterOptions{Authenticator: authenticator}
+	securityConfig := s.GetSecuritySetting()
+
+	if couchbase.GetUseTLS() == true {
+		clusterOptions.SecurityConfig = gocb.SecurityConfig{TLSRootCAs: securityConfig.RootCAs}
+		connstr = strings.ReplaceAll(connstr, "couchbase", "couchbases")
+	}
+
+	conn, err := gocb.Connect(connstr, clusterOptions)
 	if err != nil {
 		logging.Errorf("%v Error connecting to cluster %rs: %v", connstr, err)
 		return nil, err
@@ -170,7 +178,7 @@ func GetCluster(caller, connstr string) (*gocb.Cluster, error) {
 	return conn, nil
 }
 
-func IsSyncGatewayEnabled(caller string, keySpace *common.Keyspace, restPort string) (enabled bool, err error) {
+func IsSyncGatewayEnabled(caller string, keySpace *common.Keyspace, restPort string, s common.EventingSuperSup) (enabled bool, err error) {
 	logPrefix := "util::IsSyncGatewayEnabled"
 
 	addr := net.JoinHostPort(Localhost(), restPort)
@@ -190,7 +198,7 @@ func IsSyncGatewayEnabled(caller string, keySpace *common.Keyspace, restPort str
 
 	connStr := GetConnectionStr(kvVbMap)
 
-	cluster, err := GetCluster(caller, connStr)
+	cluster, err := GetCluster(caller, connStr, s)
 	if err != nil {
 		logging.Errorf("%s gocb connect failed for bucket: %s, err: %v", logPrefix, keySpace.BucketName, err)
 		return

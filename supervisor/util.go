@@ -15,7 +15,7 @@ import (
 
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/common/collections"
-	"github.com/couchbase/eventing/dcp"
+	couchbase "github.com/couchbase/eventing/dcp"
 	"github.com/couchbase/eventing/gen/flatbuf/cfg"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
@@ -602,12 +602,12 @@ func (bw *bucketWatchStruct) GetManifestId() string {
 	return bw.b.Manifest.UID
 }
 
-func initGoCbPool(retryCount int64, restPort string) (*gocbPool, error) {
+func initGoCbPool(retryCount int64, restPort string, s *SuperSupervisor) (*gocbPool, error) {
 	pool := &gocbPool{
 		bucketHandle: make(map[string]*gocbBucketInstance),
 	}
 
-	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &retryCount, gocbConnectCluster, &pool.cluster, restPort)
+	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &retryCount, gocbConnectCluster, &pool.cluster, restPort, s)
 	return pool, err
 }
 
