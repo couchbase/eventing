@@ -93,6 +93,7 @@ type statusCodes struct {
 	errMetakvWriteFailed      statusBase
 	errRequestedOpFailed      statusBase
 	errCollectionMissing      statusBase
+	errEventingBusy           statusBase
 }
 
 func (m *ServiceMgr) getDisposition(code int) int {
@@ -197,6 +198,8 @@ func (m *ServiceMgr) getDisposition(code int) int {
 		return http.StatusNotAcceptable
 	case m.statusCodes.errCollectionMissing.Code:
 		return http.StatusInternalServerError
+	case m.statusCodes.errEventingBusy.Code:
+		return http.StatusInternalServerError
 	default:
 		logging.Warnf("Unknown status code: %v", code)
 		return http.StatusInternalServerError
@@ -256,6 +259,7 @@ func (m *ServiceMgr) initErrCodes() {
 		errMetakvWriteFailed:      statusBase{"ERR_METAKV_WRITE_FAILED", 54},
 		errRequestedOpFailed:      statusBase{"ERR_REQUESTED_OP_FAILED", 55},
 		errCollectionMissing:      statusBase{"ERR_COLLECTION_MISSING", 56},
+		errEventingBusy:           statusBase{"ERR_EVENTING_BUSY", 57},
 	}
 
 	errors := []errorPayload{
@@ -531,6 +535,12 @@ func (m *ServiceMgr) initErrCodes() {
 			Name:        m.statusCodes.errCollectionMissing.Name,
 			Code:        m.statusCodes.errCollectionMissing.Code,
 			Description: "Collection does not exist in the cluster",
+		},
+		{
+			Name:        m.statusCodes.errEventingBusy.Name,
+			Code:        m.statusCodes.errEventingBusy.Code,
+			Description: "Eventing node is busy with upgradation process",
+			Attributes:  []string{"retry"},
 		},
 	}
 

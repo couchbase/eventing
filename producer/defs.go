@@ -24,7 +24,8 @@ const (
 
 	udsSockPathLimit = 100
 
-	dataService = "kv"
+	dataService    = "kv"
+	dataServiceSSL = "kvSSL"
 
 	supervisorTimeout = 60 * time.Second
 

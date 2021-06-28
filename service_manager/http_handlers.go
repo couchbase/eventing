@@ -354,9 +354,22 @@ func getGlobalAppLog(m *ServiceMgr, appName string, sz int64, creds http.Header)
 
 	var lines []string
 	for _, node := range nodes {
-		url := "http://" + node + "/getAppLog?name=" + appName + "&aggregate=false" + "&size=" + strconv.Itoa(int(psz))
 
-		client := util.NewClient(time.Second * 15)
+		var url string
+		var client *util.Client
+
+		m.configMutex.RLock()
+		check := m.clusterEncryptionConfig != nil && m.clusterEncryptionConfig.EncryptData
+		m.configMutex.RUnlock()
+
+		if check {
+			url = "https://" + node + "/getAppLog?name=" + appName + "&aggregate=false" + "&size=" + strconv.Itoa(int(psz))
+			client = util.NewTLSClient(time.Second*15, m.superSup.GetSecuritySetting())
+		} else {
+			url = "http://" + node + "/getAppLog?name=" + appName + "&aggregate=false" + "&size=" + strconv.Itoa(int(psz))
+			client = util.NewClient(time.Second * 15)
+		}
+
 		req, err := http.NewRequest(http.MethodGet, url, nil)
 		if err != nil {
 			logging.Errorf("Got failure creating http request to %v: %v", node, err)
@@ -408,8 +421,21 @@ func getGlobalInsights(m *ServiceMgr, apps []string, creds http.Header) *common.
 		oboAuthHeader = "Basic " + oboAuthInfo
 	}
 	for _, node := range nodes {
-		url := "http://" + node + "/getInsight?aggregate=false"
-		client := util.NewClient(time.Second * 15)
+		var url string
+		var client *util.Client
+
+		m.configMutex.RLock()
+		check := m.clusterEncryptionConfig != nil && m.clusterEncryptionConfig.EncryptData
+		m.configMutex.RUnlock()
+
+		if check {
+			url = "https://" + node + "/getInsight?aggregate=false"
+			client = util.NewTLSClient(time.Second*15, m.superSup.GetSecuritySetting())
+		} else {
+			url = "http://" + node + "/getInsight?aggregate=false"
+			client = util.NewClient(time.Second * 15)
+		}
+
 		req, err := http.NewRequest(http.MethodGet, url, nil)
 		if err != nil {
 			logging.Errorf("Got failure creating http request to %v: %v", node, err)
@@ -1282,7 +1308,7 @@ func (m *ServiceMgr) setSettings(appName string, data []byte, force bool) (info 
 	if procStatExists || depStatExists {
 		if m.compareEventingVersion(mhVersion) {
 			if settings["deployment_status"].(bool) {
-				status, err := util.GetAggBootstrapAppStatus(net.JoinHostPort(util.Localhost(), m.adminHTTPPort), appName)
+				status, err := util.GetAggBootstrapAppStatus(net.JoinHostPort(util.Localhost(), m.adminHTTPPort), appName, true)
 				if err != nil {
 					logging.Errorf("%s %s", logPrefix, err)
 					info.Code = m.statusCodes.errStatusesNotFound.Code
@@ -1966,7 +1992,7 @@ func (m *ServiceMgr) savePrimaryStore(app *application) (info *runtimeInfo) {
 			ScopeName:      app.DeploymentConfig.SourceScope,
 			CollectionName: app.DeploymentConfig.SourceCollection,
 		}
-		if enabled, err := util.IsSyncGatewayEnabled(logPrefix, keySpace, m.restPort); err == nil && enabled {
+		if enabled, err := util.IsSyncGatewayEnabled(logPrefix, keySpace, m.restPort, m.superSup); err == nil && enabled {
 			info.Code = m.statusCodes.errSyncGatewayEnabled.Code
 			info.Info = fmt.Sprintf("SyncGateway is enabled on: %s, deployement of source bucket mutating handler will cause Intra Bucket Recursion", app.DeploymentConfig.SourceBucket)
 			return
@@ -2872,6 +2898,7 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 			m.sendErrorInfo(w, info)
 			return
 		}
+
 		appName := match[1]
 		appState := m.superSup.GetAppState(appName)
 
@@ -2911,6 +2938,7 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 			m.sendErrorInfo(w, info)
 			return
 		}
+
 		appName := match[1]
 		appState := m.superSup.GetAppState(appName)
 
@@ -2958,6 +2986,7 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 			m.sendErrorInfo(w, info)
 			return
 		}
+
 		appName := match[1]
 		appState := m.superSup.GetAppState(appName)
 
@@ -3046,6 +3075,7 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 			m.sendErrorInfo(w, info)
 			return
 		}
+
 		appName := match[1]
 		appState := m.superSup.GetAppState(appName)
 
@@ -3419,7 +3449,7 @@ func (m *ServiceMgr) statusHandlerImpl(appName string) (response interface{}, in
 
 		mhVersion := common.CouchbaseVerMap["mad-hatter"]
 		if m.compareEventingVersion(mhVersion) {
-			bootstrapStatus, err := util.GetAggBootstrapAppStatus(net.JoinHostPort(util.Localhost(), m.adminHTTPPort), status.Name)
+			bootstrapStatus, err := util.GetAggBootstrapAppStatus(net.JoinHostPort(util.Localhost(), m.adminHTTPPort), status.Name, true)
 			if err != nil {
 				info.Code = m.statusCodes.errInvalidConfig.Code
 				return

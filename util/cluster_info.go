@@ -247,8 +247,14 @@ func (c *ClusterInfoCache) GetNodesByServiceType(srvc string) (nids []NodeId) {
 }
 
 func (c *ClusterInfoCache) GetAddressOfActiveKVNodes() (addresses []string, err error) {
-	for _, nodeID := range c.GetNodesByServiceType(DataService) {
-		address, err := c.GetServiceAddress(nodeID, DataService)
+	var serviceType string
+	if couchbase.GetUseTLS() {
+		serviceType = DataServiceSSL
+	} else {
+		serviceType = DataService
+	}
+	for _, nodeID := range c.GetNodesByServiceType(serviceType) {
+		address, err := c.GetServiceAddress(nodeID, serviceType)
 		if err != nil {
 			return addresses, err
 		}
