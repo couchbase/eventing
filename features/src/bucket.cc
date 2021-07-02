@@ -27,6 +27,7 @@
 #include "v8worker.h"
 
 std::atomic<int64_t> bucket_op_exception_count = {0};
+std::atomic<int64_t> bucket_op_cachemiss_count = {0};
 std::atomic<int64_t> lcb_retry_failure = {0};
 
 BucketFactory::BucketFactory(v8::Isolate *isolate,
