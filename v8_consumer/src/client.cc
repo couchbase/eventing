@@ -41,6 +41,7 @@ std::string executable_img;
 std::string GetFailureStats() {
   nlohmann::json fstats;
   fstats["bucket_op_exception_count"] = bucket_op_exception_count.load();
+  fstats["bucket_op_cache_miss_count"] = bucket_op_cachemiss_count.load();
   fstats["bkt_ops_cas_mismatch_count"] = bkt_ops_cas_mismatch_count.load();
   fstats["n1ql_op_exception_count"] = n1ql_op_exception_count.load();
   fstats["timeout_count"] = timeout_count.load();
@@ -571,12 +572,12 @@ void AppWorker::RouteMessageWithResponse(
       {
         std::lock_guard<std::mutex> lck(workers_map_mutex_);
         for (int16_t i = 0; i < thr_count_; i++) {
-          V8Worker *w = new V8Worker(
-              platform.release(), handler_config, server_settings,
-              function_name_, function_id_, handler_instance_id, user_prefix_,
-              &latency_stats_, &curl_latency_stats_, ns_server_port_,
-              num_vbuckets_, vb_seq_.get(),
-              processed_bucketops_.get(), vb_locks_.get(), i);
+          V8Worker *w =
+              new V8Worker(platform.release(), handler_config, server_settings,
+                           function_name_, function_id_, handler_instance_id,
+                           user_prefix_, &latency_stats_, &curl_latency_stats_,
+                           ns_server_port_, num_vbuckets_, vb_seq_.get(),
+                           processed_bucketops_.get(), vb_locks_.get(), i);
 
           LOG(logInfo) << "Init index: " << i << " V8Worker: " << w
                        << std::endl;

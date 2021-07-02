@@ -19,6 +19,7 @@
 #include "v8worker.h"
 
 extern std::atomic<int64_t> bucket_op_exception_count;
+extern std::atomic<int64_t> bucket_op_cachemiss_count;
 extern std::atomic<int64_t> lcb_retry_failure;
 std::atomic<int64_t> bkt_ops_cas_mismatch_count = {0};
 
@@ -607,6 +608,7 @@ void BucketOps::GetOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
       args.GetReturnValue().Set(response_obj);
       return;
     }
+    ++bucket_op_cachemiss_count;
   }
 
   auto [error, err_code, result] = bucket->GetWithMeta(meta.key);
