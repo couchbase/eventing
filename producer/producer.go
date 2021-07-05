@@ -354,6 +354,11 @@ func (p *Producer) Serve() {
 				logging.Infof("%s [%s:%d] Function Paused", logPrefix, p.appName, p.LenRunningConsumers())
 			case resume:
 				logging.Infof("%s [%s] Resuming producer", logPrefix, p.appName)
+				p.metadataHandle, err = p.superSup.GetMetadataHandle(p.metadataKeyspace.BucketName, p.metadataKeyspace.ScopeName, p.metadataKeyspace.CollectionName, p.appName)
+				if err != nil {
+					logging.Errorf("%s [%s:%d] Failed to get meta data handle while resuming, err: %v", logPrefix, p.appName, p.LenRunningConsumers(), err)
+					return
+				}
 				err = p.resumeProducer()
 				p.notifySupervisorCh <- struct{}{}
 				if err != nil {
@@ -363,7 +368,6 @@ func (p *Producer) Serve() {
 				}
 				logging.Infof("%s [%s:%d] Function Resumed", logPrefix, p.appName, p.LenRunningConsumers())
 			}
-
 		case <-p.stopProducerCh:
 			logging.Infof("%s [%s:%d] Explicitly asked to shutdown producer routine", logPrefix, p.appName, p.LenRunningConsumers())
 
