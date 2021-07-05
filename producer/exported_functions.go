@@ -288,7 +288,9 @@ func (p *Producer) PauseProducer() {
 }
 
 // ResumeProducer after pausing
+// Before resuming the producer, make sure that gocb handle is registered on the correct pool
 func (p *Producer) ResumeProducer() {
+	p.superSup.RegistergocbBucket(p.MetadataBucket(), p.appName, p.superSup.GetSecuritySetting())
 	p.stateChangeCh <- resume
 }
 

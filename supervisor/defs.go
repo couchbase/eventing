@@ -86,6 +86,15 @@ type gocbPool struct {
 	bucketHandle map[string]*gocbBucketInstance
 }
 
+type gocbGlobalConfig struct {
+	sync.RWMutex
+	plaingocbPool     *gocbPool
+	encryptedgocbPool *gocbPool
+	appEncryptionMap  map[string]bool
+	nsServerPort      string
+	retrycount        int64
+}
+
 // SuperSupervisor is responsible for managing/supervising all producer instances
 type SuperSupervisor struct {
 	auth        string
@@ -144,7 +153,8 @@ type SuperSupervisor struct {
 	scn        *util.ServicesChangeNotifier
 	serviceMgr common.EventingServiceMgr
 
-	gocbHandlePool *gocbPool
+	gocbGlobalConfigHandle *gocbGlobalConfig
+
 	sync.RWMutex
 
 	securitySetting *common.SecuritySetting // access controlled by securityMutex

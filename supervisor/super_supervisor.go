@@ -93,9 +93,9 @@ func NewSuperSupervisor(adminPort AdminPortConfig, eventingDir, kvPort, restPort
 
 	go s.watchBucketChanges()
 	var err error
-	s.gocbHandlePool, err = initGoCbPool(s.retryCount, s.restPort, s)
+	s.gocbGlobalConfigHandle, err = initgocbGlobalConfig(s.retryCount, s.restPort)
 	if err != nil {
-		logging.Errorf("%s Terminating due to not being able to initialise gocb pool after %v retries error: %v", logPrefix, s.retryCount, err)
+		logging.Errorf("%s Terminating due to not being able to initialise gocb config after %v retries error: %v", logPrefix, s.retryCount, err)
 		os.Exit(1)
 	}
 	return s
@@ -708,6 +708,7 @@ func (s *SuperSupervisor) spawnApp(appName string) error {
 		util.Retry(util.NewExponentialBackoff(), &s.retryCount, undeployFunctionCallback, s, appName)
 		return err
 	}
+
 	err = s.watchBucketWithGocb(p.MetadataBucket(), appName)
 	if err != nil {
 		s.unwatchBucket(p.SourceBucket(), appName)

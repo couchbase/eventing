@@ -14,6 +14,9 @@ import (
 	"github.com/couchbase/eventing/logging"
 )
 
+// This function is intended to be used once for initializing our HTTP server
+// with TLS config. Further updates to new node level certs should come from
+// KeyPairReloader
 func (m *ServiceMgr) getTLSConfig(logPrefix string) (*tls.Config, error) {
 	cert, err := tls.LoadX509KeyPair(m.certFile, m.keyFile)
 	if err != nil {
