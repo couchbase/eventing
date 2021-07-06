@@ -2,11 +2,12 @@ package util
 
 import (
 	"errors"
-	"github.com/couchbase/eventing/dcp"
-	"github.com/couchbase/eventing/logging"
 	"strings"
 	"sync"
 	"time"
+
+	couchbase "github.com/couchbase/eventing/dcp"
+	"github.com/couchbase/eventing/logging"
 )
 
 const (
@@ -335,6 +336,7 @@ func (sn *ServicesChangeNotifier) Close() {
 	for bucketName, _ := range sn.buckets {
 		sn.StopObserveCollectionManifestChanges(bucketName)
 	}
+	// TODO in 7.0.1: remove this close since it panics when enforcing TLS
 	close(sn.cancel)
 	sn.instance.deleteWaiter(sn.id)
 }

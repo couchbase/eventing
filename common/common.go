@@ -1,6 +1,7 @@
 package common
 
 import (
+	"crypto/x509"
 	"errors"
 	"net"
 
@@ -136,6 +137,14 @@ type Credential struct {
 	Username  string `json:"username"`
 	Password  string `json:"password"`
 	BearerKey string `json:"bearer_key"`
+}
+
+type SecuritySetting struct {
+	EncryptData        bool
+	DisableNonSSLPorts bool
+	CertFile           string
+	KeyFile            string
+	RootCAs            *x509.CertPool
 }
 
 var ErrRetryTimeout = errors.New("retry timeout")
@@ -309,6 +318,7 @@ type EventingSuperSup interface {
 	GetMetaStoreStats(appName string) map[string]uint64
 	GetBucket(bucketName, appName string) (*couchbase.Bucket, error)
 	GetMetadataHandle(bucketName, scopeName, collectionName, appName string) (*gocb.Collection, error)
+	RegistergocbBucket(bucketName, appName string, setting *SecuritySetting) error
 	GetCollectionID(bucketName, scopeName, collectionName string) (uint32, error)
 	GetCurrentManifestId(bucketName string) (string, error)
 	GetSeqsProcessed(appName string) map[int]int64
@@ -321,6 +331,8 @@ type EventingSuperSup interface {
 	RebalanceTaskProgress(appName string) (*RebalanceProgress, error)
 	RemoveProducerToken(appName string)
 	RestPort() string
+	SetSecuritySetting(setting *SecuritySetting) bool
+	GetSecuritySetting() *SecuritySetting
 	SignalStopDebugger(appName string) error
 	SpanBlobDump(appName string) (interface{}, error)
 	StopProducer(appName string, skipMetaCleanup bool, updateMetakv bool)

@@ -131,7 +131,8 @@ struct V8ExceptionInfo {
 
 class Utils {
 public:
-  Utils(v8::Isolate *isolate, const v8::Local<v8::Context> &context);
+  Utils(v8::Isolate *isolate, const v8::Local<v8::Context> &context,
+        std::string certFile);
 
   virtual ~Utils();
 
@@ -160,6 +161,7 @@ public:
   std::string Trim(const std::string &s, const char *ws = " \t\n\r\f\v") const;
   static Info ValidateDataType(const v8::Local<v8::Value> &arg);
   ConnStrInfo GetConnectionString(const std::string &bucket) const;
+  std::string certFile_;
 
 private:
   v8::Isolate *isolate_;
@@ -243,7 +245,8 @@ void UrlDecodeFunction(const v8::FunctionCallbackInfo<v8::Value> &args);
 void Crc64Function(const v8::FunctionCallbackInfo<v8::Value> &args);
 
 std::string GetConnectionStr(const std::string &end_point,
-                             const std::string &bucket_name);
+                             const std::string &bucket_name,
+                             const std::string certFile);
 
 std::string BuildUrl(const std::string &host, const std::string &path);
 

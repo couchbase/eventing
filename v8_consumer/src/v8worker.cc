@@ -205,7 +205,7 @@ void V8Worker::InitializeIsolateData(const server_settings_t *server_settings,
 
   auto context = context_.Get(isolate_);
   data_.v8worker = this;
-  data_.utils = new Utils(isolate_, context);
+  data_.utils = new Utils(isolate_, context, certFile_);
   data_.js_exception = new JsException(isolate_);
   auto key = GetLocalKey();
   data_.comm = new Communicator(server_settings->host_addr,
@@ -259,14 +259,17 @@ void V8Worker::InitializeCurlBindingValues(
   }
 }
 
-V8Worker::V8Worker(
-    v8::Platform *platform, handler_config_t *h_config,
-    server_settings_t *server_settings, const std::string &function_name,
-    const std::string &function_id, const std::string &function_instance_id,
-    const std::string &user_prefix, Histogram *latency_stats,
-    Histogram *curl_latency_stats, const std::string &ns_server_port,
-    const int32_t &num_vbuckets, vb_seq_map_t *vb_seq,
-    std::vector<uint64_t> *processed_bucketops, vb_lock_map_t *vb_locks, int worker_idx)
+V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
+                   server_settings_t *server_settings,
+                   const std::string &function_name,
+                   const std::string &function_id,
+                   const std::string &function_instance_id,
+                   const std::string &user_prefix, Histogram *latency_stats,
+                   Histogram *curl_latency_stats,
+                   const std::string &ns_server_port,
+                   const int32_t &num_vbuckets, vb_seq_map_t *vb_seq,
+                   std::vector<uint64_t> *processed_bucketops,
+                   vb_lock_map_t *vb_locks, int worker_idx)
     : app_name_(h_config->app_name), settings_(server_settings),
       num_vbuckets_(num_vbuckets),
       timer_reduction_ratio_(
@@ -276,6 +279,7 @@ V8Worker::V8Worker(
       processed_bucketops_(processed_bucketops), platform_(platform),
       function_name_(function_name), function_id_(function_id),
       user_prefix_(user_prefix), ns_server_port_(ns_server_port),
+      certFile_(server_settings->certFile),
       exception_type_names_(
           {"KVError", "N1QLError", "EventingError", "CurlError", "TypeError"}),
       handler_headers_(h_config->handler_headers) {

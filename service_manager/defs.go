@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/couchbase/cbauth"
 	"github.com/couchbase/cbauth/service"
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/util"
@@ -76,28 +77,31 @@ var (
 
 // ServiceMgr implements cbauth_service interface
 type ServiceMgr struct {
-	adminHTTPPort     string
-	adminSSLPort      string
-	auth              string
-	graph             *bucketMultiDiGraph
-	certFile          string
-	config            util.ConfigHolder
-	ejectNodeUUIDs    []string
-	eventingNodeAddrs []string
-	failoverMu        *sync.RWMutex
-	failoverCounter   uint32
-	failoverNotifTs   int64
-	failoverChangeId  string
-	finch             chan bool
-	fnsInPrimaryStore map[string]depCfg                           // Access controlled by fnMu
-	fnsInTempStore    map[string]struct{}                         // Access controlled by fnMu
-	bucketFunctionMap map[common.Keyspace]map[string]functionInfo // Access controlled by fnMu
-	fnMu              *sync.RWMutex
-	keepNodeUUIDs     []string
-	keyFile           string
-	lcbCredsCounter   int64
-	mu                *sync.RWMutex
-	uuid              string
+	adminHTTPPort           string
+	adminSSLPort            string
+	auth                    string
+	graph                   *bucketMultiDiGraph
+	certFile                string
+	config                  util.ConfigHolder
+	clusterEncryptionConfig *cbauth.ClusterEncryptionConfig
+	configMutex             *sync.RWMutex
+	ejectNodeUUIDs          []string
+	eventingNodeAddrs       []string
+	failoverMu              *sync.RWMutex
+	failoverCounter         uint32
+	failoverNotifTs         int64
+	failoverChangeId        string
+	finch                   chan bool
+	fnsInPrimaryStore       map[string]depCfg                           // Access controlled by fnMu
+	fnsInTempStore          map[string]struct{}                         // Access controlled by fnMu
+	bucketFunctionMap       map[common.Keyspace]map[string]functionInfo // Access controlled by fnMu
+	fnMu                    *sync.RWMutex
+	keepNodeUUIDs           []string
+	keyFile                 string
+	lcbCredsCounter         int64
+	mu                      *sync.RWMutex
+	uuid                    string
+	kpr                     *keypairReloader
 
 	stopTracerCh chan struct{} // chan used to signal stopping of runtime.Trace
 

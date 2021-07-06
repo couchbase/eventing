@@ -7,10 +7,12 @@ import (
 	"io/ioutil"
 	"math"
 	"net"
+	"strings"
 	"time"
 
 	"github.com/couchbase/cbauth"
-	"github.com/couchbase/eventing/dcp"
+	"github.com/couchbase/eventing/common"
+	couchbase "github.com/couchbase/eventing/dcp"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
 	"github.com/couchbase/gocb/v2"
@@ -142,6 +144,7 @@ var gocbConnectCluster = func(args ...interface{}) error {
 	logPrefix := "Supervisor::gocbConnectCluster"
 	gocbCluster := args[0].(**gocb.Cluster)
 	restPort := args[1].(string)
+	securitySetting := args[2].(*common.SecuritySetting)
 
 	hostPortAddr := net.JoinHostPort(util.Localhost(), restPort)
 	cic, err := util.FetchClusterInfoClient(hostPortAddr)
@@ -172,7 +175,12 @@ var gocbConnectCluster = func(args ...interface{}) error {
 	}
 
 	authenticator := &util.DynamicAuthenticator{Caller: logPrefix}
-	cluster, err := gocb.Connect(connStr, gocb.ClusterOptions{Authenticator: authenticator})
+	clusterOptions := gocb.ClusterOptions{Authenticator: authenticator}
+	if securitySetting != nil && securitySetting.EncryptData == true {
+		clusterOptions.SecurityConfig = gocb.SecurityConfig{TLSRootCAs: securitySetting.RootCAs}
+		connStr = strings.ReplaceAll(connStr, "couchbase://", "couchbases://")
+	}
+	cluster, err := gocb.Connect(connStr, clusterOptions)
 	if err != nil {
 		logging.Errorf("%s Connect to cluster %rs failed, err: %v",
 			logPrefix, connStr, err)

@@ -327,6 +327,14 @@ func (c *Consumer) makeV8InitPayload(appName, debuggerPort, currHost, eventingDi
 	handlerFooters := c.createHandlerFooters(builder)
 	n1qlConsistency := builder.CreateString(c.n1qlConsistency)
 	languageCompatibility := builder.CreateString(c.languageCompatibility)
+	certFile := builder.CreateString("")
+	var securitySetting *common.SecuritySetting
+	if c.superSup != nil {
+		securitySetting = c.superSup.GetSecuritySetting()
+		if securitySetting != nil && securitySetting.EncryptData == true {
+			certFile = builder.CreateString(securitySetting.CertFile)
+		}
+	}
 
 	lcb := make([]byte, 1)
 	flatbuffers.WriteBool(lcb, skipLcbBootstrap)
@@ -364,6 +372,7 @@ func (c *Consumer) makeV8InitPayload(appName, debuggerPort, currHost, eventingDi
 	payload.PayloadAddCurlMaxAllowedRespSize(builder, int64(c.curlMaxAllowedRespSize))
 	payload.PayloadAddBucketCacheSize(builder, c.bucketCacheSize)
 	payload.PayloadAddBucketCacheAge(builder, c.bucketCacheAge)
+	payload.PayloadAddCertFile(builder, certFile)
 
 	if c.n1qlPrepareAll {
 		payload.PayloadAddN1qlPrepareAll(builder, 0x1)

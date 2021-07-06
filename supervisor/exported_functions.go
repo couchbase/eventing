@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/couchbase/eventing/common"
-	"github.com/couchbase/eventing/dcp"
+	couchbase "github.com/couchbase/eventing/dcp"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/gocb/v2"
 )
@@ -621,7 +621,11 @@ func (s *SuperSupervisor) GetBucket(bucketName, appName string) (*couchbase.Buck
 }
 
 func (s *SuperSupervisor) GetGocbHandle(bucketName, appName string) (*gocb.Bucket, error) {
-	return s.gocbHandlePool.getBucket(bucketName, appName)
+	return s.gocbGlobalConfigHandle.getBucket(bucketName, appName)
+}
+
+func (s *SuperSupervisor) RegistergocbBucket(bucketName, appName string, setting *common.SecuritySetting) error {
+	return s.gocbGlobalConfigHandle.maybeRegistergocbBucket(bucketName, appName, setting)
 }
 
 func (s *SuperSupervisor) GetCurrentManifestId(bucketName string) (string, error) {
@@ -650,7 +654,7 @@ func (s *SuperSupervisor) GetCollectionID(bucketName, scopeName, collectionName 
 }
 
 func (s *SuperSupervisor) GetMetadataHandle(bucketName, scopeName, collectionName, appName string) (*gocb.Collection, error) {
-	return s.gocbHandlePool.getBucketCollection(bucketName, scopeName, collectionName, appName)
+	return s.gocbGlobalConfigHandle.getBucketCollection(bucketName, scopeName, collectionName, appName)
 }
 
 func (s *SuperSupervisor) IncWorkerRespawnedCount() {
@@ -663,4 +667,27 @@ func (s *SuperSupervisor) WorkerRespawnedCount() uint32 {
 
 func (s *SuperSupervisor) CheckLifeCycleOpsDuringRebalance() bool {
 	return s.serviceMgr.CheckLifeCycleOpsDuringRebalance()
+}
+
+// SetSecuritySetting Sets the new security settings and returns whether reload is required or not
+func (s *SuperSupervisor) SetSecuritySetting(setting *common.SecuritySetting) bool {
+	s.securityMutex.Lock()
+	defer s.securityMutex.Unlock()
+	if s.securitySetting != nil {
+		// TODO: 7.0.1 Change return value based on EncryptData and DisableNonSSLPorts since both can change
+		if s.securitySetting.EncryptData == false && setting.EncryptData == false {
+			s.securitySetting = setting
+			return false
+		}
+		s.securitySetting = setting
+		return true
+	}
+	s.securitySetting = setting
+	return false
+}
+
+func (s *SuperSupervisor) GetSecuritySetting() *common.SecuritySetting {
+	s.securityMutex.RLock()
+	defer s.securityMutex.RUnlock()
+	return s.securitySetting
 }

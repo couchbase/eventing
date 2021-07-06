@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/couchbase/eventing/common"
+	couchbase "github.com/couchbase/eventing/dcp"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
 )
@@ -332,7 +333,14 @@ func (p *Producer) getKvVbMap() error {
 	p.kvVbMap = make(map[uint16]string)
 
 	for _, kvaddr := range kvAddrs {
-		addr, err := cinfo.GetServiceAddress(kvaddr, dataService)
+		var addr string
+		var err error
+		if couchbase.GetUseTLS() {
+			addr, err = cinfo.GetServiceAddress(kvaddr, dataServiceSSL)
+		} else {
+
+			addr, err = cinfo.GetServiceAddress(kvaddr, dataService)
+		}
 		if err != nil {
 			logging.Errorf("%s [%s:%d] Failed to get address of KV host, err: %v",
 				logPrefix, p.appName, p.LenRunningConsumers(), err)

@@ -3,9 +3,11 @@ package servicemanager
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	_ "expvar" // For stat collection
 	"fmt"
+	"io/ioutil"
 	"net"
 	"net/http"
 	_ "net/http/pprof" // For debugging
@@ -18,6 +20,7 @@ import (
 	"github.com/couchbase/cbauth/metakv"
 	"github.com/couchbase/cbauth/service"
 	"github.com/couchbase/eventing/common"
+	couchbase "github.com/couchbase/eventing/dcp"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
 )
@@ -40,20 +43,22 @@ func NewServiceMgr(config util.Config, rebalanceRunning bool, superSup common.Ev
 	mu := &sync.RWMutex{}
 
 	mgr := &ServiceMgr{
-		consistencyValues: []string{"none", "request"},
-		graph:             newBucketMultiDiGraph(),
-		fnsInPrimaryStore: make(map[string]depCfg),
-		fnsInTempStore:    make(map[string]struct{}),
-		bucketFunctionMap: make(map[common.Keyspace]map[string]functionInfo),
-		fnMu:              &sync.RWMutex{},
-		failoverMu:        &sync.RWMutex{},
-		mu:                mu,
-		rebalancerMutex:   &sync.RWMutex{},
-		servers:           make([]service.NodeID, 0),
-		state:             NewState(),
-		stopTracerCh:      make(chan struct{}, 1),
-		superSup:          superSup,
-		finch:             make(chan bool),
+		consistencyValues:       []string{"none", "request"},
+		clusterEncryptionConfig: nil,
+		configMutex:             &sync.RWMutex{},
+		graph:                   newBucketMultiDiGraph(),
+		fnsInPrimaryStore:       make(map[string]depCfg),
+		fnsInTempStore:          make(map[string]struct{}),
+		bucketFunctionMap:       make(map[common.Keyspace]map[string]functionInfo),
+		fnMu:                    &sync.RWMutex{},
+		failoverMu:              &sync.RWMutex{},
+		mu:                      mu,
+		rebalancerMutex:         &sync.RWMutex{},
+		servers:                 make([]service.NodeID, 0),
+		state:                   NewState(),
+		stopTracerCh:            make(chan struct{}, 1),
+		superSup:                superSup,
+		finch:                   make(chan bool),
 	}
 
 	mgr.config.Store(config)
@@ -80,6 +85,9 @@ func (m *ServiceMgr) initService() {
 	m.restPort = cfg["rest_port"].(string)
 	m.uuid = cfg["uuid"].(string)
 	m.initErrCodes()
+
+	couchbase.SetCertFile(m.certFile)
+	couchbase.SetKeyFile(m.keyFile)
 
 	logging.Infof("%s adminHTTPPort: %s adminSSLPort: %s", logPrefix, m.adminHTTPPort, m.adminSSLPort)
 	logging.Infof("%s certFile: %s keyFile: %s", logPrefix, m.certFile, m.keyFile)
@@ -187,6 +195,32 @@ func (m *ServiceMgr) initService() {
 	mux.HandleFunc("/_prometheusMetrics", m.prometheusLow)
 	mux.HandleFunc("/_prometheusMetricsHigh", m.prometheusHigh)
 
+	var kpr *keypairReloader
+	var err error
+	kprretryCount := int64(60)
+	kprretryInterval := 2 * time.Second
+	kprReloadFunc := func(args ...interface{}) error {
+		logPrefix := "ServiceMgr::kprReloadFunc"
+		certFile := args[0].(string)
+		keyFile := args[1].(string)
+		service_mgr := args[2].(*ServiceMgr)
+		kpr := args[3].(**keypairReloader)
+
+		kprTemp, reloadErr := NewKeypairReloader(certFile, keyFile, service_mgr)
+		if reloadErr != nil {
+			logging.Errorf("%s Unable to create a new KeyPair Reloader. Cause: %v", logPrefix, reloadErr)
+		}
+		*kpr = kprTemp
+		return reloadErr
+	}
+
+	err = util.Retry(util.NewFixedBackoff(kprretryInterval), &kprretryCount, kprReloadFunc, m.certFile, m.keyFile, m, &kpr)
+	if err != nil {
+		logging.Errorf("%v Exiting ServiceMgr after retrying kprReloadFunc multiple times. Cause: %v", logPrefix, err)
+		time.Sleep(1 * time.Second)
+		os.Exit(1)
+	}
+
 	go func() {
 		addr := net.JoinHostPort("", m.adminHTTPPort)
 
@@ -213,27 +247,79 @@ func (m *ServiceMgr) initService() {
 	}()
 
 	if m.adminSSLPort != "" {
-		var reload bool = false
 		var sslsrv *http.Server = nil
+		reloadRequired := false
 		sslAddr := net.JoinHostPort("", m.adminSSLPort)
 
-		refresh := func() error {
-			if sslsrv != nil {
-				reload = true
-				sslsrv.Shutdown(context.Background())
+		refresh := func(configChange uint64) error {
+			// There are two flags in the configChange -- check both
+
+			if (configChange & cbauth.CFG_CHANGE_CLUSTER_ENCRYPTION) != 0 {
+				logging.Infof("Cluster Encryption Settings have been changed by ns server.\n")
+				err := m.UpdateNodeToNodeEncryptionLevel()
+				if err == nil {
+
+					m.configMutex.RLock()
+					encryptOn := m.clusterEncryptionConfig != nil && m.clusterEncryptionConfig.EncryptData
+					m.configMutex.RUnlock()
+					if encryptOn {
+						// trigger encryption level change to ./eventing/dcp && util clients
+						couchbase.SetUseTLS(true)
+						couchbase.SetCertFile(m.certFile)
+						couchbase.SetKeyFile(m.keyFile)
+						util.SetUseTLS(true)
+					} else {
+						couchbase.SetUseTLS(false)
+						util.SetUseTLS(false)
+					}
+				}
 			}
+
+			if (configChange & cbauth.CFG_CHANGE_CERTS_TLSCONFIG) != 0 {
+				logging.Infof("Certificates have been refreshed by ns server.")
+				if m.clusterEncryptionConfig != nil && kpr != nil {
+					kpr.signal <- "REFRESH"
+				}
+			}
+
+			rootCertPool := x509.NewCertPool()
+			certInBytes, err := ioutil.ReadFile(m.certFile)
+
+			if err != nil {
+				logging.Errorf("Error while reading cert file error : %s. Passing RootCAs as nil", err)
+			}
+
+			ok := rootCertPool.AppendCertsFromPEM(certInBytes)
+
+			if !ok {
+				logging.Errorf("Error creating cert pool error : %s. Passing RootCAs as nil", err)
+			}
+
+			m.configMutex.RLock()
+			setting := &common.SecuritySetting{
+				EncryptData:        m.clusterEncryptionConfig.EncryptData,
+				DisableNonSSLPorts: m.clusterEncryptionConfig.DisableNonSSLPorts,
+				CertFile:           m.certFile,
+				KeyFile:            m.keyFile,
+				RootCAs:            rootCertPool}
+			m.configMutex.RUnlock()
+			util.SetSecurityConfig(setting)
+			reloadRequired = m.superSup.SetSecuritySetting(setting) || reloadRequired
+			// Redeploy the apps as per design
+			// TODO: 7.0.1 use reloadRequired to refresh SDK handles
 			return nil
 		}
 
 		go func() {
 			for {
-				err := cbauth.RegisterTLSRefreshCallback(refresh)
+				err := cbauth.RegisterConfigRefreshCallback(refresh)
 				if err == nil {
 					break
 				}
 				logging.Errorf("%s Unable to register for cert refresh, will retry: %v", logPrefix, err)
 				time.Sleep(10 * time.Second)
 			}
+
 			for {
 				tlscfg, err := m.getTLSConfig(logPrefix)
 				if err != nil {
@@ -251,6 +337,8 @@ func (m *ServiceMgr) initService() {
 						return context.WithValue(ctx, "conn", conn)
 					},
 				}
+
+				sslsrv.TLSConfig.GetCertificate = kpr.GetCertificateFunc()
 
 				proto := util.GetNetworkProtocol()
 				ln, err := net.Listen(proto, sslAddr)
