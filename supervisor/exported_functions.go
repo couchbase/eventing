@@ -145,6 +145,11 @@ func (s *SuperSupervisor) GetSeqsProcessed(appName string) map[int]int64 {
 	return nil
 }
 
+// Gets the cluster url and pool supervisor is observing ns_server changes on.
+func (s *SuperSupervisor) GetRegisteredPool() string {
+	return s.hostport + "-" + s.pool
+}
+
 // RestPort returns ns_server port(typically 8091/9000)
 func (s *SuperSupervisor) RestPort() string {
 	return s.restPort
@@ -624,7 +629,7 @@ func (s *SuperSupervisor) GetGocbHandle(bucketName, appName string) (*gocb.Bucke
 	return s.gocbGlobalConfigHandle.getBucket(bucketName, appName)
 }
 
-func (s *SuperSupervisor) RegistergocbBucket(bucketName, appName string, setting *common.SecuritySetting) error {
+func (s *SuperSupervisor) CheckAndSwitchgocbBucket(bucketName, appName string, setting *common.SecuritySetting) error {
 	return s.gocbGlobalConfigHandle.maybeRegistergocbBucket(bucketName, appName, setting)
 }
 

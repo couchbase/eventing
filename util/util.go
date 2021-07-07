@@ -15,6 +15,7 @@ import (
 	"io"
 	"io/ioutil"
 	"math"
+	"net"
 	"net/url"
 	"os"
 	"reflect"
@@ -47,6 +48,7 @@ const (
 	DataService          = "kv"
 	DataServiceSSL       = "kvSSL"
 	MgmtService          = "mgmt"
+	MgmtServiceSSL       = "mgmtSSL"
 
 	EPSILON = 1e-5
 	dict    = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ*&"
@@ -102,13 +104,22 @@ func CheckTLSandGetClient(HTTPRequestTimeout time.Duration) *Client {
 }
 
 func CheckTLSandReplaceProtocol(connStr string, args ...interface{}) string {
-	var endpointURL string
+	var connectionStr string
+	connectionStr = fmt.Sprintf(connStr, args...)
 	if getLocalUseTLS() {
-		endpointURL = fmt.Sprintf(strings.ReplaceAll(connStr, "http://", "https://"), args...)
-	} else {
-		endpointURL = fmt.Sprintf(strings.ReplaceAll(connStr, "https://", "http://"), args...)
+		if u, err := url.Parse(connectionStr); err == nil {
+			host, _, _ := net.SplitHostPort(u.Host)
+			ip := net.ParseIP(host)
+			if (ip == nil && strings.EqualFold(host, "localhost")) || (ip != nil && ip.IsLoopback()) {
+				connectionStr = strings.ReplaceAll(connectionStr, "https://", "http://")
+				return connectionStr
+			}
+		}
+		connectionStr = strings.ReplaceAll(connectionStr, "http://", "https://")
+		return connectionStr
 	}
-	return endpointURL
+	connectionStr = strings.ReplaceAll(connectionStr, "https://", "http://")
+	return connectionStr
 }
 
 type Uint16Slice []uint16
@@ -231,6 +242,7 @@ func SprintV8Counts(counts map[string]uint64) string {
 }
 
 func NsServerNodesAddresses(auth, hostaddress string) ([]string, error) {
+	logPrefix := "util::NsServerNodesAddresses"
 	cic, err := FetchClusterInfoClient(hostaddress)
 	if err != nil {
 		return nil, err
@@ -239,16 +251,28 @@ func NsServerNodesAddresses(auth, hostaddress string) ([]string, error) {
 	cinfo.RLock()
 	defer cinfo.RUnlock()
 
-	nsServerAddrs := cinfo.GetNodesByServiceType(MgmtService)
-
-	nsServerNodes := []string{}
-	for _, nsServerAddr := range nsServerAddrs {
-		addr, _ := cinfo.GetServiceAddress(nsServerAddr, MgmtService)
-		nsServerNodes = append(nsServerNodes, addr)
+	var nsServerAddrs []NodeId
+	if getLocalUseTLS() {
+		nsServerAddrs = cinfo.GetNodesByServiceType(MgmtServiceSSL)
+	} else {
+		nsServerAddrs = cinfo.GetNodesByServiceType(MgmtService)
 	}
 
+	nsServerNodes := []string{}
+	var addr string
+	for _, nsServerAddr := range nsServerAddrs {
+		if getLocalUseTLS() {
+			addr, err = cinfo.GetServiceAddress(nsServerAddr, MgmtServiceSSL)
+		} else {
+			addr, err = cinfo.GetServiceAddress(nsServerAddr, MgmtService)
+		}
+		if err != nil {
+			logging.Errorf("%s Failed to get ns_server node address, err: %v", logPrefix, err)
+			continue
+		}
+		nsServerNodes = append(nsServerNodes, addr)
+	}
 	sort.Strings(nsServerNodes)
-
 	return nsServerNodes, nil
 }
 
@@ -317,11 +341,15 @@ func EventingNodesAddresses(auth, hostaddress string) ([]string, error) {
 	}
 
 	eventingNodes := []string{}
+	var addr string
 	for _, eventingAddr := range eventingAddrs {
-		var addr string
-		var err error
 		if getLocalUseTLS() {
 			addr, err = cinfo.GetServiceAddress(eventingAddr, EventingAdminSSL)
+			host, _, _ := net.SplitHostPort(addr)
+			ip := net.ParseIP(host)
+			if err == nil && (ip == nil && strings.EqualFold(host, "localhost")) || (ip != nil && ip.IsLoopback()) {
+				addr, err = cinfo.GetServiceAddress(eventingAddr, EventingAdminService)
+			}
 		} else {
 			addr, err = cinfo.GetServiceAddress(eventingAddr, EventingAdminService)
 		}
@@ -331,9 +359,7 @@ func EventingNodesAddresses(auth, hostaddress string) ([]string, error) {
 		}
 		eventingNodes = append(eventingNodes, addr)
 	}
-
 	sort.Strings(eventingNodes)
-
 	return eventingNodes, nil
 }
 
@@ -351,9 +377,14 @@ func CurrentEventingNodeAddress(auth, hostaddress string) (string, error) {
 
 	cNodeID := cinfo.GetCurrentNode()
 	var eventingNode string
-
 	if getLocalUseTLS() {
 		eventingNode, err = cinfo.GetServiceAddress(cNodeID, EventingAdminSSL)
+		host, _, _ := net.SplitHostPort(eventingNode)
+		ip := net.ParseIP(host)
+		if err == nil && (ip == nil && strings.EqualFold(host, "localhost")) || (ip != nil && ip.IsLoopback()) {
+			eventingNode, err = cinfo.GetServiceAddress(cNodeID, EventingAdminService)
+		}
+
 	} else {
 		eventingNode, err = cinfo.GetServiceAddress(cNodeID, EventingAdminService)
 	}

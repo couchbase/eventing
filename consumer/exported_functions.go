@@ -791,7 +791,17 @@ func (c *Consumer) GetInsight() *common.Insight {
 	}
 }
 
+// This, being the very first consumer level function involved in pause,
+// also holds the responsibility to try and refresh its metadata handle
+// in case of a encryption level change
 func (c *Consumer) PauseConsumer() {
+	logPrefix := "Consumer::PauseConsumer"
+	var err error
+	err = c.updategocbMetaHandle()
+	if err != nil {
+		logging.Warnf("%s [%s:%s:%d] Failed to refresh gocb handle while pausing consumer, continuing with existing handle. Err: %v", logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
+	}
+
 	c.isPausing = true
 	c.sendPauseConsumer()
 	c.WorkerVbMapUpdate(nil)

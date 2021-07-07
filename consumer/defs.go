@@ -173,6 +173,7 @@ type Consumer struct {
 	filterVbEventsRWMutex      *sync.RWMutex
 	filterDataCh               chan *vbSeqNo
 
+	gocbMetaHandleMutex           *sync.RWMutex
 	gocbMetaHandle                *gocb.Collection
 	idleCheckpointInterval        time.Duration
 	index                         int

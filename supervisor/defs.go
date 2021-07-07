@@ -111,6 +111,8 @@ type SuperSupervisor struct {
 	supCmdCh    chan supCmdMsg
 	uuid        string
 	diagDir     string
+	hostport    string
+	pool        string
 
 	bucketsRWMutex                     *sync.RWMutex
 	servicesNotifierRetryTm            uint

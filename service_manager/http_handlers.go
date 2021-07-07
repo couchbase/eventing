@@ -1059,7 +1059,7 @@ func (m *ServiceMgr) getAggBootstrapStatus(w http.ResponseWriter, r *http.Reques
 
 // Report aggregated bootstrap status of an app from all Eventing nodes in the cluster
 func (m *ServiceMgr) getAggBootstrapAppStatus(w http.ResponseWriter, r *http.Request) {
-	logPrefix := "SeriveMgr::getAggBootstrapAppStatus"
+	logPrefix := "ServiceMgr::getAggBootstrapAppStatus"
 	if !m.validateAuth(w, r, EventingPermissionManage) {
 		return
 	}

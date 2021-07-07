@@ -26,6 +26,7 @@ func NewSuperSupervisor(adminPort AdminPortConfig, eventingDir, kvPort, restPort
 	logPrefix := "SuperSupervisor::NewSupervisor"
 	s := &SuperSupervisor{
 		adminPort:                          adminPort,
+		pool:                               "default",
 		appDeploymentStatus:                make(map[string]bool),
 		appProcessingStatus:                make(map[string]bool),
 		bootstrappingApps:                  make(map[string]string),
@@ -351,7 +352,6 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 					if p, ok := s.runningFns()[appName]; ok {
 						logging.Infof("%s [%d] Function: %s, Stopping running instance of Eventing.Producer", logPrefix, s.runningFnsCount(), appName)
 						p.NotifyInit()
-
 						p.PauseProducer()
 						p.NotifySupervisor()
 						logging.Infof("%s [%d] Function: %s Cleaned up running Eventing.Producer instance", logPrefix, s.runningFnsCount(), appName)
@@ -397,7 +397,6 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 						logPrefix, s.runningFnsCount(), appName)
 
 					s.deleteFromLocallyDeployedApps(appName)
-
 					s.CleanupProducer(appName, skipMetaCleanup, updateMetakv)
 					s.deleteFromDeployedApps(appName)
 				}

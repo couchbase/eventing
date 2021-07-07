@@ -69,6 +69,7 @@ type Producer struct {
 	kvPort                 string
 	kvHostPorts            []string
 	metadataKeyspace       *common.Keyspace
+	metadataHandleMutex    *sync.RWMutex
 	metadataHandle         *gocb.Collection
 	metakvAppHostPortsPath string
 	nsServerPort           string

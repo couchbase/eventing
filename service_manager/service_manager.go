@@ -209,20 +209,7 @@ func (m *ServiceMgr) StartTopologyChange(change service.TopologyChange) error {
 		m.startRebalance(change)
 
 		logging.Infof("%s Starting up rebalancer", logPrefix)
-
-		var port string
-
-		m.configMutex.RLock()
-		check := m.clusterEncryptionConfig != nil && m.clusterEncryptionConfig.EncryptData
-		m.configMutex.RUnlock()
-
-		if check {
-			port = m.adminSSLPort
-		} else {
-			port = m.adminHTTPPort
-		}
-
-		rebalancer := newRebalancer(port, change, m.rebalanceDoneCallback, m.rebalanceProgressCallback,
+		rebalancer := newRebalancer(m.adminHTTPPort, change, m.rebalanceDoneCallback, m.rebalanceProgressCallback,
 			m.keepNodeUUIDs, len(m.fnsInPrimaryStore))
 
 		m.rebalancerMutex.Lock()

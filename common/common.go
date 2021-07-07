@@ -294,6 +294,7 @@ type EventingSuperSup interface {
 	BootstrapAppList() map[string]string
 	BootstrapAppStatus(appName string) bool
 	BootstrapStatus() bool
+	CheckAndSwitchgocbBucket(bucketName, appName string, setting *SecuritySetting) error
 	CheckpointBlobDump(appName string) (interface{}, error)
 	ClearEventStats()
 	CleanupProducer(appName string, skipMetaCleanup bool, updateMetakv bool) error
@@ -317,9 +318,9 @@ type EventingSuperSup interface {
 	GetMetaStoreStats(appName string) map[string]uint64
 	GetBucket(bucketName, appName string) (*couchbase.Bucket, error)
 	GetMetadataHandle(bucketName, scopeName, collectionName, appName string) (*gocb.Collection, error)
-	RegistergocbBucket(bucketName, appName string, setting *SecuritySetting) error
 	GetCollectionID(bucketName, scopeName, collectionName string) (uint32, error)
 	GetCurrentManifestId(bucketName string) (string, error)
+	GetRegisteredPool() string
 	GetSeqsProcessed(appName string) map[int]int64
 	InternalVbDistributionStats(appName string) map[string]string
 	KillAllConsumers()
@@ -353,6 +354,7 @@ type EventingServiceMgr interface {
 	GetFailoverStatus() (failoverNotifTs int64, changeId string)
 	CheckLifeCycleOpsDuringRebalance() bool
 	OptimiseLoadingCIC(bool) error
+	NotifySupervisorWaitCh()
 }
 
 type Config map[string]interface{}
