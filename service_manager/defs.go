@@ -85,6 +85,8 @@ type ServiceMgr struct {
 	config                  util.ConfigHolder
 	clusterEncryptionConfig *cbauth.ClusterEncryptionConfig
 	configMutex             *sync.RWMutex
+	httpServerSignal        chan bool
+	httpServerMutex         *sync.Mutex
 	ejectNodeUUIDs          []string
 	eventingNodeAddrs       []string
 	failoverMu              *sync.RWMutex
@@ -115,8 +117,9 @@ type ServiceMgr struct {
 	servers  []service.NodeID
 	state
 
-	superSup common.EventingSuperSup
-	waiters  waiters
+	supWaitCh chan bool
+	superSup  common.EventingSuperSup
+	waiters   waiters
 
 	statusCodes   statusCodes
 	statusPayload []byte

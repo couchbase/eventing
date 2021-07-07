@@ -50,6 +50,7 @@ func NewProducer(appName, debuggerPort, eventingPort, eventingSSLPort, eventingD
 		stateChangeCh:                make(chan state, 1),
 		plannerNodeMappingsRWMutex:   &sync.RWMutex{},
 		undeployHandler:              make(chan bool, 2),
+		metadataHandleMutex:          &sync.RWMutex{},
 		MemoryQuota:                  memoryQuota,
 		retryCount:                   -1,
 		runningConsumersRWMutex:      &sync.RWMutex{},
@@ -217,7 +218,7 @@ func (p *Producer) Serve() {
 	}
 	p.workerSupervisor = suptree.New(p.appName, spec)
 	p.workerSupervisor.ServeBackground(p.appName)
-	p.metadataHandle, err = p.superSup.GetMetadataHandle(p.metadataKeyspace.BucketName, p.metadataKeyspace.ScopeName, p.metadataKeyspace.CollectionName, p.appName)
+	err = p.updatemetadataHandle()
 	if err != nil {
 		logging.Errorf("%s [%s:%d] Failed to get meta data handle , err: %v", logPrefix, p.appName, p.LenRunningConsumers(), err)
 		return
@@ -354,7 +355,7 @@ func (p *Producer) Serve() {
 				logging.Infof("%s [%s:%d] Function Paused", logPrefix, p.appName, p.LenRunningConsumers())
 			case resume:
 				logging.Infof("%s [%s] Resuming producer", logPrefix, p.appName)
-				p.metadataHandle, err = p.superSup.GetMetadataHandle(p.metadataKeyspace.BucketName, p.metadataKeyspace.ScopeName, p.metadataKeyspace.CollectionName, p.appName)
+				err = p.updatemetadataHandle()
 				if err != nil {
 					logging.Errorf("%s [%s:%d] Failed to get meta data handle while resuming, err: %v", logPrefix, p.appName, p.LenRunningConsumers(), err)
 					return
@@ -1037,4 +1038,12 @@ func (p *Producer) resumeProducer() error {
 		p.notifyInitCh <- struct{}{}
 	}
 	return nil
+}
+
+func (p *Producer) updatemetadataHandle() error {
+	var err error
+	p.metadataHandleMutex.Lock()
+	defer p.metadataHandleMutex.Unlock()
+	p.metadataHandle, err = p.superSup.GetMetadataHandle(p.metadataKeyspace.BucketName, p.metadataKeyspace.ScopeName, p.metadataKeyspace.CollectionName, p.appName)
+	return err
 }
