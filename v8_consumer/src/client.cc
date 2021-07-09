@@ -14,7 +14,9 @@
 #include <thread>
 
 #include "breakpad.h"
+#include "bucket_cache.h"
 #include "client.h"
+
 #include <nlohmann/json.hpp>
 
 uint64_t timer_responses_sent(0);
@@ -30,6 +32,7 @@ std::atomic<int64_t> delete_events_lost = {0};
 std::atomic<int64_t> timer_events_lost = {0};
 std::atomic<int64_t> mutation_events_lost = {0};
 std::atomic<int64_t> uv_msg_parse_failure = {0};
+std::atomic<int64_t> bucket_cache_overflow_count_ = {0};
 
 extern std::atomic<int64_t> timer_context_size_exceeded_counter;
 extern std::atomic<int64_t> timer_callback_missing_counter;
@@ -42,6 +45,7 @@ std::string GetFailureStats() {
   nlohmann::json fstats;
   fstats["bucket_op_exception_count"] = bucket_op_exception_count.load();
   fstats["bucket_op_cache_miss_count"] = bucket_op_cachemiss_count.load();
+  fstats["bucket_cahce_overflow_count"] = bucket_cache_overflow_count_.load();
   fstats["bkt_ops_cas_mismatch_count"] = bkt_ops_cas_mismatch_count.load();
   fstats["n1ql_op_exception_count"] = n1ql_op_exception_count.load();
   fstats["timeout_count"] = timeout_count.load();
