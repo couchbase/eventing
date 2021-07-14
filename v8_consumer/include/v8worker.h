@@ -190,6 +190,7 @@ class ConnectionPool;
 class V8Worker;
 
 extern std::atomic<int64_t> bucket_op_exception_count;
+extern std::atomic<int64_t> bucket_op_cachemiss_count;
 extern std::atomic<int64_t> n1ql_op_exception_count;
 extern std::atomic<int64_t> timeout_count;
 extern std::atomic<int16_t> checkpoint_failure_count;
@@ -234,7 +235,8 @@ public:
            const std::string &user_prefix, Histogram *latency_stats,
            Histogram *curl_latency_stats, const std::string &ns_server_port,
            const int32_t &num_vbuckets, vb_seq_map_t *vb_seq,
-           std::vector<uint64_t> *processed_bucketops, vb_lock_map_t *vb_locks, int worker_idx);
+           std::vector<uint64_t> *processed_bucketops, vb_lock_map_t *vb_locks,
+           int worker_idx);
   ~V8Worker();
 
   int V8WorkerLoad(std::string source_s);

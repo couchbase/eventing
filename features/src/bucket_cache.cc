@@ -121,6 +121,7 @@ void BucketCache::LockedTrim() {
   if (size_ <= max_size_) {
     return;
   }
+  bucket_cache_overflow_count_++;
   auto now = std::chrono::steady_clock::now();
   auto iter = cache_.begin();
   while (iter != cache_.end()) {
