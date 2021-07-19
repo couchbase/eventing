@@ -406,7 +406,8 @@ func (c *Consumer) startDcp(flogs couchbase.FailoverLog) error {
 		return err
 	}
 
-	vbSeqnos, err := util.GetSeqnos(c.producer.NsServerHostPort(), "default", c.sourceKeyspace.BucketName, c.srcCid)
+	var vbSeqnos []uint64
+	err = util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), c.retryCount, util.GetSeqnos, c.producer.NsServerHostPort(), "default", c.sourceKeyspace.BucketName, c.srcCid, &vbSeqnos)
 	if err != nil && c.dcpStreamBoundary != common.DcpEverything {
 		logging.Errorf("%s [%s:%s:%d] Failed to fetch vb seqnos, err: %v", logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
 		return nil
@@ -1059,7 +1060,6 @@ func (c *Consumer) handleFailoverLog() {
 					c.vbProcessingStats.updateVbStat(vbFlog.vb, "start_seq_no", vbFlog.seqNo)
 					c.vbProcessingStats.updateVbStat(vbFlog.vb, "timestamp", time.Now().Format(time.RFC3339))
 				} else {
-
 					// Issuing high seq nos call to ascertain all vbuckets are back online(i.e. not stuck warm-up, flush etc)
 				vbLabel:
 					for {
@@ -1067,7 +1067,8 @@ func (c *Consumer) handleFailoverLog() {
 						case <-c.stopConsumerCh:
 							return
 						default:
-							vbSeqNos, err := util.GetSeqnos(c.producer.NsServerHostPort(), "default", c.sourceKeyspace.BucketName, c.srcCid)
+							var vbSeqNos []uint64
+							err := util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), c.retryCount, util.GetSeqnos, c.producer.NsServerHostPort(), "default", c.sourceKeyspace.BucketName, c.srcCid, &vbSeqNos)
 							if err == nil {
 								break vbLabel
 							}
