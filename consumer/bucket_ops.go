@@ -57,6 +57,8 @@ var setOpCallback = func(args ...interface{}) error {
 	vbKey := args[1].(common.Key)
 	vbBlob := args[2]
 
+	c.gocbMetaHandleMutex.RLock()
+	defer c.gocbMetaHandleMutex.RUnlock()
 	_, err := c.gocbMetaHandle.Upsert(vbKey.Raw(), vbBlob, nil)
 	if err != nil {
 		logging.Errorf("%s [%s:%s:%d] Key: %s Bucket set failed, err: %v",
@@ -96,6 +98,8 @@ var getOpCallback = func(args ...interface{}) error {
 		return nil
 	}
 
+	c.gocbMetaHandleMutex.RLock()
+	defer c.gocbMetaHandleMutex.RUnlock()
 	if c.gocbMetaHandle == nil {
 		return nil
 	}
@@ -288,6 +292,8 @@ var periodicCheckpointCallback = func(args ...interface{}) error {
 	mutateIn = append(mutateIn, gocb.UpsertSpec("manifest_id", vbBlob.ManifestUID, upsertOptions))
 	mutateIn = append(mutateIn, gocb.UpsertSpec("vb_uuid", vbBlob.VBuuid, upsertOptions))
 
+	c.gocbMetaHandleMutex.RLock()
+	defer c.gocbMetaHandleMutex.RUnlock()
 	_, err := c.gocbMetaHandle.MutateIn(vbKey.Raw(), mutateIn, nil)
 
 	if !c.isRebalanceOngoing && !c.vbsStateUpdateRunning && (vbBlob.NodeUUID == "" || vbBlob.CurrentVBOwner == "") {
@@ -350,6 +356,8 @@ retryUpdateCheckpoint:
 	mutateIn = append(mutateIn, gocb.UpsertSpec("worker_requested_vb_stream", "", upsertOptions))
 	mutateIn = append(mutateIn, gocb.UpsertSpec("last_processed_seq_no", vbBlob.LastSeqNoProcessed, upsertOptions))
 	mutateIn = append(mutateIn, gocb.UpsertSpec("manifest_id", vbBlob.ManifestUID, upsertOptions))
+	c.gocbMetaHandleMutex.RLock()
+	defer c.gocbMetaHandleMutex.RUnlock()
 	_, err := c.gocbMetaHandle.MutateIn(vbKey.Raw(), mutateIn, nil)
 
 	if errors.Is(err, gocb.ErrDocumentNotFound) {
@@ -394,6 +402,8 @@ retryMetadataCorrection:
 	mutateIn = append(mutateIn, gocb.UpsertSpec("dcp_stream_status", dcpStreamRunning, upsertOptions))
 	mutateIn = append(mutateIn, gocb.UpsertSpec("last_checkpoint_time", time.Now().String(), upsertOptions))
 	mutateIn = append(mutateIn, gocb.UpsertSpec("node_uuid", c.NodeUUID(), upsertOptions))
+	c.gocbMetaHandleMutex.RLock()
+	defer c.gocbMetaHandleMutex.RUnlock()
 	_, err := c.gocbMetaHandle.MutateIn(vbKey.Raw(), mutateIn, nil)
 
 	if errors.Is(err, gocbcore.ErrShutdown) || errors.Is(err, gocbcore.ErrCollectionsUnsupported) {
@@ -438,6 +448,8 @@ retryUndoMetadataCorrection:
 	mutateIn = append(mutateIn, gocb.UpsertSpec("dcp_stream_status", dcpStreamStopped, upsertOptions))
 	mutateIn = append(mutateIn, gocb.UpsertSpec("last_checkpoint_time", time.Now().String(), upsertOptions))
 	mutateIn = append(mutateIn, gocb.UpsertSpec("node_uuid", "", upsertOptions))
+	c.gocbMetaHandleMutex.RLock()
+	defer c.gocbMetaHandleMutex.RUnlock()
 	_, err := c.gocbMetaHandle.MutateIn(vbKey.Raw(), mutateIn, nil)
 
 	if errors.Is(err, gocbcore.ErrShutdown) || errors.Is(err, gocbcore.ErrCollectionsUnsupported) {
@@ -486,6 +498,8 @@ retrySRRUpdate:
 	mutateIn = append(mutateIn, gocb.UpsertSpec("node_requested_vb_stream", c.HostPortAddr(), upsertOptions))
 	mutateIn = append(mutateIn, gocb.UpsertSpec("node_uuid_requested_vb_stream", c.NodeUUID(), upsertOptions))
 	mutateIn = append(mutateIn, gocb.UpsertSpec("worker_requested_vb_stream", c.ConsumerName(), upsertOptions))
+	c.gocbMetaHandleMutex.RLock()
+	defer c.gocbMetaHandleMutex.RUnlock()
 	_, err := c.gocbMetaHandle.MutateIn(vbKey.Raw(), mutateIn, nil)
 
 	if errors.Is(err, gocbcore.ErrShutdown) || errors.Is(err, gocbcore.ErrCollectionsUnsupported) {
@@ -533,6 +547,8 @@ retrySRFUpdate:
 	mutateIn = append(mutateIn, gocb.UpsertSpec("node_requested_vb_stream", "", upsertOptions))
 	mutateIn = append(mutateIn, gocb.UpsertSpec("node_uuid_requested_vb_stream", "", upsertOptions))
 	mutateIn = append(mutateIn, gocb.UpsertSpec("worker_requested_vb_stream", "", upsertOptions))
+	c.gocbMetaHandleMutex.RLock()
+	defer c.gocbMetaHandleMutex.RUnlock()
 	_, err := c.gocbMetaHandle.MutateIn(vbKey.Raw(), mutateIn, nil)
 
 	if errors.Is(err, gocbcore.ErrShutdown) || errors.Is(err, gocbcore.ErrCollectionsUnsupported) {
@@ -585,6 +601,8 @@ retrySRSUpdate:
 	mutateIn = append(mutateIn, gocb.UpsertSpec("node_uuid_requested_vb_stream", "", upsertOptions))
 	mutateIn = append(mutateIn, gocb.UpsertSpec("vb_uuid", vbBlob.VBuuid, upsertOptions))
 	mutateIn = append(mutateIn, gocb.UpsertSpec("worker_requested_vb_stream", "", upsertOptions))
+	c.gocbMetaHandleMutex.RLock()
+	defer c.gocbMetaHandleMutex.RUnlock()
 	_, err := c.gocbMetaHandle.MutateIn(vbKey.Raw(), mutateIn, nil)
 
 	if errors.Is(err, gocbcore.ErrShutdown) || errors.Is(err, gocbcore.ErrCollectionsUnsupported) {
@@ -628,6 +646,8 @@ retrySEUpdate:
 	mutateIn = append(mutateIn, gocb.UpsertSpec("node_uuid_requested_vb_stream", "", upsertOptions))
 	mutateIn = append(mutateIn, gocb.UpsertSpec("worker_requested_vb_stream", "", upsertOptions))
 
+	c.gocbMetaHandleMutex.RLock()
+	defer c.gocbMetaHandleMutex.RUnlock()
 	_, err := c.gocbMetaHandle.MutateIn(vbKey.Raw(), mutateIn, nil)
 
 	if errors.Is(err, gocbcore.ErrShutdown) || errors.Is(err, gocbcore.ErrCollectionsUnsupported) {
@@ -820,6 +840,8 @@ var acquireDebuggerTokenCallback = func(args ...interface{}) error {
 
 	key := c.producer.AddMetadataPrefix(c.app.AppName).Raw() + "::" + common.DebuggerTokenKey
 
+	c.gocbMetaHandleMutex.RLock()
+	defer c.gocbMetaHandleMutex.RUnlock()
 	result, err := c.gocbMetaHandle.Get(key, nil)
 	if errors.Is(err, gocb.ErrDocumentNotFound) || errors.Is(err, gocbcore.ErrShutdown) || errors.Is(err, gocbcore.ErrCollectionsUnsupported) {
 		logging.Errorf("%s [%s:%s:%d] Key: %s, debugger token not found or bucket is closed, err: %v",

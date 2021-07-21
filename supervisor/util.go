@@ -380,12 +380,16 @@ func (s *SuperSupervisor) watchBucketChanges() {
 		delChannel <- deletedBuckets
 	}
 
-	s.scn, err = util.NewServicesChangeNotifier(hostPortAddr, "default")
+	s.hostport = hostPortAddr
+	s.pool = "default"
+	s.scn, err = util.NewServicesChangeNotifier(s.hostport, s.pool)
 	if err != nil {
 		logging.Errorf("ClusterInfoClient NewServicesChangeNotifier(): %v\n", err)
 		selfRestart()
 		return
 	}
+
+	s.serviceMgr.NotifySupervisorWaitCh()
 
 	s.bucketsRWMutex.Lock()
 	for bucketName, _ := range s.buckets {
@@ -416,6 +420,21 @@ func (s *SuperSupervisor) watchBucketChanges() {
 				}
 				if changed {
 					s.checkDeletedCid(bucket.Name)
+				}
+			}
+
+			if notif.Type == util.EncryptionLevelChangeNotification {
+				for {
+					_, refreshErr := s.bucketRefresh(nil)
+					if refreshErr != nil && strings.Contains(strings.ToLower(refreshErr.Error()), "connection refused") {
+						logging.Errorf("%s Error in bucket refresh while processing encryption level change: %v. Retrying...", logPrefix, err)
+					} else if refreshErr != nil {
+						selfRestart()
+						return
+					} else {
+						break
+					}
+					time.Sleep(time.Second)
 				}
 			}
 

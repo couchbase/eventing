@@ -69,6 +69,7 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		filterVbEventsRWMutex:           &sync.RWMutex{},
 		filterDataCh:                    make(chan *vbSeqNo, numVbuckets),
 		gracefulShutdownChan:            make(chan struct{}, 1),
+		gocbMetaHandleMutex:             &sync.RWMutex{},
 		handlerFooters:                  hConfig.HandlerFooters,
 		handlerHeaders:                  hConfig.HandlerHeaders,
 		index:                           index,
@@ -193,7 +194,7 @@ func (c *Consumer) Serve() {
 		return
 	}
 
-	c.gocbMetaHandle, err = c.superSup.GetMetadataHandle(c.producer.MetadataBucket(), c.producer.MetadataScope(), c.producer.MetadataCollection(), c.app.AppName)
+	err = c.updategocbMetaHandle()
 	if err != nil {
 		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
 		return
@@ -548,4 +549,12 @@ func (c *Consumer) getKvNodes() []string {
 
 func (c *Consumer) getManifestUID(bucketName string) (string, error) {
 	return c.superSup.GetCurrentManifestId(bucketName)
+}
+
+func (c *Consumer) updategocbMetaHandle() error {
+	var err error
+	c.gocbMetaHandleMutex.Lock()
+	defer c.gocbMetaHandleMutex.Unlock()
+	c.gocbMetaHandle, err = c.superSup.GetMetadataHandle(c.producer.MetadataBucket(), c.producer.MetadataScope(), c.producer.MetadataCollection(), c.app.AppName)
+	return err
 }

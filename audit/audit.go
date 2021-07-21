@@ -45,7 +45,7 @@ func Init(restPort string) error {
 func Log(event auditevent.AuditEvent, req *http.Request, context interface{}) error {
 	entry := AuditEntry{
 		CommonAuditFields: goadt.GetCommonAuditFields(req),
-		Context:       fmt.Sprintf("%v", context),
+		Context:           fmt.Sprintf("%v", context),
 	}
 	if auditService == nil {
 		logging.Debugf("Audit event without audit service: %ru", entry)

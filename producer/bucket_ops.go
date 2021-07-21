@@ -3,13 +3,14 @@ package producer
 import (
 	"errors"
 	"fmt"
+	"net"
+
 	"github.com/couchbase/eventing/common"
-	"github.com/couchbase/eventing/dcp"
+	couchbase "github.com/couchbase/eventing/dcp"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
 	"github.com/couchbase/gocb/v2"
 	"github.com/couchbase/gocbcore/v9"
-	"net"
 )
 
 var getFailoverLogOpCallback = func(args ...interface{}) error {
@@ -82,6 +83,8 @@ var clearDebuggerInstanceCallback = func(args ...interface{}) error {
 	if p.isTerminateRunning {
 		return nil
 	}
+	p.metadataHandleMutex.RLock()
+	defer p.metadataHandleMutex.RUnlock()
 	if p.metadataHandle == nil {
 		logging.Errorf("%s [%s:%d] Metadata bucket handle not initialized",
 			logPrefix, p.appName, p.LenRunningConsumers())
@@ -122,6 +125,8 @@ var writeDebuggerURLCallback = func(args ...interface{}) error {
 	if p.isTerminateRunning {
 		return nil
 	}
+	p.metadataHandleMutex.RLock()
+	defer p.metadataHandleMutex.RUnlock()
 	if p.metadataHandle == nil {
 		logging.Errorf("%s [%s:%d] Metadata bucket handle not initialized",
 			logPrefix, p.appName, p.LenRunningConsumers())
@@ -165,6 +170,8 @@ var setOpCallback = func(args ...interface{}) error {
 		return nil
 	}
 
+	p.metadataHandleMutex.RLock()
+	defer p.metadataHandleMutex.RUnlock()
 	if p.metadataHandle == nil {
 		logging.Errorf("%s [%s:%d] Bucket handle not initialized",
 			logPrefix, p.appName, p.LenRunningConsumers())
@@ -216,6 +223,8 @@ var getOpCallback = func(args ...interface{}) error {
 	key := args[1].(common.Key)
 	blob := args[2]
 
+	p.metadataHandleMutex.RLock()
+	defer p.metadataHandleMutex.RUnlock()
 	result, err := p.metadataHandle.Get(key.Raw(), nil)
 	if errors.Is(err, gocb.ErrDocumentNotFound) || errors.Is(err, gocbcore.ErrShutdown) || errors.Is(err, gocbcore.ErrCollectionsUnsupported) {
 		return nil
@@ -235,6 +244,8 @@ var deleteOpCallback = func(args ...interface{}) error {
 	p := args[0].(*Producer)
 	key := args[1].(string)
 
+	p.metadataHandleMutex.RLock()
+	defer p.metadataHandleMutex.RUnlock()
 	_, err := p.metadataHandle.Remove(key, nil)
 	if errors.Is(err, gocb.ErrDocumentNotFound) || errors.Is(err, gocbcore.ErrShutdown) || errors.Is(err, gocbcore.ErrCollectionsUnsupported) {
 		return nil
