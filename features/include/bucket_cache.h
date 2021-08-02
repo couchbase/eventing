@@ -18,6 +18,8 @@
 
 #include "lcb_utils.h"
 
+extern std::atomic<int64_t> bucket_cache_overflow_count_;
+
 class BucketCache {
   using millis = std::chrono::milliseconds;
 
