@@ -45,7 +45,7 @@ std::string GetFailureStats() {
   nlohmann::json fstats;
   fstats["bucket_op_exception_count"] = bucket_op_exception_count.load();
   fstats["bucket_op_cache_miss_count"] = bucket_op_cachemiss_count.load();
-  fstats["bucket_cahce_overflow_count"] = bucket_cache_overflow_count_.load();
+  fstats["bucket_cache_overflow_count"] = bucket_cache_overflow_count_.load();
   fstats["bkt_ops_cas_mismatch_count"] = bkt_ops_cas_mismatch_count.load();
   fstats["n1ql_op_exception_count"] = n1ql_op_exception_count.load();
   fstats["timeout_count"] = timeout_count.load();
