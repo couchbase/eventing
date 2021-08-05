@@ -253,7 +253,8 @@ func (p *Producer) Serve() {
 				// grab list of old kv nodes
 				oldKvNodes := p.getKvNodeAddrs()
 
-				// vbEventingNodeAssign() would update list of KV nodes. We need them soon after this call
+				// vbEventingNodeAssign() would update list of KV nodes. We need them soon after this call.
+				// This also updates the hostnames in-memory maps to TLS ports if TLS was enabled.
 				err = p.vbEventingNodeAssign(p.SourceBucket())
 				if err == common.ErrRetryTimeout {
 					logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
@@ -996,6 +997,7 @@ func (p *Producer) pauseProducer() error {
 }
 
 func (p *Producer) resumeProducer() error {
+	logPrefix := "Producer::resumeProducer"
 	p.isBootstrapping = true
 	p.stopChClosed = false
 	p.stopCh = make(chan struct{}, 1)
@@ -1024,6 +1026,13 @@ func (p *Producer) resumeProducer() error {
 	p.isUsingTimer = parser.UsingTimer(p.app.AppCode)
 
 	p.isPlannerRunning = true
+	err = p.vbEventingNodeAssign(p.SourceBucket())
+	if err == common.ErrRetryTimeout {
+		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
+		p.isPlannerRunning = false
+		logging.Infof("%s [%s:%d] Planner status: %t, after vbucket to node assignment", logPrefix, p.appName, p.LenRunningConsumers(), p.isPlannerRunning)
+		return err
+	}
 	p.vbNodeWorkerMap()
 	p.initWorkerVbMap()
 	p.isPlannerRunning = false
