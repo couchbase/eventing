@@ -1001,6 +1001,12 @@ func (m *ServiceMgr) compareEventingVersion(need common.CouchbaseVer) bool {
 		return false
 	}
 
+	return m.compareEventingVersionOnNodes(need, nodes)
+}
+
+func (m *ServiceMgr) compareEventingVersionOnNodes(need common.CouchbaseVer, nodes []string) bool {
+	logPrefix := "ServiceMgr::compareEventingVersionOnNodes"
+
 	versions, err := util.GetEventingVersion("/version", nodes)
 	if err != nil {
 		logging.Errorf("%s failed to gather eventing version, err: %v", logPrefix, err)

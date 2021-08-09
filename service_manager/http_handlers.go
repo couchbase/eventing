@@ -712,7 +712,7 @@ func (m *ServiceMgr) getEventProcessingStats(w http.ResponseWriter, r *http.Requ
 	}
 }
 
-func (m *ServiceMgr) getAppList() (map[string]int, map[string]int, map[string]int, int, *runtimeInfo) {
+func (m *ServiceMgr) getAppList() (map[string]int, map[string]int, map[string]int, int, bool, *runtimeInfo) {
 	logPrefix := "ServiceMgr::getAppList"
 	info := &runtimeInfo{}
 
@@ -722,13 +722,13 @@ func (m *ServiceMgr) getAppList() (map[string]int, map[string]int, map[string]in
 
 		info.Code = m.statusCodes.errActiveEventingNodes.Code
 		info.Info = fmt.Sprintf("Unable to fetch active Eventing nodes, err: %v", err)
-		return nil, nil, nil, 0, info
+		return nil, nil, nil, 0, false, info
 	}
 
 	numEventingNodes := len(nodeAddrs)
 	if numEventingNodes == 0 {
 		info.Code = m.statusCodes.errNoEventingNodes.Code
-		return nil, nil, nil, 0, info
+		return nil, nil, nil, 0, false, info
 	}
 
 	aggDeployedApps := make(map[string]map[string]string)
@@ -759,7 +759,7 @@ func (m *ServiceMgr) getAppList() (map[string]int, map[string]int, map[string]in
 	}
 
 	mhVersion := common.CouchbaseVerMap["mad-hatter"]
-	if m.compareEventingVersion(mhVersion) {
+	if m.compareEventingVersionOnNodes(mhVersion, nodeAddrs) {
 		aggPausingApps := make(map[string]map[string]string)
 		util.Retry(util.NewFixedBackoff(time.Second), nil, getPausingAppsCallback, &aggPausingApps, nodeAddrs)
 
@@ -774,11 +774,11 @@ func (m *ServiceMgr) getAppList() (map[string]int, map[string]int, map[string]in
 		}
 
 		info.Code = m.statusCodes.ok.Code
-		return appDeployedNodesCounter, appBootstrappingNodesCounter, appPausingNodesCounter, numEventingNodes, info
+		return appDeployedNodesCounter, appBootstrappingNodesCounter, appPausingNodesCounter, numEventingNodes, true, info
 	}
 
 	info.Code = m.statusCodes.ok.Code
-	return appDeployedNodesCounter, appBootstrappingNodesCounter, nil, numEventingNodes, info
+	return appDeployedNodesCounter, appBootstrappingNodesCounter, nil, numEventingNodes, false, info
 }
 
 // Returns list of apps that are deployed i.e. finished dcp/timer/debugger related bootstrap
@@ -791,7 +791,7 @@ func (m *ServiceMgr) getDeployedApps(w http.ResponseWriter, r *http.Request) {
 
 	audit.Log(auditevent.ListDeployed, r, nil)
 
-	appDeployedNodesCounter, _, appPausingNodesCounter, numEventingNodes, info := m.getAppList()
+	appDeployedNodesCounter, _, appPausingNodesCounter, numEventingNodes, _, info := m.getAppList()
 	if info.Code != m.statusCodes.ok.Code {
 		m.sendErrorInfo(w, info)
 		return
@@ -838,7 +838,7 @@ func (m *ServiceMgr) getRunningApps(w http.ResponseWriter, r *http.Request) {
 
 	audit.Log(auditevent.ListRunning, r, nil)
 
-	appDeployedNodesCounter, _, _, numEventingNodes, info := m.getAppList()
+	appDeployedNodesCounter, _, _, numEventingNodes, _, info := m.getAppList()
 	if info.Code != m.statusCodes.ok.Code {
 		m.sendErrorInfo(w, info)
 		return
@@ -3421,10 +3421,12 @@ func (m *ServiceMgr) statusHandler(w http.ResponseWriter, r *http.Request) {
 
 func (m *ServiceMgr) statusHandlerImpl(appName string) (response interface{}, info *runtimeInfo) {
 
-	appDeployedNodesCounter, appBootstrappingNodesCounter, appPausingNodesCounter, numEventingNodes, info := m.getAppList()
+	appDeployedNodesCounter, appBootstrappingNodesCounter, appPausingNodesCounter, numEventingNodes, mhCompat, info := m.getAppList()
 	if info.Code != m.statusCodes.ok.Code {
 		return
 	}
+
+	eventingNodeAddrs := m.eventingNodeAddrs
 	appsNames := m.getTempStoreAppNames()
 	var statusHandlerResponse appStatusResponse
 	statusHandlerResponse.NumEventingNodes = numEventingNodes
@@ -3453,12 +3455,17 @@ func (m *ServiceMgr) statusHandlerImpl(appName string) (response interface{}, in
 			status.NumBootstrappingNodes = num
 		}
 
-		mhVersion := common.CouchbaseVerMap["mad-hatter"]
-		if m.compareEventingVersion(mhVersion) {
-			bootstrapStatus, err := util.GetAggBootstrapAppStatus(net.JoinHostPort(util.Localhost(), m.adminHTTPPort), status.Name, true)
-			if err != nil {
-				info.Code = m.statusCodes.errInvalidConfig.Code
-				return
+		if mhCompat {
+			bootstrapStatus := true
+			// Possible that consumer process might be restarting on some node which will update the status but not bootstrapping list
+			// synchronise with other node only if app is not in bootstrapping list
+			if status.NumBootstrappingNodes == 0 {
+				// By the time this code path hits, eventing Nodes are updated in eventingNodeAddrs variable
+				bootstrapStatus, err = util.CheckIfAppBootstrapOngoing("/getBootstrapAppStatus", eventingNodeAddrs, fnName)
+				if err != nil {
+					info.Code = m.statusCodes.errInvalidConfig.Code
+					return
+				}
 			}
 			status.CompositeStatus = m.determineStatus(status, appPausingNodesCounter, numEventingNodes, bootstrapStatus)
 		} else {
