@@ -47,6 +47,11 @@ const (
 	// EventingPermissionManage for auditing
 	EventingPermissionManage = "cluster.eventing.functions!manage"
 	EventingPermissionStats  = "cluster.admin.internal.stats!read"
+	ClusterPermissionRead = "cluster.admin.security!read"
+)
+
+var (
+	EventingReadPermissions = []string{EventingPermissionManage, ClusterPermissionRead}
 )
 
 const (
