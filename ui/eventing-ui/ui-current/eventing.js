@@ -825,7 +825,7 @@ angular.module('eventing', [
               ]
             }
           }).result
-          .then(function(repsonse) { // Upon continue.
+          .then(function(response) { // Upon continue.
             Object.assign(creationScope.appModel.depcfg, ApplicationService
               .convertBindingToConfig(creationScope.bindings));
             creationScope.appModel.fillWithMissingDefaults();
@@ -893,6 +893,11 @@ angular.module('eventing', [
                 function(ApplicationService) {
                   return ApplicationService.public.getConfig();
                 }
+              ],
+              encryptionLevel: ['ApplicationService',
+                function(ApplicationService) {
+                  return ApplicationService.server.getEncryptionLevel();
+                }
               ]
             }
           }).result
@@ -959,12 +964,20 @@ angular.module('eventing', [
     }
   ])
   .controller('EventingSettingsCtrl', ['$scope', '$rootScope', '$stateParams',
-    'ApplicationService', 'config',
-    function($scope, $rootScope, $stateParams, ApplicationService, config) {
+    'ApplicationService', 'config', 'encryptionLevel',
+    function($scope, $rootScope, $stateParams, ApplicationService, config, encryptionLevel) {
       var self = this;
       config = config.data;
       self.enableDebugger = config.enable_debugger;
+      self.encryptionLevel = encryptionLevel
 
+      if (self.encryptionLevel == 'strict') {
+        $rootScope.debugDisable = true;
+        self.enableDebugger = false;
+        ApplicationService.public.updateConfig({
+          enable_debugger: self.enableDebugger
+        });
+      }
       self.saveSettings = function(closeDialog) {
         ApplicationService.public.updateConfig({
           enable_debugger: self.enableDebugger
@@ -1738,7 +1751,18 @@ angular.module('eventing', [
 
 
       self.debugApp = function() {
-        ApplicationService.primaryStore.getDeployedApps()
+        ApplicationService.server.getEncryptionLevel()
+          .then(function(level) {
+            if (level == 'strict') {
+              $rootScope.debugDisable = true;
+              ApplicationService.public.updateConfig({
+                enable_debugger: false
+              });
+              ApplicationService.server.showWarningAlert(`Debugger is disabled as cluster encryption level is strict.`);
+              return;
+            }
+            return ApplicationService.primaryStore.getDeployedApps()
+          })
           .then(function(response) {
             if (!(app.appname in response.data)) {
               ApplicationService.server.showErrorAlert(
@@ -2226,6 +2250,20 @@ angular.module('eventing', [
         server: {
           getDefaultPool: function() {
             return $http.get('/pools/default');
+          },
+          getEncryptionLevel: function() {
+            return $http.get('/settings/security')
+              .then(function(result) {
+                if (result.data.clusterEncryptionLevel == undefined) {
+                  return 'disabled';
+                } else {
+                  return result.data.clusterEncryptionLevel;
+                }
+              })
+              .catch(function(err) {
+                console.error(err);
+                return 'disabled';
+              });
           },
           getLogFileLocation: function() {
             return $http.get('/_p/event/logFileLocation')
