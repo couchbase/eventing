@@ -2484,6 +2484,21 @@ func (m *ServiceMgr) configHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		if value, exists := c["enable_debugger"]; exists {
+			securitySetting := m.superSup.GetSecuritySetting()
+			DisableNonSSLPorts := false
+			if securitySetting != nil {
+				DisableNonSSLPorts = securitySetting.DisableNonSSLPorts
+			}
+			if value == true && DisableNonSSLPorts == true {
+				info.Code = m.statusCodes.errDebuggerDisabled.Code
+				info.Info = "Debugger cannot be enabled as encryption level is strict"
+				logging.Errorf("%s %s", logPrefix, info.Info)
+				m.sendErrorInfo(w, info)
+				return
+			}
+		}
+
 		if info = m.saveConfig(c); info.Code != m.statusCodes.ok.Code {
 			m.sendErrorInfo(w, info)
 			return
