@@ -233,7 +233,40 @@ func createFunction(deploymentStatus, processingStatus bool, id int, s *commonSe
 		app.Version = s.version
 	}
 
-	// default settings
+	app.Settings = createDefaultSettings(s, processingStatus, deploymentStatus)
+
+	encodedData, err := json.Marshal(&app)
+	if err != nil {
+		log.Printf("Failed to unmarshal, err: %v\n", err)
+		return []byte(""), err
+	}
+
+	return encodedData, nil
+}
+
+func setSettings(fnName string, deploymentStatus, processingStatus bool, s *commonSettings) (*responseSchema, error) {
+	res := &responseSchema{}
+	settings := createDefaultSettings(s, processingStatus, deploymentStatus)
+
+	data, err := json.Marshal(&settings)
+	if err != nil {
+		log.Println("Undeploy json marshal:", err)
+		return res, err
+	}
+
+	err = parser.ValidateSettingsSchema(data)
+	if err != nil {
+		panic(fmt.Sprintf("settings failed schema: %v, data: %s", err, data))
+	}
+
+	res = RetrySettings(util.NewFixedBackoff(restTimeout), restRetryCount, setSettingsCallback, "POST", functionsURL+"/"+fnName+"/settings", data)
+
+	log.Printf("Function: %s update settings: %+v requested, response code: %d dump: %+v\n",
+		fnName, settings, res.httpResponseCode, res)
+	return res, nil
+}
+
+func createDefaultSettings(s *commonSettings, processingStatus, deploymentStatus bool) map[string]interface{} {
 	settings := make(map[string]interface{})
 
 	if s.thrCount == 0 {
@@ -314,85 +347,7 @@ func createFunction(deploymentStatus, processingStatus bool, id int, s *commonSe
 	settings["deployment_status"] = deploymentStatus
 	settings["description"] = "Sample app"
 	settings["user_prefix"] = "eventing"
-
-	app.Settings = settings
-
-	encodedData, err := json.Marshal(&app)
-	if err != nil {
-		log.Printf("Failed to unmarshal, err: %v\n", err)
-		return []byte(""), err
-	}
-
-	return encodedData, nil
-}
-
-func setSettings(fnName string, deploymentStatus, processingStatus bool, s *commonSettings) (*responseSchema, error) {
-	res := &responseSchema{}
-	settings := make(map[string]interface{})
-
-	settings["processing_status"] = processingStatus
-	settings["deployment_status"] = deploymentStatus
-
-	settings["tick_duration"] = 5000
-
-	if s.streamBoundary == "" {
-		settings["dcp_stream_boundary"] = "everything"
-	} else {
-		settings["dcp_stream_boundary"] = s.streamBoundary
-	}
-
-	if s.thrCount == 0 {
-		settings["cpp_worker_thread_count"] = cppthrCount
-	} else {
-		settings["cpp_worker_thread_count"] = s.thrCount
-	}
-
-	if s.workerCount == 0 {
-		settings["worker_count"] = workerCount
-	} else {
-		settings["worker_count"] = s.workerCount
-	}
-
-	if s.batchSize == 0 {
-		settings["sock_batch_size"] = sockBatchSize
-	} else {
-		settings["sock_batch_size"] = s.batchSize
-	}
-
-	if s.lcbInstCap == 0 {
-		settings["lcb_inst_capacity"] = lcbCap
-	} else {
-		settings["lcb_inst_capacity"] = s.lcbInstCap
-	}
-
-	if s.n1qlConsistency == "" {
-		settings["n1ql_consistency"] = n1qlConsistency
-	} else {
-		settings["n1ql_consistency"] = s.n1qlConsistency
-	}
-
-	if s.numTimerPartitions == 0 {
-		settings["num_timer_partitions"] = numTimerPartitions
-	} else {
-		settings["num_timer_partitions"] = s.numTimerPartitions
-	}
-
-	data, err := json.Marshal(&settings)
-	if err != nil {
-		log.Println("Undeploy json marshal:", err)
-		return res, err
-	}
-
-	err = parser.ValidateSettingsSchema(data)
-	if err != nil {
-		panic(fmt.Sprintf("settings failed schema: %v, data: %s", err, data))
-	}
-
-	res = RetrySettings(util.NewFixedBackoff(restTimeout), restRetryCount, setSettingsCallback, "POST", functionsURL+"/"+fnName+"/settings", data)
-
-	log.Printf("Function: %s update settings: %+v requested, response code: %d dump: %+v\n",
-		fnName, settings, res.httpResponseCode, res)
-	return res, nil
+	return settings
 }
 
 var setSettingsCallback = func(args ...interface{}) (*responseSchema, error) {
@@ -583,7 +538,7 @@ func bucketFlush(bucketName string) {
 }
 
 func flushFunction(handler string) {
-	setSettings(handler, false, false, &commonSettings{})
+	undeployFunction(handler)
 	waitForUndeployToFinish(handler)
 	checkIfProcessRunning("eventing-con")
 	deleteFunction(handler)
@@ -595,6 +550,37 @@ func flushFunctionAndBucket(handler string) {
 	verifyBucketCount(0, statsLookupRetryCounter, srcBucket)
 	bucketFlush(dstBucket)
 	verifyBucketCount(0, statsLookupRetryCounter, dstBucket)
+}
+
+var undeployFunction = func(handler string) (response *restResponse) {
+	url := fmt.Sprintf("http://127.0.0.1:9300/api/v1/functions/%s/undeploy", handler)
+	req, err := http.NewRequest("POST", url, nil)
+	if err != nil {
+		log.Printf("Made request to url: %v err: %v\n", url, err)
+		return nil
+	}
+
+	req.SetBasicAuth(username, password)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		log.Println("http call resp:", err)
+		return nil
+	}
+	defer resp.Body.Close()
+
+	data, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Println("Read response: ", err)
+		return nil
+	}
+
+	err = json.Unmarshal(data, &response)
+	if err != nil {
+		log.Println("Unmarshal undeploy response:", err)
+		return nil
+	}
+	return response
 }
 
 func dumpStats() {
@@ -848,20 +834,42 @@ func goroutineDump(url string) error {
 	return nil
 }
 
+func retryRequest(b util.Backoff, retryCount int, retries int) (time.Duration, error) {
+	if retryCount != -1 && retries > retryCount {
+		return 0, fmt.Errorf("Retry count %d exceeded", retryCount)
+	}
+
+	next := b.NextBackoff()
+	if next == util.Stop {
+		return 0, fmt.Errorf("REST request failed after timeout")
+	}
+	return next, nil
+}
+
 func RetryREST(b util.Backoff, retryCount int, callback RestCallbackFunc, args ...interface{}) *restResponse {
-	var next time.Duration
 	retries := 0
 
 	for {
 		response := callback(args...)
+		retries++
 
-		if response == nil {
+		if response == nil || response.err != nil {
+			next, err := retryRequest(b, retryCount, retries)
+			if err != nil {
+				panic(err)
+			}
+			time.Sleep(next)
 			continue
 		}
 
 		var responseBody map[string]interface{}
 		err := json.Unmarshal(response.body, &responseBody)
 		if err != nil || responseBody == nil || len(responseBody) == 0 {
+			next, err := retryRequest(b, retryCount, retries)
+			if err != nil {
+				panic(err)
+			}
+			time.Sleep(next)
 			continue
 		}
 
@@ -869,16 +877,11 @@ func RetryREST(b util.Backoff, retryCount int, callback RestCallbackFunc, args .
 			return response
 		}
 
-		if retryCount != -1 && retries >= retryCount {
-			panic(fmt.Sprintf("REST request failed after retry count exceeded, response: %v", responseBody))
+		next, err := retryRequest(b, retryCount, retries)
+		if err != nil {
+			panic(err)
 		}
-
-		if next = b.NextBackoff(); next == util.Stop {
-			panic(fmt.Sprintf("REST request failed after timeout, response: %v", responseBody))
-		}
-
 		time.Sleep(next)
-		retries++
 	}
 }
 
