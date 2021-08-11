@@ -240,7 +240,7 @@ func TestDeployUndeployLoopNonDefaultSettings(t *testing.T) {
 
 		dumpStats()
 		log.Println("Undeploying app:", handler)
-		setSettings(functionName, false, false, &commonSettings{})
+		undeployFunction(functionName)
 		waitForUndeployToFinish(functionName)
 		count := verifyBucketCount(0, 5, "eventing")
 		if count != 0 {
@@ -470,7 +470,7 @@ func TestDeployUndeployLoopTimer(t *testing.T) {
 
 		dumpStats()
 		log.Println("Undeploying app:", handler)
-		setSettings(functionName, false, false, &commonSettings{})
+		undeployFunction(functionName)
 		waitForUndeployToFinish(functionName)
 		count := verifyBucketCount(0, 5, "eventing")
 		if count != 0 {
@@ -574,13 +574,14 @@ func TestPauseResumeLoopNonDefaultSettings(t *testing.T) {
 	time.Sleep(5 * time.Second)
 	handler := "bucket_op_with_timer"
 
+	settings := &commonSettings{thrCount: 4, batchSize: 77, workerCount: 4}
 	flushFunctionAndBucket(functionName)
-	createAndDeployFunction(functionName, handler, &commonSettings{thrCount: 4, batchSize: 77, workerCount: 4})
+	createAndDeployFunction(functionName, handler, settings)
 
 	for i := 0; i < 5; i++ {
 		if i > 0 {
 			log.Println("Resuming app:", handler)
-			setSettings(functionName, true, true, &commonSettings{thrCount: 4, batchSize: 77, workerCount: 4})
+			setSettings(functionName, true, true, settings)
 		}
 
 		pumpBucketOps(opsType{startIndex: itemCount * i}, &rateLimit{})
@@ -596,7 +597,7 @@ func TestPauseResumeLoopNonDefaultSettings(t *testing.T) {
 		waitForStatusChange(functionName, "deployed", statsLookupRetryCounter)
 
 		log.Println("Pausing app:", handler)
-		setSettings(functionName, true, false, &commonSettings{})
+		setSettings(functionName, true, false, settings)
 		waitForStatusChange(functionName, "paused", statsLookupRetryCounter)
 	}
 
@@ -1014,7 +1015,7 @@ func TestUndeployDuringBootstrap(t *testing.T) {
 	time.Sleep(10 * time.Second)
 
 	dumpStats()
-	setSettings(functionName, false, false, &commonSettings{})
+	undeployFunction(functionName)
 
 	bootstrapCheck(functionName, true)  // Check for start of boostrapping phase
 	bootstrapCheck(functionName, false) // Check for end of bootstrapping phase
@@ -1060,7 +1061,7 @@ func TestUndeployWhenTimersAreFired(t *testing.T) {
 	go pumpBucketOps(opsType{count: itemCount * 8}, &rateLimit{})
 
 	time.Sleep(30 * time.Second)
-	setSettings(functionName, false, false, &commonSettings{})
+	undeployFunction(functionName)
 	waitForUndeployToFinish(functionName)
 	checkIfProcessRunning("eventing-con")
 
@@ -1207,7 +1208,7 @@ func TestUndeployBackdoorDuringBootstrap(t *testing.T) {
 	time.Sleep(10 * time.Second)
 	dumpStats()
 
-	setSettings(functionName, false, false, &commonSettings{})
+	undeployFunction(functionName)
 	setRetryCounter(functionName)
 
 	time.Sleep(60 * time.Second)
@@ -2019,8 +2020,12 @@ func TestJSExpiryDate(t *testing.T) {
 	}
 
 	handler := "expiry_jsdate"
-	flushFunctionAndBucket(functionName)
 	createAndDeployFunction(functionName, handler, &commonSettings{srcMutationEnabled: true})
+
+	defer func() {
+		dumpStats()
+		flushFunctionAndBucket(functionName)
+	}()
 
 	eventCount = verifySourceBucketOps(0, statsLookupRetryCounter)
 	if eventCount != 0 {
@@ -2029,9 +2034,6 @@ func TestJSExpiryDate(t *testing.T) {
 			"got", eventCount,
 		)
 	}
-
-	dumpStats()
-	flushFunctionAndBucket(functionName)
 }
 
 func TestBinaryDoc(t *testing.T) {
@@ -2077,7 +2079,6 @@ func TestConstantBindings(t *testing.T) {
 	expectedCount := 6000
 
 	handler := "constant_bindings"
-	flushFunctionAndBucket(functionName)
 	createAndDeployFunction(functionName, handler, &commonSettings{
 		constantBindings: []common.Constant{
 			common.Constant{Value: "string_binding", Literal: "\"binding1\""},

@@ -22,6 +22,16 @@ import (
 	"github.com/couchbase/eventing/util"
 )
 
+var dynamicChangedSettings map[string]struct{}
+
+func init() {
+	dynamicChangedSettings = map[string]struct{}{"description": struct{}{},
+		"log_level":         struct{}{},
+		"deployment_status": struct{}{},
+		"processing_status": struct{}{},
+	}
+}
+
 func (m *ServiceMgr) checkAppExists(appName string) bool {
 	_, info := m.getTempStore(appName)
 	if info.Code == m.statusCodes.errAppNotFoundTs.Code {
@@ -1155,4 +1165,9 @@ func copyPasswords(newApp, oldApp *application) {
 			}
 		}
 	}
+}
+
+func isDynamicSetting(setting string) bool {
+	_, ok := dynamicChangedSettings[setting]
+	return ok
 }

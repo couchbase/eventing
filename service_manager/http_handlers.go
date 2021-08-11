@@ -1344,7 +1344,15 @@ func (m *ServiceMgr) setSettings(appName string, data []byte, force bool) (info 
 	newTPValue, timerPartitionsPresent := settings["num_timer_partitions"]
 	oldTPValue, oldTimerPartitionsPresent := app.Settings["num_timer_partitions"]
 
+	deployed := (m.superSup.GetAppState(appName) == common.AppStateEnabled)
+
 	for setting := range settings {
+		if deployed && !isDynamicSetting(setting) && app.Settings[setting] != settings[setting] {
+			info.Code = m.statusCodes.errInvalidConfig.Code
+			info.Info = fmt.Sprintf("Function: %s setting: %s can only be altered when the function is paused or undeployed.", appName, setting)
+			logging.Errorf("%s %s", logPrefix, info.Info)
+			return
+		}
 		app.Settings[setting] = settings[setting]
 	}
 
