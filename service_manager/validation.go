@@ -12,7 +12,9 @@ import (
 	"strings"
 
 	"github.com/couchbase/cbauth"
+	"github.com/couchbase/eventing/audit"
 	"github.com/couchbase/eventing/common"
+	"github.com/couchbase/eventing/gen/auditevent"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/parser"
 	"github.com/couchbase/eventing/util"
@@ -136,6 +138,7 @@ func (m *ServiceMgr) validateAuth(w http.ResponseWriter, r *http.Request, perm s
 	if err != nil || creds == nil {
 		logging.Warnf("%s Cannot authenticate request to %rs, err: %v creds: %ru", logPrefix, r.URL, err, creds)
 		w.WriteHeader(http.StatusUnauthorized)
+		audit.Log(auditevent.AuthenticationFailure, r, nil)
 		return false
 	}
 	allowed, err := creds.IsAllowed(perm)
@@ -143,6 +146,7 @@ func (m *ServiceMgr) validateAuth(w http.ResponseWriter, r *http.Request, perm s
 		logging.Warnf("%s Cannot authorize request to %rs", logPrefix, r.URL)
 		w.WriteHeader(http.StatusForbidden)
 		cbauth.SendForbidden(w, perm)
+		audit.Log(auditevent.AuthorizationFailure, r, nil)
 		return false
 	}
 	logging.Debugf("%s Allowing access to %rs", logPrefix, r.URL)
@@ -156,6 +160,7 @@ func (m *ServiceMgr) validateAnyAuth(w http.ResponseWriter, r *http.Request, per
 	if err != nil || creds == nil {
 		logging.Warnf("%s Cannot authenticate request to %rs, err: %v creds: %ru", logPrefix, r.URL, err, creds)
 		w.WriteHeader(http.StatusUnauthorized)
+		audit.Log(auditevent.AuthenticationFailure, r, nil)
 		return false
 	}
 
@@ -174,6 +179,7 @@ func (m *ServiceMgr) validateAnyAuth(w http.ResponseWriter, r *http.Request, per
 
 	w.WriteHeader(http.StatusForbidden)
 	sendForbiddenMultiple(w, perms)
+	audit.Log(auditevent.AuthorizationFailure, r, nil)
 
 	return false
 }

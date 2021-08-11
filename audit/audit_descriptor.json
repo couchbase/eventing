@@ -286,6 +286,40 @@
        "remote" : {"ip" : "", "port" : ""}
      },
      "optional_fields" : {"context" : ""}
+   },
+   {
+     "id" : 32787,
+     "name" : "Authentication Failure",
+     "description" : "Authentication failed",
+     "sync" : false,
+     "enabled" : false,
+     "filtering_permitted" : true,
+     "mandatory_fields" : {
+       "timestamp" : "",
+       "user" : {"source" : "", "user" : ""},
+       "local" : {"ip" : "", "port" : ""},
+       "remote" : {"ip" : "", "port" : ""},
+       "url" : "",
+       "method" : ""
+     },
+     "optional_fields" : {"context" : ""}
+   },
+   {
+     "id" : 32788,
+     "name" : "Authorization Failure",
+     "description" : "Authorization failed",
+     "sync" : false,
+     "enabled" : false,
+     "filtering_permitted" : true,
+     "mandatory_fields" : {
+       "timestamp" : "",
+       "user" : {"source" : "", "user" : ""},
+       "local" : {"ip" : "", "port" : ""},
+       "remote" : {"ip" : "", "port" : ""},
+       "url" : "",
+       "method" : ""
+     },
+     "optional_fields" : {"context" : ""}
    }
   ]
 }
