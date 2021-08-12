@@ -1674,10 +1674,15 @@ angular.module('eventing', [
             }).indexOf(app.appname);
             if (response.apps[pos].composite_status !== 'undeployed' &&
               response.apps[pos].composite_status !== 'paused') {
-              self.handler = app.appcode = self.pristineHandler;
+              app.appcode = self.pristineHandler;
               self.disableDeployButton = self.disableCancelButton = self
-                .disableSaveButton = true;
-              self.warning = false;
+                .disableSaveButton = (self.handler === app.appcode);
+              if (self.handler !== app.appcode) {
+                self.warning = true;
+              } else {
+                self.warning = false;
+              }
+
               ApplicationService.server.showErrorAlert(
                 'Changes cannot be saved. Function can be edited only when it is undeployed or paused'
               );
@@ -1907,6 +1912,7 @@ angular.module('eventing', [
               "Unsaved changes exist, and will be discarded if you leave this page. Are you sure?"
             )) {
             self.warning = false;
+            self.handler = app.appcode = self.pristineHandler;
             return true;
           } else {
             self.warning = true;
