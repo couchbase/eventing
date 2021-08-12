@@ -104,6 +104,9 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		socketWriteLoopStopCh:           make(chan struct{}, 1),
 		socketWriteTicker:               time.NewTicker(socketWriteTimerInterval),
 		statsRWMutex:                    &sync.RWMutex{},
+		baseexecutionStats:              make(map[string]float64),
+		basefailureStats:                make(map[string]float64),
+		baselcbExceptionStats:           make(map[string]uint64),
 		statsTickDuration:               time.Duration(hConfig.StatsLogInterval) * time.Millisecond,
 		streamReqRWMutex:                &sync.RWMutex{},
 		stopVbOwnerTakeoverCh:           make(chan struct{}),
@@ -151,7 +154,12 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 			return flatbuffers.NewBuilder(0)
 		},
 	}
-
+	for _, stat := range executionStatstoReset {
+		consumer.baseexecutionStats[stat] = float64(0)
+	}
+	for _, stat := range failureStatstoReset {
+		consumer.basefailureStats[stat] = float64(0)
+	}
 	return consumer
 }
 
@@ -557,4 +565,49 @@ func (c *Consumer) updategocbMetaHandle() error {
 	defer c.gocbMetaHandleMutex.Unlock()
 	c.gocbMetaHandle, err = c.superSup.GetMetadataHandle(c.producer.MetadataBucket(), c.producer.MetadataScope(), c.producer.MetadataCollection(), c.app.AppName)
 	return err
+}
+
+func (c *Consumer) resetExecutionStats() {
+	c.statsRWMutex.Lock()
+	defer c.statsRWMutex.Unlock()
+
+	if c.executionStats != nil {
+		for k, _ := range c.baseexecutionStats {
+			if _, found := c.executionStats[k]; found {
+				val, ok := c.executionStats[k].(float64)
+				if !ok {
+					continue
+				}
+				c.baseexecutionStats[k] = val
+			}
+		}
+	}
+}
+
+func (c *Consumer) resetFailureStats() {
+	c.statsRWMutex.Lock()
+	defer c.statsRWMutex.Unlock()
+
+	if c.failureStats != nil {
+		for k, _ := range c.basefailureStats {
+			if _, found := c.failureStats[k]; found {
+				val, ok := c.failureStats[k].(float64)
+				if !ok {
+					continue
+				}
+				c.basefailureStats[k] = val
+			}
+		}
+	}
+}
+
+func (c *Consumer) resetlcbExceptionStats() {
+	c.statsRWMutex.Lock()
+	defer c.statsRWMutex.Unlock()
+
+	if c.lcbExceptionStats != nil {
+		for k, baseval := range c.lcbExceptionStats {
+			c.baselcbExceptionStats[k] = baseval
+		}
+	}
 }
