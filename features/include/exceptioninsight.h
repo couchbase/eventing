@@ -6,6 +6,7 @@
 #include <mutex>
 #include <string>
 #include <v8.h>
+#include <nlohmann/json.hpp>
 
 #include "utils.h"
 #include "crc64.h"
@@ -33,6 +34,9 @@ public:
 private:
   ExceptionInsight(const ExceptionInsight &) = delete;
   ExceptionInsight &operator=(const ExceptionInsight &) = delete;
+
+  void PopulateExceptionInfo(
+    nlohmann::json &exceptionInfo, V8ExceptionInfo v8exception_info);
 
   void InitStartTime();
 
