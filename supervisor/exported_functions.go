@@ -155,6 +155,15 @@ func (s *SuperSupervisor) RestPort() string {
 	return s.restPort
 }
 
+func (s *SuperSupervisor) ResetCounters(appName string) error {
+	p, ok := s.runningFns()[appName]
+	if ok {
+		p.ResetCounters()
+		return nil
+	}
+	return fmt.Errorf("No function named %v registered by supervisor")
+}
+
 // SignalStopDebugger stops V8 Debugger for a specific deployed lambda
 func (s *SuperSupervisor) SignalStopDebugger(appName string) error {
 	logPrefix := "SuperSupervisor::SignalStopDebugger"

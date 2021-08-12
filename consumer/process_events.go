@@ -345,10 +345,10 @@ func (c *Consumer) processStatsEvents() {
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), countMsg, util.SprintV8Counts(c.v8WorkerMessagesProcessed),
 				c.timerMessagesProcessed, len(vbsOwned), util.Condense(vbsOwned))
 
-			c.statsRWMutex.Lock()
+			c.statsRWMutex.RLock()
 			estats, eErr := json.Marshal(&c.executionStats)
 			fstats, fErr := json.Marshal(&c.failureStats)
-			c.statsRWMutex.Unlock()
+			c.statsRWMutex.RUnlock()
 
 			if eErr == nil && fErr == nil {
 				logging.Infof("%s [%s:%s:%d] CPP worker stats. Failure stats: %s execution stats: %s",

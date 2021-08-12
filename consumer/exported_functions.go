@@ -345,11 +345,13 @@ func (c *Consumer) GetExecutionStats() map[string]interface{} {
 	defer c.statsRWMutex.RUnlock()
 
 	executionStats := make(map[string]interface{})
-
 	for k, v := range c.executionStats {
-		executionStats[k] = v
+		if baseval, found := c.baseexecutionStats[k]; found {
+			executionStats[k] = v.(float64) - baseval
+		} else {
+			executionStats[k] = v
+		}
 	}
-
 	return executionStats
 }
 
@@ -357,12 +359,15 @@ func (c *Consumer) GetExecutionStats() map[string]interface{} {
 func (c *Consumer) GetFailureStats() map[string]interface{} {
 	c.statsRWMutex.RLock()
 	defer c.statsRWMutex.RUnlock()
+
 	failureStats := make(map[string]interface{})
-
 	for k, v := range c.failureStats {
-		failureStats[k] = v
+		if baseval, found := c.basefailureStats[k]; found {
+			failureStats[k] = v.(float64) - baseval
+		} else {
+			failureStats[k] = v
+		}
 	}
-
 	return failureStats
 }
 
@@ -382,9 +387,12 @@ func (c *Consumer) GetLcbExceptionsStats() map[string]uint64 {
 	lcbExceptionStats := make(map[string]uint64)
 
 	for k, v := range c.lcbExceptionStats {
-		lcbExceptionStats[k] = v
+		if baseval, found := c.baselcbExceptionStats[k]; found {
+			lcbExceptionStats[k] = v - baseval
+		} else {
+			lcbExceptionStats[k] = v
+		}
 	}
-
 	return lcbExceptionStats
 }
 
@@ -768,6 +776,12 @@ func (c *Consumer) ResetBootstrapDone() {
 	logging.Infof("%s [%s:%s:%d] Current ResetBootstrapDone flag: %t", logPrefix, c.workerName, c.tcpPort, c.Pid(), c.resetBootstrapDone)
 	c.resetBootstrapDone = true
 	logging.Infof("%s [%s:%s:%d] Updated ResetBootstrapDone flag to: %t", logPrefix, c.workerName, c.tcpPort, c.Pid(), c.resetBootstrapDone)
+}
+
+func (c *Consumer) ResetCounters() {
+	c.resetExecutionStats()
+	c.resetFailureStats()
+	c.resetlcbExceptionStats()
 }
 
 func (c *Consumer) RemoveSupervisorToken() error {

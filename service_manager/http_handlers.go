@@ -4417,3 +4417,85 @@ func (m *ServiceMgr) highCardStats() []byte {
 	}
 	return stats
 }
+
+func (m *ServiceMgr) resetStatsCounters(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if !m.validateAuth(w, r, EventingPermissionManage) {
+		return
+	}
+
+	info := &runtimeInfo{}
+	appNames := r.URL.Query()["appName"]
+	if len(appNames) == 0 || len(appNames) > 1 {
+		info.Code = m.statusCodes.errInvalidConfig.Code
+		info.Info = fmt.Sprintf("Either 0 or more than 1 appnames passed")
+		m.sendErrorInfo(w, info)
+		return
+	}
+
+	info.Code = m.statusCodes.ok.Code
+	appName := appNames[0]
+	if !m.checkAppExists(appName) {
+		info.Code = m.statusCodes.errAppNotFound.Code
+		info.Info = fmt.Sprintf("Function %s not found", appName)
+		m.sendErrorInfo(w, info)
+		return
+	}
+
+	util.Retry(util.NewFixedBackoff(time.Second), nil, getEventingNodesAddressesOpCallback, m)
+	httpresp, err := util.ResetStatsCounters("/resetNodeStatsCounters?appName="+appName, m.eventingNodeAddrs)
+	if err != nil && httpresp != nil {
+		status, statuserr := strconv.Atoi(err.Error())
+		if statuserr == nil && http.StatusText(status) != "" {
+			w.WriteHeader(status)
+		} else {
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+		fmt.Fprintf(w, "%v", string(httpresp))
+		return
+	} else if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintf(w, `{"error":"Failed to reset counters error: %v}"`, err)
+		return
+	}
+	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
+}
+
+func (m *ServiceMgr) resetNodeStatsCounters(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if !m.validateAuth(w, r, EventingPermissionManage) {
+		return
+	}
+
+	info := &runtimeInfo{}
+	appNames := r.URL.Query()["appName"]
+	if len(appNames) == 0 || len(appNames) > 1 {
+		info.Code = m.statusCodes.errInvalidConfig.Code
+		info.Info = fmt.Sprintf("Either 0 or more than 1 appnames passed")
+		m.sendErrorInfo(w, info)
+		return
+	}
+
+	info.Code = m.statusCodes.ok.Code
+	appName := appNames[0]
+	if !m.checkAppExists(appName) {
+		info.Code = m.statusCodes.errAppNotFound.Code
+		info.Info = fmt.Sprintf("Function %s not found", appName)
+		m.sendErrorInfo(w, info)
+		return
+	}
+
+	appState := m.superSup.GetAppState(appName)
+	if appState != common.AppStateEnabled {
+		info.Code = m.statusCodes.errAppNotDeployed.Code
+		info.Info = fmt.Sprintf("Function: %v should be in deployed state", appName)
+		m.sendErrorInfo(w, info)
+		return
+	}
+
+	if err := m.superSup.ResetCounters(appName); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintf(w, `{"error":"Failed to reset counters error: %v"}`, err)
+		return
+	}
+}

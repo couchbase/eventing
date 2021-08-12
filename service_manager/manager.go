@@ -177,6 +177,8 @@ func (m *ServiceMgr) initService() {
 	mux.HandleFunc("/writeDebuggerURL/", m.writeDebuggerURLHandler)
 	mux.HandleFunc("/getKVNodesAddresses", m.getKVNodesAddresses)
 	mux.HandleFunc("/redistributeworkload", m.triggerInternalRebalance)
+	mux.HandleFunc("/resetStatsCounters", m.resetStatsCounters)
+	mux.HandleFunc("/resetNodeStatsCounters", m.resetNodeStatsCounters)
 
 	// Public REST APIs
 	mux.HandleFunc("/api/v1/status", m.statusHandler)

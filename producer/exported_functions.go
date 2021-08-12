@@ -1014,6 +1014,12 @@ func (p *Producer) RemoveConsumerToken(workerName string) {
 	}
 }
 
+func (p *Producer) ResetCounters() {
+	for _, consumer := range p.getConsumers() {
+		consumer.ResetCounters()
+	}
+}
+
 func (p *Producer) stopAndDeleteConsumer(c common.EventingConsumer) {
 	p.tokenRWMutex.RLock()
 	token, exists := p.consumerSupervisorTokenMap[c]

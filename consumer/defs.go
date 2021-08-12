@@ -81,6 +81,19 @@ const (
 	xattrPrefix                    = "_eventing"
 )
 
+var (
+	executionStatstoReset = [...]string{
+		"on_update_success", "on_update_failure", "on_delete_success",
+		"on_delete_failure", "timer_callback_success", "timer_callback_failure",
+		"timer_create_failure", "timer_msg_counter", "timer_create_counter",
+		"timer_cancel_counter", "lcb_retry_failure", "curl_success_count"}
+
+	failureStatstoReset = [...]string{
+		"bucket_op_exception_count", "bkt_ops_cas_mismatch_count", "n1ql_op_exception_count",
+		"timeout_count", "timer_callback_missing_counter", "curl_non_200_response",
+		"curl_timeout_count", "curl_failure_count"}
+)
+
 type xattrMetadata struct {
 	FunctionInstanceID string `json:"fiid"`
 	SeqNo              string `json:"seqno"`
@@ -229,6 +242,11 @@ type Consumer struct {
 	failureStats      map[string]interface{} // Access controlled by statsRWMutex
 	lcbExceptionStats map[string]uint64      // Access controlled by statsRWMutex
 	statsRWMutex      *sync.RWMutex
+
+	// base counters against which *Stats is calculated. Used when stats are reset
+	baseexecutionStats    map[string]float64 // access contolled by statsRWMutex
+	basefailureStats      map[string]float64
+	baselcbExceptionStats map[string]uint64
 
 	// Time when last response from CPP worker was received on main loop
 	workerRespMainLoopTs atomic.Value

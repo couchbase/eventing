@@ -203,6 +203,7 @@ type EventingProducer interface {
 	RebalanceStatus() bool
 	RebalanceTaskProgress() *RebalanceProgress
 	RemoveConsumerToken(workerName string)
+	ResetCounters()
 	SignalBootstrapFinish()
 	SignalStartDebugger(token string) error
 	SignalStopDebugger() error
@@ -261,6 +262,7 @@ type EventingConsumer interface {
 	RebalanceTaskProgress() *RebalanceProgress
 	RemoveSupervisorToken() error
 	ResetBootstrapDone()
+	ResetCounters()
 	Serve()
 	SetConnHandle(net.Conn)
 	SetFeedbackConnHandle(net.Conn)
@@ -331,6 +333,7 @@ type EventingSuperSup interface {
 	RebalanceTaskProgress(appName string) (*RebalanceProgress, error)
 	RemoveProducerToken(appName string)
 	RestPort() string
+	ResetCounters(appName string) error
 	SetSecuritySetting(setting *SecuritySetting) bool
 	GetSecuritySetting() *SecuritySetting
 	SignalStopDebugger(appName string) error
