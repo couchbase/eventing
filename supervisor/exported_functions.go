@@ -315,10 +315,11 @@ func (s *SuperSupervisor) BootstrapAppStatus(appName string) bool {
 	producer, ok := s.runningFns()[appName]
 
 	if ok {
-		if producer.BootstrapStatus() {
-			logging.Infof("%s [%d] Bootstrap status from %s: %#v", logPrefix, s.runningFnsCount(), appName, producer.BootstrapStatus())
+		bootstrapStatus := producer.BootstrapStatus()
+		if bootstrapStatus {
+			logging.Infof("%s [%d] Bootstrap status from %s: %#v", logPrefix, s.runningFnsCount(), appName, bootstrapStatus)
 		}
-		return producer.BootstrapStatus()
+		return bootstrapStatus
 	}
 
 	return false

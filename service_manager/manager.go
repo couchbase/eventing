@@ -300,6 +300,7 @@ func (m *ServiceMgr) initService() {
 
 					m.httpServerMutex.Lock()
 					if sslOnly {
+						m.disableDebugger()
 						if httpsrv != nil {
 							hostname, err := gethost(httpsrv)
 							if hostname == "" && err == nil {
@@ -639,12 +640,14 @@ func (m *ServiceMgr) disableDebugger() {
 		return
 	}
 
-	if _, exists := config["enable_debugger"]; exists {
-		logging.Tracef("%s enable_debugger field exists , not making any change", logPrefix)
-		return
+	if enabled, exists := config["enable_debugger"]; exists {
+		if enabled == false {
+			logging.Tracef("%s enable_debugger is already false, not making any change", logPrefix)
+			return
+		}
 	}
 
-	logging.Tracef("%s enable_debugger field does not exist, enabling it", logPrefix)
+	logging.Tracef("%s enable_debugger field does not exist or is enabled, disabling it", logPrefix)
 
 	config["enable_debugger"] = false
 	if info := m.saveConfig(config); info.Code != m.statusCodes.ok.Code {
@@ -1000,6 +1003,12 @@ func (m *ServiceMgr) compareEventingVersion(need common.CouchbaseVer) bool {
 		logging.Errorf("%s failed to get active eventing nodes, err: %v", logPrefix, err)
 		return false
 	}
+
+	return m.compareEventingVersionOnNodes(need, nodes)
+}
+
+func (m *ServiceMgr) compareEventingVersionOnNodes(need common.CouchbaseVer, nodes []string) bool {
+	logPrefix := "ServiceMgr::compareEventingVersionOnNodes"
 
 	versions, err := util.GetEventingVersion("/version", nodes)
 	if err != nil {
