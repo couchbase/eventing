@@ -77,7 +77,7 @@ func (m *ServiceMgr) stopTracing(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *ServiceMgr) getNodeUUID(w http.ResponseWriter, r *http.Request) {
-	if !m.validateAuth(w, r, EventingPermissionManage) {
+	if !m.validateAnyAuth(w, r, EventingReadPermissions) {
 		return
 	}
 	logging.Debugf("Got request to fetch UUID from host %s", r.Host)
@@ -85,7 +85,7 @@ func (m *ServiceMgr) getNodeUUID(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *ServiceMgr) getNodeVersion(w http.ResponseWriter, r *http.Request) {
-	if !m.validateAuth(w, r, EventingPermissionManage) {
+	if !m.validateAnyAuth(w, r, EventingReadPermissions) {
 		return
 	}
 	logging.Debugf("Got request to fetch version from host %s", r.Host)
@@ -244,7 +244,7 @@ func (m *ServiceMgr) die(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *ServiceMgr) getAppLog(w http.ResponseWriter, r *http.Request) {
-	if !m.validateAuth(w, r, EventingPermissionManage) {
+	if !m.validateAnyAuth(w, r, EventingReadPermissions) {
 		return
 	}
 	if r.Method != "GET" {
@@ -287,7 +287,7 @@ func (m *ServiceMgr) getAppLog(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *ServiceMgr) getInsight(w http.ResponseWriter, r *http.Request) {
-	if !m.validateAuth(w, r, EventingPermissionManage) {
+	if !m.validateAnyAuth(w, r, EventingReadPermissions) {
 		return
 	}
 
@@ -469,7 +469,7 @@ func getGlobalInsights(m *ServiceMgr, apps []string, creds http.Header) *common.
 func (m *ServiceMgr) getDebuggerURL(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "ServiceMgr::getDebuggerURL"
 
-	if !m.validateAuth(w, r, EventingPermissionManage) {
+	if !m.validateAnyAuth(w, r, EventingReadPermissions) {
 		return
 	}
 
@@ -684,7 +684,7 @@ func (m *ServiceMgr) writeDebuggerURLHandler(w http.ResponseWriter, r *http.Requ
 func (m *ServiceMgr) getEventProcessingStats(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "ServiceMgr::getEventProcessingStats"
 
-	if !m.validateAuth(w, r, EventingPermissionManage) {
+	if !m.validateAnyAuth(w, r, EventingReadPermissions) {
 		return
 	}
 
@@ -785,7 +785,7 @@ func (m *ServiceMgr) getAppList() (map[string]int, map[string]int, map[string]in
 func (m *ServiceMgr) getDeployedApps(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "ServiceMgr::getDeployedApps"
 
-	if !m.validateAuth(w, r, EventingPermissionManage) {
+	if !m.validateAnyAuth(w, r, EventingReadPermissions) {
 		return
 	}
 
@@ -832,7 +832,7 @@ func (m *ServiceMgr) getDeployedApps(w http.ResponseWriter, r *http.Request) {
 func (m *ServiceMgr) getRunningApps(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "ServiceMgr::getRunningApps"
 
-	if !m.validateAuth(w, r, EventingPermissionManage) {
+	if !m.validateAnyAuth(w, r, EventingReadPermissions) {
 		return
 	}
 
@@ -868,7 +868,7 @@ func (m *ServiceMgr) getRunningApps(w http.ResponseWriter, r *http.Request) {
 func (m *ServiceMgr) getLocallyDeployedApps(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "ServiceMgr::getLocallyDeployedApps"
 
-	if !m.validateAuth(w, r, EventingPermissionManage) {
+	if !m.validateAnyAuth(w, r, EventingReadPermissions) {
 		return
 	}
 
@@ -888,7 +888,7 @@ func (m *ServiceMgr) getLocallyDeployedApps(w http.ResponseWriter, r *http.Reque
 func (m *ServiceMgr) getRebalanceProgress(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "ServiceMgr::getRebalanceProgress"
 
-	if !m.validateAuth(w, r, EventingPermissionManage) {
+	if !m.validateAnyAuth(w, r, EventingReadPermissions) {
 		return
 	}
 
@@ -922,7 +922,7 @@ func (m *ServiceMgr) getRebalanceProgress(w http.ResponseWriter, r *http.Request
 
 // Report back state of rebalance on current node
 func (m *ServiceMgr) getRebalanceStatus(w http.ResponseWriter, r *http.Request) {
-	if !m.validateAuth(w, r, EventingPermissionManage) {
+	if !m.validateAnyAuth(w, r, EventingReadPermissions) {
 		return
 	}
 
@@ -931,7 +931,7 @@ func (m *ServiceMgr) getRebalanceStatus(w http.ResponseWriter, r *http.Request) 
 
 // Report back state of bootstrap on current node
 func (m *ServiceMgr) getBootstrapStatus(w http.ResponseWriter, r *http.Request) {
-	if !m.validateAuth(w, r, EventingPermissionManage) {
+	if !m.validateAnyAuth(w, r, EventingReadPermissions) {
 		return
 	}
 
@@ -945,7 +945,7 @@ func (m *ServiceMgr) getBootstrapStatus(w http.ResponseWriter, r *http.Request) 
 
 // Report back state of an app bootstrap on current node
 func (m *ServiceMgr) getBootstrapAppStatus(w http.ResponseWriter, r *http.Request) {
-	if !m.validateAuth(w, r, EventingPermissionManage) {
+	if !m.validateAnyAuth(w, r, EventingReadPermissions) {
 		return
 	}
 
@@ -967,7 +967,7 @@ func (m *ServiceMgr) getBootstrapAppStatus(w http.ResponseWriter, r *http.Reques
 func (m *ServiceMgr) getAggEventProcessingStats(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "ServiceMgr::getAggEventProcessingStats"
 
-	if !m.validateAuth(w, r, EventingPermissionManage) {
+	if !m.validateAnyAuth(w, r, EventingReadPermissions) {
 		return
 	}
 
@@ -995,7 +995,7 @@ func (m *ServiceMgr) getAggEventProcessingStats(w http.ResponseWriter, r *http.R
 func (m *ServiceMgr) getAggRebalanceProgress(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "ServiceMgr::getAggRebalanceProgress"
 
-	if !m.validateAuth(w, r, EventingPermissionManage) {
+	if !m.validateAnyAuth(w, r, EventingReadPermissions) {
 		return
 	}
 
@@ -1025,7 +1025,8 @@ func (m *ServiceMgr) getAggRebalanceProgress(w http.ResponseWriter, r *http.Requ
 // Report aggregated rebalance status from all Eventing nodes in the cluster
 func (m *ServiceMgr) getAggRebalanceStatus(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "ServiceMgr::getAggRebalanceStatus"
-	if !m.validateAuth(w, r, EventingPermissionManage) {
+
+	if !m.validateAnyAuth(w, r, EventingReadPermissions) {
 		return
 	}
 
@@ -1043,7 +1044,7 @@ func (m *ServiceMgr) getAggRebalanceStatus(w http.ResponseWriter, r *http.Reques
 // Report aggregated bootstrap status from all Eventing nodes in the cluster
 func (m *ServiceMgr) getAggBootstrapStatus(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "ServiceMgr::getAggBootstrapStatus"
-	if !m.validateAuth(w, r, EventingPermissionManage) {
+	if !m.validateAnyAuth(w, r, EventingReadPermissions) {
 		return
 	}
 
@@ -1061,7 +1062,7 @@ func (m *ServiceMgr) getAggBootstrapStatus(w http.ResponseWriter, r *http.Reques
 // Report aggregated bootstrap status of an app from all Eventing nodes in the cluster
 func (m *ServiceMgr) getAggBootstrapAppStatus(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "ServiceMgr::getAggBootstrapAppStatus"
-	if !m.validateAuth(w, r, EventingPermissionManage) {
+	if !m.validateAnyAuth(w, r, EventingReadPermissions) {
 		return
 	}
 
@@ -1083,7 +1084,7 @@ func (m *ServiceMgr) getAggBootstrapAppStatus(w http.ResponseWriter, r *http.Req
 
 func (m *ServiceMgr) getLatencyStats(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "ServiceMgr::getLatencyStats"
-	if !m.validateAuth(w, r, EventingPermissionManage) {
+	if !m.validateAnyAuth(w, r, EventingReadPermissions) {
 		return
 	}
 
@@ -1112,7 +1113,7 @@ func (m *ServiceMgr) getLatencyStats(w http.ResponseWriter, r *http.Request) {
 
 func (m *ServiceMgr) getExecutionStats(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "ServiceMgr::getExecutionStats"
-	if !m.validateAuth(w, r, EventingPermissionManage) {
+	if !m.validateAnyAuth(w, r, EventingReadPermissions) {
 		return
 	}
 
@@ -1141,7 +1142,7 @@ func (m *ServiceMgr) getExecutionStats(w http.ResponseWriter, r *http.Request) {
 
 func (m *ServiceMgr) getFailureStats(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "ServiceMgr::getFailureStats"
-	if !m.validateAuth(w, r, EventingPermissionManage) {
+	if !m.validateAnyAuth(w, r, EventingReadPermissions) {
 		return
 	}
 
@@ -1170,7 +1171,7 @@ func (m *ServiceMgr) getFailureStats(w http.ResponseWriter, r *http.Request) {
 
 func (m *ServiceMgr) getSeqsProcessed(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "ServiceMgr::getSeqsProcessed"
-	if !m.validateAuth(w, r, EventingPermissionManage) {
+	if !m.validateAnyAuth(w, r, EventingReadPermissions) {
 		return
 	}
 
@@ -1571,7 +1572,7 @@ func (m *ServiceMgr) parseFunctionPayload(data []byte, fnName string) applicatio
 func (m *ServiceMgr) getPrimaryStoreHandler(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "ServiceMgr::getPrimaryStoreHandler"
 
-	if !m.validateAuth(w, r, EventingPermissionManage) {
+	if !m.validateAnyAuth(w, r, EventingReadPermissions) {
 		return
 	}
 
@@ -1610,10 +1611,10 @@ func (m *ServiceMgr) getPrimaryStoreHandler(w http.ResponseWriter, r *http.Reque
 func (m *ServiceMgr) getAnnotations(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "ServiceMgr::getAnnotations"
 
-	if !m.validateAuth(w, r, EventingPermissionManage) {
-		cbauth.SendForbidden(w, EventingPermissionManage)
+	if !m.validateAnyAuth(w, r, EventingReadPermissions) {
 		return
 	}
+
 	applications := m.getTempStoreAll()
 	respData := make([]annotation, len(applications))
 	for _, app := range applications {
@@ -1636,8 +1637,7 @@ func (m *ServiceMgr) getAnnotations(w http.ResponseWriter, r *http.Request) {
 func (m *ServiceMgr) getTempStoreHandler(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "ServiceMgr::getTempStoreHandler"
 
-	if !m.validateAuth(w, r, EventingPermissionManage) {
-		cbauth.SendForbidden(w, EventingPermissionManage)
+	if !m.validateAnyAuth(w, r, EventingReadPermissions) {
 		return
 	}
 
@@ -1700,6 +1700,7 @@ func (m *ServiceMgr) getTempStore(appName string) (application, *runtimeInfo) {
 				continue
 			}
 			m.addDefaultDeploymentConfig(&app)
+			m.maybeReplaceFromPrior(&app)
 			if app.Name == appName {
 				info.Code = m.statusCodes.ok.Code
 				// Hide some internal settings from being exported
@@ -1740,6 +1741,7 @@ func (m *ServiceMgr) getTempStoreAll() []application {
 			}
 			m.maybeDeleteLifeCycleState(&app)
 			m.addDefaultDeploymentConfig(&app)
+			m.maybeReplaceFromPrior(&app)
 			applications = append(applications, app)
 		} else if err != nil {
 			logging.Errorf("%s Function: %s failed to read data from metakv, err: %v", logPrefix, fnName, err)
@@ -2147,7 +2149,7 @@ func (m *ServiceMgr) determineCurlWarning(app *application) (string, error) {
 }
 
 func (m *ServiceMgr) getErrCodes(w http.ResponseWriter, r *http.Request) {
-	if !m.validateAuth(w, r, EventingPermissionManage) {
+	if !m.validateAnyAuth(w, r, EventingReadPermissions) {
 		return
 	}
 
@@ -2155,7 +2157,7 @@ func (m *ServiceMgr) getErrCodes(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *ServiceMgr) getDcpEventsRemaining(w http.ResponseWriter, r *http.Request) {
-	if !m.validateAuth(w, r, EventingPermissionManage) {
+	if !m.validateAnyAuth(w, r, EventingReadPermissions) {
 		return
 	}
 
@@ -2206,7 +2208,7 @@ func (m *ServiceMgr) getAggPausingApps(w http.ResponseWriter, r *http.Request) {
 func (m *ServiceMgr) getAggBootstrappingApps(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "ServiceMgr::getAggBootstrappingApps"
 
-	if !m.validateAuth(w, r, EventingPermissionManage) {
+	if !m.validateAnyAuth(w, r, EventingReadPermissions) {
 		return
 	}
 
@@ -2232,7 +2234,7 @@ func (m *ServiceMgr) getAggBootstrappingApps(w http.ResponseWriter, r *http.Requ
 }
 
 func (m *ServiceMgr) getPausingApps(w http.ResponseWriter, r *http.Request) {
-	if !m.validateAuth(w, r, EventingPermissionManage) {
+	if !m.validateAnyAuth(w, r, EventingReadPermissions) {
 		return
 	}
 
@@ -2247,7 +2249,7 @@ func (m *ServiceMgr) getPausingApps(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *ServiceMgr) getBootstrappingApps(w http.ResponseWriter, r *http.Request) {
-	if !m.validateAuth(w, r, EventingPermissionManage) {
+	if !m.validateAnyAuth(w, r, EventingReadPermissions) {
 		return
 	}
 
@@ -2262,7 +2264,7 @@ func (m *ServiceMgr) getBootstrappingApps(w http.ResponseWriter, r *http.Request
 }
 
 func (m *ServiceMgr) getEventingConsumerPids(w http.ResponseWriter, r *http.Request) {
-	if !m.validateAuth(w, r, EventingPermissionManage) {
+	if !m.validateAnyAuth(w, r, EventingReadPermissions) {
 		return
 	}
 
@@ -2426,8 +2428,7 @@ func (m *ServiceMgr) configHandler(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "ServiceMgr::configHandler"
 
 	w.Header().Set("Content-Type", "application/json")
-	if !m.validateAuth(w, r, EventingPermissionManage) {
-		cbauth.SendForbidden(w, EventingPermissionManage)
+	if !m.validateAuthForOp(w, r, EventingReadPermissions, EventingPermissionManage) {
 		return
 	}
 
@@ -2597,8 +2598,7 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "ServiceMgr::functionsHandler"
 
 	w.Header().Set("Content-Type", "application/json")
-	if !m.validateAuth(w, r, EventingPermissionManage) {
-		cbauth.SendForbidden(w, EventingPermissionManage)
+	if !m.validateAuthForOp(w, r, EventingReadPermissions, EventingPermissionManage) {
 		return
 	}
 
@@ -3353,6 +3353,12 @@ func (m *ServiceMgr) maybeDeleteLifeCycleState(app *application) {
 	app.Metainfo = nil
 }
 
+func (m *ServiceMgr) maybeReplaceFromPrior(app *application) {
+	if value, ok := app.Settings["dcp_stream_boundary"]; ok && value == "from_prior" {
+		app.Settings["dcp_stream_boundary"] = "everything"
+	}
+}
+
 func (m *ServiceMgr) notifyRetryToAllProducers(appName string, r *retry) (info *runtimeInfo) {
 	logPrefix := "ServiceMgr::notifyRetryToAllProducers"
 
@@ -3377,8 +3383,7 @@ var singleFuncStatusPattern = regexp.MustCompile("^/api/v1/status/(.*[^/])/?$") 
 
 func (m *ServiceMgr) statusHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	if !m.validateAuth(w, r, EventingPermissionManage) {
-		cbauth.SendForbidden(w, EventingPermissionManage)
+	if !m.validateAnyAuth(w, r, EventingReadPermissions) {
 		return
 	}
 
@@ -3532,8 +3537,7 @@ func (m *ServiceMgr) determineStatus(status appStatus, pausingAppsList map[strin
 
 func (m *ServiceMgr) statsHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	if !m.validateAuth(w, r, EventingPermissionManage) {
-		cbauth.SendForbidden(w, EventingPermissionManage)
+	if !m.validateAnyAuth(w, r, EventingReadPermissions) {
 		return
 	}
 
@@ -3677,7 +3681,6 @@ func (m *ServiceMgr) populateStats(fullStats bool) []stats {
 func (m *ServiceMgr) cleanupEventing(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "ServiceMgr::cleanupEventing"
 	if !m.validateAuth(w, r, EventingPermissionManage) {
-		cbauth.SendForbidden(w, EventingPermissionManage)
 		return
 	}
 
@@ -3695,8 +3698,7 @@ func (m *ServiceMgr) exportHandler(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "ServiceMgr::exportHandler"
 
 	w.Header().Set("Content-Type", "application/json")
-	if !m.validateAuth(w, r, EventingPermissionManage) {
-		cbauth.SendForbidden(w, EventingPermissionManage)
+	if !m.validateAnyAuth(w, r, EventingReadPermissions) {
 		return
 	}
 
@@ -3741,7 +3743,6 @@ func (m *ServiceMgr) importHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	if !m.validateAuth(w, r, EventingPermissionManage) {
-		cbauth.SendForbidden(w, EventingPermissionManage)
 		return
 	}
 
@@ -3796,7 +3797,6 @@ func (m *ServiceMgr) backupHandler(w http.ResponseWriter, r *http.Request) {
 	info := &runtimeInfo{}
 	w.Header().Set("Content-Type", "application/json")
 	if !m.validateAuth(w, r, EventingPermissionManage) {
-		cbauth.SendForbidden(w, EventingPermissionManage)
 		return
 	}
 
@@ -4046,8 +4046,7 @@ func (m *ServiceMgr) createApplications(r *http.Request, appList *[]application,
 
 func (m *ServiceMgr) getCPUCount(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	if !m.validateAuth(w, r, EventingPermissionManage) {
-		cbauth.SendForbidden(w, EventingPermissionManage)
+	if !m.validateAnyAuth(w, r, EventingReadPermissions) {
 		return
 	}
 
@@ -4062,9 +4061,7 @@ func (m *ServiceMgr) getCPUCount(w http.ResponseWriter, r *http.Request) {
 
 func (m *ServiceMgr) getWorkerCount(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	if !m.validateAuth(w, r, EventingPermissionManage) {
-		w.WriteHeader(http.StatusUnauthorized)
-		cbauth.SendForbidden(w, EventingPermissionManage)
+	if !m.validateAnyAuth(w, r, EventingReadPermissions) {
 		return
 	}
 
@@ -4179,7 +4176,6 @@ func (m *ServiceMgr) triggerGC(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	if !m.validateAuth(w, r, EventingPermissionManage) {
-		cbauth.SendForbidden(w, EventingPermissionManage)
 		return
 	}
 
@@ -4193,7 +4189,6 @@ func (m *ServiceMgr) freeOSMemory(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	if !m.validateAuth(w, r, EventingPermissionManage) {
-		cbauth.SendForbidden(w, EventingPermissionManage)
 		return
 	}
 
@@ -4206,7 +4201,6 @@ func (m *ServiceMgr) freeOSMemory(w http.ResponseWriter, r *http.Request) {
 func (m *ServiceMgr) expvarHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	if !m.validateAuth(w, r, EventingPermissionManage) {
-		cbauth.SendForbidden(w, EventingPermissionManage)
 		return
 	}
 
@@ -4225,7 +4219,6 @@ func (m *ServiceMgr) expvarHandler(w http.ResponseWriter, r *http.Request) {
 //pprof index handler
 func (m *ServiceMgr) indexHandler(w http.ResponseWriter, r *http.Request) {
 	if !m.validateAuth(w, r, EventingPermissionManage) {
-		cbauth.SendForbidden(w, EventingPermissionManage)
 		return
 	}
 	pprof.Index(w, r)
@@ -4234,7 +4227,6 @@ func (m *ServiceMgr) indexHandler(w http.ResponseWriter, r *http.Request) {
 //pprof cmdline handler
 func (m *ServiceMgr) cmdlineHandler(w http.ResponseWriter, r *http.Request) {
 	if !m.validateAuth(w, r, EventingPermissionManage) {
-		cbauth.SendForbidden(w, EventingPermissionManage)
 		return
 	}
 	pprof.Cmdline(w, r)
@@ -4243,7 +4235,6 @@ func (m *ServiceMgr) cmdlineHandler(w http.ResponseWriter, r *http.Request) {
 //pprof profile handler
 func (m *ServiceMgr) profileHandler(w http.ResponseWriter, r *http.Request) {
 	if !m.validateAuth(w, r, EventingPermissionManage) {
-		cbauth.SendForbidden(w, EventingPermissionManage)
 		return
 	}
 	pprof.Profile(w, r)
@@ -4252,7 +4243,6 @@ func (m *ServiceMgr) profileHandler(w http.ResponseWriter, r *http.Request) {
 //pprof symbol handler
 func (m *ServiceMgr) symbolHandler(w http.ResponseWriter, r *http.Request) {
 	if !m.validateAuth(w, r, EventingPermissionManage) {
-		cbauth.SendForbidden(w, EventingPermissionManage)
 		return
 	}
 	pprof.Symbol(w, r)
@@ -4261,7 +4251,6 @@ func (m *ServiceMgr) symbolHandler(w http.ResponseWriter, r *http.Request) {
 //pprof trace handler
 func (m *ServiceMgr) traceHandler(w http.ResponseWriter, r *http.Request) {
 	if !m.validateAuth(w, r, EventingPermissionManage) {
-		cbauth.SendForbidden(w, EventingPermissionManage)
 		return
 	}
 	pprof.Trace(w, r)
@@ -4270,8 +4259,7 @@ func (m *ServiceMgr) traceHandler(w http.ResponseWriter, r *http.Request) {
 func (m *ServiceMgr) listFunctions(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "ServiceMgr::listFunctions"
 	w.Header().Set("Content-Type", "application/json")
-	if !m.validateAuth(w, r, EventingPermissionManage) {
-		cbauth.SendForbidden(w, EventingPermissionManage)
+	if !m.validateAnyAuth(w, r, EventingReadPermissions) {
 		return
 	}
 
@@ -4304,7 +4292,6 @@ func (m *ServiceMgr) triggerInternalRebalance(w http.ResponseWriter, r *http.Req
 
 	w.Header().Set("Content-Type", "application/json")
 	if !m.validateAuth(w, r, EventingPermissionManage) {
-		cbauth.SendForbidden(w, EventingPermissionManage)
 		return
 	}
 
@@ -4332,7 +4319,6 @@ func (m *ServiceMgr) triggerInternalRebalance(w http.ResponseWriter, r *http.Req
 
 func (m *ServiceMgr) prometheusLow(w http.ResponseWriter, r *http.Request) {
 	if !m.validateAuth(w, r, EventingPermissionStats) {
-		cbauth.SendForbidden(w, EventingPermissionStats)
 		return
 	}
 	//TODO: avg script execution time, avg timer scan time
@@ -4345,7 +4331,6 @@ func (m *ServiceMgr) prometheusLow(w http.ResponseWriter, r *http.Request) {
 
 func (m *ServiceMgr) prometheusHigh(w http.ResponseWriter, r *http.Request) {
 	if !m.validateAuth(w, r, EventingPermissionStats) {
-		cbauth.SendForbidden(w, EventingPermissionStats)
 		return
 	}
 

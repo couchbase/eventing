@@ -4,12 +4,13 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/couchbase/eventing/common/collections"
-	"github.com/couchbase/eventing/dcp"
-	"github.com/couchbase/eventing/dcp/transport/client"
+	couchbase "github.com/couchbase/eventing/dcp"
+	memcached "github.com/couchbase/eventing/dcp/transport/client"
 	"github.com/couchbase/eventing/logging"
 )
 
@@ -290,7 +291,7 @@ func BucketSeqnos(cluster, pooln, bucketn string) (l_seqnos []uint64, err error)
 }
 
 func CollectionSeqnos(cluster, pooln, bucketn string,
-	cid uint32) (l_seqnos []uint64, err error) {
+	cid uint32) (l_seqnos []uint64, collection_found bool, err error) {
 
 	// any type of error will cleanup the bucket and its kvfeeds.
 	defer func() {
@@ -321,19 +322,54 @@ func CollectionSeqnos(cluster, pooln, bucketn string,
 		}
 		return reader, nil
 	}()
+
+	collection_found = true
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 
 	l_seqnos, err = reader.GetCollectionSeqnos(cid)
+	if err != nil && strings.Contains(err.Error(), "Unknown scope or collection") {
+		return nil, false, nil
+	}
 	return
 }
 
-func GetSeqnos(cluster, pool, bucket string, cid uint32) (l_seqnos []uint64, err error) {
+func GetSeqnos(args ...interface{}) error {
+	cluster := args[0].(string)
+	pool := args[1].(string)
+	bucket := args[2].(string)
+	cid := args[3].(uint32)
+	l_seqnos := args[4].(*[]uint64)
+
 	if cid != collections.CID_FOR_BUCKET {
-		return CollectionSeqnos(cluster, pool, bucket, cid)
+		seqnos, collection_found, err := CollectionSeqnos(cluster, pool, bucket, cid)
+		if !collection_found {
+			logging.Infof("No collection with cid: %v found", cid)
+			return nil
+		}
+		if err == nil {
+			*l_seqnos = seqnos
+			return nil
+		}
+		if strings.Contains(err.Error(), "No bucket") {
+			logging.Infof("No bucket named %s found", bucket)
+			return nil
+		}
+		logging.Warnf("Got error while trying to get collection sequence numbers: %v Retrying...", err)
+		return err
 	}
-	return BucketSeqnos(cluster, pool, bucket)
+	seqnos, err := BucketSeqnos(cluster, pool, bucket)
+	if err == nil {
+		*l_seqnos = seqnos
+		return nil
+	}
+	if strings.Contains(err.Error(), "No bucket") {
+		logging.Infof("No bucket named %s found", bucket)
+		return nil
+	}
+	logging.Warnf("Got error while trying to get bucket sequence numbers: %v Retrying...", err)
+	return err
 }
 
 func CollectSeqnos(kvfeeds map[string]*kvConn, bucketLevel bool, cid uint32) (l_seqnos []uint64, err error) {
@@ -357,8 +393,7 @@ func CollectSeqnos(kvfeeds map[string]*kvConn, bucketLevel bool, cid uint32) (l_
 					errors[index] = err
 					return
 				}
-				errors[index] = couchbase.GetCollectionSeqs(feed.mc,
-					kv_seqnos_node[index], feed.tmpbuf, cid)
+				errors[index] = couchbase.GetCollectionSeqs(feed.mc, kv_seqnos_node[index], feed.tmpbuf, cid)
 			}
 		}(i, feed)
 		i++
