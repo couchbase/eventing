@@ -16,6 +16,7 @@ import (
 	"io/ioutil"
 	"math"
 	"net"
+	"net/http"
 	"net/url"
 	"os"
 	"reflect"
@@ -602,6 +603,33 @@ func GetEventProcessingStats(urlSuffix string, nodeAddrs []string) (map[string]i
 	}
 
 	return pStats, nil
+}
+
+func ResetStatsCounters(urlSuffix string, nodeAddrs []string) ([]byte, error) {
+	logPrefix := "util::ResetStatsCounters"
+	var netClient *Client
+	netClient = CheckTLSandGetClient(HTTPRequestTimeout)
+
+	for _, nodeAddr := range nodeAddrs {
+		var endpointURL string
+		endpointURL = CheckTLSandReplaceProtocol("http://%s%s", nodeAddr, urlSuffix)
+		res, err := netClient.Get(endpointURL)
+		if err != nil {
+			logging.Errorf("%s Failed to reset stats counters on node: %rs, err: %v", logPrefix, endpointURL, err)
+			return nil, err
+		}
+
+		defer res.Body.Close()
+
+		if res.StatusCode != http.StatusOK {
+			buf, err := ioutil.ReadAll(res.Body)
+			if err != nil {
+				return nil, err
+			}
+			return buf, fmt.Errorf("%v", res.StatusCode)
+		}
+	}
+	return nil, nil
 }
 
 func GetProgress(urlSuffix string, nodeAddrs []string) (*cm.RebalanceProgress, map[string]interface{}, map[string]error) {

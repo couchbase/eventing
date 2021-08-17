@@ -11,9 +11,9 @@ import (
 	"sync/atomic"
 
 	mcd "github.com/couchbase/eventing/dcp/transport"
-	"github.com/couchbase/eventing/dcp/transport/client"
+	memcached "github.com/couchbase/eventing/dcp/transport/client"
 	"github.com/couchbase/eventing/logging"
-	"github.com/google/flatbuffers/go"
+	flatbuffers "github.com/google/flatbuffers/go"
 )
 
 func (c *Consumer) sendLogLevel(logLevel string, sendToDebugger bool) {

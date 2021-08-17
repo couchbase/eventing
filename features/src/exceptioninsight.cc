@@ -15,6 +15,7 @@
 
 void ExceptionInsight::AccumulateException(v8::TryCatch &try_catch) {
 
+  auto newEntry = false;
   auto context = isolate_->GetCurrentContext();
   auto v8exception_info = GetV8ExceptionInfo(isolate_, context, &try_catch);
 
@@ -27,14 +28,32 @@ void ExceptionInsight::AccumulateException(v8::TryCatch &try_catch) {
 
   {
     std::lock_guard<std::mutex> lock(lock_);
+
+    if (this->entries_.size() == 0) {
+
+      InitStartTime();
+    }
+
     auto &entry = this->entries_[crc];
 
     if (entry.count_ == 0) { // capture first occurrance of the exception
       entry.v8exception_info_ = v8exception_info;
       entry.count_ = 1;
+      newEntry = true;
     } else {
       entry.count_++;
     }
+  }
+
+  if (newEntry) {
+
+    // Encountering the Exception 'v8exception_info' for the first time during
+    // this period.
+    nlohmann::json exceptionInfo;
+
+    PopulateExceptionInfo(exceptionInfo, v8exception_info);
+
+    APPLOG << exceptionInfo.dump() << std::endl;
   }
 }
 
@@ -46,6 +65,12 @@ void ExceptionInsight::AccumulateAndClear(ExceptionInsight &from) {
 
   // Merge all exceptions from 'from' into the current ExceptionInsight
   // instance, either adding new ones in, or incrementing counts of known ones.
+
+  if (from.entries_.size() > 0 && std::string(from.start_time_) < std::string(start_time_)) {
+    strncpy(start_time_, from.start_time_, sizeof(start_time_) - 1);
+    start_time_[sizeof(start_time_) - 1] = '\0';
+  }
+
   for (auto const &iter : from.entries_) {
     auto &entry = this->entries_[iter.first];
 
@@ -60,7 +85,6 @@ void ExceptionInsight::AccumulateAndClear(ExceptionInsight &from) {
   // re-init the 'from' instance to capture exceptions for the next period of
   // time.
   from.entries_.clear();
-  from.InitStartTime();
 }
 
 void ExceptionInsight::LogExceptionSummary(
@@ -73,14 +97,21 @@ void ExceptionInsight::LogExceptionSummary(
 
     exceptionInfo["since"] = exception_insight.start_time_;
     exceptionInfo["count"] = iter.second.count_;
-    exceptionInfo["exception"] = iter.second.v8exception_info_.exception;
-    exceptionInfo["file"] = iter.second.v8exception_info_.file;
-    exceptionInfo["line"] = iter.second.v8exception_info_.line;
-    exceptionInfo["srcLine"] = iter.second.v8exception_info_.srcLine;
-    exceptionInfo["stack"] = iter.second.v8exception_info_.stack;
+
+    PopulateExceptionInfo(exceptionInfo, iter.second.v8exception_info_);
 
     APPLOG << exceptionInfo.dump() << std::endl;
   }
+}
+
+void ExceptionInsight::PopulateExceptionInfo(
+    nlohmann::json &exceptionInfo, V8ExceptionInfo v8exception_info) {
+
+    exceptionInfo["exception"] = v8exception_info.exception;
+    exceptionInfo["file"] = v8exception_info.file;
+    exceptionInfo["line"] = v8exception_info.line;
+    exceptionInfo["srcLine"] = v8exception_info.srcLine;
+    exceptionInfo["stack"] = v8exception_info.stack;
 }
 
 ExceptionInsight::ExceptionInsight(v8::Isolate *isolate)
