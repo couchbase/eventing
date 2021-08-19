@@ -140,6 +140,11 @@ func (c *Consumer) dcpEventsRemainingToProcess() error {
 		return err
 	}
 
+	if len(seqNos) != c.numVbuckets {
+		c.dcpEventsRemaining = 0
+		return nil
+	}
+
 	var eventsProcessed, totalEvents uint64
 
 	for _, vb := range vbsTohandle {
