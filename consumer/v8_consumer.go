@@ -209,7 +209,8 @@ func (c *Consumer) Serve() {
 	}
 
 	var flogs couchbase.FailoverLog
-	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getFailoverLogOpCallback, c, &flogs)
+	var operr error
+	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getFailoverLogOpCallback, c, &flogs, &operr)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 		return
@@ -248,10 +249,13 @@ func (c *Consumer) Serve() {
 		feedName = couchbase.NewDcpFeedName(c.workerName + "_" + kvHostPort + "_" + c.HostPortAddr())
 
 		c.hostDcpFeedRWMutex.Lock()
-		err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, startDCPFeedOpCallback, c, feedName, kvHostPort)
+		err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, startDCPFeedOpCallback, c, feedName, kvHostPort, &operr)
 		if err == common.ErrRetryTimeout {
 			logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 			return
+		} else if operr == common.ErrEncryptionLevelChanged {
+			c.hostDcpFeedRWMutex.Unlock()
+			break
 		}
 
 		logging.Infof("%s [%s:%s:%d] vbKvAddr: %s Spawned aggChan routine",
@@ -565,6 +569,13 @@ func (c *Consumer) updategocbMetaHandle() error {
 	defer c.gocbMetaHandleMutex.Unlock()
 	c.gocbMetaHandle, err = c.superSup.GetMetadataHandle(c.producer.MetadataBucket(), c.producer.MetadataScope(), c.producer.MetadataCollection(), c.app.AppName)
 	return err
+}
+
+func (c *Consumer) encryptionChangedDuringLifecycle() bool {
+	if (c.isBootstrapping || c.isPausing) && c.superSup.EncryptionChangedDuringLifecycle() {
+		return true
+	}
+	return false
 }
 
 func (c *Consumer) resetExecutionStats() {

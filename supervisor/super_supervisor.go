@@ -53,6 +53,8 @@ func NewSuperSupervisor(adminPort AdminPortConfig, eventingDir, kvPort, restPort
 		tokenMapRWMutex:                    &sync.RWMutex{},
 		uuid:                               uuid,
 		fetchBucketInfoOnURIHashChangeOnly: 1,
+		initEncryptDataMutex:               &sync.RWMutex{},
+		initLifecycleEncryptData:           false,
 	}
 	s.appRWMutex = &sync.RWMutex{}
 	s.appListRWMutex = &sync.RWMutex{}
@@ -236,6 +238,8 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 			S1 <==> S2 <==> S3 ==> S1
 		*/
 
+		finalEncryptData := false
+
 		switch deploymentStatus {
 		case true:
 
@@ -245,6 +249,9 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 				state := s.GetAppState(appName)
 
 				if state == common.AppStateUndeployed || state == common.AppStatePaused {
+				retryAppDeploy:
+					s.setinitLifecycleEncryptData()
+
 					sourceExist, metaExist, err := s.checkSourceAndMetadataKeyspaceExist(appName)
 					if err != nil {
 						logging.Errorf("%s [%d] checkSourceAndMetadataKeyspaceExists failed for Function: %s  runningProducer: %v",
@@ -299,6 +306,7 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 							delete(s.bootstrappingApps, appName)
 							s.appListRWMutex.Unlock()
 							logging.Errorf("%s [%d] Function: %s spawning error: %v", logPrefix, s.runningFnsCount(), appName, err)
+							s.setinitLifecycleEncryptData()
 							return nil
 						}
 					}
@@ -310,6 +318,22 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 
 					if eventingProducer, ok := s.runningFns()[appName]; ok {
 						eventingProducer.SignalBootstrapFinish()
+						// we reach here only when we've waited on producer's and all consumers' bootstrap channels
+						// Check whether encryption level changed during this period.
+
+						if securitySetting := s.GetSecuritySetting(); securitySetting != nil {
+							finalEncryptData = securitySetting.EncryptData
+						}
+						if s.initLifecycleEncryptData != finalEncryptData {
+							// During this transition period, we went either from control -> all, strict
+							// OR from all, strict -> control too, stop producer, consumers and redo
+							logging.Infof("%s [%d] Change in encryption level detected (%v -> %v) while function: %s was still being deployed. Retrying deployment...", logPrefix, s.runningFnsCount(), s.initLifecycleEncryptData, finalEncryptData, appName)
+							s.appListRWMutex.Lock()
+							delete(s.bootstrappingApps, appName)
+							s.appListRWMutex.Unlock()
+							s.CleanupProducer(appName, true, false)
+							goto retryAppDeploy
+						}
 
 						logging.Infof("%s [%d] Function: %s bootstrap finished", logPrefix, s.runningFnsCount(), appName)
 						// double check that handler is still present in s.runningFns() after eventingProducer.SignalBootstrapFinish() above
@@ -343,6 +367,7 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 					logging.Infof("%s [%d] Function: %s begin pausing process", logPrefix, s.runningFnsCount(), appName)
 					s.pausingApps[appName] = time.Now().String()
 					s.appListRWMutex.Unlock()
+					s.setinitLifecycleEncryptData()
 
 					s.appRWMutex.Lock()
 					s.appDeploymentStatus[appName] = deploymentStatus
@@ -483,6 +508,7 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(path string, value []byte,
 		logging.Infof("%s [%d] Apps in primary store: %v, running apps: %v",
 			logPrefix, s.runningFnsCount(), appsInPrimaryStore, s.runningFns())
 
+		finalEncryptData := false
 		for _, appName := range appsInPrimaryStore {
 
 			var sData []byte
@@ -502,6 +528,9 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(path string, value []byte,
 			if _, ok := s.runningFns()[appName]; !ok {
 
 				if deploymentStatus && processingStatus {
+				retryAppDeploy:
+					finalEncryptData = false
+					s.setinitLifecycleEncryptData()
 					sourceExist, metaExist, err := s.checkSourceAndMetadataKeyspaceExist(appName)
 					if err != nil {
 						logging.Errorf("%s [%d] getSourceAndMetaBucketNodeCount failed for Function: %s  runningProducer: %v",
@@ -532,6 +561,7 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(path string, value []byte,
 					err = s.spawnApp(appName)
 					if err != nil {
 						logging.Errorf("%s [%d] Function: %s spawning error: %v", logPrefix, s.runningFnsCount(), appName, err)
+						s.setinitLifecycleEncryptData()
 						continue
 					}
 
@@ -545,6 +575,19 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(path string, value []byte,
 					}
 					if eventingProducer, ok := s.runningFns()[appName]; ok {
 						eventingProducer.SignalBootstrapFinish()
+
+						if securitySetting := s.GetSecuritySetting(); securitySetting != nil {
+							finalEncryptData = securitySetting.EncryptData
+						}
+
+						if s.initLifecycleEncryptData != finalEncryptData {
+							logging.Infof("%s [%d] Change in encryption level detected (%v -> %v) while function: %s was still being deployed. Retrying deployment...", logPrefix, s.runningFnsCount(), s.initLifecycleEncryptData, finalEncryptData, appName)
+							s.appListRWMutex.Lock()
+							delete(s.bootstrappingApps, appName)
+							s.appListRWMutex.Unlock()
+							s.CleanupProducer(appName, true, false)
+							goto retryAppDeploy
+						}
 
 						logging.Infof("%s [%d] Function: %s bootstrap finished", logPrefix, s.runningFnsCount(), appName)
 
@@ -693,6 +736,11 @@ func (s *SuperSupervisor) AppsRetryCallback(path string, value []byte, rev inter
 	return nil
 }
 
+// EnforceTLS dev note: Following are synchronous operations:
+// creating a newProducer struct, watchesBucket, watchesGocbBucket
+// Adding producer to suptree is async and failure to Serve producer
+// won't fail spawnApp. Hence, we will err out this function only if
+// encryption level changes while creating cluster and bucket handles.
 func (s *SuperSupervisor) spawnApp(appName string) error {
 	logPrefix := "SuperSupervisor::spawnApp"
 
