@@ -115,6 +115,11 @@ func (p *Producer) Serve() {
 		}
 	}()
 
+	p.initEncryptData = false // the encryption level this consumer was initialized with
+	if securitySetting := p.superSup.GetSecuritySetting(); securitySetting != nil {
+		p.initEncryptData = securitySetting.EncryptData
+	}
+
 	// NOTE: Please check resumeProducer() code path changes if anything changes in serve code path
 	p.isBootstrapping = true
 	logging.Infof("%s [%s:%d] Bootstrapping status: %t", logPrefix, p.appName, p.LenRunningConsumers(), p.isBootstrapping)
@@ -865,15 +870,15 @@ func (p *Producer) updateStats() {
 		select {
 		case <-p.updateStatsTicker.C:
 			err := p.vbDistributionStats()
-			if err == common.ErrRetryTimeout {
-				logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
+			if err == common.ErrRetryTimeout || err == common.ErrEncryptionLevelChanged {
+				logging.Errorf("%s [%s:%d] Exiting either due to timeout or encryption level change", logPrefix, p.appName, p.LenRunningConsumers())
 				p.updateStatsTicker.Stop()
 				return
 			}
 
 			err = p.getSeqsProcessed()
-			if err == common.ErrRetryTimeout {
-				logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
+			if err == common.ErrRetryTimeout || err == common.ErrEncryptionLevelChanged {
+				logging.Errorf("%s [%s:%d] Exiting either due to timeout or encryption level change", logPrefix, p.appName, p.LenRunningConsumers())
 				p.updateStatsTicker.Stop()
 				return
 			}
@@ -1055,4 +1060,15 @@ func (p *Producer) updatemetadataHandle() error {
 	defer p.metadataHandleMutex.Unlock()
 	p.metadataHandle, err = p.superSup.GetMetadataHandle(p.metadataKeyspace.BucketName, p.metadataKeyspace.ScopeName, p.metadataKeyspace.CollectionName, p.appName)
 	return err
+}
+
+func (p *Producer) encryptionChangedDuringBootstrap() bool {
+	currentencryptData := false
+	if securitySetting := p.superSup.GetSecuritySetting(); securitySetting != nil {
+		currentencryptData = securitySetting.EncryptData
+	}
+	if (currentencryptData != p.initEncryptData) && p.isBootstrapping {
+		return true
+	}
+	return false
 }
