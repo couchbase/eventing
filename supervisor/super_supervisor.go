@@ -236,6 +236,8 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 			S1 <==> S2 <==> S3 ==> S1
 		*/
 
+		initEncryptData, finalEncryptData := false, false
+
 		switch deploymentStatus {
 		case true:
 
@@ -245,6 +247,11 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 				state := s.GetAppState(appName)
 
 				if state == common.AppStateUndeployed || state == common.AppStatePaused {
+				retryAppDeploy:
+					if securitySetting := s.GetSecuritySetting(); securitySetting != nil {
+						initEncryptData = securitySetting.EncryptData
+					}
+
 					sourceExist, metaExist, err := s.checkSourceAndMetadataKeyspaceExist(appName)
 					if err != nil {
 						logging.Errorf("%s [%d] checkSourceAndMetadataKeyspaceExists failed for Function: %s  runningProducer: %v",
@@ -310,6 +317,22 @@ func (s *SuperSupervisor) SettingsChangeCallback(path string, value []byte, rev 
 
 					if eventingProducer, ok := s.runningFns()[appName]; ok {
 						eventingProducer.SignalBootstrapFinish()
+						// we reach here only when we've waited on producer's and all consumers' bootstrap channels
+						// Check whether encryption level changed during this period.
+
+						if securitySetting := s.GetSecuritySetting(); securitySetting != nil {
+							finalEncryptData = securitySetting.EncryptData
+						}
+						if initEncryptData != finalEncryptData {
+							// During this transition period, we went either from control -> all, strict
+							// OR from all, strict -> control too, stop producer, consumers and redo
+							logging.Infof("%s [%d] Change in encryption level detected (%v -> %v) while function: %s was still being deployed. Retrying deployment...", logPrefix, s.runningFnsCount(), initEncryptData, finalEncryptData, appName)
+							s.appListRWMutex.Lock()
+							delete(s.bootstrappingApps, appName)
+							s.appListRWMutex.Unlock()
+							s.CleanupProducer(appName, true, false)
+							goto retryAppDeploy
+						}
 
 						logging.Infof("%s [%d] Function: %s bootstrap finished", logPrefix, s.runningFnsCount(), appName)
 						// double check that handler is still present in s.runningFns() after eventingProducer.SignalBootstrapFinish() above
@@ -483,6 +506,7 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(path string, value []byte,
 		logging.Infof("%s [%d] Apps in primary store: %v, running apps: %v",
 			logPrefix, s.runningFnsCount(), appsInPrimaryStore, s.runningFns())
 
+		initEncryptData, finalEncryptData := false, false
 		for _, appName := range appsInPrimaryStore {
 
 			var sData []byte
@@ -502,6 +526,11 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(path string, value []byte,
 			if _, ok := s.runningFns()[appName]; !ok {
 
 				if deploymentStatus && processingStatus {
+				retryAppDeploy:
+					initEncryptData, finalEncryptData = false, false
+					if securitySetting := s.GetSecuritySetting(); securitySetting != nil {
+						initEncryptData = securitySetting.EncryptData
+					}
 					sourceExist, metaExist, err := s.checkSourceAndMetadataKeyspaceExist(appName)
 					if err != nil {
 						logging.Errorf("%s [%d] getSourceAndMetaBucketNodeCount failed for Function: %s  runningProducer: %v",
@@ -545,6 +574,18 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(path string, value []byte,
 					}
 					if eventingProducer, ok := s.runningFns()[appName]; ok {
 						eventingProducer.SignalBootstrapFinish()
+
+						if securitySetting := s.GetSecuritySetting(); securitySetting != nil {
+							finalEncryptData = securitySetting.EncryptData
+						}
+						if initEncryptData != finalEncryptData {
+							logging.Infof("%s [%d] Change in encryption level detected (%v -> %v) while function: %s was still being deployed. Retrying deployment...", logPrefix, s.runningFnsCount(), initEncryptData, finalEncryptData, appName)
+							s.appListRWMutex.Lock()
+							delete(s.bootstrappingApps, appName)
+							s.appListRWMutex.Unlock()
+							s.CleanupProducer(appName, true, false)
+							goto retryAppDeploy
+						}
 
 						logging.Infof("%s [%d] Function: %s bootstrap finished", logPrefix, s.runningFnsCount(), appName)
 

@@ -165,6 +165,12 @@ var setOpCallback = func(args ...interface{}) error {
 	p := args[0].(*Producer)
 	key := args[1].(common.Key)
 	blob := args[2]
+	var operr *error
+	failfast := false
+	if len(args) > 3 {
+		failfast = true
+		operr = args[3].(*error)
+	}
 
 	if p.isTerminateRunning {
 		return nil
@@ -179,6 +185,10 @@ var setOpCallback = func(args ...interface{}) error {
 	}
 
 	_, err := p.metadataHandle.Upsert(key.Raw(), blob, nil)
+	if failfast && err != nil && p.encryptionChangedDuringBootstrap() {
+		*operr = common.ErrEncryptionLevelChanged
+		return nil
+	}
 	if errors.Is(err, gocbcore.ErrShutdown) || errors.Is(err, gocbcore.ErrCollectionsUnsupported) {
 		return nil
 	}
@@ -222,10 +232,15 @@ var getOpCallback = func(args ...interface{}) error {
 	p := args[0].(*Producer)
 	key := args[1].(common.Key)
 	blob := args[2]
+	operr := args[3].(*error)
 
 	p.metadataHandleMutex.RLock()
 	defer p.metadataHandleMutex.RUnlock()
 	result, err := p.metadataHandle.Get(key.Raw(), nil)
+	if err != nil && p.encryptionChangedDuringBootstrap() {
+		*operr = common.ErrEncryptionLevelChanged
+		return nil
+	}
 	if errors.Is(err, gocb.ErrDocumentNotFound) || errors.Is(err, gocbcore.ErrShutdown) || errors.Is(err, gocbcore.ErrCollectionsUnsupported) {
 		return nil
 	}
@@ -243,10 +258,15 @@ var deleteOpCallback = func(args ...interface{}) error {
 	logPrefix := "Producer::deleteOpCallback"
 	p := args[0].(*Producer)
 	key := args[1].(string)
+	operr := args[2].(*error)
 
 	p.metadataHandleMutex.RLock()
 	defer p.metadataHandleMutex.RUnlock()
 	_, err := p.metadataHandle.Remove(key, nil)
+	if err != nil && p.encryptionChangedDuringBootstrap() {
+		*operr = common.ErrEncryptionLevelChanged
+		return nil
+	}
 	if errors.Is(err, gocb.ErrDocumentNotFound) || errors.Is(err, gocbcore.ErrShutdown) || errors.Is(err, gocbcore.ErrCollectionsUnsupported) {
 		return nil
 	}
