@@ -332,16 +332,16 @@ void AppWorker::OnRead(uv_stream_t *stream, ssize_t nread,
                        const uv_buf_t *buf) {
   if (nread > 0) {
     AppWorker::GetAppWorker()->ParseValidChunk(stream, nread, buf->base);
-  } else if (nread == 0) {
-    next_message_.clear();
-  } else {
+  } else if (nread < 0) {
     if (nread != UV_EOF) {
       LOG(logError) << "Read error, err code: " << uv_err_name(nread)
                     << std::endl;
     }
-    AppWorker::GetAppWorker()->ParseValidChunk(stream, next_message_.length(),
-                                               next_message_.c_str());
+
+    std::string old_message_ = next_message_;
     next_message_.clear();
+    AppWorker::GetAppWorker()->ParseValidChunk(stream, old_message_.length(),
+                                               old_message_.c_str());
     uv_read_stop(stream);
   }
 }
