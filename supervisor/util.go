@@ -7,6 +7,7 @@ import (
 	"math"
 	"net"
 	"runtime"
+	"runtime/debug"
 	"sort"
 	"strconv"
 	"strings"
@@ -506,7 +507,7 @@ func (s *SuperSupervisor) watchBucketWithGocb(bucketName, appName string) error 
 	if err != nil {
 		return err
 	}
-	err = s.gocbGlobalConfigHandle.maybeRegistergocbBucket(bucketName, appName, s.GetSecuritySetting())
+	err = s.gocbGlobalConfigHandle.maybeRegistergocbBucket(bucketName, appName, s.GetSecuritySetting(), s)
 	if err != nil {
 		s.unwatchBucket(bucketName, appName)
 	}
@@ -550,6 +551,14 @@ func (s *SuperSupervisor) getAppsWatchingBucket(bucketName string) ([]string, bo
 		return nil, false
 	}
 	return bucketWatch.AppNames(), true
+}
+
+func (s *SuperSupervisor) setinitLifecycleEncryptData() {
+	if securitySetting := s.GetSecuritySetting(); securitySetting != nil {
+		s.initEncryptDataMutex.Lock()
+		s.initLifecycleEncryptData = securitySetting.EncryptData
+		s.initEncryptDataMutex.Unlock()
+	}
 }
 
 func (bw *bucketWatchStruct) Refresh(retryCount int64, restPort string, np *couchbase.Pool, nHash string) error {
@@ -635,9 +644,16 @@ func initgocbGlobalConfig(retryCount int64, restPort string) (*gocbGlobalConfig,
 	to appropriate cluster instance. Note: For pause-resume use-case without change in encryption level
 	this is a noop
 */
-func (config *gocbGlobalConfig) maybeRegistergocbBucket(bucketName, appName string, setting *common.SecuritySetting) error {
+func (config *gocbGlobalConfig) maybeRegistergocbBucket(bucketName, appName string, setting *common.SecuritySetting, supervisor *SuperSupervisor) error {
 	var err error
 	logPrefix := "gocbGlobalConfig::maybeRegistergocbBucket"
+	defer func() {
+		if r := recover(); r != nil {
+			// Recover from a possible panic in gocb cluster.Close() if socket on other side is already closed.
+			trace := debug.Stack()
+			logging.Errorf("%s Recovered from panic, stack trace: %rm", logPrefix, string(trace))
+		}
+	}()
 	config.Lock()
 	defer config.Unlock()
 
@@ -651,27 +667,35 @@ func (config *gocbGlobalConfig) maybeRegistergocbBucket(bucketName, appName stri
 
 	if encryptionEnabled == true {
 		if config.encryptedgocbPool == nil {
-			config.encryptedgocbPool, err = initGoCbPool(config.retrycount, config.nsServerPort, setting)
+			config.encryptedgocbPool, err = initGoCbPool(config.retrycount, config.nsServerPort, setting, supervisor)
 			if err != nil {
 				return fmt.Errorf("Could not create encrypted gocb cluster object. Cause: %v", err)
 			}
 			logging.Infof("%v Successfully created an encrypted gocb cluster", logPrefix)
 		}
-		if err = config.encryptedgocbPool.insertBucket(bucketName, appName, config.retrycount, config.nsServerPort); err != nil {
-			// failure doesn't add the handle. No need to call gocbpool.remove
+		if err = config.encryptedgocbPool.insertBucket(bucketName, appName, config.retrycount, config.nsServerPort, supervisor); err != nil {
+			// failure doesn't add the handle. No need to call gocbpool.remove. However, there might be an unused cluster object
 			logging.Errorf("%v Could not create an encrypted gocb handle. Cause: %v", logPrefix, err)
+			if config.encryptedgocbPool != nil && len(config.encryptedgocbPool.bucketHandle) == 0 {
+				config.encryptedgocbPool.cluster.Close(nil)
+				config.encryptedgocbPool = nil
+			}
 			return err
 		}
 	} else {
 		if config.plaingocbPool == nil {
-			config.plaingocbPool, err = initGoCbPool(config.retrycount, config.nsServerPort, setting)
+			config.plaingocbPool, err = initGoCbPool(config.retrycount, config.nsServerPort, setting, supervisor)
 			if err != nil {
 				return fmt.Errorf("Could not create plain gocb cluster object. Cause: %v", err)
 			}
 			logging.Infof("%v Successfully created a plain gocb cluster", logPrefix)
 		}
-		if err = config.plaingocbPool.insertBucket(bucketName, appName, config.retrycount, config.nsServerPort); err != nil {
+		if err = config.plaingocbPool.insertBucket(bucketName, appName, config.retrycount, config.nsServerPort, supervisor); err != nil {
 			logging.Errorf("%v Could not create an plain gocb handle. Cause: %v", logPrefix, err)
+			if config.plaingocbPool != nil && len(config.plaingocbPool.bucketHandle) == 0 {
+				config.plaingocbPool.cluster.Close(nil)
+				config.plaingocbPool = nil
+			}
 			return err
 		}
 	}
@@ -778,21 +802,25 @@ func (config *gocbGlobalConfig) getBucket(bucketName, appName string) (*gocb.Buc
 	}
 }
 
-func initGoCbPool(retryCount int64, restPort string, setting *common.SecuritySetting) (*gocbPool, error) {
+func initGoCbPool(retryCount int64, restPort string, setting *common.SecuritySetting, supervisor *SuperSupervisor) (*gocbPool, error) {
 	pool := &gocbPool{
 		bucketHandle: make(map[string]*gocbBucketInstance),
 	}
-	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &retryCount, gocbConnectCluster, &pool.cluster, restPort, setting)
+	var operr error
+	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &retryCount, gocbConnectCluster, supervisor, &pool.cluster, restPort, setting, &operr)
+	if operr == common.ErrEncryptionLevelChanged {
+		return pool, operr
+	}
 	return pool, err
 }
 
-func (pool *gocbPool) insertBucket(bucketName, label string, retryCount int64, restPort string) error {
+func (pool *gocbPool) insertBucket(bucketName, label string, retryCount int64, restPort string, supervisor *SuperSupervisor) error {
 	pool.Lock()
 	defer pool.Unlock()
 	bucket, ok := pool.bucketHandle[bucketName]
 	if !ok {
 		var err error
-		bucket, err = initGocbBucketHandle(bucketName, pool.cluster, retryCount, restPort)
+		bucket, err = initGocbBucketHandle(bucketName, pool.cluster, retryCount, restPort, supervisor)
 		if err != nil {
 			return err
 		}
@@ -849,16 +877,19 @@ func (pool *gocbPool) getBucketCollection(bucketName, scopeName, collectionName,
 	return bucket.getCollection(scopeName, collectionName, label)
 }
 
-func initGocbBucketHandle(bucketName string, cluster *gocb.Cluster, retryCount int64, restPort string) (*gocbBucketInstance, error) {
+func initGocbBucketHandle(bucketName string, cluster *gocb.Cluster, retryCount int64, restPort string, supervisor *SuperSupervisor) (*gocbBucketInstance, error) {
 	bucketHandle := &gocbBucketInstance{
 		apps: make(map[string]struct{}),
 	}
 	bucketNotExist := false
 	hostPortAddr := net.JoinHostPort(util.Localhost(), restPort)
+	var operr error
 	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &retryCount,
-		gocbConnectBucket, &bucketHandle.bucketHandle,
-		cluster, bucketName, hostPortAddr, &bucketNotExist)
-
+		gocbConnectBucket, supervisor, &bucketHandle.bucketHandle,
+		cluster, bucketName, hostPortAddr, &bucketNotExist, &operr)
+	if operr == common.ErrEncryptionLevelChanged {
+		return nil, operr
+	}
 	if bucketNotExist {
 		return nil, fmt.Errorf("Bucket %s doesn't exist", bucketName)
 	}

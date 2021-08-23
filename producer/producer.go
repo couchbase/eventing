@@ -866,16 +866,20 @@ func (p *Producer) updateStats() {
 		case <-p.updateStatsTicker.C:
 			err := p.vbDistributionStats()
 			if err == common.ErrRetryTimeout {
-				logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
+				logging.Errorf("%s [%s:%d] Exiting either due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
 				p.updateStatsTicker.Stop()
 				return
+			} else if err == common.ErrEncryptionLevelChanged {
+				continue
 			}
 
 			err = p.getSeqsProcessed()
 			if err == common.ErrRetryTimeout {
-				logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
+				logging.Errorf("%s [%s:%d] Exiting either due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
 				p.updateStatsTicker.Stop()
 				return
+			} else if err == common.ErrEncryptionLevelChanged {
+				continue
 			}
 
 		case <-p.stopCh:
@@ -954,7 +958,8 @@ func (p *Producer) pauseProducer() error {
 		c.CloseAllRunningDcpFeeds()
 	}
 
-	err := util.Retry(util.NewFixedBackoff(time.Second), &p.retryCount, checkIfQueuesAreDrained, p)
+	var operr error
+	err := util.Retry(util.NewFixedBackoff(time.Second), &p.retryCount, checkIfQueuesAreDrained, p, &operr)
 	if err == common.ErrRetryTimeout {
 		return fmt.Errorf("Exiting due to timeout")
 	}
@@ -1055,4 +1060,11 @@ func (p *Producer) updatemetadataHandle() error {
 	defer p.metadataHandleMutex.Unlock()
 	p.metadataHandle, err = p.superSup.GetMetadataHandle(p.metadataKeyspace.BucketName, p.metadataKeyspace.ScopeName, p.metadataKeyspace.CollectionName, p.appName)
 	return err
+}
+
+func (p *Producer) encryptionChangedDuringLifecycle() bool {
+	if (p.isBootstrapping || p.isPausing) && p.superSup.EncryptionChangedDuringLifecycle() {
+		return true
+	}
+	return false
 }
