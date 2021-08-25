@@ -14,7 +14,7 @@ Adapter.prototype.convertBindingsToConfig = function(bindings) {
     constants: []
   };
   for (var binding of bindings) {
-    if (binding.type === 'alias' && binding.name && binding.value) {
+    if (binding.type === 'alias' && binding.value) {
       config.buckets.push(this.createBucketConfig(binding));
     }
     if (binding.type === 'url' && binding.hostname && binding.value) {

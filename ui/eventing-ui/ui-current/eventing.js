@@ -514,7 +514,10 @@ angular.module('eventing', [
             }
           }).result
           .catch(function(errResponse) {
-            console.log(errResponse);
+
+            if (errResponse !== 'cancel' && errResponse !== 'X') {
+              console.log(errResponse);
+            }
           });
       };
 
@@ -822,10 +825,16 @@ angular.module('eventing', [
                 function(ApplicationService) {
                   return ApplicationService.server.getBucketScopes;
                 }
+              ],
+              keyspaces: ['ApplicationService',
+                function(ApplicationService) {
+                  return ApplicationService.server.getKeyspaces();
+                }
               ]
             }
           }).result
           .then(function(response) { // Upon continue.
+
             Object.assign(creationScope.appModel.depcfg, ApplicationService
               .convertBindingToConfig(creationScope.bindings));
             creationScope.appModel.fillWithMissingDefaults();
@@ -834,14 +843,6 @@ angular.module('eventing', [
             // undeployed state with feed bondary "everything" ("from_prior" is not legal)
             creationScope.appModel.settings.processing_status = false;
             creationScope.appModel.settings.deployment_status = false;
-
-            ApplicationService.local.createApp(creationScope.appModel);
-            return $state.transitionTo('app.admin.eventing.handler', {
-              appName: creationScope.appModel.appname,
-            }, {
-              // Explained in detail - https://github.com/angular-ui/ui-router/issues/3196
-              reload: true
-            });
           })
           .then(function(response) {
             return ApplicationService.public.import(creationScope.appModel);
@@ -853,13 +854,31 @@ angular.module('eventing', [
               return $q.reject(ApplicationService.status.getErrorMsg(
                 responseCode, response.data));
             } else {
+
+              ApplicationService.local.createApp(creationScope.appModel);
+
               ApplicationService.server.showSuccessAlert(
                 'Operation successful. Update the code and save, or return back to Eventing summary page.'
                 );
+
+              return $state.transitionTo('app.admin.eventing.handler', {
+                appName: creationScope.appModel.appname,
+              }, {
+                // Explained in detail - https://github.com/angular-ui/ui-router/issues/3196
+               reload: true
+              });
             }
           })
           .catch(function(errResponse) { // Upon cancel.
-            console.error(errResponse);
+
+            if (errResponse === 'cancel' || errResponse === 'X') {
+              return
+            }
+
+            if (errResponse.data && errResponse.data[0] && errResponse.data[0].info) {
+              ApplicationService.server.showErrorAlert(
+                "Changes cannot be saved. Reason: " + JSON.stringify(errResponse.data[0].info));
+            }
           });
       }
 
@@ -902,7 +921,9 @@ angular.module('eventing', [
             }
           }).result
           .catch(function(errResponse) {
-            console.error(errResponse);
+            if (errResponse !== 'cancel' && errResponse !== 'X') {
+              console.log(errResponse);
+            }
           });
       };
 
@@ -996,9 +1017,9 @@ angular.module('eventing', [
   ])
   // Controller for creating an application.
   .controller('CreateCtrl', ['$scope', 'FormValidationService',
-    'bucketsResolve', 'savedApps', 'logFileLocation', 'scopeInBucket',
+    'bucketsResolve', 'savedApps', 'logFileLocation', 'scopeInBucket', 'keyspaces',
     function($scope, FormValidationService, bucketsResolve, savedApps,
-      logFileLocation, scopeInBucket) {
+      logFileLocation, scopeInBucket, keyspaces) {
       var self = this;
       self.isDialog = true;
 
@@ -1176,6 +1197,28 @@ angular.module('eventing', [
         self.scopes.push([]);
         self.collections.push([]);
         self.responses.push([]);
+
+        // Is the bucketname present in the binding valid?
+        if (! keyspaces.get($scope.bindings[binding].name)) {
+          $scope.bindings[binding].name = "";
+          $scope.bindings[binding].scope = "";
+          $scope.bindings[binding].collection = "";
+        } else {
+          // Is the scope present in the binding valid?
+          var bscopes = keyspaces.get($scope.bindings[binding].name)
+
+          if (! bscopes.get($scope.bindings[binding].scope)) {
+            $scope.bindings[binding].scope = "";
+            $scope.bindings[binding].collection = "";
+          } else {
+            var scollections = bscopes.get($scope.bindings[binding].scope)
+
+            if (scollections.indexOf($scope.bindings[binding].collection) < 0) {
+              $scope.bindings[binding].collection = "";
+            }
+          }
+        }
+
         if (!$scope.bindings[binding].scope) {
           $scope.bindings[binding].scope = "_default";
         }
@@ -1319,7 +1362,6 @@ angular.module('eventing', [
 
       self.populateCollections = function(scopeName, index) {
         var collections = [];
-        console.log(self.responses[0]);
         for (var scope of self.responses[index]) {
           if (scope.name == scopeName) {
             for (var collection of scope.collections) {
@@ -1947,6 +1989,9 @@ angular.module('eventing', [
   .factory('ApplicationService', ['$q', '$http', '$state', 'mnPoolDefault',
     'mnAlertsService',
     function($q, $http, $state, mnPoolDefault, mnAlertsService) {
+
+      var self = this;
+
       var appManager = new ApplicationManager();
       var adapter = new Adapter();
       var errHandler;
@@ -1986,7 +2031,7 @@ angular.module('eventing', [
         });
 
       // APIs provided by the ApplicationService.
-      return {
+      self.funcs = {
         local: {
           deleteApp: function(appName) {
             appManager.deleteApp(appName);
@@ -2319,6 +2364,39 @@ angular.module('eventing', [
             var uri = "/pools/default/buckets/" + bucket + "/scopes/"
             return $http.get(uri)
           },
+          getKeyspaces: function() {
+            return self.funcs.server.getLatestBuckets().then(function(buckets) {
+
+              var promises = [];
+              for (var bucket of buckets ? buckets : []) {
+                var curPromise = self.funcs.server.getBucketScopes(bucket);
+                promises.push(curPromise);
+              }
+
+              return $q.all(promises).then(function(result) {
+
+                var keyspaces = new Map();
+
+                for (var b = 0; b < result.length; b++) {
+                  var bucketInfo = new Map()
+
+                  for (var s = 0; s < result[b].data.scopes.length; s++) {
+                    var scope = result[b].data.scopes[s]
+                    var collections = []
+                    for (var c = 0; c < scope.collections.length; c++) {
+                      collections.push(scope.collections[c].name)
+                    }
+
+                    bucketInfo.set(scope.name, collections)
+                  }
+
+                  keyspaces.set(buckets[b], bucketInfo)
+                }
+
+                return keyspaces;
+              });
+            });
+          },
           isEventingRunning: function() {
             return mnPoolDefault.get()
               .then(function(response) {
@@ -2396,6 +2474,8 @@ angular.module('eventing', [
           return adapter.convertConfigToBindings(config);
         }
       };
+
+      return self.funcs;
     }
   ])
   // Service to validate the form in settings and create app.
@@ -2532,11 +2612,13 @@ angular.module('eventing', [
             hostnameError,
             constantLiteralError,
             bindingsValidList = [],
+            bucketsValidList = [],
             hostnameValidList = [],
             constantLiteralInvalidList = [],
             form = formCtrl.createAppForm;
 
           for (var binding of bindings) {
+            // binding.value == alias-name
             if (binding.value.length) {
               bindingsValid = isValidVariable(binding.value);
               bindingsValidList.push(!bindingsValid);
@@ -2548,13 +2630,18 @@ angular.module('eventing', [
             }
 
             if (binding.type === 'alias' && bindingsValid === true) {
-              if (binding.name === null || binding.scope === null || binding
-                .collection === null)
+              if (!binding.name || !binding.scope || !binding.collection) {
                 bindingError = true;
+                bucketsValidList.push(false);
+              } else {
+                bucketsValidList.push(true);
+              }
+            } else {
+              bucketsValidList.push(true);
             }
 
             if (binding.type === 'url' && binding.hostname !== undefined &&
-              binding.hostname.length) {
+                binding.hostname.length) {
               hostnameValid = isValidHostname(binding.hostname);
               hostnameValidList.push(!hostnameValid);
             } else {
@@ -2579,6 +2666,7 @@ angular.module('eventing', [
             form.appname.$error.appnameInvalid = !isValidApplicationName(
               form.appname.$viewValue);
             form.appname.$error.bindingsValidList = bindingsValidList;
+            form.appname.$error.bucketsValidList = bucketsValidList;
             form.appname.$error.hostnameValidList = hostnameValidList;
             form.appname.$error.bindingsValid = bindingError;
             form.appname.$error.hostnameValid = hostnameError;
