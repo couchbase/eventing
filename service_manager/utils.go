@@ -27,9 +27,10 @@ var dynamicChangedSettings map[string]struct{}
 
 func init() {
 	dynamicChangedSettings = map[string]struct{}{"description": struct{}{},
-		"log_level":         struct{}{},
-		"deployment_status": struct{}{},
-		"processing_status": struct{}{},
+		"log_level":          struct{}{},
+		"timer_context_size": struct{}{},
+		"deployment_status":  struct{}{},
+		"processing_status":  struct{}{},
 	}
 }
 
