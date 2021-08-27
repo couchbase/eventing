@@ -2,6 +2,7 @@ package servicemanager
 
 import (
 	"math"
+	"net/http"
 	"runtime"
 	"sync"
 	"time"
@@ -92,6 +93,9 @@ type ServiceMgr struct {
 	configMutex             *sync.RWMutex
 	httpServerSignal        chan bool
 	httpServerMutex         *sync.Mutex
+	httpServer              *http.Server
+	tlsServerMutex          *sync.Mutex
+	tlsServer               *http.Server
 	ejectNodeUUIDs          []string
 	eventingNodeAddrs       []string
 	failoverMu              *sync.RWMutex
@@ -108,7 +112,6 @@ type ServiceMgr struct {
 	lcbCredsCounter         int64
 	mu                      *sync.RWMutex
 	uuid                    string
-	kpr                     *keypairReloader
 
 	stopTracerCh chan struct{} // chan used to signal stopping of runtime.Trace
 
