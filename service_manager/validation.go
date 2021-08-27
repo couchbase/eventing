@@ -541,7 +541,7 @@ func (m *ServiceMgr) validateBucketBindings(bindings []bucket, existingAliases m
 	info.Code = m.statusCodes.errInvalidConfig.Code
 
 	for _, binding := range bindings {
-		if info = m.validateNonEmpty(binding.BucketName, "Bucket alias name"); info.Code != m.statusCodes.ok.Code {
+		if info = m.validateNonEmpty(binding.BucketName, "Bucket name"); info.Code != m.statusCodes.ok.Code {
 			return
 		}
 		if info = m.validateAliasName(binding.Alias); info.Code != m.statusCodes.ok.Code {
