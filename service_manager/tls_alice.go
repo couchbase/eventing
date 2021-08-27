@@ -7,9 +7,10 @@ package servicemanager
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"io/ioutil"
+
 	"github.com/couchbase/cbauth"
 	"github.com/couchbase/eventing/logging"
-	"io/ioutil"
 )
 
 func (m *ServiceMgr) getTLSConfig(logPrefix string) (*tls.Config, error) {

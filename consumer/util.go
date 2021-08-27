@@ -6,7 +6,7 @@ import (
 	"strconv"
 
 	"github.com/couchbase/eventing/common"
-	"github.com/couchbase/eventing/dcp/transport/client"
+	memcached "github.com/couchbase/eventing/dcp/transport/client"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
 )
