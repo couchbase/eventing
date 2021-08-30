@@ -292,7 +292,7 @@
      "name" : "Authentication Failure",
      "description" : "Authentication failed",
      "sync" : false,
-     "enabled" : false,
+     "enabled" : true,
      "filtering_permitted" : true,
      "mandatory_fields" : {
        "timestamp" : "",
@@ -309,7 +309,7 @@
      "name" : "Authorization Failure",
      "description" : "Authorization failed",
      "sync" : false,
-     "enabled" : false,
+     "enabled" : true,
      "filtering_permitted" : true,
      "mandatory_fields" : {
        "timestamp" : "",
