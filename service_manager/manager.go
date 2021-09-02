@@ -48,6 +48,9 @@ func NewServiceMgr(config util.Config, rebalanceRunning bool, superSup common.Ev
 		configMutex:             &sync.RWMutex{},
 		httpServerSignal:        make(chan bool),
 		httpServerMutex:         &sync.Mutex{},
+		httpServer:              nil,
+		tlsServerMutex:          &sync.Mutex{},
+		tlsServer:               nil,
 		graph:                   newBucketMultiDiGraph(),
 		fnsInPrimaryStore:       make(map[string]depCfg),
 		fnsInTempStore:          make(map[string]struct{}),
@@ -200,33 +203,6 @@ func (m *ServiceMgr) initService() {
 	mux.HandleFunc("/_prometheusMetrics", m.prometheusLow)
 	mux.HandleFunc("/_prometheusMetricsHigh", m.prometheusHigh)
 
-	var kpr *keypairReloader
-	var err error
-	genericretryCount := int64(60)
-	genericretryInterval := 2 * time.Second
-	kprReloadFunc := func(args ...interface{}) error {
-		logPrefix := "ServiceMgr::kprReloadFunc"
-		certFile := args[0].(string)
-		keyFile := args[1].(string)
-		service_mgr := args[2].(*ServiceMgr)
-		kpr := args[3].(**keypairReloader)
-
-		kprTemp, reloadErr := NewKeypairReloader(certFile, keyFile, service_mgr)
-		if reloadErr != nil {
-			logging.Errorf("%s Unable to create a new KeyPair Reloader. Cause: %v", logPrefix, reloadErr)
-		}
-		*kpr = kprTemp
-		return reloadErr
-	}
-
-	err = util.Retry(util.NewFixedBackoff(genericretryInterval), &genericretryCount, kprReloadFunc, m.certFile, m.keyFile, m, &kpr)
-	if err != nil {
-		logging.Errorf("%v Exiting ServiceMgr after retrying kprReloadFunc multiple times. Cause: %v", logPrefix, err)
-		time.Sleep(1 * time.Second)
-		os.Exit(1)
-	}
-
-	var httpsrv *http.Server
 	go func() {
 		var serveErr error
 		for {
@@ -238,7 +214,7 @@ func (m *ServiceMgr) initService() {
 				addr = net.JoinHostPort("", m.adminHTTPPort)
 			}
 			m.httpServerMutex.Lock()
-			httpsrv = &http.Server{
+			m.httpServer = &http.Server{
 				Addr:         addr,
 				ReadTimeout:  httpReadTimeOut,
 				WriteTimeout: httpWriteTimeOut,
@@ -252,7 +228,7 @@ func (m *ServiceMgr) initService() {
 			listner, err := net.Listen(proto, addr)
 			if err == nil {
 				logging.Infof("%s Admin HTTP server started: %s", logPrefix, addr)
-				serveErr = httpsrv.Serve(listner)
+				serveErr = m.httpServer.Serve(listner)
 				if serveErr != nil && serveErr == http.ErrServerClosed {
 					logging.Infof("%s Got a signal to stop running HTTP server", logPrefix)
 				} else {
@@ -261,16 +237,44 @@ func (m *ServiceMgr) initService() {
 			} else {
 				logging.Errorf("Failed to start http service ip family: %v address: %v error: %v", proto, addr, err)
 			}
+			m.httpServerMutex.Lock()
+			m.httpServer = nil
+			m.httpServerMutex.Unlock()
 		}
 	}()
 
 	if m.adminSSLPort != "" {
-		var sslsrv *http.Server = nil
 		sslAddr := net.JoinHostPort("", m.adminSSLPort)
 
 		refresh := func(configChange uint64) error {
+			gethost := func(server *http.Server) (string, error) {
+				if server == nil {
+					return "", fmt.Errorf("server instance is nil")
+				}
+				host, _, err := net.SplitHostPort(server.Addr)
+				if err != nil {
+					return "", err
+				}
+				return host, nil
+			}
+
+			stopserver := func(server **http.Server) {
+				ctx, _ := context.WithTimeout(context.Background(), 120*time.Second)
+				if err := (*server).Shutdown(ctx); err != nil && err != http.ErrServerClosed {
+					logging.Errorf("Could not gracefully stop running server due to %v, attempting a force stop", err)
+					(*server).Close()
+				}
+				logging.Infof("Successfully stopped running HTTP server")
+			}
+
 			if (configChange & cbauth.CFG_CHANGE_CLUSTER_ENCRYPTION) != 0 {
 				logging.Infof("Cluster Encryption Settings have been changed by ns server.\n")
+				// Stop any ongoing rebalances
+				m.rebalancerMutex.RLock()
+				if m.rebalancer != nil {
+					m.rebalancer.encryptionChangedCh <- true
+				}
+				m.rebalancerMutex.RUnlock()
 				err := m.UpdateNodeToNodeEncryptionLevel()
 				if err == nil {
 					//---------- Check and configure enforce TLS settings ---------
@@ -279,35 +283,14 @@ func (m *ServiceMgr) initService() {
 					sslOnly := m.clusterEncryptionConfig != nil && m.clusterEncryptionConfig.DisableNonSSLPorts
 					m.configMutex.RUnlock()
 
-					gethost := func(server *http.Server) (string, error) {
-						if server == nil {
-							return "", fmt.Errorf("server instance is nil")
-						}
-						host, _, err := net.SplitHostPort(server.Addr)
-						if err != nil {
-							return "", err
-						}
-						return host, nil
-					}
-
-					stopserver := func(server **http.Server) {
-						ctx, _ := context.WithTimeout(context.Background(), 30*time.Second)
-						if err := (*server).Shutdown(ctx); err != nil && err != http.ErrServerClosed {
-							logging.Errorf("Could not gracefully stop running HTTP server due to %v, attempting a force stop", err)
-							(*server).Close()
-						}
-						*server = nil
-						logging.Infof("Successfully stopped running HTTP server")
-					}
-
 					m.httpServerMutex.Lock()
 					if sslOnly {
 						m.disableDebugger()
-						if httpsrv != nil {
-							hostname, err := gethost(httpsrv)
+						if m.httpServer != nil {
+							hostname, err := gethost(m.httpServer)
 							if hostname == "" && err == nil {
 								logging.Infof("Attempting to restart HTTP server to listen on loopback interface")
-								stopserver(&httpsrv)
+								stopserver(&m.httpServer)
 								m.httpServerSignal <- true
 							}
 							if err != nil {
@@ -317,11 +300,11 @@ func (m *ServiceMgr) initService() {
 							m.httpServerSignal <- true
 						}
 					} else {
-						if httpsrv != nil {
-							hostname, err := gethost(httpsrv)
+						if m.httpServer != nil {
+							hostname, err := gethost(m.httpServer)
 							if hostname == util.Localhost() || err != nil || hostname != "" {
 								logging.Infof("Attempting to restart HTTP server to listen on all interfaces")
-								stopserver(&httpsrv)
+								stopserver(&m.httpServer)
 								m.httpServerSignal <- false
 							}
 							if err != nil {
@@ -369,9 +352,13 @@ func (m *ServiceMgr) initService() {
 			}
 
 			if (configChange & cbauth.CFG_CHANGE_CERTS_TLSCONFIG) != 0 {
-				logging.Infof("Certificates have been refreshed by ns server.")
-				if m.clusterEncryptionConfig != nil && kpr != nil {
-					kpr.signal <- "REFRESH"
+				logging.Infof("Certificates have been refreshed by ns server. Restarting TLS server.")
+				if m.clusterEncryptionConfig != nil {
+					m.tlsServerMutex.Lock()
+					if m.tlsServer != nil {
+						stopserver(&m.tlsServer)
+					}
+					m.tlsServerMutex.Unlock()
 				}
 			}
 
@@ -412,12 +399,14 @@ func (m *ServiceMgr) initService() {
 			}
 
 			for {
+				var tlsserveErr error
 				tlscfg, err := m.getTLSConfig(logPrefix)
 				if err != nil {
 					logging.Errorf("%s Error configuring TLS: %v", logPrefix, err)
 					return
 				}
-				sslsrv = &http.Server{
+				m.tlsServerMutex.Lock()
+				m.tlsServer = &http.Server{
 					Addr:         sslAddr,
 					ReadTimeout:  httpReadTimeOut,
 					WriteTimeout: httpWriteTimeOut,
@@ -429,8 +418,6 @@ func (m *ServiceMgr) initService() {
 					},
 				}
 
-				sslsrv.TLSConfig.GetCertificate = kpr.GetCertificateFunc()
-
 				proto := util.GetNetworkProtocol()
 				ln, err := net.Listen(proto, sslAddr)
 				if err != nil {
@@ -438,10 +425,18 @@ func (m *ServiceMgr) initService() {
 					time.Sleep(1 * time.Second)
 					os.Exit(1)
 				}
-
-				logging.Infof("%s SSL server started: %v", logPrefix, sslsrv)
 				tls_ln := tls.NewListener(ln, tlscfg)
-				sslsrv.Serve(tls_ln)
+				logging.Infof("%s SSL server started: %v", logPrefix, m.tlsServer)
+				m.tlsServerMutex.Unlock()
+				tlsserveErr = m.tlsServer.Serve(tls_ln)
+				if tlsserveErr != nil && tlsserveErr == http.ErrServerClosed {
+					logging.Infof("%s Received request to stop TLS server", logPrefix)
+				} else {
+					logging.Fatalf("%s Received error while either starting or stopping TLS Server: %v", logPrefix, err)
+				}
+				m.tlsServerMutex.Lock()
+				m.tlsServer = nil
+				m.tlsServerMutex.Unlock()
 			}
 		}()
 	}

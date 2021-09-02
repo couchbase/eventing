@@ -194,6 +194,7 @@ type Consumer struct {
 	inflightDcpStreamsRWMutex     *sync.RWMutex
 	ipcType                       string // ipc mechanism used to communicate with cpp workers - af_inet/af_unix
 	isBootstrapping               bool
+	initEncryptData               bool
 	isRebalanceOngoing            bool
 	isTerminateRunning            uint32                        // To signify if Consumer::Stop is running
 	kvHostDcpFeedMap              map[string]*couchbase.DcpFeed // Access controlled by hostDcpFeedRWMutex
