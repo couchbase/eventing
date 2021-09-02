@@ -3452,6 +3452,15 @@ func (m *ServiceMgr) statusHandlerImpl(appName string) (response interface{}, in
 	appsNames := m.getTempStoreAppNames()
 	var statusHandlerResponse appStatusResponse
 	statusHandlerResponse.NumEventingNodes = numEventingNodes
+
+	// Get a list of apps that need to be redeployed on encryption level change
+	encryptionEnabled := false
+	var alreadyRedeployedApps map[string]struct{}
+	if securitySetting := m.superSup.GetSecuritySetting(); securitySetting != nil {
+		encryptionEnabled = securitySetting.EncryptData
+	}
+	alreadyRedeployedApps = m.superSup.GetGocbSubscribedApps(encryptionEnabled)
+
 	for _, fnName := range appsNames {
 
 		// Is the status of this app needed?
@@ -3469,6 +3478,7 @@ func (m *ServiceMgr) statusHandlerImpl(appName string) (response interface{}, in
 			Name:             fnName,
 			DeploymentStatus: deploymentStatus,
 			ProcessingStatus: processingStatus,
+			RedeployRequired: false,
 		}
 		if num, exists := appDeployedNodesCounter[fnName]; exists {
 			status.NumDeployedNodes = num
@@ -3492,6 +3502,10 @@ func (m *ServiceMgr) statusHandlerImpl(appName string) (response interface{}, in
 			status.CompositeStatus = m.determineStatus(status, appPausingNodesCounter, numEventingNodes, bootstrapStatus)
 		} else {
 			status.CompositeStatus = m.determineStatus(status, appPausingNodesCounter, numEventingNodes, false)
+		}
+
+		if _, found := alreadyRedeployedApps[fnName]; !found && status.CompositeStatus == "deployed" {
+			status.RedeployRequired = true
 		}
 
 		statusHandlerResponse.Apps = append(statusHandlerResponse.Apps, status)
