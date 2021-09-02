@@ -60,7 +60,6 @@ type Producer struct {
 	cfgData                string
 	handleV8ConsumerMutex  *sync.Mutex // controls access to Producer.handleV8Consumer
 	isBootstrapping        bool
-	initEncryptData        bool
 	isPlannerRunning       bool
 	isTerminateRunning     bool
 	isRebalanceOngoing     int32
