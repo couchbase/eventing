@@ -423,7 +423,7 @@ func (s *Supervisor) removeService(id serviceID,
 		delete(s.services, id)
 		s.servicesShuttingDown[id] = namedService
 		go func() {
-			successChan := make(chan bool, 1)
+			successChan := make(chan bool)
 			go func() {
 				namedService.Service.Stop("")
 				successChan <- true

@@ -269,12 +269,6 @@ func (m *ServiceMgr) initService() {
 
 			if (configChange & cbauth.CFG_CHANGE_CLUSTER_ENCRYPTION) != 0 {
 				logging.Infof("Cluster Encryption Settings have been changed by ns server.\n")
-				// Stop any ongoing rebalances
-				m.rebalancerMutex.RLock()
-				if m.rebalancer != nil {
-					m.rebalancer.encryptionChangedCh <- true
-				}
-				m.rebalancerMutex.RUnlock()
 				err := m.UpdateNodeToNodeEncryptionLevel()
 				if err == nil {
 					//---------- Check and configure enforce TLS settings ---------

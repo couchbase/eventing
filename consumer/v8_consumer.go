@@ -174,11 +174,6 @@ func (c *Consumer) Serve() {
 		}
 	}()
 
-	c.initEncryptData = false // the encryption level this consumer was initialized with
-	if securitySetting := c.superSup.GetSecuritySetting(); securitySetting != nil {
-		c.initEncryptData = securitySetting.EncryptData
-	}
-
 	c.isBootstrapping = true
 	logging.Infof("%s [%s:%s:%d] Bootstrapping status: %t", logPrefix, c.workerName, c.tcpPort, c.Pid(), c.isBootstrapping)
 
@@ -214,8 +209,7 @@ func (c *Consumer) Serve() {
 	}
 
 	var flogs couchbase.FailoverLog
-	var operr error
-	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getFailoverLogOpCallback, c, &flogs, &operr)
+	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getFailoverLogOpCallback, c, &flogs)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 		return
@@ -254,12 +248,10 @@ func (c *Consumer) Serve() {
 		feedName = couchbase.NewDcpFeedName(c.workerName + "_" + kvHostPort + "_" + c.HostPortAddr())
 
 		c.hostDcpFeedRWMutex.Lock()
-		err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, startDCPFeedOpCallback, c, feedName, kvHostPort, &operr)
+		err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, startDCPFeedOpCallback, c, feedName, kvHostPort)
 		if err == common.ErrRetryTimeout {
 			logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 			return
-		} else if operr == common.ErrEncryptionLevelChanged {
-			break
 		}
 
 		logging.Infof("%s [%s:%s:%d] vbKvAddr: %s Spawned aggChan routine",
@@ -573,17 +565,6 @@ func (c *Consumer) updategocbMetaHandle() error {
 	defer c.gocbMetaHandleMutex.Unlock()
 	c.gocbMetaHandle, err = c.superSup.GetMetadataHandle(c.producer.MetadataBucket(), c.producer.MetadataScope(), c.producer.MetadataCollection(), c.app.AppName)
 	return err
-}
-
-func (c *Consumer) encryptionChangedDuringBootstrap() bool {
-	currentencryptData := false
-	if securitySetting := c.superSup.GetSecuritySetting(); securitySetting != nil {
-		currentencryptData = securitySetting.EncryptData
-	}
-	if (currentencryptData != c.initEncryptData) && c.isBootstrapping {
-		return true
-	}
-	return false
 }
 
 func (c *Consumer) resetExecutionStats() {

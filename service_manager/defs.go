@@ -48,7 +48,7 @@ const (
 	// EventingPermissionManage for auditing
 	EventingPermissionManage = "cluster.eventing.functions!manage"
 	EventingPermissionStats  = "cluster.admin.internal.stats!read"
-	ClusterPermissionRead    = "cluster.admin.security!read"
+	ClusterPermissionRead = "cluster.admin.security!read"
 )
 
 var (
@@ -171,7 +171,6 @@ type rebalancer struct {
 	TotalVbsToShuffle     int
 	VbsRemainingToShuffle int
 	numApps               int
-	encryptionChangedCh   chan bool
 }
 
 type rebalanceContext struct {
