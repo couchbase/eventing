@@ -237,9 +237,6 @@ func (m *ServiceMgr) initService() {
 			} else {
 				logging.Errorf("Failed to start http service ip family: %v address: %v error: %v", proto, addr, err)
 			}
-			m.httpServerMutex.Lock()
-			m.httpServer = nil
-			m.httpServerMutex.Unlock()
 		}
 	}()
 
@@ -264,9 +261,9 @@ func (m *ServiceMgr) initService() {
 					logging.Errorf("Could not gracefully stop running server due to %v, attempting a force stop", err)
 					(*server).Close()
 				}
+				*server = nil
 				logging.Infof("Successfully stopped running HTTP server")
 			}
-
 			if (configChange & cbauth.CFG_CHANGE_CLUSTER_ENCRYPTION) != 0 {
 				logging.Infof("Cluster Encryption Settings have been changed by ns server.\n")
 				err := m.UpdateNodeToNodeEncryptionLevel()
@@ -413,6 +410,7 @@ func (m *ServiceMgr) initService() {
 				}
 
 				proto := util.GetNetworkProtocol()
+				m.tlsServerMutex.Unlock()
 				ln, err := net.Listen(proto, sslAddr)
 				if err != nil {
 					logging.Errorf("Failed to start ssl service ip family: %v address: %v error: %v", proto, sslAddr, err)
@@ -421,16 +419,12 @@ func (m *ServiceMgr) initService() {
 				}
 				tls_ln := tls.NewListener(ln, tlscfg)
 				logging.Infof("%s SSL server started: %v", logPrefix, m.tlsServer)
-				m.tlsServerMutex.Unlock()
 				tlsserveErr = m.tlsServer.Serve(tls_ln)
 				if tlsserveErr != nil && tlsserveErr == http.ErrServerClosed {
 					logging.Infof("%s Received request to stop TLS server", logPrefix)
 				} else {
 					logging.Fatalf("%s Received error while either starting or stopping TLS Server: %v", logPrefix, err)
 				}
-				m.tlsServerMutex.Lock()
-				m.tlsServer = nil
-				m.tlsServerMutex.Unlock()
 			}
 		}()
 	}
