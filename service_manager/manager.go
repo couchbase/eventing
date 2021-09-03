@@ -203,17 +203,17 @@ func (m *ServiceMgr) initService() {
 	mux.HandleFunc("/_prometheusMetrics", m.prometheusLow)
 	mux.HandleFunc("/_prometheusMetricsHigh", m.prometheusHigh)
 
+	var listenOnLoopback bool
 	go func() {
 		var serveErr error
 		for {
-			strict := <-m.httpServerSignal // always waiting on a signal to start HTTP server
+			m.httpServerMutex.Lock()
 			var addr string
-			if strict {
+			if listenOnLoopback {
 				addr = net.JoinHostPort(util.Localhost(), m.adminHTTPPort)
 			} else {
 				addr = net.JoinHostPort("", m.adminHTTPPort)
 			}
-			m.httpServerMutex.Lock()
 			m.httpServer = &http.Server{
 				Addr:         addr,
 				ReadTimeout:  httpReadTimeOut,
@@ -224,19 +224,23 @@ func (m *ServiceMgr) initService() {
 				},
 			}
 			proto := util.GetNetworkProtocol()
-			m.httpServerMutex.Unlock()
 			listner, err := net.Listen(proto, addr)
-			if err == nil {
-				logging.Infof("%s Admin HTTP server started: %s", logPrefix, addr)
-				serveErr = m.httpServer.Serve(listner)
-				if serveErr != nil && serveErr == http.ErrServerClosed {
-					logging.Infof("%s Got a signal to stop running HTTP server", logPrefix)
-				} else {
-					logging.Fatalf("%s Received error while either starting or stopping HTTP Server: %v", logPrefix, err)
-				}
-			} else {
+			if err != nil {
 				logging.Errorf("Failed to start http service ip family: %v address: %v error: %v", proto, addr, err)
+				time.Sleep(1 * time.Second)
+				os.Exit(1)
 			}
+			logging.Infof("%s Admin HTTP server started: %s", logPrefix, addr)
+			m.httpServerMutex.Unlock()
+			serveErr = m.httpServer.Serve(listner)
+			if serveErr != nil && serveErr == http.ErrServerClosed {
+				logging.Infof("%s Got a signal to stop running HTTP server", logPrefix)
+			} else {
+				logging.Fatalf("%s Received error while either starting or stopping HTTP Server: %v", logPrefix, err)
+			}
+			m.httpServerMutex.Lock()
+			m.httpServer = nil
+			m.httpServerMutex.Unlock()
 		}
 	}()
 
@@ -282,28 +286,24 @@ func (m *ServiceMgr) initService() {
 							if hostname == "" && err == nil {
 								logging.Infof("Attempting to restart HTTP server to listen on loopback interface")
 								stopserver(&m.httpServer)
-								m.httpServerSignal <- true
 							}
 							if err != nil {
 								logging.Infof("Skipping restart of HTTP server due to error while getting hostname: %v", err)
 							}
-						} else {
-							m.httpServerSignal <- true
 						}
+						listenOnLoopback = true
 					} else {
 						if m.httpServer != nil {
 							hostname, err := gethost(m.httpServer)
 							if hostname == util.Localhost() || err != nil || hostname != "" {
 								logging.Infof("Attempting to restart HTTP server to listen on all interfaces")
 								stopserver(&m.httpServer)
-								m.httpServerSignal <- false
 							}
 							if err != nil {
 								logging.Infof("Skipping restart of HTTP server due to error while getting hostname: %v", err)
 							}
-						} else {
-							m.httpServerSignal <- false
 						}
+						listenOnLoopback = false
 					}
 					m.httpServerMutex.Unlock()
 
@@ -410,7 +410,6 @@ func (m *ServiceMgr) initService() {
 				}
 
 				proto := util.GetNetworkProtocol()
-				m.tlsServerMutex.Unlock()
 				ln, err := net.Listen(proto, sslAddr)
 				if err != nil {
 					logging.Errorf("Failed to start ssl service ip family: %v address: %v error: %v", proto, sslAddr, err)
@@ -419,12 +418,16 @@ func (m *ServiceMgr) initService() {
 				}
 				tls_ln := tls.NewListener(ln, tlscfg)
 				logging.Infof("%s SSL server started: %v", logPrefix, m.tlsServer)
+				m.tlsServerMutex.Unlock()
 				tlsserveErr = m.tlsServer.Serve(tls_ln)
 				if tlsserveErr != nil && tlsserveErr == http.ErrServerClosed {
 					logging.Infof("%s Received request to stop TLS server", logPrefix)
 				} else {
 					logging.Fatalf("%s Received error while either starting or stopping TLS Server: %v", logPrefix, err)
 				}
+				m.tlsServerMutex.Lock()
+				m.tlsServer = nil
+				m.tlsServerMutex.Unlock()
 			}
 		}()
 	}
