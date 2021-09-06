@@ -640,7 +640,7 @@ func (s *SuperSupervisor) GetGocbHandle(bucketName, appName string) (*gocb.Bucke
 }
 
 func (s *SuperSupervisor) CheckAndSwitchgocbBucket(bucketName, appName string, setting *common.SecuritySetting) error {
-	return s.gocbGlobalConfigHandle.maybeRegistergocbBucket(bucketName, appName, setting)
+	return s.gocbGlobalConfigHandle.maybeRegistergocbBucket(bucketName, appName, setting, s)
 }
 
 func (s *SuperSupervisor) GetCurrentManifestId(bucketName string) (string, error) {
@@ -705,4 +705,20 @@ func (s *SuperSupervisor) GetSecuritySetting() *common.SecuritySetting {
 	s.securityMutex.RLock()
 	defer s.securityMutex.RUnlock()
 	return s.securitySetting
+}
+
+func (s *SuperSupervisor) EncryptionChangedDuringLifecycle() bool {
+	s.initEncryptDataMutex.RLock()
+	initencryptData := s.initLifecycleEncryptData
+	defer s.initEncryptDataMutex.RUnlock()
+
+	currentencryptData := false
+	if securitySetting := s.GetSecuritySetting(); securitySetting != nil {
+		currentencryptData = securitySetting.EncryptData
+	}
+
+	if initencryptData != currentencryptData {
+		return true
+	}
+	return false
 }

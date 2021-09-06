@@ -161,4 +161,7 @@ type SuperSupervisor struct {
 
 	securitySetting *common.SecuritySetting // access controlled by securityMutex
 	securityMutex   *sync.RWMutex
+
+	initEncryptDataMutex     *sync.RWMutex
+	initLifecycleEncryptData bool
 }

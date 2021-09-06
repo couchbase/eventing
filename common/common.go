@@ -147,7 +147,10 @@ type SecuritySetting struct {
 	RootCAs            *x509.CertPool
 }
 
-var ErrRetryTimeout = errors.New("retry timeout")
+var (
+	ErrRetryTimeout           = errors.New("retry timeout")
+	ErrEncryptionLevelChanged = errors.New("Encryption Level changed during boostrap")
+)
 
 // EventingProducer interface to export functions from eventing_producer
 type EventingProducer interface {
@@ -337,6 +340,7 @@ type EventingSuperSup interface {
 	ResetCounters(appName string) error
 	SetSecuritySetting(setting *SecuritySetting) bool
 	GetSecuritySetting() *SecuritySetting
+	EncryptionChangedDuringLifecycle() bool
 	SignalStopDebugger(appName string) error
 	SpanBlobDump(appName string) (interface{}, error)
 	StopProducer(appName string, skipMetaCleanup bool, updateMetakv bool)
