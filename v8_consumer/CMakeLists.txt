@@ -111,5 +111,5 @@ ENDIF()
 ADD_EXECUTABLE(eventing-consumer ${EVENTING_SOURCES})
 ADD_DEPENDENCIES(eventing-consumer eventing-generated couchbase)
 
-TARGET_LINK_LIBRARIES(eventing-consumer ${EVENTING_LIBRARIES} couchbase)
+TARGET_LINK_LIBRARIES(eventing-consumer ${EVENTING_LIBRARIES} couchbase nlohmann_json::nlohmann_json)
 INSTALL(TARGETS eventing-consumer RUNTIME DESTINATION bin)
