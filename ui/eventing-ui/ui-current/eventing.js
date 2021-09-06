@@ -2365,6 +2365,7 @@ angular.module('eventing', [
             return $http.get(uri)
           },
           getKeyspaces: function() {
+
             return self.funcs.server.getLatestBuckets().then(function(buckets) {
 
               var promises = [];
@@ -2373,9 +2374,9 @@ angular.module('eventing', [
                 promises.push(curPromise);
               }
 
-              return $q.all(promises).then(function(result) {
+              var keyspaces = new Map();
 
-                var keyspaces = new Map();
+              return $q.all(promises).then(function(result) {
 
                 for (var b = 0; b < result.length; b++) {
                   var bucketInfo = new Map()
@@ -2393,6 +2394,9 @@ angular.module('eventing', [
                   keyspaces.set(buckets[b], bucketInfo)
                 }
 
+                return keyspaces;
+              })
+              .catch(function(error) {
                 return keyspaces;
               });
             });
