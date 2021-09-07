@@ -37,7 +37,7 @@ func (c *client) Serve() {
 
 	executable_img := filepath.Join(filepath.Dir(os.Args[0]), "eventing-consumer")
 
-	c.consumerHandle.GetOwner()
+	owner := c.consumerHandle.GetOwner()
 	c.cmd = exec.Command(
 		executable_img,
 		c.appName,
@@ -54,7 +54,8 @@ func (c *client) Serve() {
 		c.consumerHandle.app.UserPrefix,
 		c.consumerHandle.nsServerPort,
 		strconv.Itoa(c.consumerHandle.numVbuckets),
-		c.eventingPort) // Not read, for tagging
+		owner.User,
+		owner.Domain)
 
 	user, key := util.LocalKey()
 	c.cmd.Env = append(os.Environ(),

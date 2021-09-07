@@ -44,9 +44,9 @@ public:
     Iterator *iterator{nullptr};
   };
 
-  Iterator(Query::Info query_info, lcb_INSTANCE *instance, v8::Isolate *isolate)
+  Iterator(Query::Info query_info, lcb_INSTANCE *instance, v8::Isolate *isolate, std::string on_behalf_of_)
       : connection_(instance), isolate_(isolate),
-        builder_(isolate_, std::move(query_info), instance) {}
+        builder_(isolate_, std::move(query_info), instance, on_behalf_of_) {}
   ~Iterator();
 
   Iterator() = delete;

@@ -19,15 +19,17 @@
 #include "info.h"
 #include "isolate_data.h"
 #include "query-helper.h"
+#include "utils.h"
 
 namespace Query {
 const lcb_U32 n1ql_grace_period = 2000000;
 class Builder {
 public:
   Builder(v8::Isolate *isolate, Query::Info query_info,
-          lcb_INSTANCE *connection)
+          lcb_INSTANCE *connection, std::string on_behalf_of_)
       : isolate_(isolate), query_info_(std::move(query_info)),
-        connection_(connection), timeout_(UnwrapData(isolate)->n1ql_timeout) {}
+        connection_(connection), timeout_(UnwrapData(isolate)->n1ql_timeout), on_behalf_of_(on_behalf_of_) {
+	}
   ~Builder() { lcb_cmdquery_destroy(cmd_); }
 
   Builder(const Builder &) = delete;
@@ -50,6 +52,7 @@ private:
   Query::Info query_info_;
   lcb_INSTANCE *connection_{nullptr};
   lcb_U32 timeout_{0};
+  std::string on_behalf_of_;
 };
 } // namespace Query
 

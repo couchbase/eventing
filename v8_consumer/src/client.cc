@@ -581,7 +581,7 @@ void AppWorker::RouteMessageWithResponse(
                            function_name_, function_id_, handler_instance_id,
                            user_prefix_, &latency_stats_, &curl_latency_stats_,
                            ns_server_port_, num_vbuckets_, vb_seq_.get(),
-                           processed_bucketops_.get(), vb_locks_.get(), i);
+                           processed_bucketops_.get(), vb_locks_.get(), i, user_, domain_);
 
           LOG(logInfo) << "Init index: " << i << " V8Worker: " << w
                        << std::endl;
@@ -1178,7 +1178,7 @@ int main(int argc, char **argv) {
            "feedback_port"
            "worker_id, batch_size, feedback_batch_size, diag_dir, ipv4/6, "
            "breakpad_on, handler_uuid, user_prefix, ns_server_port, "
-           "num_vbuckets, eventing_port"
+           "num_vbuckets, eventing_port, user, domain"
         << std::endl;
     return 2;
   }
@@ -1198,6 +1198,8 @@ int main(int argc, char **argv) {
   std::string user_prefix(argv[12]);
   std::string ns_server_port(argv[13]);
   auto num_vbuckets = atoi(argv[14]);
+  std::string user = argv[15];
+  std::string domain = argv[16];
 
   srand(static_cast<unsigned>(time(nullptr)));
   curl_global_init(CURL_GLOBAL_ALL);
@@ -1213,6 +1215,7 @@ int main(int argc, char **argv) {
   worker->SetNsServerPort(ns_server_port);
   worker->SetNumVbuckets(num_vbuckets);
   worker->InitVbMapResources();
+  worker->SetOwner(user, domain);
 
   if (std::strcmp(ipc_type.c_str(), "af_unix") == 0) {
     worker->InitUDS(appname, function_id, user_prefix, appname,

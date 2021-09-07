@@ -39,7 +39,7 @@ Query::Iterable::Info Query::Manager::NewIterable(Query::Info query_info) {
     return {true, conn_info.msg};
   }
   auto iterator = std::make_shared<Query::Iterator>(
-      std::move(query_info), conn_info.connection, isolate_);
+      std::move(query_info), conn_info.connection, isolate_, on_behalf_of_);
   auto iterator_ptr = iterator.get();
   auto iterable = UnwrapData(isolate_)->query_iterable;
   auto info = iterable->NewObject(iterator_ptr);
