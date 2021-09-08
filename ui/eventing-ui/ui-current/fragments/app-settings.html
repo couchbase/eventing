@@ -539,7 +539,7 @@
             and $ and it should not be a JavaScript or N1QL keyword.
           </div>
           <div class="row margin-bottom-half error field-error"
-            ng-show="!formCtrl.createAppForm.appname.$error.bucketsValidList[$index]">
+            ng-show="!form.appname.$error.bindingsValid && formCtrl.createAppForm.appname.$error.bucketsValidList[$index] === false">
             Bucket Name cannot be empty
           </div>
         </div>
