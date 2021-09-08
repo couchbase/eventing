@@ -274,6 +274,7 @@ type appStatus struct {
 	NumDeployedNodes      int    `json:"num_deployed_nodes"`
 	DeploymentStatus      bool   `json:"deployment_status"`
 	ProcessingStatus      bool   `json:"processing_status"`
+	RedeployRequired      bool   `json:"redeploy_required"`
 }
 
 type annotation struct {

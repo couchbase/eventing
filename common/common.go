@@ -341,6 +341,7 @@ type EventingSuperSup interface {
 	SetSecuritySetting(setting *SecuritySetting) bool
 	GetSecuritySetting() *SecuritySetting
 	EncryptionChangedDuringLifecycle() bool
+	GetGocbSubscribedApps(encryptionEnabled bool) map[string]struct{}
 	SignalStopDebugger(appName string) error
 	SpanBlobDump(appName string) (interface{}, error)
 	StopProducer(appName string, skipMetaCleanup bool, updateMetakv bool)

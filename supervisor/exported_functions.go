@@ -722,3 +722,15 @@ func (s *SuperSupervisor) EncryptionChangedDuringLifecycle() bool {
 	}
 	return false
 }
+
+func (s *SuperSupervisor) GetGocbSubscribedApps(encryptionEnabled bool) map[string]struct{} {
+	apps := make(map[string]struct{})
+	s.gocbGlobalConfigHandle.RLock()
+	defer s.gocbGlobalConfigHandle.RUnlock()
+	for appName, appencrypted := range s.gocbGlobalConfigHandle.appEncryptionMap {
+		if appencrypted == encryptionEnabled {
+			apps[appName] = struct{}{}
+		}
+	}
+	return apps
+}

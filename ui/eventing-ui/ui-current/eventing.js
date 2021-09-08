@@ -62,6 +62,7 @@ angular.module('eventing', [
       self.pollingCount = 0;
       self.deployedStats = null;
       self.annotationList = []
+      self.appstorefresh = []
 
       // Broadcast on channel 'isEventingRunning'
       $rootScope.$broadcast('isEventingRunning', self.isEventingRunning);
@@ -108,8 +109,11 @@ angular.module('eventing', [
                 .overloadedNames : [""]).join(", ");
             }
 
+            let refreshapplist = []
             for (var rspApp of response.apps ? response.apps : []) {
-
+              if (rspApp.hasOwnProperty("redeploy_required") && rspApp.redeploy_required == true) {
+                refreshapplist.push(rspApp.name);
+              }
               rspAppStat.set(rspApp.name, rspApp.composite_status);
 
               if (!(rspApp.name in self.appList)) {
@@ -139,6 +143,7 @@ angular.module('eventing', [
                 }
               }
             }
+            self.appstorefresh = refreshapplist
             statsConfig.reqstats = "";
             for (var app of Object.keys(self.appList)) {
               if (!rspAppList.has(app)) {
