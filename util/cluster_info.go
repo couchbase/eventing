@@ -353,6 +353,15 @@ func (c *ClusterInfoCache) GetBucketUUID(bucket string) (uuid string) {
 	return BUCKET_UUID_NIL
 }
 
+func (c *ClusterInfoCache) GetUniqueBSCIds(bucket, scope, collection string) (string, uint32, uint32, error) {
+	bucketUUID := c.GetBucketUUID(bucket)
+	if bucketUUID == BUCKET_UUID_NIL {
+		return BUCKET_UUID_NIL, 0, 0, couchbase.ErrBucketNotFound
+	}
+	sid, cid, err := c.pool.GetUniqueBSCIds(bucket, scope, collection)
+	return bucketUUID, sid, cid, err
+}
+
 func (c *ClusterInfoCache) IsEphemeral(bucket string) (bool, error) {
 	b, err := c.pool.GetBucket(bucket)
 	if err != nil {

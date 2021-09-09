@@ -29,6 +29,10 @@ import (
 	"github.com/couchbase/eventing/logging"
 )
 
+var (
+	ErrBucketNotFound = errors.New("Bucket does not exist")
+)
+
 // HTTPClient to use for REST and view operations.
 var MaxIdleConnsPerHost = 256
 var HTTPTransport = &http.Transport{MaxIdleConnsPerHost: MaxIdleConnsPerHost}
@@ -967,15 +971,25 @@ func (p *Pool) GetBucketList() map[string]struct{} {
 	return bucketList
 }
 
+// TODO: Merge these 2 functions
 func (p *Pool) GetCollectionID(bucket, scope, collection string) (uint32, error) {
 	version := p.GetClusterCompatVersion()
 	if version >= collections.COLLECTION_SUPPORTED_VERSION {
 		if manifest, ok := p.Manifest[bucket]; ok {
 			return manifest.GetCollectionID(scope, collection)
 		}
-		return 0, collections.COLLECTION_ID_NIL
+		return 0, ErrBucketNotFound
 	}
 	return 0, nil
+}
+
+func (p *Pool) GetUniqueBSCIds(bucket, scope, collection string) (uint32, uint32, error) {
+	manifest, ok := p.Manifest[bucket]
+	if !ok {
+		return 0, 0, ErrBucketNotFound
+	}
+
+	return manifest.GetScopeAndCollectionID(scope, collection)
 }
 
 func (p *Pool) GetManifestID(bucket string) (string, error) {

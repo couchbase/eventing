@@ -575,6 +575,48 @@ func (m *ServiceMgr) validateDeploymentConfig(deploymentConfig *depCfg) (info *r
 	return
 }
 
+func (m *ServiceMgr) getBSId(fS *common.FunctionScope) (string, uint32, *runtimeInfo) {
+	info := &runtimeInfo{}
+	info.Code = m.statusCodes.errInvalidConfig.Code
+
+	// Validate if bucket.scope exist or not
+	if info = m.validateNonEmpty(fS.BucketName, "functionScope bucket name"); info.Code != m.statusCodes.ok.Code {
+		return "", 0, info
+	}
+
+	if info = m.validateNonEmpty(fS.ScopeName, "functionScope scope name"); info.Code != m.statusCodes.ok.Code {
+		return "", 0, info
+	}
+
+	bucketUUID, scopeId, ok := m.CheckAndGetBktAndScopeIDs(fS)
+	if !ok {
+		info.Code = m.statusCodes.errBucketMissing.Code
+		return "", 0, info
+	}
+
+	info.Code = m.statusCodes.ok.Code
+	return bucketUUID, scopeId, info
+}
+
+func (m *ServiceMgr) CheckAndGetBktAndScopeIDs(fG *common.FunctionScope) (string, uint32, bool) {
+	nsServerEndpoint := net.JoinHostPort(util.Localhost(), m.restPort)
+	cic, err := util.FetchClusterInfoClient(nsServerEndpoint)
+	if err != nil {
+		return "", 0, false
+	}
+
+	clusterInfo := cic.GetClusterInfoCache()
+	clusterInfo.RLock()
+	defer clusterInfo.RUnlock()
+
+	bucketUUID, scopeId, _, err := clusterInfo.GetUniqueBSCIds(fG.BucketName, fG.ScopeName, "")
+	if err != nil {
+		return "", 0, false
+	}
+
+	return bucketUUID, scopeId, true
+}
+
 func (m *ServiceMgr) validateBucketBindings(bindings []bucket, existingAliases map[string]struct{}) (info *runtimeInfo) {
 	info = &runtimeInfo{}
 	info.Code = m.statusCodes.errInvalidConfig.Code

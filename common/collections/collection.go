@@ -34,13 +34,43 @@ func (cm *CollectionManifest) GetCollectionID(scope, collection string) (uint32,
 		if cmScope.Name == scope {
 			for _, cmCollection := range cmScope.Collections {
 				if cmCollection.Name == collection {
-					return GetCidAsUint32(cmCollection.UID)
+					return GetHexToUint32(cmCollection.UID)
 				}
 			}
 			return 0, COLLECTION_NOT_FOUND
 		}
 	}
 	return 0, SCOPE_NOT_FOUND
+}
+
+func (cm *CollectionManifest) GetScopeAndCollectionID(scope, collection string) (uint32, uint32, error) {
+	for _, cmScope := range cm.Scopes {
+		if cmScope.Name == scope {
+			// Don't care about collection id
+			if collection == "" {
+				scopeId, err := GetHexToUint32(cmScope.UID)
+				if err != nil {
+					return 0, 0, err
+				}
+				return scopeId, 0, nil
+			}
+			for _, cmCollection := range cmScope.Collections {
+				if cmCollection.Name == collection {
+					scopeId, err := GetHexToUint32(cmScope.UID)
+					if err != nil {
+						return 0, 0, err
+					}
+					colId, err := GetHexToUint32(cmCollection.UID)
+					if err != nil {
+						return 0, 0, err
+					}
+					return scopeId, colId, nil
+				}
+			}
+			return 0, 0, COLLECTION_NOT_FOUND
+		}
+	}
+	return 0, 0, SCOPE_NOT_FOUND
 }
 
 func (cm *CollectionManifest) GetManifestId() string {
@@ -70,15 +100,13 @@ func LEB128Dec(data []byte) ([]byte, uint32) {
 	return data[end:], cid
 }
 
-func GetCidAsUint32(collId string) (uint32, error) {
-	if collId == "" {
+func GetHexToUint32(keyspaceComponentHexId string) (uint32, error) {
+	if keyspaceComponentHexId == "" {
 		return CID_FOR_BUCKET, nil
 	}
-	cid, err := strconv.ParseUint(collId, 16, 32)
+	keyspaceComponentId, err := strconv.ParseUint(keyspaceComponentHexId, 16, 32)
 	if err != nil {
-		// Since collectionID is read from cluster info cache, it
-		// is always expected to be a hexadecimal string.
-		return 0, errors.New("Error decoding collectionId")
+		return 0, errors.New("error decoding keyspaceComponentId")
 	}
-	return (uint32)(cid), nil
+	return (uint32)(keyspaceComponentId), nil
 }
