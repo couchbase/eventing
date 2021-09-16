@@ -815,10 +815,15 @@ func (p *Producer) SignalStopDebugger() error {
 
 	key := p.AddMetadataPrefix(p.app.AppName + "::" + common.DebuggerTokenKey)
 	var instance common.DebuggerInstance
-	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, getOpCallback, p, key, &instance)
+	var opErr error
+	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, getOpCallback, p, key, &instance, &opErr)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
 		return err
+	}
+	if opErr == common.ErrEncryptionLevelChanged {
+		logging.Errorf("%s [%s:%d] Exiting due to encryption level changed", logPrefix, p.appName, p.LenRunningConsumers())
+		return opErr
 	}
 
 	consumers := p.getConsumers()
@@ -844,15 +849,16 @@ func (p *Producer) SignalStopDebugger() error {
 
 // GetDebuggerURL returns V8 Debugger url
 func (p *Producer) GetDebuggerURL() (string, error) {
-	logPrefix := "Producer::GetDebuggerURL"
-
 	var instance common.DebuggerInstance
 	key := p.AddMetadataPrefix(p.app.AppName + "::" + common.DebuggerTokenKey)
+	var opErr error
 	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount,
-		getOpCallback, p, key, &instance)
+		getOpCallback, p, key, &instance, &opErr)
 	if err == common.ErrRetryTimeout {
-		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
 		return "", common.ErrRetryTimeout
+	}
+	if opErr == common.ErrEncryptionLevelChanged {
+		return "", opErr
 	}
 
 	return instance.URL, nil
