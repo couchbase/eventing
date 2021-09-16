@@ -175,7 +175,7 @@ func (p *Producer) Serve() {
 	p.isPlannerRunning = true
 	logging.Infof("%s [%s:%d] Planner status: %t, before vbucket to node assignment", logPrefix, p.appName, p.LenRunningConsumers(), p.isPlannerRunning)
 
-	err = p.vbEventingNodeAssign(p.SourceBucket())
+	err = p.vbEventingNodeAssign(p.SourceBucket(), true)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
 		p.isPlannerRunning = false
@@ -255,7 +255,7 @@ func (p *Producer) Serve() {
 
 				// vbEventingNodeAssign() would update list of KV nodes. We need them soon after this call.
 				// This also updates the hostnames in-memory maps to TLS ports if TLS was enabled.
-				err = p.vbEventingNodeAssign(p.SourceBucket())
+				err = p.vbEventingNodeAssign(p.SourceBucket(), true)
 				if err == common.ErrRetryTimeout {
 					logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
 					p.isPlannerRunning = false
@@ -1037,7 +1037,7 @@ func (p *Producer) resumeProducer() error {
 	p.isUsingTimer = parser.UsingTimer(p.app.AppCode)
 
 	p.isPlannerRunning = true
-	err = p.vbEventingNodeAssign(p.SourceBucket())
+	err = p.vbEventingNodeAssign(p.SourceBucket(), false)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
 		p.isPlannerRunning = false

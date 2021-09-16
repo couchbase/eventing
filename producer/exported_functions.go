@@ -595,7 +595,7 @@ func (p *Producer) CleanupMetadataBucket(skipCheckpointBlobs bool) error {
 	}
 
 	// Distribute vbuckets to cleanup based on planner
-	err := p.vbEventingNodeAssign(p.metadataKeyspace.BucketName)
+	err := p.vbEventingNodeAssign(p.metadataKeyspace.BucketName, true)
 	if err != nil {
 		logging.Errorf("%s [%s:%d] Failed to get vb to node assignment, err: %v",
 			logPrefix, p.appName, p.LenRunningConsumers(), err)
