@@ -658,7 +658,7 @@ func (m *ServiceMgr) stopDebugger(w http.ResponseWriter, r *http.Request) {
 	if m.checkIfDeployed(appName) {
 		err := m.superSup.SignalStopDebugger(appName)
 		if err != nil {
-			logging.Errorf("Error in stopping debugger for %s err: %v", err)
+			logging.Errorf("Error in stopping debugger for %s err: %v", appName, err)
 			w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errRequestedOpFailed.Code))
 			fmt.Fprintf(w, "%v", err)
 			return
