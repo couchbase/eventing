@@ -1,9 +1,9 @@
-import angular from "/ui/web_modules/angular.js";
-import app from "/ui/app/app.js";
-import { mnLazyload } from "/ui/app/mn.app.imports.js";
+import angular from "angular";
+import app from "app";
+import { mnLazyload } from "mn.app.imports";
 
-import { NgModule } from '/ui/web_modules/@angular/core.js';
-import { UIRouterUpgradeModule } from '/ui/web_modules/@uirouter/angular-hybrid.js';
+import { NgModule } from '@angular/core';
+import { UIRouterUpgradeModule } from '@uirouter/angular-hybrid';
 
 angular
   .module(app)
@@ -28,7 +28,7 @@ class EventingUI {
             states: [{
               name: "app.admin.eventing.**",
               url: "/eventing",
-              lazyLoad: mnLazyload('/_p/ui/event/ui-current/eventing.js', 'eventing')
+              lazyLoad: mnLazyload(() => import('./eventing.js'), 'eventing')
             }]
           })
         ]
