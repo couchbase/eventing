@@ -9,7 +9,14 @@ import (
 	"github.com/couchbase/cbauth/service"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
+	"github.com/couchbase/goutils/systemeventlog"
 )
+
+func (m *ServiceMgr) logSystemEvent(eventId systemeventlog.EventId,
+		severity systemeventlog.EventSeverity, extraAttributes interface{}) {
+
+	util.LogSystemEvent(m.sel, eventId, severity, extraAttributes)
+}
 
 // GetNodeInfo callback for cbauth service.Manager
 func (m *ServiceMgr) GetNodeInfo() (*service.NodeInfo, error) {

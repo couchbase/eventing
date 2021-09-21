@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"net"
+	"net/http"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -19,6 +21,7 @@ import (
 	servicemanager "github.com/couchbase/eventing/service_manager"
 	"github.com/couchbase/eventing/suptree"
 	"github.com/couchbase/eventing/util"
+	"github.com/couchbase/goutils/systemeventlog"
 	"github.com/pkg/errors"
 )
 
@@ -74,7 +77,17 @@ func NewSuperSupervisor(adminPort AdminPortConfig, eventingDir, kvPort, restPort
 	config.Set("eventing_dir", s.eventingDir)
 	config.Set("rest_port", s.restPort)
 
-	s.serviceMgr = servicemanager.NewServiceMgr(config, false, s)
+	baseNsserverURL := "http://" + net.JoinHostPort(util.Localhost(), s.restPort)
+
+	sel := systemeventlog.NewSystemEventLogger(systemeventlog.SystemEventLoggerConfig{}, baseNsserverURL,
+			util.SYSTEM_EVENT_COMPONENT, http.Client{Timeout: util.DEFAULT_TIMEOUT_SECS * time.Second},
+			func(message string) {
+				logging.Errorf(message)
+			})
+
+	s.serviceMgr = servicemanager.NewServiceMgr(config, false, s, sel)
+
+	util.LogSystemEvent(sel, util.EVENTID_PRODUCER_STARTUP, systemeventlog.SEInfo, nil)
 
 	s.keepNodes = append(s.keepNodes, uuid)
 
