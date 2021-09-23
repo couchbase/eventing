@@ -265,7 +265,6 @@ func (m *ServiceMgr) initService() {
 					logging.Errorf("Could not gracefully stop running server due to %v, attempting a force stop", err)
 					(*server).Close()
 				}
-				*server = nil
 				logging.Infof("Successfully stopped running HTTP server")
 			}
 			if (configChange & cbauth.CFG_CHANGE_CLUSTER_ENCRYPTION) != 0 {
