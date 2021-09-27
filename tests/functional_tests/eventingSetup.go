@@ -229,6 +229,12 @@ func createFunction(deploymentStatus, processingStatus bool, id int, s *commonSe
 	app.AppHandlers = handlerCode
 	app.DeploymentConfig = dcfg
 
+	// TODO: make it variable
+	app.FunctionScope = FunctionScope{
+		BucketName: sourceBucket,
+		ScopeName:  "_default",
+	}
+
 	if s.version != "" {
 		app.Version = s.version
 	}
