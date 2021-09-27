@@ -94,6 +94,7 @@ type statusCodes struct {
 	errRequestedOpFailed      statusBase
 	errCollectionMissing      statusBase
 	errEventingBusy           statusBase
+	errMagmaStorage           statusBase
 }
 
 func (m *ServiceMgr) getDisposition(code int) int {
@@ -200,6 +201,8 @@ func (m *ServiceMgr) getDisposition(code int) int {
 		return http.StatusInternalServerError
 	case m.statusCodes.errEventingBusy.Code:
 		return http.StatusInternalServerError
+	case m.statusCodes.errMagmaStorage.Code:
+		return http.StatusUnprocessableEntity
 	default:
 		logging.Warnf("Unknown status code: %v", code)
 		return http.StatusInternalServerError
@@ -260,6 +263,7 @@ func (m *ServiceMgr) initErrCodes() {
 		errRequestedOpFailed:      statusBase{"ERR_REQUESTED_OP_FAILED", 55},
 		errCollectionMissing:      statusBase{"ERR_COLLECTION_MISSING", 56},
 		errEventingBusy:           statusBase{"ERR_EVENTING_BUSY", 57},
+		errMagmaStorage:           statusBase{"ERR_MAGMA_BACKEND", 58},
 	}
 
 	errors := []errorPayload{
@@ -541,6 +545,11 @@ func (m *ServiceMgr) initErrCodes() {
 			Code:        m.statusCodes.errEventingBusy.Code,
 			Description: "Eventing node is busy with upgradation process",
 			Attributes:  []string{"retry"},
+		},
+		{
+			Name:        m.statusCodes.errMagmaStorage.Name,
+			Code:        m.statusCodes.errMagmaStorage.Code,
+			Description: "Magma buckets are not yet supported in Eventing",
 		},
 	}
 

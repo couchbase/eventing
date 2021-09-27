@@ -111,7 +111,8 @@ angular.module('eventing', [
 
             let refreshapplist = []
             for (var rspApp of response.apps ? response.apps : []) {
-              if (rspApp.hasOwnProperty("redeploy_required") && rspApp.redeploy_required == true) {
+              if (rspApp.hasOwnProperty("redeploy_required") && rspApp
+                .redeploy_required == true) {
                 refreshapplist.push(rspApp.name);
               }
               rspAppStat.set(rspApp.name, rspApp.composite_status);
@@ -793,7 +794,8 @@ angular.module('eventing', [
   // Controller for the buttons in header.
   .controller('HeaderCtrl', ['$q', '$scope', '$uibModal', '$state',
     'mnPoolDefault', 'ApplicationService',
-    function($q, $scope, $uibModal, $state, mnPoolDefault, ApplicationService) {
+    function($q, $scope, $uibModal, $state, mnPoolDefault,
+    ApplicationService) {
       var self = this;
       self.isEventingRunning = true;
 
@@ -864,13 +866,13 @@ angular.module('eventing', [
 
               ApplicationService.server.showSuccessAlert(
                 'Operation successful. Update the code and save, or return back to Eventing summary page.'
-                );
+              );
 
               return $state.transitionTo('app.admin.eventing.handler', {
                 appName: creationScope.appModel.appname,
               }, {
                 // Explained in detail - https://github.com/angular-ui/ui-router/issues/3196
-               reload: true
+                reload: true
               });
             }
           })
@@ -880,9 +882,11 @@ angular.module('eventing', [
               return
             }
 
-            if (errResponse.data && errResponse.data[0] && errResponse.data[0].info) {
+            if (errResponse.data && errResponse.data[0] && errResponse.data[
+                0].info) {
               ApplicationService.server.showErrorAlert(
-                "Changes cannot be saved. Reason: " + JSON.stringify(errResponse.data[0].info));
+                "Changes cannot be saved. Reason: " + JSON.stringify(
+                  errResponse.data[0].info));
             }
           });
       }
@@ -991,7 +995,8 @@ angular.module('eventing', [
   ])
   .controller('EventingSettingsCtrl', ['$scope', '$rootScope', '$stateParams',
     'ApplicationService', 'config', 'encryptionLevel',
-    function($scope, $rootScope, $stateParams, ApplicationService, config, encryptionLevel) {
+    function($scope, $rootScope, $stateParams, ApplicationService, config,
+      encryptionLevel) {
       var self = this;
       config = config.data;
       self.enableDebugger = config.enable_debugger;
@@ -1022,7 +1027,8 @@ angular.module('eventing', [
   ])
   // Controller for creating an application.
   .controller('CreateCtrl', ['$scope', 'FormValidationService',
-    'bucketsResolve', 'savedApps', 'logFileLocation', 'scopeInBucket', 'keyspaces',
+    'bucketsResolve', 'savedApps', 'logFileLocation', 'scopeInBucket',
+    'keyspaces',
     function($scope, FormValidationService, bucketsResolve, savedApps,
       logFileLocation, scopeInBucket, keyspaces) {
       var self = this;
@@ -1204,7 +1210,7 @@ angular.module('eventing', [
         self.responses.push([]);
 
         // Is the bucketname present in the binding valid?
-        if (! keyspaces.get($scope.bindings[binding].name)) {
+        if (!keyspaces.get($scope.bindings[binding].name)) {
           $scope.bindings[binding].name = "";
           $scope.bindings[binding].scope = "";
           $scope.bindings[binding].collection = "";
@@ -1212,13 +1218,14 @@ angular.module('eventing', [
           // Is the scope present in the binding valid?
           var bscopes = keyspaces.get($scope.bindings[binding].name)
 
-          if (! bscopes.get($scope.bindings[binding].scope)) {
+          if (!bscopes.get($scope.bindings[binding].scope)) {
             $scope.bindings[binding].scope = "";
             $scope.bindings[binding].collection = "";
           } else {
             var scollections = bscopes.get($scope.bindings[binding].scope)
 
-            if (scollections.indexOf($scope.bindings[binding].collection) < 0) {
+            if (scollections.indexOf($scope.bindings[binding].collection) <
+              0) {
               $scope.bindings[binding].collection = "";
             }
           }
@@ -1287,8 +1294,8 @@ angular.module('eventing', [
         .buckets : [];
       self.bindings = ApplicationService.getBindingFromConfig(appModel
         .depcfg);
-      for(var idx = 0; idx < self.bindings.length; idx++){
-        if(self.bindings[idx].type == "url"){
+      for (var idx = 0; idx < self.bindings.length; idx++) {
+        if (self.bindings[idx].type == "url") {
           self.bindings[idx].password = PASSWORD_MASK;
           self.bindings[idx].bearer_key = PASSWORD_MASK;
         }
@@ -1422,14 +1429,15 @@ angular.module('eventing', [
       self.saveSettings = function(dismissDialog, closeDialog) {
         var config = JSON.parse(JSON.stringify(appModel.depcfg));
 
-        Object.assign(config, ApplicationService.convertBindingToConfig(self.bindings));
+        Object.assign(config, ApplicationService.convertBindingToConfig(self
+          .bindings));
         self.copyNamespace(config, $scope.appModel.depcfg);
 
         if (JSON.stringify(appModel.depcfg) !== JSON.stringify(config)) {
           $scope.appModel.depcfg = config;
           ApplicationService.tempStore.saveAppDepcfg($scope.appModel);
           ApplicationService.local.saveApp(new Application($scope
-          .appModel));
+            .appModel));
           ApplicationService.server.showWarningAlert(
             'Bindings/Settings changed. Deploy or Resume function for changes to take effect.'
           );
@@ -1452,7 +1460,9 @@ angular.module('eventing', [
                   return ApplicationService.public.updateSettings($scope
                     .appModel);
                 } else {
-                  var redacted = ApplicationService.tempStore.redactPWDApp(JSON.parse(JSON.stringify($scope.appModel)));
+                  var redacted = ApplicationService.tempStore
+                    .redactPWDApp(JSON.parse(JSON.stringify($scope
+                      .appModel)));
                   return ApplicationService.tempStore.saveApp(redacted);
                 }
               })
@@ -1483,7 +1493,7 @@ angular.module('eventing', [
         destinationConfig["metadata_bucket"] = sourceConfig[
           "metadata_bucket"];
         destinationConfig["metadata_scope"] = sourceConfig[
-        "metadata_scope"];
+          "metadata_scope"];
         destinationConfig["metadata_collection"] = sourceConfig[
           "metadata_collection"];
       };
@@ -1693,7 +1703,7 @@ angular.module('eventing', [
         function resizeEditor() {
           var handlerEditor = document.getElementById('handler-editor');
           //handlerEditor.width($(window).width() * 0.85);
-          if(!handlerEditor) return;
+          if (!handlerEditor) return;
           handlerEditor.style.height = (window.innerHeight * 0.7) + "px";
         }
 
@@ -1774,7 +1784,8 @@ angular.module('eventing', [
                 .catch(function(errResponse) {
                   appSaved = false
                   ApplicationService.server.showErrorAlert(
-                    "Changes cannot be saved. Reason: " + JSON.stringify(errResponse.data.runtime_info.info));
+                    "Changes cannot be saved. Reason: " + JSON
+                    .stringify(errResponse.data.runtime_info.info));
                   console.error(errResponse);
                 })
                 .finally(function(response) {
@@ -1810,7 +1821,9 @@ angular.module('eventing', [
               ApplicationService.public.updateConfig({
                 enable_debugger: false
               });
-              ApplicationService.server.showWarningAlert(`Debugger is disabled as cluster encryption level is strict.`);
+              ApplicationService.server.showWarningAlert(
+                `Debugger is disabled as cluster encryption level is strict.`
+                );
               return;
             }
             return ApplicationService.primaryStore.getDeployedApps()
@@ -2172,7 +2185,8 @@ angular.module('eventing', [
           },
           saveAppCode: function(app) {
             return $http({
-              url: '/_p/event/api/v1/functions/' + app.appname + "/appcode/",
+              url: '/_p/event/api/v1/functions/' + app.appname +
+                "/appcode/",
               method: 'POST',
               headers: {
                 'Content-Type': 'application/javascript'
@@ -2182,7 +2196,8 @@ angular.module('eventing', [
           },
           saveAppDepcfg: function(app) {
             return $http({
-              url: '/_p/event/api/v1/functions/' + app.appname + "/config/",
+              url: '/_p/event/api/v1/functions/' + app.appname +
+                "/config/",
               method: 'POST',
               mnHttp: {
                 isNotForm: true
@@ -2233,14 +2248,14 @@ angular.module('eventing', [
               appName);
           },
           redactPWDApp: function(app) {
-            if(app.depcfg && app.depcfg.curl) {
+            if (app.depcfg && app.depcfg.curl) {
               for (var idx = 0; idx < app.depcfg.curl.length; idx++) {
                 app.depcfg.curl[idx].password = PASSWORD_MASK;
                 app.depcfg.curl[idx].bearer_key = PASSWORD_MASK;
-                }
               }
-              return app;
             }
+            return app;
+          }
         },
         primaryStore: {
           deleteApp: function(appName) {
@@ -2327,7 +2342,8 @@ angular.module('eventing', [
                 return response.data.log_dir;
               })
               .catch(function(errResponse) {
-                console.error('Unable to get logFileLocation', errResponse
+                console.error('Unable to get logFileLocation',
+                  errResponse
                   .data);
               });
           },
@@ -2352,7 +2368,8 @@ angular.module('eventing', [
               .then(function(response) {
                 var buckets = [];
                 for (var bucket of response.data) {
-                  if (bucket.bucketType !== 'memcached') {
+                  if ((bucket.bucketType !== 'memcached') && (bucket
+                      .storageBackend != "magma")) {
                     buckets.push(bucket.name);
                   }
                 }
@@ -2371,11 +2388,13 @@ angular.module('eventing', [
           },
           getKeyspaces: function() {
 
-            return self.funcs.server.getLatestBuckets().then(function(buckets) {
+            return self.funcs.server.getLatestBuckets().then(function(
+              buckets) {
 
               var promises = [];
               for (var bucket of buckets ? buckets : []) {
-                var curPromise = self.funcs.server.getBucketScopes(bucket);
+                var curPromise = self.funcs.server.getBucketScopes(
+                  bucket);
                 promises.push(curPromise);
               }
 
@@ -2383,27 +2402,29 @@ angular.module('eventing', [
 
               return $q.all(promises).then(function(result) {
 
-                for (var b = 0; b < result.length; b++) {
-                  var bucketInfo = new Map()
+                  for (var b = 0; b < result.length; b++) {
+                    var bucketInfo = new Map()
 
-                  for (var s = 0; s < result[b].data.scopes.length; s++) {
-                    var scope = result[b].data.scopes[s]
-                    var collections = []
-                    for (var c = 0; c < scope.collections.length; c++) {
-                      collections.push(scope.collections[c].name)
+                    for (var s = 0; s < result[b].data.scopes
+                      .length; s++) {
+                      var scope = result[b].data.scopes[s]
+                      var collections = []
+                      for (var c = 0; c < scope.collections
+                        .length; c++) {
+                        collections.push(scope.collections[c].name)
+                      }
+
+                      bucketInfo.set(scope.name, collections)
                     }
 
-                    bucketInfo.set(scope.name, collections)
+                    keyspaces.set(buckets[b], bucketInfo)
                   }
 
-                  keyspaces.set(buckets[b], bucketInfo)
-                }
-
-                return keyspaces;
-              })
-              .catch(function(error) {
-                return keyspaces;
-              });
+                  return keyspaces;
+                })
+                .catch(function(error) {
+                  return keyspaces;
+                });
             });
           },
           isEventingRunning: function() {
@@ -2419,17 +2440,20 @@ angular.module('eventing', [
                 }
                 return false;
               }).catch(function(errResponse) {
-                console.error('Unable to get server nodes', errResponse);
+                console.error('Unable to get server nodes',
+                errResponse);
               });
           },
           getAllEventingNodes: function() {
             return mnPoolDefault.get()
               .then(function(response) {
-                return mnPoolDefault.getUrlsRunningService(response.nodes,
+                return mnPoolDefault.getUrlsRunningService(response
+                  .nodes,
                   'eventing');
               })
               .catch(function(errResponse) {
-                console.error('Unable to get server nodes', errResponse);
+                console.error('Unable to get server nodes',
+                errResponse);
               });
           },
           showSuccessAlert: function(message) {
@@ -2439,7 +2463,8 @@ angular.module('eventing', [
             // Warnings stay on screen for 10s, can manually close using 'x'
             timeout = timeout == undefined ? 1000 * 10 : (timeout == -1 ?
               undefined : timeout)
-            mnAlertsService.formatAndSetAlerts(message, 'warning', timeout);
+            mnAlertsService.formatAndSetAlerts(message, 'warning',
+              timeout);
           },
           showErrorAlert: function(message) {
             // Errors stay on screen forever, should manually close using 'x'
@@ -2650,7 +2675,7 @@ angular.module('eventing', [
             }
 
             if (binding.type === 'url' && binding.hostname !== undefined &&
-                binding.hostname.length) {
+              binding.hostname.length) {
               hostnameValid = isValidHostname(binding.hostname);
               hostnameValidList.push(!hostnameValid);
             } else {
@@ -2707,7 +2732,7 @@ angular.module('eventing', [
               .metadata_scope.$viewValue) ||
             !formCtrl.metadataCollections.includes(form
               .metadata_collection && form.metadata_collection.$viewValue
-              ) ||
+            ) ||
             !formCtrl.sourceBuckets.includes(form.source_bucket && form
               .source_bucket.$viewValue) ||
             !formCtrl.sourceScopes.includes(form.source_scope && form
