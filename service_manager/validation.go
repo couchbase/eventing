@@ -186,7 +186,7 @@ func (m *ServiceMgr) validateAnyAuth(w http.ResponseWriter, r *http.Request, per
 
 // Performs authz based on HTTP Method using read perms for GET and write perms for the rest.
 func (m *ServiceMgr) validateAuthForOp(w http.ResponseWriter, r *http.Request,
-		rperms []string, wperm string) bool {
+	rperms []string, wperm string) bool {
 
 	if r.Method == "GET" {
 		return m.validateAnyAuth(w, r, rperms)
@@ -453,6 +453,37 @@ func (m *ServiceMgr) validateConfig(c map[string]interface{}) (info *runtimeInfo
 	return
 }
 
+func (m *ServiceMgr) validateStorageEngine(bucketName string) (info *runtimeInfo) {
+	info = &runtimeInfo{}
+
+	nsServerEndpoint := net.JoinHostPort(util.Localhost(), m.restPort)
+	cic, err := util.FetchClusterInfoClient(nsServerEndpoint)
+	if err != nil {
+		info.Code = m.statusCodes.errConnectNsServer.Code
+		info.Info = fmt.Sprintf("Failed to get cluster info cache, err: %v", err)
+		return
+	}
+	clusterInfo := cic.GetClusterInfoCache()
+	clusterInfo.RLock()
+	defer clusterInfo.RUnlock()
+
+	se, err := clusterInfo.StorageEngine(bucketName)
+	if err != nil {
+		info.Code = m.statusCodes.errBucketTypeCheck.Code
+		info.Info = fmt.Sprintf("Failed to check storage backend for bucket: %s err: %v", bucketName, err)
+		return
+	}
+
+	if se == common.Magma {
+		info.Code = m.statusCodes.errMagmaStorage.Code
+		info.Info = fmt.Sprintf("Magma buckets are not yet supported in Eventing")
+		return
+	}
+
+	info.Code = m.statusCodes.ok.Code
+	return
+}
+
 func (m *ServiceMgr) validateNonMemcached(bucketName string) (info *runtimeInfo) {
 	info = &runtimeInfo{}
 
@@ -511,11 +542,19 @@ func (m *ServiceMgr) validateDeploymentConfig(deploymentConfig *depCfg) (info *r
 		return
 	}
 
+	if info = m.validateStorageEngine(deploymentConfig.SourceBucket); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
 	if info = m.validateNonEmpty(deploymentConfig.MetadataBucket, "Metadata bucket name"); info.Code != m.statusCodes.ok.Code {
 		return
 	}
 
 	if info = m.validateKeyspaceExists(deploymentConfig.MetadataBucket, deploymentConfig.MetadataScope, deploymentConfig.MetadataCollection); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
+	if info = m.validateStorageEngine(deploymentConfig.MetadataBucket); info.Code != m.statusCodes.ok.Code {
 		return
 	}
 
@@ -550,6 +589,10 @@ func (m *ServiceMgr) validateBucketBindings(bindings []bucket, existingAliases m
 
 		if info = m.validateKeyspaceExists(binding.BucketName, binding.ScopeName, binding.CollectionName); info.Code != m.statusCodes.ok.Code {
 			info.Info = fmt.Sprintf("Keyspace bucket: %s scope: %s collection: %s used for binding: %s doesn't exist", binding.BucketName, binding.ScopeName, binding.CollectionName, binding.Alias)
+			return
+		}
+
+		if info = m.validateStorageEngine(binding.BucketName); info.Code != m.statusCodes.ok.Code {
 			return
 		}
 

@@ -175,7 +175,7 @@ type Bucket struct {
 	UUID                string                 `json:"uuid"`
 	BasicStats          map[string]interface{} `json:"basicStats,omitempty"`
 	Controllers         map[string]interface{} `json:"controllers,omitempty"`
-
+	Storage             string                 `json:"storageBackend,omitempty"`
 	// These are used for JSON IO, but isn't used for processing
 	// since it needs to be swapped out safely.
 	VBSMJson              VBucketServerMap `json:"vBucketServerMap"`
@@ -763,6 +763,7 @@ loop:
 		return err
 	}
 	for _, b := range buckets {
+		// TODO: We can remove this call
 		retry, nb, err := p.getTerseBucket(b.Name)
 		if retry {
 			logging.Warnf("cluster_info: Out of sync for bucket %s. Retrying..", b.Name)
@@ -771,6 +772,9 @@ loop:
 		if err != nil {
 			return err
 		}
+
+		// Add more info if needed
+		nb.Storage = b.Storage
 		nb.pool = p
 		nb.init(nb)
 		bucketMap[nb.Name] = *nb
@@ -926,6 +930,14 @@ func (p *Pool) GetBucket(name string) (*Bucket, error) {
 	}
 	runtime.SetFinalizer(&rv, bucketFinalizer)
 	return &rv, nil
+}
+
+func (p *Pool) GetBucketStorage(bucketName string) (string, error) {
+	b, ok := p.BucketMap[bucketName]
+	if !ok {
+		return "", fmt.Errorf("No bucket named %s", bucketName)
+	}
+	return b.Storage, nil
 }
 
 func (p *Pool) GetBucketList() map[string]struct{} {

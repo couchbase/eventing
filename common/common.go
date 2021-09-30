@@ -45,6 +45,13 @@ type Insight struct {
 	Lines  map[int]InsightLine `json:"lines"`
 }
 
+type StorageEngine string
+
+var (
+	Couchstore = StorageEngine("couchstore")
+	Magma      = StorageEngine("magma")
+)
+
 type Insights map[string]*Insight
 
 const (

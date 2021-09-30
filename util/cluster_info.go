@@ -371,6 +371,11 @@ func (c *ClusterInfoCache) IsMemcached(bucket string) (bool, error) {
 	return strings.EqualFold(b.Type, "memcached"), nil
 }
 
+func (c *ClusterInfoCache) StorageEngine(bucketName string) (common.StorageEngine, error) {
+	storage, err := c.pool.GetBucketStorage(bucketName)
+	return common.StorageEngine(storage), err
+}
+
 func (c *ClusterInfoCache) GetCurrentNode() NodeId {
 	for i, node := range c.nodes {
 		if node.ThisNode {
