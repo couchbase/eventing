@@ -151,14 +151,18 @@ func (instance *serviceNotifierInstance) RunObserveCollectionManifestChanges(buc
 	collectionChangeCallback := instance.getNotifyCallback(CollectionManifestChangeNotification)
 	for {
 		err := instance.client.RunObserveCollectionManifestChanges(instance.pool, bucket, collectionChangeCallback, stopChan)
-		if err != nil {
-			if !CheckKeyspaceExist(bucket, "", "", instance.clusterUrl) {
-				logging.Infof("servicesChangeNotifier: bucket: %s does not exist. Stopping manifest listener")
-				return
-			}
-			logging.Warnf("servicesChangeNotifier: Connection terminated for collection manifest notifier instance of %s, %s, bucket: %s, (%v). Retrying...", instance.DebugStr(), instance.pool, bucket, err)
-			time.Sleep(retryTimeout)
+		if err == couchbase.StreamingEndpointClosed {
+			logging.Infof("Bucket streaming endpoint for %s closed by caller", bucket)
+			return
 		}
+
+		if !CheckKeyspaceExist(bucket, "", "", instance.clusterUrl) {
+			logging.Infof("servicesChangeNotifier: bucket: %s does not exist. Stopping manifest listener", bucket)
+			return
+		}
+
+		logging.Warnf("servicesChangeNotifier: Connection terminated for collection manifest notifier instance of %s, %s, bucket: %s, (%v). Retrying...", instance.DebugStr(), instance.pool, bucket, err)
+		time.Sleep(retryTimeout)
 	}
 }
 

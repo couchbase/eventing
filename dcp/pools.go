@@ -41,6 +41,8 @@ var PoolSize = 64
 // pool.
 var PoolOverflow = PoolSize
 
+var StreamingEndpointClosed = errors.New("Streaming endpoint closed by caller")
+
 // Used to decide whether to skip verification of certificates when
 // connecting to an ssl port.
 
@@ -513,7 +515,7 @@ func (c *Client) runObserveStreamingEndpoint(path string,
 	for {
 		select {
 		case <-cancel:
-			return nil
+			return StreamingEndpointClosed
 
 		case bs := <-resChannel:
 			if len(bs) == 1 && bs[0] == '\n' {
