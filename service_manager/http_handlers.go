@@ -34,6 +34,7 @@ import (
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/parser"
 	"github.com/couchbase/eventing/util"
+	"github.com/couchbase/goutils/systemeventlog"
 )
 
 func (m *ServiceMgr) startTracing(w http.ResponseWriter, r *http.Request) {
@@ -54,6 +55,10 @@ func (m *ServiceMgr) startTracing(w http.ResponseWriter, r *http.Request) {
 	}
 	defer f.Close()
 
+	m.logSystemEvent(util.EVENTID_START_TRACING, systemeventlog.SEInfo, nil)
+
+	startTime := time.Now()
+
 	err = trace.Start(f)
 	if err != nil {
 		logging.Infof("%s Failed to start runtime.Trace, err: %v", logPrefix, err)
@@ -62,6 +67,11 @@ func (m *ServiceMgr) startTracing(w http.ResponseWriter, r *http.Request) {
 
 	<-m.stopTracerCh
 	trace.Stop()
+
+	stopTime := time.Now()
+
+	m.logSystemEvent(util.EVENTID_STOP_TRACING, systemeventlog.SEInfo,
+		map[string]interface{}{"tracingExecutionTimeSecs": stopTime.Sub(startTime).Seconds()})
 }
 
 func (m *ServiceMgr) stopTracing(w http.ResponseWriter, r *http.Request) {
@@ -165,6 +175,11 @@ func (m *ServiceMgr) deletePrimaryStore(appName string) (info *runtimeInfo) {
 	info.Code = m.statusCodes.ok.Code
 	info.Info = fmt.Sprintf("Function: %s deleting in the background", appName)
 	logging.Infof("%s %s", logPrefix, info.Info)
+
+	// ::TODO::Need to log handleruuid.
+	m.logSystemEvent(util.EVENTID_DELETE_FUNCTION, systemeventlog.SEInfo,
+		map[string]interface{}{"appName": appName})
+
 	return
 }
 
@@ -638,6 +653,10 @@ func (m *ServiceMgr) startDebugger(w http.ResponseWriter, r *http.Request) {
 		m.sendErrorInfo(w, info)
 		return
 	}
+
+	m.logSystemEvent(util.EVENTID_START_DEBUGGER, systemeventlog.SEInfo,
+		map[string]interface{}{"appName": appName})
+
 	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
 	fmt.Fprintf(w, "Function: %s Started Debugger", appName)
 }
@@ -663,6 +682,10 @@ func (m *ServiceMgr) stopDebugger(w http.ResponseWriter, r *http.Request) {
 			fmt.Fprintf(w, "%v", err)
 			return
 		}
+
+		m.logSystemEvent(util.EVENTID_STOP_DEBUGGER, systemeventlog.SEInfo,
+			map[string]interface{}{"appName": appName})
+
 		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
 		fmt.Fprintf(w, "Function: %s stopped Debugger", appName)
 		return
@@ -3262,6 +3285,11 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 			}
+
+			m.logSystemEvent(util.EVENTID_CREATE_FUNCTION, systemeventlog.SEInfo,
+				map[string]interface{}{"handleruuid": app.FunctionID,
+										"appName": appName})
+
 			m.sendRuntimeInfo(w, runtimeInfo)
 
 		case "DELETE":
@@ -3790,6 +3818,8 @@ func (m *ServiceMgr) exportHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	m.logSystemEvent(util.EVENTID_EXPORT_FUNCTIONS, systemeventlog.SEInfo, nil)
+
 	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
 	fmt.Fprintf(w, "%s\n", data)
 }
@@ -3843,6 +3873,8 @@ func (m *ServiceMgr) importHandler(w http.ResponseWriter, r *http.Request) {
 	for _, app := range *appList {
 		importedFns = append(importedFns, app.Name)
 	}
+
+	m.logSystemEvent(util.EVENTID_IMPORT_FUNCTIONS, systemeventlog.SEInfo, nil)
 
 	logging.Infof("%s Imported functions: %+v", logPrefix, importedFns)
 	m.sendRuntimeInfoList(w, infoList)
@@ -4092,6 +4124,10 @@ func (m *ServiceMgr) createApplications(r *http.Request, appList *[]application,
 			infoList = append(infoList, infoTmp)
 			continue
 		}
+
+		m.logSystemEvent(util.EVENTID_CREATE_FUNCTION, systemeventlog.SEInfo,
+			map[string]interface{}{"handleruuid": app.FunctionID,
+									"appName": app.Name})
 
 		// If everything succeeded, use infoPri as that has warnings, if any
 		infoList = append(infoList, infoPri)

@@ -23,6 +23,7 @@ import (
 	couchbase "github.com/couchbase/eventing/dcp"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
+	"github.com/couchbase/goutils/systemeventlog"
 )
 
 func NewState() state {
@@ -36,7 +37,8 @@ func NewState() state {
 }
 
 //NewServiceMgr creates handle for ServiceMgr, which implements cbauth service.Manager
-func NewServiceMgr(config util.Config, rebalanceRunning bool, superSup common.EventingSuperSup) *ServiceMgr {
+func NewServiceMgr(config util.Config, rebalanceRunning bool,
+		superSup common.EventingSuperSup, sel systemeventlog.SystemEventLogger) *ServiceMgr {
 
 	logging.Infof("ServiceMgr::newServiceMgr config: %rm rebalanceRunning: %v", fmt.Sprintf("%#v", config), rebalanceRunning)
 
@@ -65,6 +67,7 @@ func NewServiceMgr(config util.Config, rebalanceRunning bool, superSup common.Ev
 		superSup:                superSup,
 		supWaitCh:               make(chan bool, 2),
 		finch:                   make(chan bool),
+		sel:                     sel,
 	}
 
 	mgr.config.Store(config)
