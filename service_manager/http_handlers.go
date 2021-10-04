@@ -2656,9 +2656,7 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "ServiceMgr::functionsHandler"
 
 	w.Header().Set("Content-Type", "application/json")
-	if !m.validateAuthForOp(w, r, EventingReadPermissions, EventingPermissionManage) {
-		return
-	}
+	// TODO: Check if helper function should do the authentication and previlage handling
 
 	if r.Method != "GET" { // We do not want to flood logs with GET calls
 		logging.Infof("%s REST Call: %v %v", logPrefix, r.URL.Path, r.Method)
@@ -2676,396 +2674,101 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 	functionsConfig := regexp.MustCompile("^/api/v1/functions/(.*[^/])/config/?$")
 
 	if match := functionsNameRetry.FindStringSubmatch(r.URL.Path); len(match) != 0 {
-		appName := match[1]
-		info := &runtimeInfo{}
+		m.functionNameRetry(w, r, match[1])
 
-		if r.Method != "POST" {
-			w.WriteHeader(http.StatusMethodNotAllowed)
-			return
-		}
-
-		data, err := ioutil.ReadAll(r.Body)
-		if err != nil {
-			info.Code = m.statusCodes.errReadReq.Code
-			info.Info = fmt.Sprintf("failed to read request body, err : %v", err)
-			logging.Errorf("%s %s", logPrefix, info.Info)
-			m.sendErrorInfo(w, info)
-			return
-		}
-
-		var retryBody retry
-		err = json.Unmarshal(data, &retryBody)
-		if err != nil {
-			info.Code = m.statusCodes.errMarshalResp.Code
-			info.Info = fmt.Sprintf("failed to unmarshal retry, err: %v", err)
-			logging.Errorf("%s %s", logPrefix, info.Info)
-			m.sendErrorInfo(w, info)
-			return
-		}
-
-		if info = m.notifyRetryToAllProducers(appName, &retryBody); info.Code != m.statusCodes.ok.Code {
-			m.sendErrorInfo(w, info)
-			return
-		}
 	} else if match := functionsNameSettings.FindStringSubmatch(r.URL.Path); len(match) != 0 {
-		appName := match[1]
-		info := &runtimeInfo{}
+		m.functionNameSettings(w, r, match[1])
 
-		switch r.Method {
-		case "GET":
-			audit.Log(auditevent.GetSettings, r, nil)
-			settings, info := m.getSettings(appName)
-			if info.Code != m.statusCodes.ok.Code {
-				w.WriteHeader(http.StatusNotFound)
-				m.sendErrorInfo(w, info)
-				return
-			}
-
-			response, err := json.MarshalIndent(settings, "", " ")
-			if err != nil {
-				info.Code = m.statusCodes.errMarshalResp.Code
-				info.Info = fmt.Sprintf("failed to marshal function, err : %v", err)
-				logging.Errorf("%s %s", logPrefix, info.Info)
-				m.sendErrorInfo(w, info)
-				return
-			}
-
-			w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
-			fmt.Fprintf(w, "%s", string(response))
-
-		case "POST":
-			audit.Log(auditevent.SetSettings, r, appName)
-
-			data, err := ioutil.ReadAll(r.Body)
-			if err != nil {
-				info.Code = m.statusCodes.errReadReq.Code
-				info.Info = fmt.Sprintf("failed to read request body, err: %v", err)
-				logging.Errorf("%s %s", logPrefix, info.Info)
-				m.sendErrorInfo(w, info)
-				return
-			}
-
-			app, info := m.getTempStore(appName)
-			if info.Code != m.statusCodes.ok.Code {
-				m.sendErrorInfo(w, info)
-				return
-			}
-
-			if app.EnforceSchema == true {
-				m.MaybeEnforceSettingsSchema(data)
-				if info.Code != m.statusCodes.ok.Code {
-					m.sendErrorInfo(w, info)
-					return
-				}
-			}
-
-			var settings map[string]interface{}
-			err = json.Unmarshal(data, &settings)
-			if err != nil {
-				info.Code = m.statusCodes.errMarshalResp.Code
-				info.Info = fmt.Sprintf("failed to unmarshal setting supplied, err: %v", err)
-				logging.Errorf("%s %s", logPrefix, info.Info)
-				m.sendErrorInfo(w, info)
-				return
-			}
-
-			if info = m.setSettings(appName, data, false); info.Code != m.statusCodes.ok.Code {
-				m.sendErrorInfo(w, info)
-				return
-			}
-		default:
-			w.WriteHeader(http.StatusMethodNotAllowed)
-			return
-		}
 	} else if match := functionsAppcode.FindStringSubmatch(r.URL.Path); len(match) != 0 {
-		appName := match[1]
-		wantChecksum := match[2]
-		switch r.Method {
-		case "GET":
-			app, info := m.getTempStore(appName)
-			if info.Code != m.statusCodes.ok.Code {
-				m.sendErrorInfo(w, info)
-				return
-			}
-			response := []byte(app.AppHandlers)
-			if wantChecksum == "/checksum" {
-				response = []byte(fmt.Sprintf("%x", sha256.Sum256(response)))
-			}
+		m.functionAppcode(w, r, match[1], match[2])
 
-			w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
-			fmt.Fprintf(w, "%s", string(response))
-
-		case "POST":
-			info := &runtimeInfo{}
-			appState := m.superSup.GetAppState(appName)
-			if appState == common.AppStateEnabled {
-				info.Code = m.statusCodes.errAppDeployed.Code
-				info.Info = fmt.Sprintf("Function: %s is in deployed state, appcode can only be updated when a function is either undeployed or paused", appName)
-				logging.Errorf("%s %s", logPrefix, info.Info)
-				m.sendErrorInfo(w, info)
-				return
-			}
-
-			data, err := ioutil.ReadAll(r.Body)
-			if err != nil {
-				info.Code = m.statusCodes.errReadReq.Code
-				info.Info = fmt.Sprintf("Failed to read request body, err: %v", err)
-				logging.Errorf("%s %s", logPrefix, info.Info)
-				m.sendErrorInfo(w, info)
-				return
-			}
-
-			if wantChecksum == "/checksum" {
-				w.WriteHeader(http.StatusMethodNotAllowed)
-				return
-			}
-
-			app, info := m.getTempStore(appName)
-			if info.Code != m.statusCodes.ok.Code {
-				m.sendErrorInfo(w, info)
-				return
-			}
-
-			app.AppHandlers = string(data)
-
-			runtimeInfo := m.savePrimaryStore(&app)
-			if runtimeInfo.Code == m.statusCodes.ok.Code {
-				audit.Log(auditevent.SaveDraft, r, appName)
-				if tempInfo := m.saveTempStore(app); tempInfo.Code != m.statusCodes.ok.Code {
-					m.sendErrorInfo(w, tempInfo)
-					return
-				}
-			} else {
-				m.sendErrorInfo(w, runtimeInfo)
-				return
-			}
-
-			runtimeInfo.Info = fmt.Sprintf("Function: %s appcode stored in the metakv.", appName)
-			deprecatedFnsList := parser.ListDeprecatedFunctions(app.AppHandlers)
-			overloadedFnsList := parser.ListOverloadedFunctions(app.AppHandlers)
-			if len(deprecatedFnsList) > 0 {
-				jsonList, _ := json.Marshal(deprecatedFnsList)
-				runtimeInfo.Info = fmt.Sprintf("%s; It uses the following APIs that are Deprecated: %s", runtimeInfo.Info, jsonList)
-			}
-			if len(overloadedFnsList) > 0 {
-				jsonList, _ := json.Marshal(overloadedFnsList)
-				runtimeInfo.Info = fmt.Sprintf("%s; The following built-in APIs are Overloaded: %s", runtimeInfo.Info, jsonList)
-			}
-			m.sendRuntimeInfo(w, runtimeInfo)
-
-		default:
-			w.WriteHeader(http.StatusMethodNotAllowed)
-			return
-		}
 	} else if match := functionsConfig.FindStringSubmatch(r.URL.Path); len(match) != 0 {
-		appName := match[1]
-		switch r.Method {
-		case "GET":
-			app, info := m.getTempStore(appName)
-			if info.Code != m.statusCodes.ok.Code {
-				m.sendErrorInfo(w, info)
-				return
-			}
-			redactPasswords(&app)
-			response, err := json.MarshalIndent(app.DeploymentConfig, "", " ")
-			if err != nil {
-				info.Code = m.statusCodes.errMarshalResp.Code
-				info.Info = fmt.Sprintf("Failed to marshal config, err : %v", err)
-				logging.Errorf("%s %s", logPrefix, info.Info)
-				m.sendErrorInfo(w, info)
-				return
-			}
+		m.functionConfig(w, r, match[1])
 
-			w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
-			fmt.Fprintf(w, "%s", string(response))
-
-		case "POST":
-			info := &runtimeInfo{}
-			appState := m.superSup.GetAppState(appName)
-			if appState == common.AppStateEnabled {
-				info.Code = m.statusCodes.errAppDeployed.Code
-				info.Info = fmt.Sprintf("Function: %s is in deployed state, config can only be updated when a function is either undeployed or paused", appName)
-				logging.Errorf("%s %s", logPrefix, info.Info)
-				m.sendErrorInfo(w, info)
-				return
-			}
-
-			data, err := ioutil.ReadAll(r.Body)
-			if err != nil {
-				info.Code = m.statusCodes.errReadReq.Code
-				info.Info = fmt.Sprintf("Failed to read request body, err: %v", err)
-				logging.Errorf("%s %s", logPrefix, info.Info)
-				m.sendErrorInfo(w, info)
-				return
-			}
-
-			app, info := m.getTempStore(appName)
-			appCopy := app
-			if info.Code != m.statusCodes.ok.Code {
-				m.sendErrorInfo(w, info)
-				return
-			}
-
-			config := depCfg{}
-			unmarshalErr := json.Unmarshal(data, &config)
-			if unmarshalErr != nil {
-				info.Code = m.statusCodes.errReadReq.Code
-				info.Info = fmt.Sprintf("Failed to Unmarshal request body, err: %v", err)
-				logging.Errorf("%s %s", logPrefix, info.Info)
-				m.sendErrorInfo(w, info)
-				return
-			}
-			app.DeploymentConfig = config
-			copyPasswords(&app, &appCopy)
-
-			// Validate Recursion Checks and deployment configurations
-			if info = m.validateApplication(&app); info.Code != m.statusCodes.ok.Code {
-				m.sendErrorInfo(w, info)
-				return
-			}
-
-			// Don't allow the user to change the meta and source keyspaces
-			if appState == common.AppStatePaused {
-				if !CheckIfAppKeyspacesAreSame(appCopy, app) {
-					info.Code = m.statusCodes.errInvalidConfig.Code
-					info.Info = "Source and Meta Keyspaces can only be changed when the function is in undeployed state."
-					m.sendErrorInfo(w, info)
-					return
-				}
-			}
-
-			runtimeInfo := m.savePrimaryStore(&app)
-			if runtimeInfo.Code == m.statusCodes.ok.Code {
-				audit.Log(auditevent.SaveDraft, r, appName)
-				if tempInfo := m.saveTempStore(app); tempInfo.Code != m.statusCodes.ok.Code {
-					m.sendErrorInfo(w, tempInfo)
-					return
-				}
-			}
-			runtimeInfo.Info = fmt.Sprintf("Function: %s config stored in the metakv.", appName)
-			m.sendRuntimeInfo(w, runtimeInfo)
-
-		default:
-			w.WriteHeader(http.StatusMethodNotAllowed)
-			return
-		}
 	} else if match := functionsPause.FindStringSubmatch(r.URL.Path); len(match) != 0 {
-		info := &runtimeInfo{}
-		if r.Method != "POST" {
-			info.Code = m.statusCodes.errInvalidConfig.Code
-			info.Info = fmt.Sprintf("Only POST call allowed to this endpoint")
-			m.sendErrorInfo(w, info)
-			return
-		}
-
-		appName := match[1]
-		appState := m.superSup.GetAppState(appName)
-
-		if appState == common.AppStatePaused {
-			info.Code = m.statusCodes.errAppNotDeployed.Code
-			info.Info = fmt.Sprintf("Invalid operation. Function: %v already in paused state.", appName)
-			logging.Errorf("%s %s", logPrefix, info.Info)
-			m.sendErrorInfo(w, info)
-			return
-		}
-
-		audit.Log(auditevent.SetSettings, r, appName)
-
-		var settings = make(map[string]interface{})
-		settings["deployment_status"] = true
-		settings["processing_status"] = false
-
-		data, err := json.MarshalIndent(settings, "", " ")
-		if err != nil {
-			info.Code = m.statusCodes.errMarshalResp.Code
-			info.Info = fmt.Sprintf("failed to marshal function settings, err : %v", err)
-			logging.Errorf("%s %s", logPrefix, info.Info)
-			m.sendErrorInfo(w, info)
-			return
-		}
-
-		if info = m.setSettings(appName, data, false); info.Code != m.statusCodes.ok.Code {
-			m.sendErrorInfo(w, info)
-			return
-		}
+		m.functionPause(w, r, match[1])
 
 	} else if match := functionsResume.FindStringSubmatch(r.URL.Path); len(match) != 0 {
-		info := &runtimeInfo{}
-		if r.Method != "POST" {
-			info.Code = m.statusCodes.errInvalidConfig.Code
-			info.Info = fmt.Sprintf("Only POST call allowed to this endpoint")
-			m.sendErrorInfo(w, info)
-			return
-		}
-
-		appName := match[1]
-		appState := m.superSup.GetAppState(appName)
-
-		if appState == common.AppStateEnabled {
-			info.Code = m.statusCodes.errAppDeployed.Code
-			info.Info = fmt.Sprintf("Invalid operation. Function: %v already in deployed state.", appName)
-			logging.Errorf("%s %s", logPrefix, info.Info)
-			m.sendErrorInfo(w, info)
-			return
-		}
-
-		if appState == common.AppStateUndeployed {
-			info.Code = m.statusCodes.errAppNotDeployed.Code
-			info.Info = fmt.Sprintf("Invalid operation. Function: %v already in undeployed state.", appName)
-			logging.Errorf("%s %s", logPrefix, info.Info)
-			m.sendErrorInfo(w, info)
-			return
-		}
-
-		audit.Log(auditevent.SetSettings, r, appName)
-
-		var settings = make(map[string]interface{})
-		settings["deployment_status"] = true
-		settings["processing_status"] = true
-
-		data, err := json.MarshalIndent(settings, "", " ")
-		if err != nil {
-			info.Code = m.statusCodes.errMarshalResp.Code
-			info.Info = fmt.Sprintf("failed to marshal function settings, err : %v", err)
-			logging.Errorf("%s %s", logPrefix, info.Info)
-			m.sendErrorInfo(w, info)
-			return
-		}
-
-		if info = m.setSettings(appName, data, false); info.Code != m.statusCodes.ok.Code {
-			m.sendErrorInfo(w, info)
-			return
-		}
+		m.functionResume(w, r, match[1])
 
 	} else if match := functionsDeploy.FindStringSubmatch(r.URL.Path); len(match) != 0 {
-		info := &runtimeInfo{}
-		if r.Method != "POST" {
-			info.Code = m.statusCodes.errInvalidConfig.Code
-			info.Info = fmt.Sprintf("Only POST call allowed to this endpoint")
+		m.functionDeploy(w, r, match[1])
+
+	} else if match := functionsUndeploy.FindStringSubmatch(r.URL.Path); len(match) != 0 {
+		m.functionUndeploy(w, r, match[1])
+
+	} else if match := functionsName.FindStringSubmatch(r.URL.Path); len(match) != 0 {
+		m.functionName(w, r, match[1])
+
+	} else if match := functions.FindStringSubmatch(r.URL.Path); len(match) != 0 {
+		m.functions(w, r)
+	}
+}
+
+// Helper functions for lifecycle operations
+// It will authenticate and sends back the result to http request
+func (m *ServiceMgr) functionNameRetry(w http.ResponseWriter, r *http.Request, appName string) {
+	logPrefix := "service::functionNameRetry"
+	info := &runtimeInfo{}
+
+	if r.Method != "POST" {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	data, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		info.Code = m.statusCodes.errReadReq.Code
+		info.Info = fmt.Sprintf("failed to read request body, err : %v", err)
+		logging.Errorf("%s %s", logPrefix, info.Info)
+		m.sendErrorInfo(w, info)
+		return
+	}
+
+	var retryBody retry
+	err = json.Unmarshal(data, &retryBody)
+	if err != nil {
+		info.Code = m.statusCodes.errMarshalResp.Code
+		info.Info = fmt.Sprintf("failed to unmarshal retry, err: %v", err)
+		logging.Errorf("%s %s", logPrefix, info.Info)
+		m.sendErrorInfo(w, info)
+		return
+	}
+
+	if info = m.notifyRetryToAllProducers(appName, &retryBody); info.Code != m.statusCodes.ok.Code {
+		m.sendErrorInfo(w, info)
+		return
+	}
+}
+
+func (m *ServiceMgr) functionNameSettings(w http.ResponseWriter, r *http.Request, appName string) {
+	logPrefix := "serviceMgr::functionNameSettings"
+	info := &runtimeInfo{}
+
+	switch r.Method {
+	case "GET":
+		audit.Log(auditevent.GetSettings, r, nil)
+		settings, info := m.getSettings(appName)
+		if info.Code != m.statusCodes.ok.Code {
+			w.WriteHeader(http.StatusNotFound)
 			m.sendErrorInfo(w, info)
 			return
 		}
 
-		appName := match[1]
-		appState := m.superSup.GetAppState(appName)
-
-		if appState == common.AppStateEnabled {
-			info.Code = m.statusCodes.errAppDeployed.Code
-			info.Info = fmt.Sprintf("Invalid operation. Function: %v already in deployed state.", appName)
+		response, err := json.MarshalIndent(settings, "", " ")
+		if err != nil {
+			info.Code = m.statusCodes.errMarshalResp.Code
+			info.Info = fmt.Sprintf("failed to marshal function, err : %v", err)
 			logging.Errorf("%s %s", logPrefix, info.Info)
 			m.sendErrorInfo(w, info)
 			return
 		}
 
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
+		fmt.Fprintf(w, "%s", string(response))
+
+	case "POST":
 		audit.Log(auditevent.SetSettings, r, appName)
-
-		if appState == common.AppStatePaused {
-			info.Code = m.statusCodes.errAppNotUndeployed.Code
-			info.Info = fmt.Sprintf("Function: %v is in paused state, Please use /resume API to deploy the function.", appName)
-			logging.Errorf("%s %s", logPrefix, info.Info)
-			m.sendErrorInfo(w, info)
-			return
-		}
 
 		data, err := ioutil.ReadAll(r.Body)
 		if err != nil {
@@ -3074,25 +2777,6 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 			logging.Errorf("%s %s", logPrefix, info.Info)
 			m.sendErrorInfo(w, info)
 			return
-		}
-
-		settings := make(map[string]interface{})
-		if len(data) != 0 {
-			err = json.Unmarshal(data, &settings)
-			if err != nil {
-				info.Code = m.statusCodes.errMarshalResp.Code
-				info.Info = fmt.Sprintf("%v failed to unmarshal setting supplied, err: %v", len(data), err)
-				logging.Errorf("%s %s", logPrefix, info.Info)
-				m.sendErrorInfo(w, info)
-				return
-			}
-			if settings == nil {
-				info.Code = m.statusCodes.errMarshalResp.Code
-				info.Info = fmt.Sprintf("%v failed to unmarshal setting supplied, data sent in the request body is invalid.", len(data))
-				logging.Errorf("%s %s", logPrefix, info.Info)
-				m.sendErrorInfo(w, info)
-				return
-			}
 		}
 
 		app, info := m.getTempStore(appName)
@@ -3109,13 +2793,11 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		settings["deployment_status"] = true
-		settings["processing_status"] = true
-
-		data, err = json.MarshalIndent(settings, "", " ")
+		var settings map[string]interface{}
+		err = json.Unmarshal(data, &settings)
 		if err != nil {
 			info.Code = m.statusCodes.errMarshalResp.Code
-			info.Info = fmt.Sprintf("failed to marshal function settings, err : %v", err)
+			info.Info = fmt.Sprintf("failed to unmarshal setting supplied, err: %v", err)
 			logging.Errorf("%s %s", logPrefix, info.Info)
 			m.sendErrorInfo(w, info)
 			return
@@ -3125,245 +2807,604 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 			m.sendErrorInfo(w, info)
 			return
 		}
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+}
 
-	} else if match := functionsUndeploy.FindStringSubmatch(r.URL.Path); len(match) != 0 {
-		info := &runtimeInfo{}
-		if r.Method != "POST" {
-			info.Code = m.statusCodes.errInvalidConfig.Code
-			info.Info = fmt.Sprintf("Only POST call allowed to this endpoint")
+func (m *ServiceMgr) functionName(w http.ResponseWriter, r *http.Request, appName string) {
+	logPrefix := "serviceMgr::functionName"
+	switch r.Method {
+	case "GET":
+		audit.Log(auditevent.FetchDrafts, r, appName)
+
+		app, info := m.getTempStore(appName)
+		m.maybeDeleteLifeCycleState(&app)
+		if info.Code != m.statusCodes.ok.Code {
 			m.sendErrorInfo(w, info)
 			return
 		}
+		redactPasswords(&app)
 
-		appName := match[1]
-		appState := m.superSup.GetAppState(appName)
-
-		if appState == common.AppStateUndeployed {
-			info.Code = m.statusCodes.errAppNotDeployed.Code
-			info.Info = fmt.Sprintf("Invalid operation. Function: %v already in undeployed state.", appName)
-			logging.Errorf("%s %s", logPrefix, info.Info)
-			m.sendErrorInfo(w, info)
-			return
-		}
-
-		audit.Log(auditevent.SetSettings, r, appName)
-
-		var settings = make(map[string]interface{})
-		settings["deployment_status"] = false
-		settings["processing_status"] = false
-
-		data, err := json.MarshalIndent(settings, "", " ")
+		response, err := json.MarshalIndent(app, "", " ")
 		if err != nil {
 			info.Code = m.statusCodes.errMarshalResp.Code
-			info.Info = fmt.Sprintf("failed to marshal function settings, err : %v", err)
+			info.Info = fmt.Sprintf("failed to marshal function, err : %v", err)
 			logging.Errorf("%s %s", logPrefix, info.Info)
 			m.sendErrorInfo(w, info)
 			return
 		}
 
-		if info = m.setSettings(appName, data, false); info.Code != m.statusCodes.ok.Code {
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
+		fmt.Fprintf(w, "%s", string(response))
+	case "POST":
+		audit.Log(auditevent.CreateFunction, r, appName)
+
+		app, info := m.unmarshalApp(r)
+		if info.Code != m.statusCodes.ok.Code {
 			m.sendErrorInfo(w, info)
 			return
 		}
 
-	} else if match := functionsName.FindStringSubmatch(r.URL.Path); len(match) != 0 {
-		appName := match[1]
-		switch r.Method {
-		case "GET":
-			audit.Log(auditevent.FetchDrafts, r, appName)
+		info = m.MaybeEnforceFunctionSchema(app)
+		if info.Code != m.statusCodes.ok.Code {
+			m.sendErrorInfo(w, info)
+			return
+		}
 
-			app, info := m.getTempStore(appName)
-			m.maybeDeleteLifeCycleState(&app)
-			if info.Code != m.statusCodes.ok.Code {
+		m.addDefaultVersionIfMissing(&app)
+		m.addDefaultDeploymentConfig(&app)
+		m.addDefaultTimerPartitionsIfMissing(&app)
+		m.addLifeCycleStateByFunctionState(&app)
+
+		var isMixedMode bool
+		if isMixedMode, info = m.isMixedModeCluster(); info.Code != m.statusCodes.ok.Code {
+			m.sendErrorInfo(w, info)
+			return
+		}
+
+		if isMixedMode {
+			info.Code = m.statusCodes.errMixedMode.Code
+			info.Info = "Life-cycle operations except delete and undeploy are not allowed in a mixed mode cluster"
+			m.sendErrorInfo(w, info)
+			return
+		}
+
+		if !m.checkAppExists(appName) {
+			if app.Settings["deployment_status"] != app.Settings["processing_status"] {
+				app.Settings["deployment_status"] = false
+				app.Settings["processing_status"] = false
+			}
+			// If the app doesn't exist or has 'from_prior', set the stream boundary to everything
+			if val, ok := app.Settings["dcp_stream_boundary"]; !ok || val == "from_prior" {
+				app.Settings["dcp_stream_boundary"] = "everything"
+			}
+		}
+
+		if info = m.validateApplication(&app); info.Code != m.statusCodes.ok.Code {
+			m.sendErrorInfo(w, info)
+			return
+		}
+
+		appInStore, rInfo := m.getTempStore(appName)
+		if rInfo.Code == m.statusCodes.ok.Code && m.superSup.GetAppState(appName) != common.AppStateUndeployed {
+			if !CheckIfAppKeyspacesAreSame(appInStore, app) {
+				info.Code = m.statusCodes.errInvalidConfig.Code
+				info.Info = "Source and Meta Keyspaces can only be changed when the function is in undeployed state."
 				m.sendErrorInfo(w, info)
 				return
 			}
-			redactPasswords(&app)
+		}
 
-			response, err := json.MarshalIndent(app, "", " ")
-			if err != nil {
-				info.Code = m.statusCodes.errMarshalResp.Code
-				info.Info = fmt.Sprintf("failed to marshal function, err : %v", err)
-				logging.Errorf("%s %s", logPrefix, info.Info)
-				m.sendErrorInfo(w, info)
+		// Reject the request if there is a mismatch of app name in URL and body
+		if app.Name != appName {
+			info.Code = m.statusCodes.errAppNameMismatch.Code
+			info.Info = fmt.Sprintf("function name in the URL (%s) and body (%s) must be same", appName, app.Name)
+			logging.Errorf("%s %s", logPrefix, info.Info)
+			m.sendErrorInfo(w, info)
+			return
+		}
+
+		err := m.assignFunctionID(appName, &app, info)
+		if err != nil {
+			m.sendErrorInfo(w, info)
+			return
+		}
+
+		err = m.assignFunctionInstanceID(appName, &app, info)
+		if err != nil {
+			m.sendErrorInfo(w, info)
+			return
+		}
+
+		if _, ok := app.Settings["language_compatibility"]; !ok {
+			app.Settings["language_compatibility"] = common.LanguageCompatibility[0]
+		}
+
+		runtimeInfo := m.savePrimaryStore(&app)
+		if runtimeInfo.Code == m.statusCodes.ok.Code {
+			audit.Log(auditevent.SaveDraft, r, appName)
+			// Save to temp store only if saving to primary store succeeds
+			if tempInfo := m.saveTempStore(app); tempInfo.Code != m.statusCodes.ok.Code {
+				m.sendErrorInfo(w, tempInfo)
 				return
 			}
+		}
+		m.sendRuntimeInfo(w, runtimeInfo)
 
-			w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
-			fmt.Fprintf(w, "%s", string(response))
+	case "DELETE":
+		audit.Log(auditevent.DeleteFunction, r, appName)
+		info := m.deletePrimaryStore(appName)
+		// Delete the application from temp store only if app does not exist in primary store
+		// or if the deletion succeeds on primary store
+		if info.Code == m.statusCodes.errAppNotDeployed.Code || info.Code == m.statusCodes.ok.Code {
+			audit.Log(auditevent.DeleteDrafts, r, appName)
+			info = m.deleteTempStore(appName)
+		}
+		m.sendRuntimeInfo(w, info)
 
-		case "POST":
-			audit.Log(auditevent.CreateFunction, r, appName)
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+}
 
-			app, info := m.unmarshalApp(r)
-			if info.Code != m.statusCodes.ok.Code {
-				m.sendErrorInfo(w, info)
-				return
-			}
+func (m *ServiceMgr) functions(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case "GET":
+		m.getTempStoreHandler(w, r)
 
+	case "POST":
+		appList, info := m.unmarshalAppList(w, r)
+		if info.Code != m.statusCodes.ok.Code {
+			m.sendErrorInfo(w, info)
+			return
+		}
+
+		for _, app := range *appList {
 			info = m.MaybeEnforceFunctionSchema(app)
 			if info.Code != m.statusCodes.ok.Code {
 				m.sendErrorInfo(w, info)
 				return
 			}
+		}
 
-			m.addDefaultVersionIfMissing(&app)
-			m.addDefaultDeploymentConfig(&app)
-			m.addDefaultTimerPartitionsIfMissing(&app)
-			m.addLifeCycleStateByFunctionState(&app)
+		var isMixedMode bool
+		if isMixedMode, info = m.isMixedModeCluster(); info.Code != m.statusCodes.ok.Code {
+			m.sendErrorInfo(w, info)
+			return
+		}
 
-			var isMixedMode bool
-			if isMixedMode, info = m.isMixedModeCluster(); info.Code != m.statusCodes.ok.Code {
-				m.sendErrorInfo(w, info)
-				return
-			}
+		if isMixedMode {
+			info.Code = m.statusCodes.errMixedMode.Code
+			info.Info = "Life-cycle operations except delete and undeploy are not allowed in a mixed mode cluster"
+			m.sendErrorInfo(w, info)
+			return
+		}
+		infoList := m.createApplications(r, appList, false)
+		m.sendRuntimeInfoList(w, infoList)
 
-			if isMixedMode {
-				info.Code = m.statusCodes.errMixedMode.Code
-				info.Info = "Life-cycle operations except delete and undeploy are not allowed in a mixed mode cluster"
-				m.sendErrorInfo(w, info)
-				return
-			}
+	case "DELETE":
+		infoList := []*runtimeInfo{}
+		appsNames := m.getTempStoreAppNames()
 
-			if !m.checkAppExists(appName) {
-				if app.Settings["deployment_status"] != app.Settings["processing_status"] {
-					app.Settings["deployment_status"] = false
-					app.Settings["processing_status"] = false
-				}
-				// If the app doesn't exist or has 'from_prior', set the stream boundary to everything
-				if val, ok := app.Settings["dcp_stream_boundary"]; !ok || val == "from_prior" {
-					app.Settings["dcp_stream_boundary"] = "everything"
-				}
-			}
-
-			if info = m.validateApplication(&app); info.Code != m.statusCodes.ok.Code {
-				m.sendErrorInfo(w, info)
-				return
-			}
-
-			appInStore, rInfo := m.getTempStore(appName)
-			if rInfo.Code == m.statusCodes.ok.Code && m.superSup.GetAppState(appName) != common.AppStateUndeployed {
-				if !CheckIfAppKeyspacesAreSame(appInStore, app) {
-					info.Code = m.statusCodes.errInvalidConfig.Code
-					info.Info = "Source and Meta Keyspaces can only be changed when the function is in undeployed state."
-					m.sendErrorInfo(w, info)
-					return
-				}
-			}
-
-			// Reject the request if there is a mismatch of app name in URL and body
-			if app.Name != appName {
-				info.Code = m.statusCodes.errAppNameMismatch.Code
-				info.Info = fmt.Sprintf("function name in the URL (%s) and body (%s) must be same", appName, app.Name)
-				logging.Errorf("%s %s", logPrefix, info.Info)
-				m.sendErrorInfo(w, info)
-				return
-			}
-
-			err := m.assignFunctionID(appName, &app, info)
-			if err != nil {
-				m.sendErrorInfo(w, info)
-				return
-			}
-
-			err = m.assignFunctionInstanceID(appName, &app, info)
-			if err != nil {
-				m.sendErrorInfo(w, info)
-				return
-			}
-
-			if _, ok := app.Settings["language_compatibility"]; !ok {
-				app.Settings["language_compatibility"] = common.LanguageCompatibility[0]
-			}
-
-			runtimeInfo := m.savePrimaryStore(&app)
-			if runtimeInfo.Code == m.statusCodes.ok.Code {
-				audit.Log(auditevent.SaveDraft, r, appName)
-				// Save to temp store only if saving to primary store succeeds
-				if tempInfo := m.saveTempStore(app); tempInfo.Code != m.statusCodes.ok.Code {
-					m.sendErrorInfo(w, tempInfo)
-					return
-				}
-			}
-
-			m.logSystemEvent(util.EVENTID_CREATE_FUNCTION, systemeventlog.SEInfo,
-				map[string]interface{}{"handleruuid": app.FunctionID,
-										"appName": appName})
-
-			m.sendRuntimeInfo(w, runtimeInfo)
-
-		case "DELETE":
-			audit.Log(auditevent.DeleteFunction, r, appName)
-			info := m.deletePrimaryStore(appName)
+		for _, app := range appsNames {
+			audit.Log(auditevent.DeleteFunction, r, app)
+			info := m.deletePrimaryStore(app)
 			// Delete the application from temp store only if app does not exist in primary store
 			// or if the deletion succeeds on primary store
 			if info.Code == m.statusCodes.errAppNotDeployed.Code || info.Code == m.statusCodes.ok.Code {
-				audit.Log(auditevent.DeleteDrafts, r, appName)
-				info = m.deleteTempStore(appName)
+				audit.Log(auditevent.DeleteDrafts, r, app)
+				info = m.deleteTempStore(app)
 			}
-			m.sendRuntimeInfo(w, info)
+			infoList = append(infoList, info)
+		}
+		m.sendRuntimeInfoList(w, infoList)
 
-		default:
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+}
+
+func (m *ServiceMgr) functionUndeploy(w http.ResponseWriter, r *http.Request, appName string) {
+	logPrefix := "serviceMgr::functionUndeploy"
+
+	info := &runtimeInfo{}
+	if r.Method != "POST" {
+		info.Code = m.statusCodes.errInvalidConfig.Code
+		info.Info = fmt.Sprintf("Only POST call allowed to this endpoint")
+		m.sendErrorInfo(w, info)
+		return
+	}
+
+	appState := m.superSup.GetAppState(appName)
+
+	if appState == common.AppStateUndeployed {
+		info.Code = m.statusCodes.errAppNotDeployed.Code
+		info.Info = fmt.Sprintf("Invalid operation. Function: %v already in undeployed state.", appName)
+		logging.Errorf("%s %s", logPrefix, info.Info)
+		m.sendErrorInfo(w, info)
+		return
+	}
+
+	audit.Log(auditevent.SetSettings, r, appName)
+
+	var settings = make(map[string]interface{})
+	settings["deployment_status"] = false
+	settings["processing_status"] = false
+
+	data, err := json.MarshalIndent(settings, "", " ")
+	if err != nil {
+		info.Code = m.statusCodes.errMarshalResp.Code
+		info.Info = fmt.Sprintf("failed to marshal function settings, err : %v", err)
+		logging.Errorf("%s %s", logPrefix, info.Info)
+		m.sendErrorInfo(w, info)
+		return
+	}
+
+	if info = m.setSettings(appName, data, false); info.Code != m.statusCodes.ok.Code {
+		m.sendErrorInfo(w, info)
+		return
+	}
+}
+
+func (m *ServiceMgr) functionDeploy(w http.ResponseWriter, r *http.Request, appName string) {
+	logPrefix := "ServiceMgr::functionDeploy"
+
+	info := &runtimeInfo{}
+	if r.Method != "POST" {
+		info.Code = m.statusCodes.errInvalidConfig.Code
+		info.Info = fmt.Sprintf("Only POST call allowed to this endpoint")
+		m.sendErrorInfo(w, info)
+		return
+	}
+
+	appState := m.superSup.GetAppState(appName)
+
+	if appState == common.AppStateEnabled {
+		info.Code = m.statusCodes.errAppDeployed.Code
+		info.Info = fmt.Sprintf("Invalid operation. Function: %v already in deployed state.", appName)
+		logging.Errorf("%s %s", logPrefix, info.Info)
+		m.sendErrorInfo(w, info)
+		return
+	}
+
+	audit.Log(auditevent.SetSettings, r, appName)
+
+	if appState == common.AppStatePaused {
+		info.Code = m.statusCodes.errAppNotUndeployed.Code
+		info.Info = fmt.Sprintf("Function: %v is in paused state, Please use /resume API to deploy the function.", appName)
+		logging.Errorf("%s %s", logPrefix, info.Info)
+		m.sendErrorInfo(w, info)
+		return
+	}
+
+	data, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		info.Code = m.statusCodes.errReadReq.Code
+		info.Info = fmt.Sprintf("failed to read request body, err: %v", err)
+		logging.Errorf("%s %s", logPrefix, info.Info)
+		m.sendErrorInfo(w, info)
+		return
+	}
+
+	settings := make(map[string]interface{})
+	if len(data) != 0 {
+		err = json.Unmarshal(data, &settings)
+		if err != nil {
+			info.Code = m.statusCodes.errMarshalResp.Code
+			info.Info = fmt.Sprintf("%v failed to unmarshal setting supplied, err: %v", len(data), err)
+			logging.Errorf("%s %s", logPrefix, info.Info)
+			m.sendErrorInfo(w, info)
+			return
+		}
+		if settings == nil {
+			info.Code = m.statusCodes.errMarshalResp.Code
+			info.Info = fmt.Sprintf("%v failed to unmarshal setting supplied, data sent in the request body is invalid.", len(data))
+			logging.Errorf("%s %s", logPrefix, info.Info)
+			m.sendErrorInfo(w, info)
+			return
+		}
+	}
+
+	app, info := m.getTempStore(appName)
+	if info.Code != m.statusCodes.ok.Code {
+		m.sendErrorInfo(w, info)
+		return
+	}
+
+	if app.EnforceSchema == true {
+		m.MaybeEnforceSettingsSchema(data)
+		if info.Code != m.statusCodes.ok.Code {
+			m.sendErrorInfo(w, info)
+			return
+		}
+	}
+
+	settings["deployment_status"] = true
+	settings["processing_status"] = true
+
+	data, err = json.MarshalIndent(settings, "", " ")
+	if err != nil {
+		info.Code = m.statusCodes.errMarshalResp.Code
+		info.Info = fmt.Sprintf("failed to marshal function settings, err : %v", err)
+		logging.Errorf("%s %s", logPrefix, info.Info)
+		m.sendErrorInfo(w, info)
+		return
+	}
+
+	if info = m.setSettings(appName, data, false); info.Code != m.statusCodes.ok.Code {
+		m.sendErrorInfo(w, info)
+		return
+	}
+}
+
+func (m *ServiceMgr) functionPause(w http.ResponseWriter, r *http.Request, appName string) {
+	logPrefix := "serviceMgr::functionPause"
+
+	info := &runtimeInfo{}
+	if r.Method != "POST" {
+		info.Code = m.statusCodes.errInvalidConfig.Code
+		info.Info = fmt.Sprintf("Only POST call allowed to this endpoint")
+		m.sendErrorInfo(w, info)
+		return
+	}
+
+	appState := m.superSup.GetAppState(appName)
+
+	if appState == common.AppStatePaused {
+		info.Code = m.statusCodes.errAppNotDeployed.Code
+		info.Info = fmt.Sprintf("Invalid operation. Function: %v already in paused state.", appName)
+		logging.Errorf("%s %s", logPrefix, info.Info)
+		m.sendErrorInfo(w, info)
+		return
+	}
+
+	audit.Log(auditevent.SetSettings, r, appName)
+
+	var settings = make(map[string]interface{})
+	settings["deployment_status"] = true
+	settings["processing_status"] = false
+
+	data, err := json.MarshalIndent(settings, "", " ")
+	if err != nil {
+		info.Code = m.statusCodes.errMarshalResp.Code
+		info.Info = fmt.Sprintf("failed to marshal function settings, err : %v", err)
+		logging.Errorf("%s %s", logPrefix, info.Info)
+		m.sendErrorInfo(w, info)
+		return
+	}
+
+	if info = m.setSettings(appName, data, false); info.Code != m.statusCodes.ok.Code {
+		m.sendErrorInfo(w, info)
+		return
+	}
+}
+
+func (m *ServiceMgr) functionResume(w http.ResponseWriter, r *http.Request, appName string) {
+	logPrefix := "serviceMgr::functionResume"
+
+	info := &runtimeInfo{}
+	if r.Method != "POST" {
+		info.Code = m.statusCodes.errInvalidConfig.Code
+		info.Info = fmt.Sprintf("Only POST call allowed to this endpoint")
+		m.sendErrorInfo(w, info)
+		return
+	}
+
+	appState := m.superSup.GetAppState(appName)
+
+	if appState == common.AppStateEnabled {
+		info.Code = m.statusCodes.errAppDeployed.Code
+		info.Info = fmt.Sprintf("Invalid operation. Function: %v already in deployed state.", appName)
+		logging.Errorf("%s %s", logPrefix, info.Info)
+		m.sendErrorInfo(w, info)
+		return
+	}
+
+	if appState == common.AppStateUndeployed {
+		info.Code = m.statusCodes.errAppNotDeployed.Code
+		info.Info = fmt.Sprintf("Invalid operation. Function: %v already in undeployed state.", appName)
+		logging.Errorf("%s %s", logPrefix, info.Info)
+		m.sendErrorInfo(w, info)
+		return
+	}
+
+	audit.Log(auditevent.SetSettings, r, appName)
+
+	var settings = make(map[string]interface{})
+	settings["deployment_status"] = true
+	settings["processing_status"] = true
+
+	data, err := json.MarshalIndent(settings, "", " ")
+	if err != nil {
+		info.Code = m.statusCodes.errMarshalResp.Code
+		info.Info = fmt.Sprintf("failed to marshal function settings, err : %v", err)
+		logging.Errorf("%s %s", logPrefix, info.Info)
+		m.sendErrorInfo(w, info)
+		return
+	}
+
+	if info = m.setSettings(appName, data, false); info.Code != m.statusCodes.ok.Code {
+		m.sendErrorInfo(w, info)
+		return
+	}
+}
+
+func (m *ServiceMgr) functionAppcode(w http.ResponseWriter, r *http.Request, appName string, wantChecksum string) {
+	logPrefix := "serviceMgr::functionAppcode"
+
+	switch r.Method {
+	case "GET":
+		app, info := m.getTempStore(appName)
+		if info.Code != m.statusCodes.ok.Code {
+			m.sendErrorInfo(w, info)
+			return
+		}
+		response := []byte(app.AppHandlers)
+		if wantChecksum == "/checksum" {
+			response = []byte(fmt.Sprintf("%x", sha256.Sum256(response)))
+		}
+
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
+		fmt.Fprintf(w, "%s", string(response))
+
+	case "POST":
+		info := &runtimeInfo{}
+		appState := m.superSup.GetAppState(appName)
+		if appState == common.AppStateEnabled {
+			info.Code = m.statusCodes.errAppDeployed.Code
+			info.Info = fmt.Sprintf("Function: %s is in deployed state, appcode can only be updated when a function is either undeployed or paused", appName)
+			logging.Errorf("%s %s", logPrefix, info.Info)
+			m.sendErrorInfo(w, info)
+			return
+		}
+
+		data, err := ioutil.ReadAll(r.Body)
+		if err != nil {
+			info.Code = m.statusCodes.errReadReq.Code
+			info.Info = fmt.Sprintf("Failed to read request body, err: %v", err)
+			logging.Errorf("%s %s", logPrefix, info.Info)
+			m.sendErrorInfo(w, info)
+			return
+		}
+
+		if wantChecksum == "/checksum" {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
 
-	} else if match := functions.FindStringSubmatch(r.URL.Path); len(match) != 0 {
-		switch r.Method {
-		case "GET":
-			m.getTempStoreHandler(w, r)
-
-		case "POST":
-			appList, info := m.unmarshalAppList(w, r)
-			if info.Code != m.statusCodes.ok.Code {
-				m.sendErrorInfo(w, info)
-				return
-			}
-
-			for _, app := range *appList {
-				info = m.MaybeEnforceFunctionSchema(app)
-				if info.Code != m.statusCodes.ok.Code {
-					m.sendErrorInfo(w, info)
-					return
-				}
-			}
-
-			var isMixedMode bool
-			if isMixedMode, info = m.isMixedModeCluster(); info.Code != m.statusCodes.ok.Code {
-				m.sendErrorInfo(w, info)
-				return
-			}
-
-			if isMixedMode {
-				info.Code = m.statusCodes.errMixedMode.Code
-				info.Info = "Life-cycle operations except delete and undeploy are not allowed in a mixed mode cluster"
-				m.sendErrorInfo(w, info)
-				return
-			}
-			infoList := m.createApplications(r, appList, false)
-			m.sendRuntimeInfoList(w, infoList)
-
-		case "DELETE":
-			infoList := []*runtimeInfo{}
-			appsNames := m.getTempStoreAppNames()
-
-			for _, app := range appsNames {
-				audit.Log(auditevent.DeleteFunction, r, app)
-				info := m.deletePrimaryStore(app)
-				// Delete the application from temp store only if app does not exist in primary store
-				// or if the deletion succeeds on primary store
-				if info.Code == m.statusCodes.errAppNotDeployed.Code || info.Code == m.statusCodes.ok.Code {
-					audit.Log(auditevent.DeleteDrafts, r, app)
-					info = m.deleteTempStore(app)
-				}
-				infoList = append(infoList, info)
-			}
-			m.sendRuntimeInfoList(w, infoList)
-
-		default:
-			w.WriteHeader(http.StatusMethodNotAllowed)
+		app, info := m.getTempStore(appName)
+		if info.Code != m.statusCodes.ok.Code {
+			m.sendErrorInfo(w, info)
 			return
 		}
+
+		app.AppHandlers = string(data)
+
+		runtimeInfo := m.savePrimaryStore(&app)
+		if runtimeInfo.Code == m.statusCodes.ok.Code {
+			audit.Log(auditevent.SaveDraft, r, appName)
+			if tempInfo := m.saveTempStore(app); tempInfo.Code != m.statusCodes.ok.Code {
+				m.sendErrorInfo(w, tempInfo)
+				return
+			}
+		} else {
+			m.sendErrorInfo(w, runtimeInfo)
+			return
+		}
+		runtimeInfo.Info = fmt.Sprintf("Function: %s appcode stored in the metakv.", appName)
+		deprecatedFnsList := parser.ListDeprecatedFunctions(app.AppHandlers)
+		overloadedFnsList := parser.ListOverloadedFunctions(app.AppHandlers)
+		if len(deprecatedFnsList) > 0 {
+			jsonList, _ := json.Marshal(deprecatedFnsList)
+			runtimeInfo.Info = fmt.Sprintf("%s; It uses the following APIs that are Deprecated: %s", runtimeInfo.Info, jsonList)
+		}
+		if len(overloadedFnsList) > 0 {
+			jsonList, _ := json.Marshal(overloadedFnsList)
+			runtimeInfo.Info = fmt.Sprintf("%s; The following built-in APIs are Overloaded: %s", runtimeInfo.Info, jsonList)
+		}
+		m.sendRuntimeInfo(w, runtimeInfo)
+
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+}
+
+func (m *ServiceMgr) functionConfig(w http.ResponseWriter, r *http.Request, appName string) {
+	logPrefix := "serviceMgr::functionConfig"
+
+	switch r.Method {
+	case "GET":
+		app, info := m.getTempStore(appName)
+		if info.Code != m.statusCodes.ok.Code {
+			m.sendErrorInfo(w, info)
+			return
+		}
+		redactPasswords(&app)
+		response, err := json.MarshalIndent(app.DeploymentConfig, "", " ")
+		if err != nil {
+			info.Code = m.statusCodes.errMarshalResp.Code
+			info.Info = fmt.Sprintf("Failed to marshal config, err : %v", err)
+			logging.Errorf("%s %s", logPrefix, info.Info)
+			m.sendErrorInfo(w, info)
+			return
+		}
+
+		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
+		fmt.Fprintf(w, "%s", string(response))
+
+	case "POST":
+		info := &runtimeInfo{}
+		appState := m.superSup.GetAppState(appName)
+		if appState == common.AppStateEnabled {
+			info.Code = m.statusCodes.errAppDeployed.Code
+			info.Info = fmt.Sprintf("Function: %s is in deployed state, config can only be updated when a function is either undeployed or paused", appName)
+			logging.Errorf("%s %s", logPrefix, info.Info)
+			m.sendErrorInfo(w, info)
+			return
+		}
+
+		data, err := ioutil.ReadAll(r.Body)
+		if err != nil {
+			info.Code = m.statusCodes.errReadReq.Code
+			info.Info = fmt.Sprintf("Failed to read request body, err: %v", err)
+			logging.Errorf("%s %s", logPrefix, info.Info)
+			m.sendErrorInfo(w, info)
+			return
+		}
+
+		app, info := m.getTempStore(appName)
+		appCopy := app
+		if info.Code != m.statusCodes.ok.Code {
+			m.sendErrorInfo(w, info)
+			return
+		}
+
+		config := depCfg{}
+		unmarshalErr := json.Unmarshal(data, &config)
+		if unmarshalErr != nil {
+			info.Code = m.statusCodes.errReadReq.Code
+			info.Info = fmt.Sprintf("Failed to Unmarshal request body, err: %v", err)
+			logging.Errorf("%s %s", logPrefix, info.Info)
+			m.sendErrorInfo(w, info)
+			return
+		}
+		app.DeploymentConfig = config
+		copyPasswords(&app, &appCopy)
+
+		// Validate Recursion Checks and deployment configurations
+		if info = m.validateApplication(&app); info.Code != m.statusCodes.ok.Code {
+			m.sendErrorInfo(w, info)
+			return
+		}
+		// Don't allow the user to change the meta and source keyspaces
+		if appState == common.AppStatePaused {
+			if !CheckIfAppKeyspacesAreSame(appCopy, app) {
+				info.Code = m.statusCodes.errInvalidConfig.Code
+				info.Info = "Source and Meta Keyspaces can only be changed when the function is in undeployed state."
+				m.sendErrorInfo(w, info)
+				return
+			}
+		}
+
+		runtimeInfo := m.savePrimaryStore(&app)
+		if runtimeInfo.Code == m.statusCodes.ok.Code {
+			audit.Log(auditevent.SaveDraft, r, appName)
+			if tempInfo := m.saveTempStore(app); tempInfo.Code != m.statusCodes.ok.Code {
+				m.sendErrorInfo(w, tempInfo)
+				return
+			}
+		}
+		runtimeInfo.Info = fmt.Sprintf("Function: %s config stored in the metakv.", appName)
+		m.sendRuntimeInfo(w, runtimeInfo)
+
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
 	}
 }
 
