@@ -149,6 +149,7 @@ type Credential struct {
 type SecuritySetting struct {
 	EncryptData        bool
 	DisableNonSSLPorts bool
+	CAFile             string
 	CertFile           string
 	KeyFile            string
 	RootCAs            *x509.CertPool

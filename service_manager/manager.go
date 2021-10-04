@@ -38,7 +38,7 @@ func NewState() state {
 
 //NewServiceMgr creates handle for ServiceMgr, which implements cbauth service.Manager
 func NewServiceMgr(config util.Config, rebalanceRunning bool,
-		superSup common.EventingSuperSup, sel systemeventlog.SystemEventLogger) *ServiceMgr {
+	superSup common.EventingSuperSup, sel systemeventlog.SystemEventLogger) *ServiceMgr {
 
 	logging.Infof("ServiceMgr::newServiceMgr config: %rm rebalanceRunning: %v", fmt.Sprintf("%#v", config), rebalanceRunning)
 
@@ -89,17 +89,19 @@ func (m *ServiceMgr) initService() {
 	cfg := m.config.Load()
 	m.adminHTTPPort = cfg["eventing_admin_http_port"].(string)
 	m.adminSSLPort = cfg["eventing_admin_ssl_port"].(string)
+	m.caFile = cfg["eventing_admin_ssl_ca"].(string)
 	m.certFile = cfg["eventing_admin_ssl_cert"].(string)
 	m.keyFile = cfg["eventing_admin_ssl_key"].(string)
 	m.restPort = cfg["rest_port"].(string)
 	m.uuid = cfg["uuid"].(string)
 	m.initErrCodes()
 
+	couchbase.SetCAFile(m.caFile)
 	couchbase.SetCertFile(m.certFile)
 	couchbase.SetKeyFile(m.keyFile)
 
 	logging.Infof("%s adminHTTPPort: %s adminSSLPort: %s", logPrefix, m.adminHTTPPort, m.adminSSLPort)
-	logging.Infof("%s certFile: %s keyFile: %s", logPrefix, m.certFile, m.keyFile)
+	logging.Infof("%s caFile: %s certFile: %s keyFile: %s", logPrefix, m.caFile, m.certFile, m.keyFile)
 
 	util.Retry(util.NewFixedBackoff(time.Second), nil, getHTTPServiceAuth, m)
 
@@ -325,6 +327,7 @@ func (m *ServiceMgr) initService() {
 						util.SetUseTLS(true)
 
 						// notify dcp package to use TLS for memcached communication
+						couchbase.SetCAFile(m.caFile)
 						couchbase.SetCertFile(m.certFile)
 						couchbase.SetKeyFile(m.keyFile)
 						couchbase.SetUseTLS(true)
@@ -362,7 +365,11 @@ func (m *ServiceMgr) initService() {
 			}
 
 			rootCertPool := x509.NewCertPool()
-			certInBytes, err := ioutil.ReadFile(m.certFile)
+			pemFile := m.certFile
+			if len(m.caFile) > 0 {
+				pemFile = m.caFile
+			}
+			certInBytes, err := ioutil.ReadFile(pemFile)
 
 			if err != nil {
 				logging.Errorf("Error while reading cert file error : %s. Passing RootCAs as nil", err)
@@ -378,6 +385,7 @@ func (m *ServiceMgr) initService() {
 			setting := &common.SecuritySetting{
 				EncryptData:        m.clusterEncryptionConfig.EncryptData,
 				DisableNonSSLPorts: m.clusterEncryptionConfig.DisableNonSSLPorts,
+				CAFile:             m.caFile,
 				CertFile:           m.certFile,
 				KeyFile:            m.keyFile,
 				RootCAs:            rootCertPool}
