@@ -73,7 +73,7 @@ goenv:=\
 	PATH=$(goroot)/bin:$(PATH)
 
 goflags:=\
-	-v -ldflags '-s -extldflags "-Wl,-rpath,@executable_path/../lib"' -tags 'enterprise'
+	-v -ldflags '-s -extldflags "-Wl,-rpath,@executable_path/../lib"' -tags 'enterprise neo'
 
 $(workdir)/cc/eventing/%.o: %.cc
 	mkdir -p $(dir $(workdir)/cc/eventing/$<)

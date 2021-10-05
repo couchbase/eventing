@@ -1,27 +1,28 @@
-// +build mh
+// +build neo
 
 package servicemanager
 
-// remove this file when we no longer need to build against MadHatter and Cheshire-Cat
+// remove this file when we no longer need to build against Neo
 
 import (
 	"crypto/tls"
 	"crypto/x509"
 	"io/ioutil"
 
+	cbtls "github.com/couchbase/goutils/tls"
 	"github.com/couchbase/cbauth"
 	"github.com/couchbase/eventing/logging"
 )
 
 func (m *ServiceMgr) getTLSConfig(logPrefix string) (*tls.Config, error) {
-	cert, err := tls.LoadX509KeyPair(m.certFile, m.keyFile)
-	if err != nil {
-		logging.Errorf("%s Error in loading SSL certificate: %v", logPrefix, err)
-		return nil, err
-	}
 	cbauthTLScfg, err := cbauth.GetTLSConfig()
 	if err != nil {
 		logging.Errorf("%v Error in getting cbauth tls config: %v", logPrefix, err)
+		return nil, err
+	}
+	cert, err := cbtls.LoadX509KeyPair(m.certFile, m.keyFile, cbauthTLScfg.PrivateKeyPassphrase)
+	if err != nil {
+		logging.Errorf("%s Error in loading SSL certificate: %v", logPrefix, err)
 		return nil, err
 	}
 	config := &tls.Config{
@@ -32,11 +33,7 @@ func (m *ServiceMgr) getTLSConfig(logPrefix string) (*tls.Config, error) {
 		ClientAuth:               cbauthTLScfg.ClientAuthType,
 	}
 	if cbauthTLScfg.ClientAuthType != tls.NoClientCert {
-		pemFile := m.certFile
-		if len(m.caFile) > 0 {
-			pemFile = m.caFile
-		}
-		caCert, err := ioutil.ReadFile(pemFile)
+		caCert, err := ioutil.ReadFile(m.certFile)
 		if err != nil {
 			logging.Errorf("%s Error in reading cacert file, %v", logPrefix, err)
 			return nil, err
