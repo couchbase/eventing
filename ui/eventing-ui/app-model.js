@@ -1,4 +1,4 @@
-import _ from "/ui/web_modules/lodash.js";
+import _ from "lodash";
 import getVersion from "./gen/version.js";
 export {
   Application,

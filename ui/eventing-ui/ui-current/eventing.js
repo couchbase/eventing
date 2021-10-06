@@ -1,16 +1,16 @@
 import {
   format as d3Format
-} from "/ui/web_modules/d3-format.js";
-import angular from "/ui/web_modules/angular.js";
-import _ from "/ui/web_modules/lodash.js";
-import saveAs from "/ui/web_modules/file-saver.js"
-import ace from '/ui/libs/ace/ace-wrapper.js';
+} from "d3-format";
+import angular from "angular";
+import _ from "lodash";
+import saveAs from "file-saver"
+import ace from 'ace/ace-wrapper';
 
-import uiRouter from "/ui/web_modules/@uirouter/angularjs.js";
-import uiAce from "/ui/libs/ui-ace.js";
-import mnPoolDefault from "/ui/app/components/mn_pool_default.js";
-import mnPermissions from "/ui/app/components/mn_permissions.js";
-import mnSelect from "/ui/app/components/directives/mn_select/mn_select.js";
+import uiRouter from "@uirouter/angularjs";
+import uiAce from "ui-ace";
+import mnPoolDefault from "components/mn_pool_default";
+import mnPermissions from "components/mn_permissions";
+import mnSelect from "components/directives/mn_select/mn_select";
 
 import Adapter from "./adapter.js";
 
