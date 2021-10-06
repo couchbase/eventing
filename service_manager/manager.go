@@ -462,7 +462,7 @@ func (m *ServiceMgr) initService() {
 	go func(m *ServiceMgr) {
 		cancelCh := make(chan struct{})
 		for {
-			err := metakv.RunObserveChildrenV2(metakvTempAppsPath, m.tempStoreAppsPathCallback, cancelCh)
+			err := metakv.RunObserveChildrenV2(metakvTempChecksumPath, m.tempStoreAppsPathCallback, cancelCh)
 			if err != nil {
 				logging.Errorf("%s metakv observe error for temp store, err: %v. Retrying...", logPrefix, err)
 				time.Sleep(2 * time.Second)
@@ -533,16 +533,27 @@ func (m *ServiceMgr) tempStoreAppsPathCallback(kve metakv.KVEntry) error {
 	logging.Infof("%s path: %s encoded value size: %d", logPrefix, kve.Path, len(kve.Value))
 
 	splitRes := strings.Split(kve.Path, "/")
-	if len(splitRes) != 5 {
+	if len(splitRes) != 4 {
 		return nil
 	}
 
-	fnName := splitRes[len(splitRes)-2]
+	fnName := splitRes[len(splitRes)-1]
 	m.fnMu.Lock()
 	defer m.fnMu.Unlock()
 
 	if len(kve.Value) > 0 {
-		app := m.parseFunctionPayload(kve.Value, fnName)
+		data, err := util.ReadAppContent(metakvTempAppsPath, metakvTempChecksumPath, fnName)
+		// TODO: need to handle it correctly
+		if err != nil {
+			logging.Errorf("%s Reading function: %s from metakv failed, err: %v", logPrefix, fnName, err)
+			return nil
+		}
+		var app application
+		err = json.Unmarshal(data, &app)
+		if err != nil {
+			logging.Errorf("%s Error unmarshalling function: %s err: %v", logPrefix, fnName, err)
+			return nil
+		}
 		m.fnsInTempStore[fnName] = app
 		logging.Infof("%s Added function: %s to fnsInTempStore", logPrefix, fnName)
 	} else {

@@ -196,6 +196,7 @@ func (m *ServiceMgr) sendErrorInfo(w http.ResponseWriter, runtimeInfo *runtimeIn
 		w.WriteHeader(m.getDisposition(runtimeInfo.Code))
 	}
 
+	w.Header().Set("Content-Type", "application/json")
 	w.Header().Add(headerKey, strconv.Itoa(errInfo.Code))
 	fmt.Fprintf(w, string(response))
 }

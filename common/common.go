@@ -103,6 +103,13 @@ type FunctionScope struct {
 	ScopeName  string `json:"scope,omitempty"`
 }
 
+func (fs *FunctionScope) ToKeyspace() Keyspace {
+	return Keyspace{
+		BucketName: fs.BucketName,
+		ScopeName:  fs.ScopeName,
+	}
+}
+
 type Application struct {
 	AppHandlers        string                 `json:"appcode"`
 	DeploymentConfig   DepCfg                 `json:"depcfg"`

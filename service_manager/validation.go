@@ -218,6 +218,24 @@ func sendForbiddenMultiple(w http.ResponseWriter, permissions []string) error {
 	return nil
 }
 
+func unauthorizedJSON() ([]byte, error) {
+	jsonStruct := map[string]interface{}{
+		"message": "Unauthorised user",
+	}
+	return json.Marshal(jsonStruct)
+}
+
+func sendUnauthorized(w http.ResponseWriter) error {
+	b, err := unauthorizedJSON()
+	if err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusUnauthorized)
+	w.Write(b)
+	return nil
+}
+
 func (m *ServiceMgr) validateAliasName(aliasName string) (info *runtimeInfo) {
 	info = &runtimeInfo{}
 	info.Code = m.statusCodes.errInvalidConfig.Code

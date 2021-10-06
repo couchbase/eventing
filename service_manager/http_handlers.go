@@ -33,6 +33,7 @@ import (
 	"github.com/couchbase/eventing/gen/flatbuf/cfg"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/parser"
+	"github.com/couchbase/eventing/rbac"
 	"github.com/couchbase/eventing/util"
 	"github.com/couchbase/goutils/systemeventlog"
 )
@@ -2872,14 +2873,12 @@ func (m *ServiceMgr) functionName(w http.ResponseWriter, r *http.Request, appNam
 		}
 
 		if !m.checkAppExists(appName) {
-			if app.Settings["deployment_status"] != app.Settings["processing_status"] {
-				app.Settings["deployment_status"] = false
-				app.Settings["processing_status"] = false
+			err := m.verifyAndCreateApp(w, r, &app)
+			if err != nil {
+				return
 			}
-			// If the app doesn't exist or has 'from_prior', set the stream boundary to everything
-			if val, ok := app.Settings["dcp_stream_boundary"]; !ok || val == "from_prior" {
-				app.Settings["dcp_stream_boundary"] = "everything"
-			}
+		} else {
+			//TODO: check permission of the caller for eventing manage function
 		}
 
 		audit.Log(auditevent.CreateFunction, r, appName)
@@ -2891,6 +2890,7 @@ func (m *ServiceMgr) functionName(w http.ResponseWriter, r *http.Request, appNam
 
 		appInStore, rInfo := m.getTempStore(appName)
 		if rInfo.Code == m.statusCodes.ok.Code && m.superSup.GetAppState(appName) != common.AppStateUndeployed {
+			// CHECK: Can other User who has the manage permission can change the keyspaces
 			if !CheckIfAppKeyspacesAreSame(appInStore, app) {
 				info.Code = m.statusCodes.errInvalidConfig.Code
 				info.Info = "Source and Meta Keyspaces can only be changed when the function is in undeployed state."
@@ -2952,6 +2952,75 @@ func (m *ServiceMgr) functionName(w http.ResponseWriter, r *http.Request, appNam
 	}
 }
 
+// Checks for permission and add the intial fields
+func (m *ServiceMgr) verifyAndCreateApp(w http.ResponseWriter, r *http.Request, app *application) error {
+	fS := app.FunctionScope
+	_, _, info := m.getBSId(&fS)
+	if info != nil && info.Code != m.statusCodes.ok.Code {
+		m.sendErrorInfo(w, info)
+		return fmt.Errorf("%s", info.Info)
+	}
+
+	creds, err := rbac.AuthWebCreds(r)
+	if err == cbauth.ErrNoAuth {
+		sendUnauthorized(w)
+		audit.Log(auditevent.AuthenticationFailure, r, nil)
+		return err
+	}
+
+	if err != nil {
+		info.Code = m.statusCodes.errInternalServer.Code
+		m.sendErrorInfo(w, info)
+		return err
+	}
+
+	if perms, err := checkPermissions(app, creds); err != nil {
+		sendForbiddenMultiple(w, perms)
+		audit.Log(auditevent.AuthorizationFailure, r, nil)
+		return err
+	}
+
+	name, domain := creds.User()
+	app.Owner = &common.Owner{
+		User:   name,
+		Domain: domain,
+	}
+
+	if app.Settings["deployment_status"] != app.Settings["processing_status"] {
+		app.Settings["deployment_status"] = false
+		app.Settings["processing_status"] = false
+	}
+
+	// If the app doesn't exist or has 'from_prior', set the stream boundary to everything
+	if val, ok := app.Settings["dcp_stream_boundary"]; !ok || val == "from_prior" {
+		app.Settings["dcp_stream_boundary"] = "everything"
+	}
+
+	return nil
+}
+
+// TODO: Need more functions to easily use the read write requests
+// Refactor as needed
+func checkPermissions(app *application, creds cbauth.Creds) ([]string, error) {
+	fg := app.FunctionScope
+	ks := fg.ToKeyspace()
+
+	mPrivilege := rbac.HandlerManagePermissions(ks)
+	src := common.Keyspace{
+		BucketName:     app.DeploymentConfig.SourceBucket,
+		ScopeName:      app.DeploymentConfig.SourceScope,
+		CollectionName: app.DeploymentConfig.SourceCollection,
+	}
+	meta := common.Keyspace{
+		BucketName:     app.DeploymentConfig.MetadataBucket,
+		ScopeName:      app.DeploymentConfig.MetadataScope,
+		CollectionName: app.DeploymentConfig.MetadataCollection,
+	}
+	privilege := append(mPrivilege, rbac.HandlerBucketPermissions(src, meta)...)
+	notAllowed, err := rbac.IsAllowedCreds(creds, privilege, true)
+	return notAllowed, err
+}
+
 func (m *ServiceMgr) functions(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case "GET":
@@ -2984,7 +3053,7 @@ func (m *ServiceMgr) functions(w http.ResponseWriter, r *http.Request) {
 			m.sendErrorInfo(w, info)
 			return
 		}
-		infoList := m.createApplications(r, appList, false)
+		infoList, _ := m.createApplications(w, r, appList, false)
 		m.sendRuntimeInfoList(w, infoList)
 
 	case "DELETE":
@@ -3805,6 +3874,7 @@ func (m *ServiceMgr) populateStats(fullStats bool) []stats {
 }
 
 // Clears up all Eventing related artifacts from metakv, typically will be used for rebalance tests
+// Only admin can do this
 func (m *ServiceMgr) cleanupEventing(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "ServiceMgr::cleanupEventing"
 	if !m.validateAuth(w, r, EventingPermissionManage) {
@@ -3871,10 +3941,6 @@ func (m *ServiceMgr) importHandler(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "ServiceMgr::importHandler"
 
 	w.Header().Set("Content-Type", "application/json")
-	if !m.validateAuth(w, r, EventingPermissionManage) {
-		return
-	}
-
 	if r.Method != "POST" {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
@@ -3910,12 +3976,7 @@ func (m *ServiceMgr) importHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	infoList := m.createApplications(r, appList, true)
-
-	importedFns := make([]string, 0)
-	for _, app := range *appList {
-		importedFns = append(importedFns, app.Name)
-	}
+	infoList, importedFns := m.createApplications(w, r, appList, true)
 
 	m.logSystemEvent(util.EVENTID_IMPORT_FUNCTIONS, systemeventlog.SEInfo, nil)
 
@@ -4024,7 +4085,7 @@ func (m *ServiceMgr) backupHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		apps := m.restoreAppList(appList, filterMap, remap, filterType)
-		infoList := m.createApplications(r, apps, true)
+		infoList, _ := m.createApplications(w, r, apps, true)
 		m.sendRuntimeInfoList(w, infoList)
 
 	default:
@@ -4106,12 +4167,14 @@ func (m *ServiceMgr) filterAppList(apps []application, filterMap map[string]bool
 }
 
 // TODO: this should check if app exist and has the required permission or not
-func (m *ServiceMgr) createApplications(r *http.Request, appList *[]application, isImport bool) (infoList []*runtimeInfo) {
+func (m *ServiceMgr) createApplications(w http.ResponseWriter, r *http.Request, appList *[]application, isImport bool) (infoList []*runtimeInfo, importedFns []string) {
 	logPrefix := "ServiceMgr::createApplications"
 
 	infoList = []*runtimeInfo{}
+	importedFns = make([]string, 0, len(*appList))
 	var err error
 	for _, app := range *appList {
+
 		audit.Log(auditevent.CreateFunction, r, app.Name)
 
 		if isImport {
@@ -4140,18 +4203,27 @@ func (m *ServiceMgr) createApplications(r *http.Request, appList *[]application,
 			continue
 		}
 
-		info = &runtimeInfo{}
 		err = m.assignFunctionInstanceID(app.Name, &app, info)
 		if err != nil {
 			infoList = append(infoList, info)
 			continue
 		}
 
-		if m.checkIfDeployed(app.Name) && isImport {
-			info.Code = m.statusCodes.errAppDeployed.Code
-			info.Info = fmt.Sprintf("Function: %s another function with same name is already present, skipping import request", app.Name)
-			logging.Errorf("%s %s", logPrefix, info.Info)
-			continue
+		if !m.checkAppExists(app.Name) {
+			err := m.verifyAndCreateApp(w, r, &app)
+			if err != nil {
+				logging.Errorf("Error in creating app: %s err: %v", app.Name, err)
+				continue
+			}
+		} else {
+			//TODO: check permission of the caller for eventing manage function
+
+			if m.checkIfDeployed(app.Name) && isImport {
+				info.Code = m.statusCodes.errAppDeployed.Code
+				info.Info = fmt.Sprintf("Function: %s another function with same name is already present, skipping import request", app.Name)
+				logging.Errorf("%s %s", logPrefix, info.Info)
+				continue
+			}
 		}
 
 		infoPri := m.savePrimaryStore(&app)
@@ -4176,6 +4248,7 @@ func (m *ServiceMgr) createApplications(r *http.Request, appList *[]application,
 
 		// If everything succeeded, use infoPri as that has warnings, if any
 		infoList = append(infoList, infoPri)
+		importedFns = append(importedFns, app.Name)
 	}
 
 	return

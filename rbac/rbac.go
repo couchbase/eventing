@@ -117,25 +117,25 @@ func authorizeFromCreds(cred cbauth.Creds, permissions []string, all bool) ([]st
 	return notAllowed, fmt.Errorf("Few privilege is not present")
 }
 
-func encodeCbOnBehalfOfHeader(owner common.Owner) (header string) {
+func encodeCbOnBehalfOfHeader(owner *common.Owner) (header string) {
 	header = base64.StdEncoding.EncodeToString([]byte(owner.User + ":" + owner.Domain))
 	return
 }
 
 // For eventing different permissions
 func HandlerGetPermissions(keySpace common.Keyspace) []string {
-	managePrevilage := GetPermission(keySpace, EventingManage)
-	privilege := []string{managePrevilage, EventingPermissionManage, ClusterPermissionRead}
-	return privilege
+	managePermissions := GetPermission(keySpace, EventingManage)
+	permissions := []string{managePermissions, EventingPermissionManage, ClusterPermissionRead}
+	return permissions
 }
 
-func HandleManagePermissions(keyspace common.Keyspace) []string {
-	managePrevilage := GetPermission(keyspace, EventingManage)
-	privilege := []string{managePrevilage}
-	return privilege
+func HandlerManagePermissions(keyspace common.Keyspace) []string {
+	managePermissions := GetPermission(keyspace, EventingManage)
+	permissions := []string{managePermissions}
+	return permissions
 }
 
-func HandleBucketPermissions(srcKeyspace, metaKeyspace common.Keyspace) []string {
+func HandlerBucketPermissions(srcKeyspace, metaKeyspace common.Keyspace) []string {
 	read := GetPermission(srcKeyspace, BucketRead)
 	write := GetPermission(metaKeyspace, BucketWrite)
 	return []string{read, write}

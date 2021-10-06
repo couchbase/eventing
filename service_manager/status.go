@@ -95,6 +95,7 @@ type statusCodes struct {
 	errCollectionMissing      statusBase
 	errEventingBusy           statusBase
 	errMagmaStorage           statusBase
+	errInternalServer         statusBase
 }
 
 func (m *ServiceMgr) getDisposition(code int) int {
@@ -203,6 +204,8 @@ func (m *ServiceMgr) getDisposition(code int) int {
 		return http.StatusInternalServerError
 	case m.statusCodes.errMagmaStorage.Code:
 		return http.StatusUnprocessableEntity
+	case m.statusCodes.errInternalServer.Code:
+		return http.StatusInternalServerError
 	default:
 		logging.Warnf("Unknown status code: %v", code)
 		return http.StatusInternalServerError
@@ -264,6 +267,7 @@ func (m *ServiceMgr) initErrCodes() {
 		errCollectionMissing:      statusBase{"ERR_COLLECTION_MISSING", 56},
 		errEventingBusy:           statusBase{"ERR_EVENTING_BUSY", 57},
 		errMagmaStorage:           statusBase{"ERR_MAGMA_BACKEND", 58},
+		errInternalServer:         statusBase{"INTERNAL_SERVER_ERROR", 59},
 	}
 
 	errors := []errorPayload{
@@ -550,6 +554,11 @@ func (m *ServiceMgr) initErrCodes() {
 			Name:        m.statusCodes.errMagmaStorage.Name,
 			Code:        m.statusCodes.errMagmaStorage.Code,
 			Description: "Magma buckets are not yet supported in Eventing",
+		},
+		{
+			Name:        m.statusCodes.errInternalServer.Name,
+			Code:        m.statusCodes.errInternalServer.Code,
+			Description: "Internal server error",
 		},
 	}
 
