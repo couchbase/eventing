@@ -8,12 +8,13 @@ import { UIRouterUpgradeModule } from '@uirouter/angular-hybrid';
 angular
   .module(app)
   .config(function(mnPluggableUiRegistryProvider, mnPermissionsProvider) {
-    mnPermissionsProvider.set('cluster.eventing.functions!manage');
+    mnPermissionsProvider.set(
+      'cluster.collection[*:*:*].eventing.function!manage');
     mnPluggableUiRegistryProvider.registerConfig({
       name: 'Eventing',
       state: 'app.admin.eventing.summary',
       plugIn: 'workbenchTab',
-      ngShow: "rbac.cluster.eventing.functions.manage",
+      ngShow: "rbac.cluster.bucket[.].settings!read && rbac.cluster.collection[*:*:*].eventing.function.manage",
       index: 4,
       responsiveHide: true
     });

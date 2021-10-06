@@ -187,6 +187,7 @@ func (m *ServiceMgr) initService() {
 	mux.HandleFunc("/redistributeworkload", m.triggerInternalRebalance)
 	mux.HandleFunc("/resetStatsCounters", m.resetStatsCounters)
 	mux.HandleFunc("/resetNodeStatsCounters", m.resetNodeStatsCounters)
+	mux.HandleFunc("/getUserInfo", m.getUserInfo)
 
 	// Public REST APIs
 	mux.HandleFunc("/api/v1/status", m.statusHandler)

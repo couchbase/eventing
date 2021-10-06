@@ -170,6 +170,10 @@ ApplicationModel.prototype.getDefaultModel = function() {
       n1ql_consistency: 'none',
       language_compatibility: '6.5.0',
       timer_context_size: 1024
+    },
+    function_scope: {
+      bucket: "",
+      scope: ""
     }
   };
 };

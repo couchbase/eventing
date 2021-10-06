@@ -329,6 +329,11 @@ func (c *ClusterInfoCache) GetNodesByBucket(bucket string) (nids []NodeId, err e
 	return
 }
 
+func (c *ClusterInfoCache) GetBuckets() []string {
+	buckets := c.pool.GetBuckets()
+	return buckets
+}
+
 //
 // Return UUID of a given bucket.
 //
@@ -892,6 +897,10 @@ func (c *ClusterInfoClient) OptimiseCICFetch(optimise bool) {
 
 func (c *ClusterInfoCache) GetCollectionID(bucket, scope, collection string) (uint32, error) {
 	return c.pool.GetCollectionID(bucket, scope, collection)
+}
+
+func (c *ClusterInfoCache) GetScopes(bucketName string) map[string][]string {
+	return c.pool.GetScopes(bucketName)
 }
 
 func (c *ClusterInfoCache) GetManifestID(bucket string) (string, error) {

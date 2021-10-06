@@ -29,6 +29,18 @@ var COLLECTION_ID_NIL = errors.New("manifest not found")
 var SCOPE_NOT_FOUND = errors.New("Scope Not defined")
 var COLLECTION_NOT_FOUND = errors.New("Collection Not defined")
 
+func (cm *CollectionManifest) GetScopes() map[string][]string {
+	s := make(map[string][]string)
+	for _, cmScope := range cm.Scopes {
+		collectionList := make([]string, 0, len(cmScope.Collections))
+		for _, c := range cmScope.Collections {
+			collectionList = append(collectionList, c.Name)
+		}
+		s[cmScope.Name] = collectionList
+	}
+	return s
+}
+
 func (cm *CollectionManifest) GetCollectionID(scope, collection string) (uint32, error) {
 	for _, cmScope := range cm.Scopes {
 		if cmScope.Name == scope {

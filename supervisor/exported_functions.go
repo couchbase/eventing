@@ -2,12 +2,14 @@ package supervisor
 
 import (
 	"fmt"
+	"net"
 	"sync/atomic"
 	"time"
 
 	"github.com/couchbase/eventing/common"
 	couchbase "github.com/couchbase/eventing/dcp"
 	"github.com/couchbase/eventing/logging"
+	"github.com/couchbase/eventing/util"
 	"github.com/couchbase/gocb/v2"
 )
 
@@ -735,4 +737,27 @@ func (s *SuperSupervisor) GetGocbSubscribedApps(encryptionEnabled bool) map[stri
 		}
 	}
 	return apps
+}
+
+func (s *SuperSupervisor) GetBSCSnapshot() (map[string]map[string][]string, error) {
+	hostAddress := net.JoinHostPort(util.Localhost(), s.restPort)
+	cic, err := util.FetchClusterInfoClient(hostAddress)
+	if err != nil {
+		return nil, err
+	}
+	cinfo := cic.GetClusterInfoCache()
+	cinfo.RLock()
+	defer cinfo.RUnlock()
+
+	snapshot := make(map[string]map[string][]string)
+	buckets := cinfo.GetBuckets()
+	for _, bucketName := range buckets {
+		scopeList := cinfo.GetScopes(bucketName)
+		if scopeList == nil {
+			snapshot[bucketName] = make(map[string][]string)
+			continue
+		}
+		snapshot[bucketName] = scopeList
+	}
+	return snapshot, nil
 }

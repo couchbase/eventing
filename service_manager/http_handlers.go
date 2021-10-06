@@ -499,7 +499,6 @@ func (m *ServiceMgr) getDebuggerURL(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotDeployed.Code))
 	fmt.Fprintf(w, "Function: %s not deployed", appName)
-
 }
 
 func (m *ServiceMgr) getLocalDebugURL(w http.ResponseWriter, r *http.Request) {
@@ -5037,4 +5036,84 @@ func (m *ServiceMgr) getReadAndWritePermission(appName string) ([]string, []stri
 	rPriv := rbac.HandlerGetPermissions(keyspace)
 	wPriv := rbac.HandlerManagePermissions(keyspace)
 	return rPriv, wPriv, nil
+}
+
+type UserPermissions struct {
+	FuncScope     []common.Keyspace `json:"func_scope"`
+	ReadPerm      []common.Keyspace `json:"read_permission"`
+	WritePerm     []common.Keyspace `json:"write_permission"`
+	ReadWritePerm []common.Keyspace `json:"read_write_permission"`
+	DcpStreamPerm []common.Keyspace `json:"dcp_stream_permission"`
+}
+
+func (m *ServiceMgr) getUserInfo(w http.ResponseWriter, r *http.Request) {
+	info := &runtimeInfo{}
+	cred, err := rbac.AuthWebCreds(w, r)
+	if err != nil {
+		return
+	}
+
+	// map[bucketName]map[scopeName][]collection
+	snapShot, err := m.superSup.GetBSCSnapshot()
+	if err != nil {
+		info.Code = m.statusCodes.errInternalServer.Code
+		m.sendErrorInfo(w, info)
+		return
+	}
+	u := &UserPermissions{
+		FuncScope:     make([]common.Keyspace, 0),
+		ReadPerm:      make([]common.Keyspace, 0),
+		WritePerm:     make([]common.Keyspace, 0),
+		ReadWritePerm: make([]common.Keyspace, 0),
+		DcpStreamPerm: make([]common.Keyspace, 0),
+	}
+
+	for bucketName, scopeMap := range snapShot {
+		for scopeName, collectionList := range scopeMap {
+			k := &common.Keyspace{BucketName: bucketName, ScopeName: scopeName}
+
+			manage := rbac.GetPermissions(k, rbac.EventingManage)
+			if _, err := rbac.IsAllowedCreds(cred, manage, true); err == nil {
+				u.FuncScope = append(u.FuncScope, *k)
+			}
+
+			for _, collName := range collectionList {
+				k.CollectionName = collName
+
+				manage = rbac.GetPermissions(k, rbac.BucketDcp)
+				if _, err := rbac.IsAllowedCreds(cred, manage, true); err == nil {
+					u.DcpStreamPerm = append(u.DcpStreamPerm, *k)
+				}
+
+				manage := rbac.GetPermissions(k, rbac.BucketRead)
+				read, write := false, false
+				// checking read permissions
+				if _, err := rbac.IsAllowedCreds(cred, manage, true); err == nil {
+					u.ReadPerm = append(u.ReadPerm, *k)
+					read = true
+				}
+
+				// checking for write permissions
+				manage = rbac.GetPermissions(k, rbac.BucketWrite)
+				if _, err := rbac.IsAllowedCreds(cred, manage, true); err == nil {
+					u.WritePerm = append(u.WritePerm, *k)
+					write = true
+				}
+
+				if read && write {
+					u.ReadWritePerm = append(u.ReadWritePerm, *k)
+				}
+			}
+		}
+	}
+
+	response, err := json.MarshalIndent(u, "", " ")
+	if err != nil {
+		info.Code = m.statusCodes.errMarshalResp.Code
+		info.Info = fmt.Sprintf("failed to marshal function list, err : %v", err)
+		m.sendErrorInfo(w, info)
+		return
+	}
+
+	fmt.Fprintf(w, "%s", string(response))
 }

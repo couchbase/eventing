@@ -40,6 +40,13 @@ type Keyspace struct {
 	CollectionName string
 }
 
+func (k Keyspace) ToFunctionScope() *FunctionScope {
+	return &FunctionScope{
+		BucketName: k.BucketName,
+		ScopeName:  k.ScopeName,
+	}
+}
+
 type Insight struct {
 	Script string              `json:"script"`
 	Lines  map[int]InsightLine `json:"lines"`
@@ -388,6 +395,7 @@ type EventingSuperSup interface {
 	WorkerRespawnedCount() uint32
 	CheckLifeCycleOpsDuringRebalance() bool
 	OptimiseBucketLoading(optimise bool)
+	GetBSCSnapshot() (map[string]map[string][]string, error)
 }
 
 type EventingServiceMgr interface {
