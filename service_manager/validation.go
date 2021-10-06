@@ -1,7 +1,6 @@
 package servicemanager
 
 import (
-	"encoding/json"
 	"fmt"
 	"math"
 	"net"
@@ -11,10 +10,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/couchbase/cbauth"
-	"github.com/couchbase/eventing/audit"
 	"github.com/couchbase/eventing/common"
-	"github.com/couchbase/eventing/gen/auditevent"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/parser"
 	"github.com/couchbase/eventing/rbac"
@@ -130,89 +126,6 @@ func (m *ServiceMgr) validateApplication(app *application) (info *runtimeInfo) {
 
 	info.Code = m.statusCodes.ok.Code
 	return
-}
-
-func (m *ServiceMgr) validateAnyAuth(w http.ResponseWriter, r *http.Request, perms []string) bool {
-	logPrefix := "ServiceMgr::validateAnyAuth"
-
-	creds, err := cbauth.AuthWebCreds(r)
-	if err != nil || creds == nil {
-		logging.Warnf("%s Cannot authenticate request to %rs, err: %v creds: %ru", logPrefix, r.URL, err, creds)
-		w.WriteHeader(http.StatusUnauthorized)
-		audit.Log(auditevent.AuthenticationFailure, r, nil)
-		return false
-	}
-
-	for _, perm := range perms {
-		allowed, err := creds.IsAllowed(perm)
-		if err != nil || !allowed {
-			continue
-		}
-
-		logging.Debugf("%s Allowing access to %rs", logPrefix, r.URL)
-
-		return true
-	}
-
-	logging.Warnf("%s Cannot authorize request to %rs", logPrefix, r.URL)
-
-	w.WriteHeader(http.StatusForbidden)
-	sendForbiddenMultiple(w, perms)
-	audit.Log(auditevent.AuthorizationFailure, r, nil)
-
-	return false
-}
-
-// Performs authz based on HTTP Method using read perms for GET and write perms for the rest.
-func (m *ServiceMgr) validateAuthForOp(w http.ResponseWriter, r *http.Request,
-	rperms []string, wperm []string) bool {
-
-	if r.Method == "GET" {
-		return rbac.ValidateAuth(w, r, rperms, false)
-	}
-
-	return rbac.ValidateAuth(w, r, wperm, false)
-}
-
-// ::TODO::Move to ForbiddenJSONMultiple and SendForbiddenMultiple to cbauth:convenience.go
-// ForbiddenJSON returns json 403 response for given permissions
-func forbiddenJSONMultiple(permissions []string) ([]byte, error) {
-	jsonStruct := map[string]interface{}{
-		"message":     "Forbidden. User needs one of the following permissions",
-		"permissions": permissions,
-	}
-	return json.Marshal(jsonStruct)
-}
-
-// SendForbidden sends 403 Forbidden with json payload that contains list
-// of required permissions to response on given response writer.
-func sendForbiddenMultiple(w http.ResponseWriter, permissions []string) error {
-	b, err := forbiddenJSONMultiple(permissions)
-	if err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusForbidden)
-	w.Write(b)
-	return nil
-}
-
-func unauthorizedJSON() ([]byte, error) {
-	jsonStruct := map[string]interface{}{
-		"message": "Unauthorised user",
-	}
-	return json.Marshal(jsonStruct)
-}
-
-func sendUnauthorized(w http.ResponseWriter) error {
-	b, err := unauthorizedJSON()
-	if err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusUnauthorized)
-	w.Write(b)
-	return nil
 }
 
 func (m *ServiceMgr) validateAliasName(aliasName string) (info *runtimeInfo) {
@@ -595,7 +508,7 @@ func (m *ServiceMgr) getBSId(fS *common.FunctionScope) (string, uint32, *runtime
 	return bucketUUID, scopeId, info
 }
 
-func (m *ServiceMgr) CheckAndGetBktAndScopeIDs(fG *common.FunctionScope) (string, uint32, bool) {
+func (m *ServiceMgr) CheckAndGetBktAndScopeIDs(fS *common.FunctionScope) (string, uint32, bool) {
 	nsServerEndpoint := net.JoinHostPort(util.Localhost(), m.restPort)
 	cic, err := util.FetchClusterInfoClient(nsServerEndpoint)
 	if err != nil {
@@ -606,7 +519,7 @@ func (m *ServiceMgr) CheckAndGetBktAndScopeIDs(fG *common.FunctionScope) (string
 	clusterInfo.RLock()
 	defer clusterInfo.RUnlock()
 
-	bucketUUID, scopeId, _, err := clusterInfo.GetUniqueBSCIds(fG.BucketName, fG.ScopeName, "")
+	bucketUUID, scopeId, _, err := clusterInfo.GetUniqueBSCIds(fS.BucketName, fS.ScopeName, "")
 	if err != nil {
 		return "", 0, false
 	}
@@ -1250,13 +1163,13 @@ func (m *ServiceMgr) validateZeroOrPositiveInteger(field string, settings map[st
 
 // TODO: Should use internal fields and compare the uuid and cid
 func (app *application) functionScopeEquals(tmpApp application) bool {
-	fG := app.FunctionScope
-	tmpFg := tmpApp.FunctionScope
+	fS := app.FunctionScope
+	tmpFs := tmpApp.FunctionScope
 
-	return (fG.BucketName == tmpFg.BucketName) && (fG.ScopeName == tmpFg.ScopeName)
+	return (fS.BucketName == tmpFs.BucketName) && (fS.ScopeName == tmpFs.ScopeName)
 }
 
-func (app *application) deploymentConfigChanges() bool {
+func (app *application) checkDeploymentConfigPermission() error {
 	sourceKeyspace := common.Keyspace{BucketName: app.DeploymentConfig.SourceBucket,
 		ScopeName:      app.DeploymentConfig.SourceScope,
 		CollectionName: app.DeploymentConfig.SourceCollection,
@@ -1267,9 +1180,9 @@ func (app *application) deploymentConfigChanges() bool {
 		CollectionName: app.DeploymentConfig.MetadataCollection,
 	}
 
-	priv := rbac.HandlerBucketPermissions(sourceKeyspace, metadataKeyspace)
-	if _, err := rbac.HasPermissions(app.Owner, priv, true); err != nil {
-		return false
+	perms := rbac.HandlerBucketPermissions(sourceKeyspace, metadataKeyspace)
+	if _, err := rbac.HasPermissions(app.Owner, perms, true); err != nil {
+		return err
 	}
-	return true
+	return nil
 }

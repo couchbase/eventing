@@ -2,6 +2,8 @@ package rbac
 
 import (
 	"encoding/base64"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -11,6 +13,10 @@ import (
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/gen/auditevent"
 	"github.com/couchbase/eventing/util"
+)
+
+var (
+	ErrAuthorisation = errors.New("One or more requested permissions missing")
 )
 
 type Permission uint8
@@ -96,12 +102,29 @@ func HasPermissions(owner *common.Owner, permissions []string, union bool) ([]st
 }
 
 func AuthWebCreds(w http.ResponseWriter, req *http.Request) (cbauth.Creds, error) {
+	return authCreds(w, req, true)
+}
+
+// Maybe we can merge both
+func AuthWebCredsWithoutAudit(w http.ResponseWriter, req *http.Request) (cbauth.Creds, error) {
+	return authCreds(w, req, false)
+}
+
+func authCreds(w http.ResponseWriter, req *http.Request, auditAndSend bool) (cbauth.Creds, error) {
 	cred, err := cbauth.AuthWebCreds(req)
-	if err != nil {
-		w.WriteHeader(http.StatusUnauthorized)
-		audit.Log(auditevent.AuthenticationFailure, req, nil)
+	if err == cbauth.ErrNoAuth {
+		if auditAndSend {
+			audit.Log(auditevent.AuthenticationFailure, req, nil)
+			sendUnauthenticated(w)
+		}
 		return nil, err
 	}
+
+	if err != nil {
+		sendInternalError(w)
+		return nil, err
+	}
+
 	return cred, nil
 }
 
@@ -134,10 +157,11 @@ func authorizeFromCreds(cred cbauth.Creds, permissions []string, all bool) ([]st
 			notAllowed = append(notAllowed, perm)
 		}
 	}
+
 	if len(notAllowed) == 0 {
 		return nil, nil
 	}
-	return notAllowed, fmt.Errorf("One or more requested permissions not present")
+	return notAllowed, ErrAuthorisation
 }
 
 func encodeCbOnBehalfOfHeader(owner *common.Owner) (header string) {
@@ -168,27 +192,76 @@ func HandlerBucketPermissions(srcKeyspace, metaKeyspace common.Keyspace) []strin
 	return perms
 }
 
+// ::TODO::Move to ForbiddenJSONMultiple and SendForbiddenMultiple to cbauth:convenience.go
+// ForbiddenJSON returns json 403 response for given permissions
+func forbiddenJSONMultiple(permissions []string) ([]byte, error) {
+	jsonStruct := map[string]interface{}{
+		"message":     "Forbidden. User needs one of the following permissions",
+		"permissions": permissions,
+	}
+	return json.Marshal(jsonStruct)
+}
+
+// SendForbidden sends 403 Forbidden with json payload that contains list
+// of required permissions to response on given response writer.
+func sendForbiddenMultiple(w http.ResponseWriter, permissions []string) error {
+	b, err := forbiddenJSONMultiple(permissions)
+	if err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusForbidden)
+	w.Write(b)
+	return nil
+}
+
+func unauthenticatedJSON() ([]byte, error) {
+	jsonStruct := map[string]interface{}{
+		"message": "Unauthenticated User",
+	}
+	return json.Marshal(jsonStruct)
+}
+
+func sendUnauthenticated(w http.ResponseWriter) error {
+	b, err := unauthenticatedJSON()
+	if err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusUnauthorized)
+	w.Write(b)
+	return nil
+}
+
+func sendInternalError(w http.ResponseWriter) {
+	http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+	return
+}
+
+// Send the response back to caller
+// Also audit the request
 func ValidateAuth(w http.ResponseWriter, r *http.Request, perms []string, all bool) bool {
 	creds, err := cbauth.AuthWebCreds(r)
 	if err != nil || creds == nil {
-		w.WriteHeader(http.StatusUnauthorized)
 		audit.Log(auditevent.AuthenticationFailure, r, nil)
+		sendUnauthenticated(w)
 		return false
 	}
 
 	notAllowed, err := IsAllowedCreds(creds, perms, all)
 	if err != nil {
-		w.WriteHeader(http.StatusForbidden)
-		cbauth.SendForbidden(w, notAllowed[0])
 		audit.Log(auditevent.AuthorizationFailure, r, nil)
+		sendForbiddenMultiple(w, notAllowed)
 		return false
 	}
 	return true
 }
 
-func ValidateAuthForOp(r *http.Request, rPerms []string, mPerms []string, all bool) bool {
+func ValidateAuthForOp(w http.ResponseWriter, r *http.Request, rPerms []string, mPerms []string, all bool) bool {
 	cred, err := cbauth.AuthWebCreds(r)
 	if err != nil {
+		audit.Log(auditevent.AuthenticationFailure, r, nil)
+		sendUnauthenticated(w)
 		return false
 	}
 
@@ -196,6 +269,13 @@ func ValidateAuthForOp(r *http.Request, rPerms []string, mPerms []string, all bo
 	if r.Method != "GET" {
 		perms = mPerms
 	}
-	_, err = IsAllowedCreds(cred, perms, all)
-	return (err == nil)
+
+	notAllowed, err := IsAllowedCreds(cred, perms, all)
+	if err != nil {
+		audit.Log(auditevent.AuthorizationFailure, r, nil)
+		sendForbiddenMultiple(w, notAllowed)
+		return false
+	}
+
+	return true
 }

@@ -96,6 +96,8 @@ type statusCodes struct {
 	errEventingBusy           statusBase
 	errMagmaStorage           statusBase
 	errInternalServer         statusBase
+	errForbidden              statusBase
+	errUnauthenticated        statusBase
 }
 
 func (m *ServiceMgr) getDisposition(code int) int {
@@ -206,6 +208,10 @@ func (m *ServiceMgr) getDisposition(code int) int {
 		return http.StatusUnprocessableEntity
 	case m.statusCodes.errInternalServer.Code:
 		return http.StatusInternalServerError
+	case m.statusCodes.errForbidden.Code:
+		return http.StatusForbidden
+	case m.statusCodes.errUnauthenticated.Code:
+		return http.StatusUnauthorized
 	default:
 		logging.Warnf("Unknown status code: %v", code)
 		return http.StatusInternalServerError
@@ -268,6 +274,8 @@ func (m *ServiceMgr) initErrCodes() {
 		errEventingBusy:           statusBase{"ERR_EVENTING_BUSY", 57},
 		errMagmaStorage:           statusBase{"ERR_MAGMA_BACKEND", 58},
 		errInternalServer:         statusBase{"INTERNAL_SERVER_ERROR", 59},
+		errForbidden:              statusBase{"ERR_FORBIDDEN", 60},
+		errUnauthenticated:        statusBase{"ERR_UNAUTHENTICATED", 61},
 	}
 
 	errors := []errorPayload{
@@ -559,6 +567,16 @@ func (m *ServiceMgr) initErrCodes() {
 			Name:        m.statusCodes.errInternalServer.Name,
 			Code:        m.statusCodes.errInternalServer.Code,
 			Description: "Internal server error",
+		},
+		{
+			Name:        m.statusCodes.errForbidden.Name,
+			Code:        m.statusCodes.errForbidden.Code,
+			Description: "Forbidden. User needs one of the following permission",
+		},
+		{
+			Name:        m.statusCodes.errUnauthenticated.Name,
+			Code:        m.statusCodes.errUnauthenticated.Code,
+			Description: "Unauthorised user",
 		},
 	}
 

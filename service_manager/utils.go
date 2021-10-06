@@ -201,7 +201,7 @@ func (m *ServiceMgr) sendErrorInfo(w http.ResponseWriter, runtimeInfo *runtimeIn
 	fmt.Fprintf(w, string(response))
 }
 
-func (m *ServiceMgr) sendRuntimeInfo(w http.ResponseWriter, runtimeInfo *runtimeInfo) {
+func (m *ServiceMgr) sendResponse(w http.ResponseWriter, runtimeInfo *runtimeInfo) {
 	if runtimeInfo.Code != m.statusCodes.ok.Code {
 		m.sendErrorInfo(w, runtimeInfo)
 		return
@@ -1191,4 +1191,18 @@ func copyPasswords(newApp, oldApp *application) {
 func isDynamicSetting(setting string) bool {
 	_, ok := dynamicChangedSettings[setting]
 	return ok
+}
+
+func CheckAndGetQueryParam(req *http.Request, key string) (string, *runtimeInfo) {
+	info := &runtimeInfo{}
+
+	params := req.URL.Query()
+	appNameList := params[key]
+	if len(appNameList) == 0 {
+		info.Code = http.StatusBadRequest
+		info.Info = fmt.Sprintf("Parameter '%s' must be provided", key)
+		return "", info
+	}
+
+	return appNameList[0], nil
 }
