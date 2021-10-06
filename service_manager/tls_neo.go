@@ -33,7 +33,11 @@ func (m *ServiceMgr) getTLSConfig(logPrefix string) (*tls.Config, error) {
 		ClientAuth:               cbauthTLScfg.ClientAuthType,
 	}
 	if cbauthTLScfg.ClientAuthType != tls.NoClientCert {
-		caCert, err := ioutil.ReadFile(m.certFile)
+		pemFile := m.certFile
+		if len(m.caFile) > 0 {
+			pemFile = m.caFile
+		}
+		caCert, err := ioutil.ReadFile(pemFile)
 		if err != nil {
 			logging.Errorf("%s Error in reading cacert file, %v", logPrefix, err)
 			return nil, err
