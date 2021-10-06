@@ -22,6 +22,7 @@ parser/handler_schema.go
 parser/depcfg_schema.go
 parser/settings_schema.go
 parser/list_schema.go
+parser/function_scope_schema.go
 version/version.go
 version/version.cc
 version/version.js
