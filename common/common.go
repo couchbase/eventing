@@ -92,6 +92,17 @@ type DebuggerInstance struct {
 	NodesExternalIP []string `json:"nodes_external_ip"` // List of external IP address of the nodes in the cluster
 }
 
+type Owner struct {
+	User   string
+	Domain string
+}
+
+// needed only during 1st creation of the function
+type FunctionScope struct {
+	BucketName string `json:"bucket,omitempty"`
+	ScopeName  string `json:"scope,omitempty"`
+}
+
 type Application struct {
 	AppHandlers        string                 `json:"appcode"`
 	DeploymentConfig   DepCfg                 `json:"depcfg"`
@@ -102,6 +113,8 @@ type Application struct {
 	Name               string                 `json:"appname"`
 	Settings           map[string]interface{} `json:"settings"`
 	Metainfo           map[string]interface{} `json:"metainfo,omitempty"`
+	Owner              *Owner
+	FunctionScope      FunctionScope `json:"function_scope"`
 }
 
 type DepCfg struct {

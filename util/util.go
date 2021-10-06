@@ -1970,6 +1970,23 @@ func EncodeAppPayload(app *cm.Application) []byte {
 		app.Metainfo = make(map[string]interface{})
 		app.Metainfo["lifecycle_state"] = ""
 	}
+
+	bucketName := builder.CreateString(app.FunctionScope.BucketName)
+	scopeName := builder.CreateString(app.FunctionScope.ScopeName)
+
+	cfg.FunctionScopeStart(builder)
+	cfg.FunctionScopeAddBucketName(builder, bucketName)
+	cfg.FunctionScopeAddScopeName(builder, scopeName)
+	funcScope := cfg.FunctionScopeEnd(builder)
+
+	user := builder.CreateString(app.Owner.User)
+	domain := builder.CreateString(app.Owner.Domain)
+
+	cfg.OwnerStart(builder)
+	cfg.OwnerAddUser(builder, user)
+	cfg.OwnerAddDomain(builder, domain)
+	owner := cfg.OwnerEnd(builder)
+
 	lifecycleState := builder.CreateString(app.Metainfo["lifecycle_state"].(string))
 
 	cfg.ConfigStart(builder)
@@ -1984,7 +2001,8 @@ func EncodeAppPayload(app *cm.Application) []byte {
 	cfg.ConfigAddFunctionInstanceID(builder, fiid)
 	cfg.ConfigAddEnforceSchema(builder, schema)
 	cfg.ConfigAddLifecycleState(builder, lifecycleState)
-
+	cfg.ConfigAddFunctionScope(builder, funcScope)
+	cfg.ConfigAddOwner(builder, owner)
 	config := cfg.ConfigEnd(builder)
 
 	builder.Finish(config)
@@ -2080,6 +2098,25 @@ func ParseFunctionPayload(data []byte, fnName string) cm.Application {
 	depcfg.Curl = curl
 	depcfg.Constants = constantBindings
 	app.DeploymentConfig = *depcfg
+
+	f := new(cfg.FunctionScope)
+	fg := config.FunctionScope(f)
+
+	funcScope := common.FunctionScope{
+		BucketName: string(fg.BucketName()),
+		ScopeName:  string(fg.ScopeName()),
+	}
+
+	o := new(cfg.Owner)
+	ownerEncrypted := config.Owner(o)
+
+	owner := &common.Owner{
+		User:   string(ownerEncrypted.User()),
+		Domain: string(ownerEncrypted.Domain()),
+	}
+
+	app.FunctionScope = funcScope
+	app.Owner = owner
 
 	return app
 }

@@ -1609,6 +1609,24 @@ func (m *ServiceMgr) parseFunctionPayload(data []byte, fnName string) applicatio
 	depcfg.Buckets = buckets
 	app.DeploymentConfig = *depcfg
 
+	f := new(cfg.FunctionScope)
+	fs := config.FunctionScope(f)
+
+	funcScope := common.FunctionScope{
+		BucketName: string(fs.BucketName()),
+		ScopeName:  string(fs.ScopeName()),
+	}
+
+	o := new(cfg.Owner)
+	ownerEncrypted := config.Owner(o)
+
+	owner := &common.Owner{
+		User:   string(ownerEncrypted.User()),
+		Domain: string(ownerEncrypted.Domain()),
+	}
+
+	app.FunctionScope = funcScope
+	app.Owner = owner
 	return app
 }
 
@@ -1765,32 +1783,16 @@ func (m *ServiceMgr) getTempStore(appName string) (application, *runtimeInfo) {
 }
 
 func (m *ServiceMgr) getTempStoreAll() []application {
-	logPrefix := "ServiceMgr::getTempStoreAll"
-
 	m.fnMu.RLock()
 	defer m.fnMu.RUnlock()
 
 	applications := []application{}
 
-	for fnName := range m.fnsInTempStore {
-		data, err := util.ReadAppContent(metakvTempAppsPath, metakvTempChecksumPath, fnName)
-		if err == nil && data != nil {
-			var app application
-			uErr := json.Unmarshal(data, &app)
-			if uErr != nil {
-				logging.Errorf("%s Function: %s failed to unmarshal data from metakv, err: %v data: %v",
-					logPrefix, fnName, uErr, string(data))
-				continue
-			}
-			m.maybeDeleteLifeCycleState(&app)
-			m.addDefaultDeploymentConfig(&app)
-			m.maybeReplaceFromPrior(&app)
-			applications = append(applications, app)
-		} else if err != nil {
-			logging.Errorf("%s Function: %s failed to read data from metakv, err: %v", logPrefix, fnName, err)
-		} else {
-			logging.Errorf("%s Function: %s data read is nil", logPrefix, fnName)
-		}
+	for _, app := range m.fnsInTempStore {
+		m.maybeDeleteLifeCycleState(&app)
+		m.addDefaultDeploymentConfig(&app)
+		m.maybeReplaceFromPrior(&app)
+		applications = append(applications, app)
 	}
 
 	return applications
@@ -2839,8 +2841,6 @@ func (m *ServiceMgr) functionName(w http.ResponseWriter, r *http.Request, appNam
 		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
 		fmt.Fprintf(w, "%s", string(response))
 	case "POST":
-		audit.Log(auditevent.CreateFunction, r, appName)
-
 		app, info := m.unmarshalApp(r)
 		if info.Code != m.statusCodes.ok.Code {
 			m.sendErrorInfo(w, info)
@@ -2881,6 +2881,8 @@ func (m *ServiceMgr) functionName(w http.ResponseWriter, r *http.Request, appNam
 				app.Settings["dcp_stream_boundary"] = "everything"
 			}
 		}
+
+		audit.Log(auditevent.CreateFunction, r, appName)
 
 		if info = m.validateApplication(&app); info.Code != m.statusCodes.ok.Code {
 			m.sendErrorInfo(w, info)
@@ -3921,6 +3923,7 @@ func (m *ServiceMgr) importHandler(w http.ResponseWriter, r *http.Request) {
 	m.sendRuntimeInfoList(w, infoList)
 }
 
+// TODO: For reimport it needs to check whether its user has the manage permission or not
 func (m *ServiceMgr) backupHandler(w http.ResponseWriter, r *http.Request) {
 	url := filepath.Clean(r.URL.Path)
 	info := &runtimeInfo{}
@@ -4102,6 +4105,7 @@ func (m *ServiceMgr) filterAppList(apps []application, filterMap map[string]bool
 	return filteredFns
 }
 
+// TODO: this should check if app exist and has the required permission or not
 func (m *ServiceMgr) createApplications(r *http.Request, appList *[]application, isImport bool) (infoList []*runtimeInfo) {
 	logPrefix := "ServiceMgr::createApplications"
 
@@ -4168,7 +4172,7 @@ func (m *ServiceMgr) createApplications(r *http.Request, appList *[]application,
 
 		m.logSystemEvent(util.EVENTID_CREATE_FUNCTION, systemeventlog.SEInfo,
 			map[string]interface{}{"handleruuid": app.FunctionID,
-									"appName": app.Name})
+				"appName": app.Name})
 
 		// If everything succeeded, use infoPri as that has warnings, if any
 		infoList = append(infoList, infoPri)

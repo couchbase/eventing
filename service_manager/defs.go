@@ -106,7 +106,7 @@ type ServiceMgr struct {
 	failoverChangeId        string
 	finch                   chan bool
 	fnsInPrimaryStore       map[string]depCfg                           // Access controlled by fnMu
-	fnsInTempStore          map[string]struct{}                         // Access controlled by fnMu
+	fnsInTempStore          map[string]application                      // Access controlled by fnMu
 	bucketFunctionMap       map[common.Keyspace]map[string]functionInfo // Access controlled by fnMu
 	fnMu                    *sync.RWMutex
 	keepNodeUUIDs           []string
@@ -209,6 +209,9 @@ type application struct {
 	Name               string                 `json:"appname"`
 	Settings           map[string]interface{} `json:"settings"`
 	Metainfo           map[string]interface{} `json:"metainfo,omitempty"`
+	FunctionScope      common.FunctionScope   `json:"function_scope"`
+	Owner              *common.Owner          `json:"owner,omitempty"`
+	// Need internal struct to store all the uuids of the function scope
 }
 
 type depCfg struct {

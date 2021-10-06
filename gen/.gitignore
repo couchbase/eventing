@@ -11,6 +11,8 @@ flatbuf/cfg/Config.go
 flatbuf/cfg/DepCfg.go
 flatbuf/cfg/Curl.go
 flatbuf/cfg/Constant.go
+flatbuf/cfg/FunctionScope.go
+flatbuf/cfg/Owner.go
 flatbuf/header/Header.go
 flatbuf/payload/Payload.go
 flatbuf/payload/VbsThreadMap.go

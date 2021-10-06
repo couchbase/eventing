@@ -4,18 +4,12 @@ import (
 	"encoding/base64"
 	"fmt"
 	"net"
-        "net/http"
+	"net/http"
 
 	"github.com/couchbase/cbauth"
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/util"
 )
-
-// TODO: Need user id check
-type Owner struct {
-	Name   string
-	Domain string
-}
 
 type Privilege uint8
 
@@ -65,7 +59,7 @@ func IsAllowed(req *http.Request, permissions []string, union bool) ([]string, e
 // TODO: If cbauth supports IsAllowed(user, permission we don't have to
 // recreate all the request and all
 // If union is true then all privilege to should be satisfied
-func HasPermissions(owner Owner, permissions []string, union bool) ([]string, error) {
+func HasPermissions(owner *common.Owner, permissions []string, union bool) ([]string, error) {
 	req, err := http.NewRequest(http.MethodGet, "", nil)
 	if err != nil {
 		return nil, err
@@ -123,8 +117,8 @@ func authorizeFromCreds(cred cbauth.Creds, permissions []string, all bool) ([]st
 	return notAllowed, fmt.Errorf("Few privilege is not present")
 }
 
-func encodeCbOnBehalfOfHeader(owner Owner) (header string) {
-	header = base64.StdEncoding.EncodeToString([]byte(owner.Name + ":" + owner.Domain))
+func encodeCbOnBehalfOfHeader(owner common.Owner) (header string) {
+	header = base64.StdEncoding.EncodeToString([]byte(owner.User + ":" + owner.Domain))
 	return
 }
 

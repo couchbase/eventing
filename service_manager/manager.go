@@ -55,7 +55,7 @@ func NewServiceMgr(config util.Config, rebalanceRunning bool,
 		tlsServer:               nil,
 		graph:                   newBucketMultiDiGraph(),
 		fnsInPrimaryStore:       make(map[string]depCfg),
-		fnsInTempStore:          make(map[string]struct{}),
+		fnsInTempStore:          make(map[string]application),
 		bucketFunctionMap:       make(map[common.Keyspace]map[string]functionInfo),
 		fnMu:                    &sync.RWMutex{},
 		failoverMu:              &sync.RWMutex{},
@@ -542,7 +542,8 @@ func (m *ServiceMgr) tempStoreAppsPathCallback(kve metakv.KVEntry) error {
 	defer m.fnMu.Unlock()
 
 	if len(kve.Value) > 0 {
-		m.fnsInTempStore[fnName] = struct{}{}
+		app := m.parseFunctionPayload(kve.Value, fnName)
+		m.fnsInTempStore[fnName] = app
 		logging.Infof("%s Added function: %s to fnsInTempStore", logPrefix, fnName)
 	} else {
 		delete(m.fnsInTempStore, fnName)

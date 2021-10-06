@@ -1144,6 +1144,7 @@ func applicationAdapter(app *application) (common.Application, error) {
 	if errConversion != nil {
 		return appConverted, errConversion
 	}
+	appConverted.Owner = app.Owner
 	return appConverted, nil
 }
 
