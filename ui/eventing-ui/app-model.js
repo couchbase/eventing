@@ -1,5 +1,5 @@
 import _ from "lodash";
-import getVersion from "./gen/version.js";
+import getVersion from "../../../version.js";
 export {
   Application,
   ApplicationManager,
