@@ -1170,12 +1170,12 @@ func (app *application) functionScopeEquals(tmpApp application) bool {
 }
 
 func (app *application) checkDeploymentConfigPermission() error {
-	sourceKeyspace := common.Keyspace{BucketName: app.DeploymentConfig.SourceBucket,
+	sourceKeyspace := &common.Keyspace{BucketName: app.DeploymentConfig.SourceBucket,
 		ScopeName:      app.DeploymentConfig.SourceScope,
 		CollectionName: app.DeploymentConfig.SourceCollection,
 	}
 
-	metadataKeyspace := common.Keyspace{BucketName: app.DeploymentConfig.MetadataBucket,
+	metadataKeyspace := &common.Keyspace{BucketName: app.DeploymentConfig.MetadataBucket,
 		ScopeName:      app.DeploymentConfig.MetadataScope,
 		CollectionName: app.DeploymentConfig.MetadataCollection,
 	}

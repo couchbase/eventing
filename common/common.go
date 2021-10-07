@@ -103,8 +103,8 @@ type FunctionScope struct {
 	ScopeName  string `json:"scope,omitempty"`
 }
 
-func (fs *FunctionScope) ToKeyspace() Keyspace {
-	return Keyspace{
+func (fs *FunctionScope) ToKeyspace() *Keyspace {
+	return &Keyspace{
 		BucketName: fs.BucketName,
 		ScopeName:  fs.ScopeName,
 	}
@@ -263,6 +263,7 @@ type EventingProducer interface {
 	WriteAppLog(log string)
 	WriteDebuggerURL(url string)
 	WriteDebuggerToken(token string, hostnames []string) error
+	GetOwner() *Owner
 }
 
 // EventingConsumer interface to export functions from eventing_consumer
@@ -321,6 +322,7 @@ type EventingConsumer interface {
 	PauseConsumer()
 	GetAssignedVbs(workerName string) ([]uint16, error)
 	NotifyWorker()
+	GetOwner() *Owner
 }
 
 type EventingSuperSup interface {

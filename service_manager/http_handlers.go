@@ -3192,12 +3192,12 @@ func checkPermissions(app *application, creds cbauth.Creds) ([]string, error) {
 	ks := fg.ToKeyspace()
 
 	mPermission := rbac.HandlerManagePermissions(ks)
-	src := common.Keyspace{
+	src := &common.Keyspace{
 		BucketName:     app.DeploymentConfig.SourceBucket,
 		ScopeName:      app.DeploymentConfig.SourceScope,
 		CollectionName: app.DeploymentConfig.SourceCollection,
 	}
-	meta := common.Keyspace{
+	meta := &common.Keyspace{
 		BucketName:     app.DeploymentConfig.MetadataBucket,
 		ScopeName:      app.DeploymentConfig.MetadataScope,
 		CollectionName: app.DeploymentConfig.MetadataCollection,
@@ -4995,7 +4995,7 @@ func (m *ServiceMgr) resetNodeStatsCounters(w http.ResponseWriter, r *http.Reque
 }
 
 func (m *ServiceMgr) checkAuthAndPermissionWithApp(w http.ResponseWriter, r *http.Request,
-	appName string, permFunction func(common.Keyspace) []string, all bool) *runtimeInfo {
+	appName string, permFunction func(*common.Keyspace) []string, all bool) *runtimeInfo {
 	info := &runtimeInfo{}
 	cred, err := rbac.AuthWebCredsWithoutAudit(w, r)
 	if err != nil {
@@ -5007,7 +5007,8 @@ func (m *ServiceMgr) checkAuthAndPermissionWithApp(w http.ResponseWriter, r *htt
 }
 
 func (m *ServiceMgr) checkPermissionFromCred(cred cbauth.Creds, appName string,
-	permFunction func(common.Keyspace) []string, all bool) (info *runtimeInfo) {
+	permFunction func(*common.Keyspace) []string, all bool) (info *runtimeInfo) {
+
 	info = &runtimeInfo{}
 	app, ok := m.checkAppExists(appName)
 	if !ok {
@@ -5029,8 +5030,6 @@ func (m *ServiceMgr) checkPermissionFromCred(cred cbauth.Creds, appName string,
 func (m *ServiceMgr) getReadAndWritePermission(appName string) ([]string, []string, error) {
 	app, ok := m.checkAppExists(appName)
 	if !ok {
-		// TODO: Common api to send all the error response
-		// maybe better to return permission error
 		return nil, nil, fmt.Errorf("Function doesn't exist")
 	}
 

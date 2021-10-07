@@ -42,7 +42,7 @@ var (
 	EventingStatsPermission  = []string{EventingPermissionStats}
 )
 
-func GetPermissions(keySpace common.Keyspace, perm Permission) (perms []string) {
+func GetPermissions(keySpace *common.Keyspace, perm Permission) (perms []string) {
 	perms = make([]string, 0, 3)
 	switch perm {
 	case EventingManage:
@@ -63,7 +63,7 @@ func GetPermissions(keySpace common.Keyspace, perm Permission) (perms []string) 
 	return
 }
 
-func keyspaceToRbacString(keyspace common.Keyspace) string {
+func keyspaceToRbacString(keyspace *common.Keyspace) string {
 	return fmt.Sprintf("%s:%s:%s", replaceDefault(keyspace.BucketName), replaceDefault(keyspace.ScopeName), replaceDefault(keyspace.CollectionName))
 }
 
@@ -170,25 +170,23 @@ func encodeCbOnBehalfOfHeader(owner *common.Owner) (header string) {
 }
 
 // For eventing different permissions
-func HandlerGetPermissions(keySpace common.Keyspace) []string {
+func HandlerGetPermissions(keySpace *common.Keyspace) []string {
 	perms := GetPermissions(keySpace, EventingManage)
 	perms = append(perms, EventingManagePermission)
 	perms = append(perms, ClusterPermissionRead)
-
 	return perms
 }
 
-func HandlerManagePermissions(keyspace common.Keyspace) []string {
+func HandlerManagePermissions(keyspace *common.Keyspace) []string {
 	perms := GetPermissions(keyspace, EventingManage)
 	return perms
 }
 
-func HandlerBucketPermissions(srcKeyspace, metaKeyspace common.Keyspace) []string {
-	perms := make([]string, 0, 4)
+func HandlerBucketPermissions(srcKeyspace, metaKeyspace *common.Keyspace) []string {
+	perms := make([]string, 0, 5)
 	perms = append(perms, GetPermissions(srcKeyspace, BucketDcp)...)
 	perms = append(perms, GetPermissions(metaKeyspace, BucketRead)...)
 	perms = append(perms, GetPermissions(metaKeyspace, BucketWrite)...)
-
 	return perms
 }
 

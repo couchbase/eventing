@@ -1212,3 +1212,7 @@ func (p *Producer) AppendLatencyStats(deltas common.StatsData) {
 func (p *Producer) UndeployHandler(skipMetadataCleanup bool) {
 	p.undeployHandler <- skipMetadataCleanup
 }
+
+func (p *Producer) GetOwner() *common.Owner {
+	return p.owner
+}
