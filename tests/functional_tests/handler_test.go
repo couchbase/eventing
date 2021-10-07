@@ -1053,6 +1053,16 @@ func TestUndeployWhenTimersAreFired(t *testing.T) {
 	functionName := t.Name()
 
 	time.Sleep(5 * time.Second)
+
+	itemCount, err := getBucketItemCount(metaBucket)
+	if itemCount != 0 {
+		log.Printf("Metadata bucket count is not 0 before test starts: itemCount: %d", itemCount)
+		fireQuery("CREATE PRIMARY INDEX on eventing;")
+		metaIds, err := fireQuery("SELECT meta().id FROM " + metaBucket)
+		log.Printf("Metadata ids list: %s, error: %v", metaIds, err)
+		bucketFlush(metaBucket)
+		verifyBucketCount(0, statsLookupRetryCounter, metaBucket)
+	}
 	handler := "bucket_op_with_timer_with_large_context"
 	flushFunctionAndBucket(functionName)
 	createAndDeployFunction(functionName, handler, &commonSettings{numTimerPartitions: 256})
@@ -1066,7 +1076,7 @@ func TestUndeployWhenTimersAreFired(t *testing.T) {
 	checkIfProcessRunning("eventing-con")
 
 	time.Sleep(100 * time.Second)
-	itemCount, err := getBucketItemCount(metaBucket)
+	itemCount, err = getBucketItemCount(metaBucket)
 	if itemCount != 0 && err == nil {
 		failAndCollectLogs(t, "Item count in metadata bucket after undeploy", itemCount)
 	}

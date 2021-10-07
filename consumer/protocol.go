@@ -332,7 +332,12 @@ func (c *Consumer) makeV8InitPayload(appName, debuggerPort, currHost, eventingDi
 	if c.superSup != nil {
 		securitySetting = c.superSup.GetSecuritySetting()
 		if securitySetting != nil && securitySetting.EncryptData == true {
-			certFile = builder.CreateString(securitySetting.CertFile)
+			if len(securitySetting.CAFile) > 0 {
+				certFile = builder.CreateString(securitySetting.CAFile)
+			} else {
+				certFile = builder.CreateString(securitySetting.CertFile)
+			}
+
 		}
 	}
 

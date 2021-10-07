@@ -49,6 +49,7 @@ var StreamingEndpointClosed = errors.New("Streaming endpoint closed by caller")
 type securitySettings struct {
 	useTLS        bool
 	securityMutex sync.RWMutex
+	caFile        string
 	certFile      string
 	keyFile       string
 }
@@ -56,6 +57,7 @@ type securitySettings struct {
 var settings = &securitySettings{
 	useTLS:        false,
 	securityMutex: sync.RWMutex{},
+	caFile:        "",
 	certFile:      "",
 	keyFile:       "",
 }
@@ -64,6 +66,12 @@ func SetUseTLS(value bool) {
 	settings.securityMutex.Lock()
 	defer settings.securityMutex.Unlock()
 	settings.useTLS = value
+}
+
+func SetCAFile(ca string) {
+	settings.securityMutex.Lock()
+	defer settings.securityMutex.Unlock()
+	settings.caFile = ca
 }
 
 func SetCertFile(cert string) {
@@ -82,6 +90,12 @@ func GetUseTLS() bool {
 	settings.securityMutex.RLock()
 	defer settings.securityMutex.RUnlock()
 	return settings.useTLS
+}
+
+func GetCAFile() string {
+	settings.securityMutex.RLock()
+	defer settings.securityMutex.RUnlock()
+	return settings.caFile
 }
 
 func GetCertFile() string {
@@ -357,18 +371,21 @@ func maybeAddAuth(req *http.Request, ah AuthHandler) {
 	}
 }
 
-func ClientConfigForX509(certFile, keyFile string) (*tls.Config, error) {
+func clientConfigForX509(caFile, certFile string) (*tls.Config, error) {
 	config := &tls.Config{}
 	caCertPool := x509.NewCertPool()
-	caCert, err := ioutil.ReadFile(certFile)
+	pemFile := certFile
+	// prefer reading from caFile if present
+	if len(caFile) > 0 {
+		pemFile = caFile
+	}
+	caCert, err := ioutil.ReadFile(pemFile)
 	if err != nil {
-		logging.Errorf("Error while reading SSL certificate: %v", err)
+		logging.Errorf("While reading SSL certificates from file: %s encountered error : %v", pemFile, err)
 		return nil, err
 	}
 	caCertPool.AppendCertsFromPEM(caCert)
-
 	config.RootCAs = caCertPool
-
 	return config, nil
 }
 
@@ -660,7 +677,7 @@ func (b *Bucket) init(nb *Bucket) {
 	var cfg *tls.Config = nil
 	var err error
 	if GetUseTLS() == true {
-		cfg, err = ClientConfigForX509(GetCertFile(), GetKeyFile())
+		cfg, err = clientConfigForX509(GetCAFile(), GetCertFile())
 		if err != nil {
 			logging.Errorf("Error fetching TLS config: %v", err)
 			cfg = nil

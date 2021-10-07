@@ -13,6 +13,7 @@ import (
 type Flags struct {
 	adminHTTPPort string
 	adminSSLPort  string
+	sslCAFile     string
 	sslCertFile   string
 	sslKeyFile    string
 	eventingDir   string
@@ -39,6 +40,10 @@ func initFlags() {
 	fset.StringVar(&flags.adminSSLPort,
 		"adminsslport", "",
 		"Port eventing admin SSL service is running on")
+
+	fset.StringVar(&flags.sslCAFile,
+		"cafile", "",
+		"SSL CA file for eventing admin service")
 
 	fset.StringVar(&flags.sslCertFile,
 		"certfile", "",

@@ -26,13 +26,17 @@ func NewClient(timeout time.Duration) *Client {
 }
 
 func NewTLSClient(timeout time.Duration, config *common.SecuritySetting) *Client {
-	cert, err := ioutil.ReadFile(config.CertFile)
+	pemFile := config.CertFile
+	if len(config.CAFile) > 0 {
+		pemFile = config.CAFile
+	}
+	cert, err := ioutil.ReadFile(pemFile)
 	if err != nil {
 		return &Client{http.Client{
 			Timeout: timeout,
 			Transport: &http.Transport{
 				TLSClientConfig: &tls.Config{
-					RootCAs:            config.RootCAs,
+					RootCAs: config.RootCAs,
 				},
 			},
 		}}

@@ -3,9 +3,9 @@ package supervisor
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"net"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -72,6 +72,7 @@ func NewSuperSupervisor(adminPort AdminPortConfig, eventingDir, kvPort, restPort
 	config.Set("eventing_admin_http_port", s.adminPort.HTTPPort)
 	config.Set("eventing_admin_debugger_port", s.adminPort.DebuggerPort)
 	config.Set("eventing_admin_ssl_port", s.adminPort.SslPort)
+	config.Set("eventing_admin_ssl_ca", s.adminPort.CAFile)
 	config.Set("eventing_admin_ssl_cert", s.adminPort.CertFile)
 	config.Set("eventing_admin_ssl_key", s.adminPort.KeyFile)
 	config.Set("eventing_dir", s.eventingDir)
@@ -80,10 +81,10 @@ func NewSuperSupervisor(adminPort AdminPortConfig, eventingDir, kvPort, restPort
 	baseNsserverURL := "http://" + net.JoinHostPort(util.Localhost(), s.restPort)
 
 	sel := systemeventlog.NewSystemEventLogger(systemeventlog.SystemEventLoggerConfig{}, baseNsserverURL,
-			util.SYSTEM_EVENT_COMPONENT, http.Client{Timeout: util.DEFAULT_TIMEOUT_SECS * time.Second},
-			func(message string) {
-				logging.Errorf(message)
-			})
+		util.SYSTEM_EVENT_COMPONENT, http.Client{Timeout: util.DEFAULT_TIMEOUT_SECS * time.Second},
+		func(message string) {
+			logging.Errorf(message)
+		})
 
 	s.serviceMgr = servicemanager.NewServiceMgr(config, false, s, sel)
 

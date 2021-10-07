@@ -88,6 +88,7 @@ type ServiceMgr struct {
 	adminSSLPort            string
 	auth                    string
 	graph                   *bucketMultiDiGraph
+	caFile                  string
 	certFile                string
 	config                  util.ConfigHolder
 	clusterEncryptionConfig *cbauth.ClusterEncryptionConfig

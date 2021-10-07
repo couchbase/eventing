@@ -25,6 +25,7 @@ func main() {
 		DebuggerPort: flags.debugPort,
 		HTTPPort:     flags.adminHTTPPort,
 		SslPort:      flags.adminSSLPort,
+		CAFile:       flags.sslCAFile,
 		CertFile:     flags.sslCertFile,
 		KeyFile:      flags.sslKeyFile,
 	}

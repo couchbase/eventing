@@ -66,6 +66,7 @@ type AdminPortConfig struct {
 	DebuggerPort string
 	HTTPPort     string
 	SslPort      string
+	CAFile       string
 	CertFile     string
 	KeyFile      string
 }
