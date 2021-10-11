@@ -92,6 +92,8 @@ func NewProducer(appName, debuggerPort, eventingPort, eventingSSLPort, eventingD
 
 	atomic.StoreUint32(&p.srcCid, math.MaxUint32)
 	atomic.StoreUint32(&p.metaCid, math.MaxUint32)
+	atomic.StoreUint32(&p.funcScopeId, math.MaxUint32)
+
 	return p
 }
 
@@ -126,11 +128,13 @@ func (p *Producer) Serve() {
 	}
 
 	go p.undeployHandlerWait()
-	p.funcScopeId, _, err = p.superSup.GetScopeAndCollectionID(p.functionScope.BucketName, p.functionScope.ScopeName, "")
-	if err != nil {
-		logging.Errorf("%s [%s] Error in getting function manage scope, err: %v", logPrefix, p.appName, err)
-		p.undeployHandler <- false
-		return
+	if p.functionScope.BucketName != "" {
+		p.funcScopeId, _, err = p.superSup.GetScopeAndCollectionID(p.functionScope.BucketName, p.functionScope.ScopeName, "")
+		if err != nil {
+			logging.Errorf("%s [%s] Error in getting function manage scope, err: %v", logPrefix, p.appName, err)
+			p.undeployHandler <- false
+			return
+		}
 	}
 
 	_, srcCid, err := p.superSup.GetScopeAndCollectionID(p.handlerConfig.SourceKeyspace.BucketName, p.handlerConfig.SourceKeyspace.ScopeName, p.handlerConfig.SourceKeyspace.CollectionName)
@@ -928,6 +932,12 @@ func (p *Producer) undeployHandlerWait() {
 	t := time.NewTicker(5 * time.Minute)
 	permissions := rbac.HandlerBucketPermissions(p.handlerConfig.SourceKeyspace, p.metadataKeyspace)
 	permissions = append(permissions, rbac.HandlerManagePermissions(p.functionScope)...)
+
+	// Upgraded handler will be running as admin
+	if p.owner.User == "" && p.owner.Domain == "" {
+		t.Stop()
+	}
+
 	updateMetakv := true
 	for {
 		select {

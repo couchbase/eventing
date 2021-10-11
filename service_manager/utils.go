@@ -947,6 +947,20 @@ func (m *ServiceMgr) getTempStoreAppNames() []string {
 	return appsNames
 }
 
+func (m *ServiceMgr) rbacSupport() bool {
+        hostAddress := net.JoinHostPort(util.Localhost(), m.restPort)
+        cic, err := util.FetchClusterInfoClient(hostAddress)
+        if err != nil {
+                return false
+        }
+        cinfo := cic.GetClusterInfoCache()
+        cinfo.RLock()
+        version, minVer := cinfo.GetNodeCompatVersion()
+        cinfo.RUnlock()
+
+        return version >= 7 && minVer >= 1
+}
+
 func (app *application) copy() application {
 	copyApp := *app
 

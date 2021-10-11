@@ -100,7 +100,10 @@
   if (result != LCB_SUCCESS) {
     return ErrorFormat("Unable to set timeout for query", connection_, result);
   }
-  lcb_cmdquery_on_behalf_of(cmd_, on_behalf_of_.c_str(), on_behalf_of_.size());
+
+  if (on_behalf_of_.size() != 0) {
+    lcb_cmdquery_on_behalf_of(cmd_, on_behalf_of_.c_str(), on_behalf_of_.size());
+  }
 
   // TODO: Currently lcb is not suppporting n1ql grace time period. Add it once
   // its available

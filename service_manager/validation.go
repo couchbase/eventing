@@ -1162,6 +1162,10 @@ func (app *application) functionScopeEquals(tmpApp application) bool {
 }
 
 func (app *application) checkDeploymentConfigPermission() error {
+	if app.Owner == nil || (app.Owner.User == "" && app.Owner.Domain == "") {
+		return nil
+	}
+
 	sourceKeyspace := &common.Keyspace{BucketName: app.DeploymentConfig.SourceBucket,
 		ScopeName:      app.DeploymentConfig.SourceScope,
 		CollectionName: app.DeploymentConfig.SourceCollection,

@@ -1964,6 +1964,27 @@ func (m *ServiceMgr) saveTempStore(app application) (info *runtimeInfo) {
 	info = &runtimeInfo{}
 	appName := app.Name
 
+	currApp, ok := m.checkAppExists(app.Name)
+	if ok {
+		ok = currApp.functionScopeEquals(app)
+		if !ok {
+			info.Code = m.statusCodes.errSaveConfig.Code
+			info.Info = fmt.Sprintf("Function scope cannot be changed")
+			return
+		}
+
+		app.Owner = currApp.Owner
+		err := app.checkDeploymentConfigPermission()
+		if err == rbac.ErrAuthorisation {
+			info.Code = m.statusCodes.errForbidden.Code
+			return
+		}
+		if err != nil {
+			info.Code = m.statusCodes.errInternalServer.Code
+			return
+		}
+	}
+
 	data, err := json.MarshalIndent(app, "", " ")
 	if err != nil {
 		info.Code = m.statusCodes.errMarshalResp.Code
@@ -3035,12 +3056,6 @@ func (m *ServiceMgr) functionName(w http.ResponseWriter, r *http.Request, appNam
 			return
 		}
 
-		info = m.MaybeEnforceFunctionSchema(app)
-		if info.Code != m.statusCodes.ok.Code {
-			m.sendErrorInfo(w, info)
-			return
-		}
-
 		m.addDefaultVersionIfMissing(&app)
 		m.addDefaultDeploymentConfig(&app)
 		m.addDefaultTimerPartitionsIfMissing(&app)
@@ -3055,6 +3070,12 @@ func (m *ServiceMgr) functionName(w http.ResponseWriter, r *http.Request, appNam
 		if isMixedMode {
 			info.Code = m.statusCodes.errMixedMode.Code
 			info.Info = "Life-cycle operations except delete and undeploy are not allowed in a mixed mode cluster"
+			m.sendErrorInfo(w, info)
+			return
+		}
+
+		info = m.MaybeEnforceFunctionSchema(app)
+		if info.Code != m.statusCodes.ok.Code {
 			m.sendErrorInfo(w, info)
 			return
 		}
@@ -3155,22 +3176,29 @@ func (m *ServiceMgr) functionName(w http.ResponseWriter, r *http.Request, appNam
 
 // Checks for permission and add the intial fields
 func (m *ServiceMgr) verifyAndCreateApp(cred cbauth.Creds, app *application) error {
-	fS := app.FunctionScope
-	// Store this into internal structure
-	// Also refactor to hold the required one
-	_, _, info := m.getBSId(&fS)
-	if info != nil && info.Code != m.statusCodes.ok.Code {
-		return fmt.Errorf("%s", info.Info)
+	rbacSupport := m.rbacSupport()
+	if rbacSupport {
+		fS := app.FunctionScope
+		_, _, info := m.getBSId(&fS)
+		if info != nil && info.Code != m.statusCodes.ok.Code {
+			return fmt.Errorf("%s", info.Info)
+		}
+	} else {
+		app.FunctionScope = common.FunctionScope{}
 	}
 
 	if _, err := checkPermissions(app, cred); err != nil {
 		return err
 	}
 
-	name, domain := cred.User()
-	app.Owner = &common.Owner{
-		User:   name,
-		Domain: domain,
+	if rbacSupport {
+		name, domain := cred.User()
+		app.Owner = &common.Owner{
+			User:   name,
+			Domain: domain,
+		}
+	} else {
+		app.Owner = &common.Owner{}
 	}
 
 	if app.Settings["deployment_status"] != app.Settings["processing_status"] {
@@ -3223,14 +3251,6 @@ func (m *ServiceMgr) functions(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		for _, app := range *appList {
-			info = m.MaybeEnforceFunctionSchema(app)
-			if info.Code != m.statusCodes.ok.Code {
-				m.sendErrorInfo(w, info)
-				return
-			}
-		}
-
 		var isMixedMode bool
 		if isMixedMode, info = m.isMixedModeCluster(); info.Code != m.statusCodes.ok.Code {
 			m.sendErrorInfo(w, info)
@@ -3243,6 +3263,15 @@ func (m *ServiceMgr) functions(w http.ResponseWriter, r *http.Request) {
 			m.sendErrorInfo(w, info)
 			return
 		}
+
+		for _, app := range *appList {
+			info = m.MaybeEnforceFunctionSchema(app)
+			if info.Code != m.statusCodes.ok.Code {
+				m.sendErrorInfo(w, info)
+				return
+			}
+		}
+
 		infoList, _ := m.createApplications(cred, r, appList, false)
 		m.sendRuntimeInfoList(w, infoList)
 
