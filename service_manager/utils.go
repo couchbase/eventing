@@ -34,12 +34,12 @@ func init() {
 	}
 }
 
-func (m *ServiceMgr) checkAppExists(appName string) bool {
-	_, info := m.getTempStore(appName)
-	if info.Code == m.statusCodes.errAppNotFoundTs.Code {
-		return false
+func (m *ServiceMgr) checkAppExists(appName string) (*application, bool) {
+	app, ok := m.getAppFromTempStore(appName)
+	if !ok {
+		return nil, false
 	}
-	return true
+	return &app, true
 }
 
 func (m *ServiceMgr) checkIfDeployed(appName string) bool {
@@ -945,6 +945,23 @@ func (m *ServiceMgr) getTempStoreAppNames() []string {
 	}
 
 	return appsNames
+}
+
+func (app *application) copy() application {
+	copyApp := *app
+
+	settings := make(map[string]interface{})
+	for k, v := range app.Settings {
+		settings[k] = v
+	}
+	copyApp.Settings = settings
+
+	metaInfo := make(map[string]interface{})
+	for k, v := range app.Metainfo {
+		metaInfo[k] = v
+	}
+	copyApp.Metainfo = metaInfo
+	return copyApp
 }
 
 func ConstructKeyspace(keyspace string) common.Keyspace {

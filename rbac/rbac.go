@@ -7,34 +7,52 @@ import (
 	"net/http"
 
 	"github.com/couchbase/cbauth"
+	"github.com/couchbase/eventing/audit"
 	"github.com/couchbase/eventing/common"
+	"github.com/couchbase/eventing/gen/auditevent"
 	"github.com/couchbase/eventing/util"
 )
 
-type Privilege uint8
+type Permission uint8
 
 const (
-	EventingManage Privilege = iota
+	EventingManage Permission = iota
 	BucketRead
 	BucketWrite
+	BucketDcp
 )
 
 // Known permissions
 const (
 	// EventingPermissionManage for auditing
-	EventingPermissionManage = "cluster.eventing.functions!manage"
+	EventingManagePermission = "cluster.eventing.functions!manage"
 	EventingPermissionStats  = "cluster.admin.internal.stats!read"
 	ClusterPermissionRead    = "cluster.admin.security!read"
 )
 
-func GetPermission(keySpace common.Keyspace, privilege Privilege) (perm string) {
-	switch privilege {
+var (
+	EventingPermissionManage = []string{EventingManagePermission}
+	EventingReadPermissions  = []string{EventingManagePermission, ClusterPermissionRead}
+	EventingStatsPermission  = []string{EventingPermissionStats}
+)
+
+func GetPermissions(keySpace common.Keyspace, perm Permission) (perms []string) {
+	perms = make([]string, 0, 3)
+	switch perm {
 	case EventingManage:
-		perm = fmt.Sprintf("cluster.collection[%s].eventing.function!manage", keyspaceToRbacString(keySpace))
+		perms = append(perms, fmt.Sprintf("cluster.collection[%s].eventing.function!manage", keyspaceToRbacString(keySpace)))
+
 	case BucketRead:
-		perm = fmt.Sprintf("cluster.collection[%s].collections!read", keyspaceToRbacString(keySpace))
+		perms = append(perms, fmt.Sprintf("cluster.collection[%s].data.docs!read", keyspaceToRbacString(keySpace)))
+
 	case BucketWrite:
-		perm = fmt.Sprintf("cluster.collection[%s].collections!write", keyspaceToRbacString(keySpace))
+		perms = append(perms, fmt.Sprintf("cluster.collection[%s].data.docs!insert", keyspaceToRbacString(keySpace)))
+		perms = append(perms, fmt.Sprintf("cluster.collection[%s].data.docs!upsert", keyspaceToRbacString(keySpace)))
+		perms = append(perms, fmt.Sprintf("cluster.collection[%s].data.docs!delete", keyspaceToRbacString(keySpace)))
+
+	case BucketDcp:
+		perms = append(perms, fmt.Sprintf("cluster.collection[%s].data.dcpstream!read", keyspaceToRbacString(keySpace)))
+
 	}
 	return
 }
@@ -58,7 +76,7 @@ func IsAllowed(req *http.Request, permissions []string, union bool) ([]string, e
 // Error maybe the cbauth http server problem
 // TODO: If cbauth supports IsAllowed(user, permission we don't have to
 // recreate all the request and all
-// If union is true then all privilege to should be satisfied
+// If union is true then all permission to should be satisfied
 func HasPermissions(owner *common.Owner, permissions []string, union bool) ([]string, error) {
 	req, err := http.NewRequest(http.MethodGet, "", nil)
 	if err != nil {
@@ -77,8 +95,14 @@ func HasPermissions(owner *common.Owner, permissions []string, union bool) ([]st
 	return authenticateAndCheck(req, permissions, union)
 }
 
-func AuthWebCreds(req *http.Request) (cbauth.Creds, error) {
-	return cbauth.AuthWebCreds(req)
+func AuthWebCreds(w http.ResponseWriter, req *http.Request) (cbauth.Creds, error) {
+	cred, err := cbauth.AuthWebCreds(req)
+	if err != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		audit.Log(auditevent.AuthenticationFailure, req, nil)
+		return nil, err
+	}
+	return cred, nil
 }
 
 func IsAllowedCreds(cred cbauth.Creds, permissions []string, union bool) ([]string, error) {
@@ -97,24 +121,23 @@ func authenticateAndCheck(req *http.Request, permissions []string, union bool) (
 // Returns permission which is not allowed
 // all: all the permission should be satisfied
 func authorizeFromCreds(cred cbauth.Creds, permissions []string, all bool) ([]string, error) {
-	notAllowed := make([]string, 0, 3)
+	notAllowed := make([]string, 0, len(permissions))
 	for _, perm := range permissions {
 		allowed, err := cred.IsAllowed(perm)
 		if err != nil {
-			notAllowed = append(notAllowed, perm)
-			return notAllowed, err
+			return nil, err
 		}
 		if allowed && !all {
-			return notAllowed, nil
+			return nil, nil
 		}
 		if !allowed {
 			notAllowed = append(notAllowed, perm)
 		}
 	}
 	if len(notAllowed) == 0 {
-		return notAllowed, nil
+		return nil, nil
 	}
-	return notAllowed, fmt.Errorf("Few privilege is not present")
+	return notAllowed, fmt.Errorf("One or more requested permissions not present")
 }
 
 func encodeCbOnBehalfOfHeader(owner *common.Owner) (header string) {
@@ -124,19 +147,55 @@ func encodeCbOnBehalfOfHeader(owner *common.Owner) (header string) {
 
 // For eventing different permissions
 func HandlerGetPermissions(keySpace common.Keyspace) []string {
-	managePermissions := GetPermission(keySpace, EventingManage)
-	permissions := []string{managePermissions, EventingPermissionManage, ClusterPermissionRead}
-	return permissions
+	perms := GetPermissions(keySpace, EventingManage)
+	perms = append(perms, EventingManagePermission)
+	perms = append(perms, ClusterPermissionRead)
+
+	return perms
 }
 
 func HandlerManagePermissions(keyspace common.Keyspace) []string {
-	managePermissions := GetPermission(keyspace, EventingManage)
-	permissions := []string{managePermissions}
-	return permissions
+	perms := GetPermissions(keyspace, EventingManage)
+	return perms
 }
 
 func HandlerBucketPermissions(srcKeyspace, metaKeyspace common.Keyspace) []string {
-	read := GetPermission(srcKeyspace, BucketRead)
-	write := GetPermission(metaKeyspace, BucketWrite)
-	return []string{read, write}
+	perms := make([]string, 0, 4)
+	perms = append(perms, GetPermissions(srcKeyspace, BucketDcp)...)
+	perms = append(perms, GetPermissions(metaKeyspace, BucketRead)...)
+	perms = append(perms, GetPermissions(metaKeyspace, BucketWrite)...)
+
+	return perms
+}
+
+func ValidateAuth(w http.ResponseWriter, r *http.Request, perms []string, all bool) bool {
+	creds, err := cbauth.AuthWebCreds(r)
+	if err != nil || creds == nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		audit.Log(auditevent.AuthenticationFailure, r, nil)
+		return false
+	}
+
+	notAllowed, err := IsAllowedCreds(creds, perms, all)
+	if err != nil {
+		w.WriteHeader(http.StatusForbidden)
+		cbauth.SendForbidden(w, notAllowed[0])
+		audit.Log(auditevent.AuthorizationFailure, r, nil)
+		return false
+	}
+	return true
+}
+
+func ValidateAuthForOp(r *http.Request, rPerms []string, mPerms []string, all bool) bool {
+	cred, err := cbauth.AuthWebCreds(r)
+	if err != nil {
+		return false
+	}
+
+	perms := rPerms
+	if r.Method != "GET" {
+		perms = mPerms
+	}
+	_, err = IsAllowedCreds(cred, perms, all)
+	return (err == nil)
 }

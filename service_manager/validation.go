@@ -17,6 +17,7 @@ import (
 	"github.com/couchbase/eventing/gen/auditevent"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/parser"
+	"github.com/couchbase/eventing/rbac"
 	"github.com/couchbase/eventing/util"
 )
 
@@ -131,28 +132,6 @@ func (m *ServiceMgr) validateApplication(app *application) (info *runtimeInfo) {
 	return
 }
 
-func (m *ServiceMgr) validateAuth(w http.ResponseWriter, r *http.Request, perm string) bool {
-	logPrefix := "ServiceMgr::validateAuth"
-
-	creds, err := cbauth.AuthWebCreds(r)
-	if err != nil || creds == nil {
-		logging.Warnf("%s Cannot authenticate request to %rs, err: %v creds: %ru", logPrefix, r.URL, err, creds)
-		w.WriteHeader(http.StatusUnauthorized)
-		audit.Log(auditevent.AuthenticationFailure, r, nil)
-		return false
-	}
-	allowed, err := creds.IsAllowed(perm)
-	if err != nil || !allowed {
-		logging.Warnf("%s Cannot authorize request to %rs", logPrefix, r.URL)
-		w.WriteHeader(http.StatusForbidden)
-		cbauth.SendForbidden(w, perm)
-		audit.Log(auditevent.AuthorizationFailure, r, nil)
-		return false
-	}
-	logging.Debugf("%s Allowing access to %rs", logPrefix, r.URL)
-	return true
-}
-
 func (m *ServiceMgr) validateAnyAuth(w http.ResponseWriter, r *http.Request, perms []string) bool {
 	logPrefix := "ServiceMgr::validateAnyAuth"
 
@@ -186,13 +165,13 @@ func (m *ServiceMgr) validateAnyAuth(w http.ResponseWriter, r *http.Request, per
 
 // Performs authz based on HTTP Method using read perms for GET and write perms for the rest.
 func (m *ServiceMgr) validateAuthForOp(w http.ResponseWriter, r *http.Request,
-	rperms []string, wperm string) bool {
+	rperms []string, wperm []string) bool {
 
 	if r.Method == "GET" {
-		return m.validateAnyAuth(w, r, rperms)
+		return rbac.ValidateAuth(w, r, rperms, false)
 	}
 
-	return m.validateAuth(w, r, wperm)
+	return rbac.ValidateAuth(w, r, wperm, false)
 }
 
 // ::TODO::Move to ForbiddenJSONMultiple and SendForbiddenMultiple to cbauth:convenience.go
@@ -1267,4 +1246,30 @@ func (m *ServiceMgr) validateZeroOrPositiveInteger(field string, settings map[st
 
 	info.Code = m.statusCodes.ok.Code
 	return
+}
+
+// TODO: Should use internal fields and compare the uuid and cid
+func (app *application) functionScopeEquals(tmpApp application) bool {
+	fG := app.FunctionScope
+	tmpFg := tmpApp.FunctionScope
+
+	return (fG.BucketName == tmpFg.BucketName) && (fG.ScopeName == tmpFg.ScopeName)
+}
+
+func (app *application) deploymentConfigChanges() bool {
+	sourceKeyspace := common.Keyspace{BucketName: app.DeploymentConfig.SourceBucket,
+		ScopeName:      app.DeploymentConfig.SourceScope,
+		CollectionName: app.DeploymentConfig.SourceCollection,
+	}
+
+	metadataKeyspace := common.Keyspace{BucketName: app.DeploymentConfig.MetadataBucket,
+		ScopeName:      app.DeploymentConfig.MetadataScope,
+		CollectionName: app.DeploymentConfig.MetadataCollection,
+	}
+
+	priv := rbac.HandlerBucketPermissions(sourceKeyspace, metadataKeyspace)
+	if _, err := rbac.HasPermissions(app.Owner, priv, true); err != nil {
+		return false
+	}
+	return true
 }

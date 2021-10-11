@@ -55,7 +55,7 @@ func NewServiceMgr(config util.Config, rebalanceRunning bool,
 		tlsServer:               nil,
 		graph:                   newBucketMultiDiGraph(),
 		fnsInPrimaryStore:       make(map[string]depCfg),
-		fnsInTempStore:          make(map[string]application),
+		fnsInTempStore:          make(map[string]*application),
 		bucketFunctionMap:       make(map[common.Keyspace]map[string]functionInfo),
 		fnMu:                    &sync.RWMutex{},
 		failoverMu:              &sync.RWMutex{},
@@ -554,7 +554,7 @@ func (m *ServiceMgr) tempStoreAppsPathCallback(kve metakv.KVEntry) error {
 			logging.Errorf("%s Error unmarshalling function: %s err: %v", logPrefix, fnName, err)
 			return nil
 		}
-		m.fnsInTempStore[fnName] = app
+		m.fnsInTempStore[fnName] = &app
 		logging.Infof("%s Added function: %s to fnsInTempStore", logPrefix, fnName)
 	} else {
 		delete(m.fnsInTempStore, fnName)
