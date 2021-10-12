@@ -754,17 +754,7 @@ angular.module('eventing', [
             scope: $scope
           }).result
           .then(function(response) {
-            return ApplicationService.tempStore.deleteApp(appName);
-          })
-          .then(function(response) {
-            var responseCode = ApplicationService.status.getResponseCode(
-              response);
-            if (responseCode) {
-              return $q.reject(ApplicationService.status.getErrorMsg(
-                responseCode, response.data));
-            }
-
-            return ApplicationService.primaryStore.deleteApp(appName);
+            return ApplicationService.public.deleteApp(appName);
           })
           .then(function(response) {
             // Delete the local copy of the app in the browser
@@ -2114,6 +2104,15 @@ angular.module('eventing', [
               data: settings
             });
           },
+          deleteApp: function(appName) {
+            return $http({
+              url: '/_p/event/api/v1/functions/' + appName,
+              method: 'DELETE',
+              mnHttp: {
+                isNotForm: true
+              }
+            });
+          },
           getConfig: function() {
             return $http.get('/_p/event/api/v1/config');
           },
@@ -2218,10 +2217,6 @@ angular.module('eventing', [
                   .processing_status;
               })
           },
-          deleteApp: function(appName) {
-            return $http.get('/_p/event/deleteAppTempStore/?name=' +
-              appName);
-          },
           redactPWDApp: function(app) {
             if (app.depcfg && app.depcfg.curl) {
               for (var idx = 0; idx < app.depcfg.curl.length; idx++) {
@@ -2233,10 +2228,6 @@ angular.module('eventing', [
           }
         },
         primaryStore: {
-          deleteApp: function(appName) {
-            return $http.get('/_p/event/deleteApplication/?name=' +
-              appName);
-          },
           getDeployedApps: function() {
             return $http.get('/_p/event/getDeployedApps');
           }
