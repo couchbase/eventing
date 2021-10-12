@@ -647,19 +647,27 @@ func (s *SuperSupervisor) GetCurrentManifestId(bucketName string) (string, error
 	return bucketWatch.GetManifestId(), nil
 }
 
-func (s *SuperSupervisor) GetCollectionID(bucketName, scopeName, collectionName string) (uint32, error) {
+// Empty collectionName returns collection id as 0
+// Caller of this functions should take care of it
+func (s *SuperSupervisor) GetScopeAndCollectionID(bucketName, scopeName, collectionName string) (uint32, uint32, error) {
 	s.bucketsRWMutex.Lock()
 	defer s.bucketsRWMutex.Unlock()
 	bucketWatch, ok := s.buckets[bucketName]
 	if !ok {
-		return 0, common.BucketNotWatched
+		return 0, 0, common.BucketNotWatched
 	}
 
 	manifest := bucketWatch.b.Manifest
 	if manifest == nil {
-		return 0, nil
+		return 0, 0, nil
 	}
-	return manifest.GetCollectionID(scopeName, collectionName)
+
+	sid, cid, err := manifest.GetScopeAndCollectionID(scopeName, collectionName)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	return sid, cid, nil
 }
 
 func (s *SuperSupervisor) GetMetadataHandle(bucketName, scopeName, collectionName, appName string) (*gocb.Collection, error) {

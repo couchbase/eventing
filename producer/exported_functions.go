@@ -1216,3 +1216,15 @@ func (p *Producer) UndeployHandler(skipMetadataCleanup bool) {
 func (p *Producer) GetOwner() *common.Owner {
 	return p.owner
 }
+
+func (p *Producer) GetFuncScopeDetails() (string, uint32) {
+	return p.funcBucketUuid, p.funcScopeId
+}
+
+func (p *Producer) FunctionManageBucket() string {
+	return p.functionScope.BucketName
+}
+
+func (p *Producer) FunctionManageScope() string {
+	return p.functionScope.ScopeName
+}

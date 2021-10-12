@@ -11,6 +11,8 @@ import (
 	"strings"
 
 	"github.com/couchbase/eventing/common"
+	"github.com/couchbase/eventing/common/collections"
+	couchbase "github.com/couchbase/eventing/dcp"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/parser"
 	"github.com/couchbase/eventing/rbac"
@@ -498,33 +500,23 @@ func (m *ServiceMgr) getBSId(fS *common.FunctionScope) (string, uint32, *runtime
 		return "", 0, info
 	}
 
-	bucketUUID, scopeId, ok := m.CheckAndGetBktAndScopeIDs(fS)
-	if !ok {
+	if info = m.validateStorageEngine(fS.BucketName); info.Code != m.statusCodes.ok.Code {
+		return "", 0, info
+	}
+
+	bucketUUID, scopeId, err := util.CheckAndGetBktAndScopeIDs(fS, m.restPort)
+	if err == couchbase.ErrBucketNotFound || err == collections.SCOPE_NOT_FOUND {
 		info.Code = m.statusCodes.errBucketMissing.Code
+		return "", 0, info
+	}
+
+	if err != nil {
+		info.Code = m.statusCodes.errEventingBusy.Code
 		return "", 0, info
 	}
 
 	info.Code = m.statusCodes.ok.Code
 	return bucketUUID, scopeId, info
-}
-
-func (m *ServiceMgr) CheckAndGetBktAndScopeIDs(fS *common.FunctionScope) (string, uint32, bool) {
-	nsServerEndpoint := net.JoinHostPort(util.Localhost(), m.restPort)
-	cic, err := util.FetchClusterInfoClient(nsServerEndpoint)
-	if err != nil {
-		return "", 0, false
-	}
-
-	clusterInfo := cic.GetClusterInfoCache()
-	clusterInfo.RLock()
-	defer clusterInfo.RUnlock()
-
-	bucketUUID, scopeId, _, err := clusterInfo.GetUniqueBSCIds(fS.BucketName, fS.ScopeName, "")
-	if err != nil {
-		return "", 0, false
-	}
-
-	return bucketUUID, scopeId, true
 }
 
 func (m *ServiceMgr) validateBucketBindings(bindings []bucket, existingAliases map[string]struct{}) (info *runtimeInfo) {

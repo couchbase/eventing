@@ -264,6 +264,9 @@ type EventingProducer interface {
 	WriteDebuggerURL(url string)
 	WriteDebuggerToken(token string, hostnames []string) error
 	GetOwner() *Owner
+	GetFuncScopeDetails() (string, uint32)
+	FunctionManageBucket() string
+	FunctionManageScope() string
 }
 
 // EventingConsumer interface to export functions from eventing_consumer
@@ -354,7 +357,7 @@ type EventingSuperSup interface {
 	GetMetaStoreStats(appName string) map[string]uint64
 	GetBucket(bucketName, appName string) (*couchbase.Bucket, error)
 	GetMetadataHandle(bucketName, scopeName, collectionName, appName string) (*gocb.Collection, error)
-	GetCollectionID(bucketName, scopeName, collectionName string) (uint32, error)
+	GetScopeAndCollectionID(bucketName, scopeName, collectionName string) (uint32, uint32, error)
 	GetCurrentManifestId(bucketName string) (string, error)
 	GetRegisteredPool() string
 	GetSeqsProcessed(appName string) map[int]int64

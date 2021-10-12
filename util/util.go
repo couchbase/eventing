@@ -2290,3 +2290,22 @@ func ComposeOBOAuthInfo(user, domain string) (oboAuthInfo string) {
 
 	return ""
 }
+
+func CheckAndGetBktAndScopeIDs(fG *common.FunctionScope, restPort string) (string, uint32, error) {
+	nsServerEndpoint := net.JoinHostPort(Localhost(), restPort)
+	cic, err := FetchClusterInfoClient(nsServerEndpoint)
+	if err != nil {
+		return "", 0, err
+	}
+
+	clusterInfo := cic.GetClusterInfoCache()
+	clusterInfo.RLock()
+	defer clusterInfo.RUnlock()
+
+	bucketUUID, scopeId, _, err := clusterInfo.GetUniqueBSCIds(fG.BucketName, fG.ScopeName, "")
+	if err != nil {
+		return "", 0, err
+	}
+
+	return bucketUUID, scopeId, nil
+}

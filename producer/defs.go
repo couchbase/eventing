@@ -184,6 +184,10 @@ type Producer struct {
 
 	functionScope *common.Keyspace
 	owner         *common.Owner
+
+	// Will change it in the next patch
+	funcBucketUuid string
+	funcScopeId    uint32
 }
 
 type vbNodeWorkerMapping struct {

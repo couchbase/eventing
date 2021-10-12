@@ -971,7 +971,6 @@ func (p *Pool) GetBucketList() map[string]struct{} {
 	return bucketList
 }
 
-// TODO: Merge these 2 functions
 func (p *Pool) GetCollectionID(bucket, scope, collection string) (uint32, error) {
 	version := p.GetClusterCompatVersion()
 	if version >= collections.COLLECTION_SUPPORTED_VERSION {
