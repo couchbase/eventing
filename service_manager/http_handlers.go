@@ -1455,13 +1455,8 @@ func (m *ServiceMgr) setSettings(appName string, data []byte, force bool) (info 
 	}
 	m.addDefaultDeploymentConfig(&app)
 
-	err = app.checkDeploymentConfigPermission()
-	if err == rbac.ErrAuthorisation {
-		info.Code = m.statusCodes.errForbidden.Code
-		return
-	}
-	if err != nil {
-		info.Code = m.statusCodes.errInternalServer.Code
+	info = m.checkDeploymentConfigPermission(app)
+	if info.Code != m.statusCodes.ok.Code {
 		return
 	}
 
@@ -1974,13 +1969,8 @@ func (m *ServiceMgr) saveTempStore(app application) (info *runtimeInfo) {
 		}
 
 		app.Owner = currApp.Owner
-		err := app.checkDeploymentConfigPermission()
-		if err == rbac.ErrAuthorisation {
-			info.Code = m.statusCodes.errForbidden.Code
-			return
-		}
-		if err != nil {
-			info.Code = m.statusCodes.errInternalServer.Code
+		info = m.checkDeploymentConfigPermission(app)
+		if info.Code != m.statusCodes.ok.Code {
 			return
 		}
 	}
@@ -2119,13 +2109,8 @@ func (m *ServiceMgr) savePrimaryStore(app *application) (info *runtimeInfo) {
 		}
 
 		app.Owner = currApp.Owner
-		err := app.checkDeploymentConfigPermission()
-		if err == rbac.ErrAuthorisation {
-			info.Code = m.statusCodes.errForbidden.Code
-			return
-		}
-		if err != nil {
-			info.Code = m.statusCodes.errInternalServer.Code
+		info = m.checkDeploymentConfigPermission(*app)
+		if info.Code != m.statusCodes.ok.Code {
 			return
 		}
 	}
@@ -3082,14 +3067,8 @@ func (m *ServiceMgr) functionName(w http.ResponseWriter, r *http.Request, appNam
 
 		appInStore, ok := m.checkAppExists(appName)
 		if !ok {
-			err := m.verifyAndCreateApp(cred, &app)
-			if err == rbac.ErrAuthorisation {
-				info.Code = m.statusCodes.errForbidden.Code
-				m.sendErrorInfo(w, info)
-				return
-			}
-			if err != nil {
-				info.Code = m.statusCodes.errInternalServer.Code
+			info := m.verifyAndCreateApp(cred, &app)
+			if info.Code != m.statusCodes.ok.Code {
 				m.sendErrorInfo(w, info)
 				return
 			}
@@ -3175,20 +3154,30 @@ func (m *ServiceMgr) functionName(w http.ResponseWriter, r *http.Request, appNam
 }
 
 // Checks for permission and add the intial fields
-func (m *ServiceMgr) verifyAndCreateApp(cred cbauth.Creds, app *application) error {
+func (m *ServiceMgr) verifyAndCreateApp(cred cbauth.Creds, app *application) (info *runtimeInfo) {
+	info = &runtimeInfo{}
+	info.Code = m.statusCodes.ok.Code
+
 	rbacSupport := m.rbacSupport()
 	if rbacSupport {
 		fS := app.FunctionScope
-		_, _, info := m.getBSId(&fS)
+		_, _, info = m.getBSId(&fS)
 		if info != nil && info.Code != m.statusCodes.ok.Code {
-			return fmt.Errorf("%s", info.Info)
+			return
 		}
 	} else {
 		app.FunctionScope = common.FunctionScope{}
 	}
 
-	if _, err := checkPermissions(app, cred); err != nil {
-		return err
+	notAllowed, err := checkPermissions(app, cred)
+	if err == rbac.ErrAuthorisation {
+		info.Code = m.statusCodes.errForbidden.Code
+		info.Info = fmt.Sprintf("Forbidden. User needs one of the following permission: %v", notAllowed)
+		return
+	}
+	if err != nil {
+		info.Code = m.statusCodes.errInternalServer.Code
+		return
 	}
 
 	if rbacSupport {
@@ -3211,7 +3200,7 @@ func (m *ServiceMgr) verifyAndCreateApp(cred cbauth.Creds, app *application) err
 		app.Settings["dcp_stream_boundary"] = "everything"
 	}
 
-	return nil
+	return
 }
 
 func checkPermissions(app *application, creds cbauth.Creds) ([]string, error) {
@@ -3416,16 +3405,8 @@ func (m *ServiceMgr) functionDeploy(w http.ResponseWriter, r *http.Request, appN
 		return
 	}
 
-	err = app.checkDeploymentConfigPermission()
-	if err == rbac.ErrAuthorisation {
-		info.Code = m.statusCodes.errForbidden.Code
-		m.sendErrorInfo(w, info)
-		return
-	}
-
-	if err != nil {
-		info.Code = m.statusCodes.errInternalServer.Code
-		m.sendErrorInfo(w, info)
+	info = m.checkDeploymentConfigPermission(app)
+	if info.Code != m.statusCodes.ok.Code {
 		return
 	}
 
@@ -4515,14 +4496,8 @@ func (m *ServiceMgr) createApplications(cred cbauth.Creds, r *http.Request, appL
 
 		_, ok := m.checkAppExists(app.Name)
 		if !ok {
-			err := m.verifyAndCreateApp(cred, &app)
-			if err == rbac.ErrAuthorisation {
-				info.Code = m.statusCodes.errForbidden.Code
-				infoList = append(infoList, info)
-				continue
-			}
-			if err != nil {
-				info.Code = m.statusCodes.errInternalServer.Code
+			info = m.verifyAndCreateApp(cred, &app)
+			if info.Code != m.statusCodes.ok.Code {
 				infoList = append(infoList, info)
 				continue
 			}

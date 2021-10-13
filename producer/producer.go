@@ -937,6 +937,7 @@ func (p *Producer) undeployHandlerWait() {
 	if p.owner.User == "" && p.owner.Domain == "" {
 		t.Stop()
 	}
+	defer t.Stop()
 
 	updateMetakv := true
 	for {

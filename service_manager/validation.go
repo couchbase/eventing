@@ -1161,9 +1161,12 @@ func (app *application) functionScopeEquals(tmpApp application) bool {
 	return (fS.BucketName == tmpFs.BucketName) && (fS.ScopeName == tmpFs.ScopeName)
 }
 
-func (app *application) checkDeploymentConfigPermission() error {
+func (m *ServiceMgr) checkDeploymentConfigPermission(app application) (info *runtimeInfo) {
+	info = &runtimeInfo{}
+	info.Code = m.statusCodes.ok.Code
+
 	if app.Owner == nil || (app.Owner.User == "" && app.Owner.Domain == "") {
-		return nil
+		return
 	}
 
 	sourceKeyspace := &common.Keyspace{BucketName: app.DeploymentConfig.SourceBucket,
@@ -1177,8 +1180,16 @@ func (app *application) checkDeploymentConfigPermission() error {
 	}
 
 	perms := rbac.HandlerBucketPermissions(sourceKeyspace, metadataKeyspace)
-	if _, err := rbac.HasPermissions(app.Owner, perms, true); err != nil {
-		return err
+	notAllowed, err := rbac.HasPermissions(app.Owner, perms, true)
+	if err == rbac.ErrAuthorisation {
+		info.Code = m.statusCodes.errForbidden.Code
+		info.Info = fmt.Sprintf("Forbidden. User needs one of the following permission: %v", notAllowed)
+		return
 	}
-	return nil
+
+	if err != nil {
+		info.Code = m.statusCodes.errInternalServer.Code
+		return
+	}
+	return
 }
