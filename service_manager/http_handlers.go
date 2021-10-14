@@ -4181,6 +4181,7 @@ func (m *ServiceMgr) exportHandler(w http.ResponseWriter, r *http.Request) {
 
 	apps := m.getTempStoreAll()
 	exportedFns := make([]string, 0, len(apps))
+	exportedFuncs := make([]application, 0, len(apps))
 
 	for _, app := range apps {
 		info := m.checkPermissionFromCred(cred, app.Name, rbac.HandlerGetPermissions, false)
@@ -4197,11 +4198,12 @@ func (m *ServiceMgr) exportHandler(w http.ResponseWriter, r *http.Request) {
 		app.Settings["deployment_status"] = false
 		app.Settings["processing_status"] = false
 		exportedFns = append(exportedFns, app.Name)
+		exportedFuncs = append(exportedFuncs, app)
 	}
 
 	logging.Infof("%s Exported function list: %+v", logPrefix, exportedFns)
 
-	data, err := json.MarshalIndent(apps, "", " ")
+	data, err := json.MarshalIndent(exportedFuncs, "", " ")
 	if err != nil {
 		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
 		w.WriteHeader(m.getDisposition(m.statusCodes.errMarshalResp.Code))
