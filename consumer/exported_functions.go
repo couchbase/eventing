@@ -824,3 +824,7 @@ func (c *Consumer) PauseConsumer() {
 func (c *Consumer) NotifyWorker() {
 	atomic.StoreUint32(&c.notifyWorker, 1)
 }
+
+func (c *Consumer) GetOwner() *common.Owner {
+	return c.producer.GetOwner()
+}

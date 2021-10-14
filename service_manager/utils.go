@@ -34,12 +34,12 @@ func init() {
 	}
 }
 
-func (m *ServiceMgr) checkAppExists(appName string) bool {
-	_, info := m.getTempStore(appName)
-	if info.Code == m.statusCodes.errAppNotFoundTs.Code {
-		return false
+func (m *ServiceMgr) checkAppExists(appName string) (*application, bool) {
+	app, ok := m.getAppFromTempStore(appName)
+	if !ok {
+		return nil, false
 	}
-	return true
+	return &app, true
 }
 
 func (m *ServiceMgr) checkIfDeployed(appName string) bool {
@@ -196,11 +196,12 @@ func (m *ServiceMgr) sendErrorInfo(w http.ResponseWriter, runtimeInfo *runtimeIn
 		w.WriteHeader(m.getDisposition(runtimeInfo.Code))
 	}
 
+	w.Header().Set("Content-Type", "application/json")
 	w.Header().Add(headerKey, strconv.Itoa(errInfo.Code))
 	fmt.Fprintf(w, string(response))
 }
 
-func (m *ServiceMgr) sendRuntimeInfo(w http.ResponseWriter, runtimeInfo *runtimeInfo) {
+func (m *ServiceMgr) sendResponse(w http.ResponseWriter, runtimeInfo *runtimeInfo) {
 	if runtimeInfo.Code != m.statusCodes.ok.Code {
 		m.sendErrorInfo(w, runtimeInfo)
 		return
@@ -946,6 +947,23 @@ func (m *ServiceMgr) getTempStoreAppNames() []string {
 	return appsNames
 }
 
+func (app *application) copy() application {
+	copyApp := *app
+
+	settings := make(map[string]interface{})
+	for k, v := range app.Settings {
+		settings[k] = v
+	}
+	copyApp.Settings = settings
+
+	metaInfo := make(map[string]interface{})
+	for k, v := range app.Metainfo {
+		metaInfo[k] = v
+	}
+	copyApp.Metainfo = metaInfo
+	return copyApp
+}
+
 func ConstructKeyspace(keyspace string) common.Keyspace {
 	// var namespace string
 	scope, collection := "_default", "_default"
@@ -1144,6 +1162,7 @@ func applicationAdapter(app *application) (common.Application, error) {
 	if errConversion != nil {
 		return appConverted, errConversion
 	}
+	appConverted.Owner = app.Owner
 	return appConverted, nil
 }
 
@@ -1172,4 +1191,18 @@ func copyPasswords(newApp, oldApp *application) {
 func isDynamicSetting(setting string) bool {
 	_, ok := dynamicChangedSettings[setting]
 	return ok
+}
+
+func CheckAndGetQueryParam(req *http.Request, key string) (string, *runtimeInfo) {
+	info := &runtimeInfo{}
+
+	params := req.URL.Query()
+	appNameList := params[key]
+	if len(appNameList) == 0 {
+		info.Code = http.StatusBadRequest
+		info.Info = fmt.Sprintf("Parameter '%s' must be provided", key)
+		return "", info
+	}
+
+	return appNameList[0], nil
 }

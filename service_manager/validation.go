@@ -1,7 +1,6 @@
 package servicemanager
 
 import (
-	"encoding/json"
 	"fmt"
 	"math"
 	"net"
@@ -11,12 +10,12 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/couchbase/cbauth"
-	"github.com/couchbase/eventing/audit"
 	"github.com/couchbase/eventing/common"
-	"github.com/couchbase/eventing/gen/auditevent"
+	"github.com/couchbase/eventing/common/collections"
+	couchbase "github.com/couchbase/eventing/dcp"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/parser"
+	"github.com/couchbase/eventing/rbac"
 	"github.com/couchbase/eventing/util"
 )
 
@@ -129,93 +128,6 @@ func (m *ServiceMgr) validateApplication(app *application) (info *runtimeInfo) {
 
 	info.Code = m.statusCodes.ok.Code
 	return
-}
-
-func (m *ServiceMgr) validateAuth(w http.ResponseWriter, r *http.Request, perm string) bool {
-	logPrefix := "ServiceMgr::validateAuth"
-
-	creds, err := cbauth.AuthWebCreds(r)
-	if err != nil || creds == nil {
-		logging.Warnf("%s Cannot authenticate request to %rs, err: %v creds: %ru", logPrefix, r.URL, err, creds)
-		w.WriteHeader(http.StatusUnauthorized)
-		audit.Log(auditevent.AuthenticationFailure, r, nil)
-		return false
-	}
-	allowed, err := creds.IsAllowed(perm)
-	if err != nil || !allowed {
-		logging.Warnf("%s Cannot authorize request to %rs", logPrefix, r.URL)
-		w.WriteHeader(http.StatusForbidden)
-		cbauth.SendForbidden(w, perm)
-		audit.Log(auditevent.AuthorizationFailure, r, nil)
-		return false
-	}
-	logging.Debugf("%s Allowing access to %rs", logPrefix, r.URL)
-	return true
-}
-
-func (m *ServiceMgr) validateAnyAuth(w http.ResponseWriter, r *http.Request, perms []string) bool {
-	logPrefix := "ServiceMgr::validateAnyAuth"
-
-	creds, err := cbauth.AuthWebCreds(r)
-	if err != nil || creds == nil {
-		logging.Warnf("%s Cannot authenticate request to %rs, err: %v creds: %ru", logPrefix, r.URL, err, creds)
-		w.WriteHeader(http.StatusUnauthorized)
-		audit.Log(auditevent.AuthenticationFailure, r, nil)
-		return false
-	}
-
-	for _, perm := range perms {
-		allowed, err := creds.IsAllowed(perm)
-		if err != nil || !allowed {
-			continue
-		}
-
-		logging.Debugf("%s Allowing access to %rs", logPrefix, r.URL)
-
-		return true
-	}
-
-	logging.Warnf("%s Cannot authorize request to %rs", logPrefix, r.URL)
-
-	w.WriteHeader(http.StatusForbidden)
-	sendForbiddenMultiple(w, perms)
-	audit.Log(auditevent.AuthorizationFailure, r, nil)
-
-	return false
-}
-
-// Performs authz based on HTTP Method using read perms for GET and write perms for the rest.
-func (m *ServiceMgr) validateAuthForOp(w http.ResponseWriter, r *http.Request,
-	rperms []string, wperm string) bool {
-
-	if r.Method == "GET" {
-		return m.validateAnyAuth(w, r, rperms)
-	}
-
-	return m.validateAuth(w, r, wperm)
-}
-
-// ::TODO::Move to ForbiddenJSONMultiple and SendForbiddenMultiple to cbauth:convenience.go
-// ForbiddenJSON returns json 403 response for given permissions
-func forbiddenJSONMultiple(permissions []string) ([]byte, error) {
-	jsonStruct := map[string]interface{}{
-		"message":     "Forbidden. User needs one of the following permissions",
-		"permissions": permissions,
-	}
-	return json.Marshal(jsonStruct)
-}
-
-// SendForbidden sends 403 Forbidden with json payload that contains list
-// of required permissions to response on given response writer.
-func sendForbiddenMultiple(w http.ResponseWriter, permissions []string) error {
-	b, err := forbiddenJSONMultiple(permissions)
-	if err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusForbidden)
-	w.Write(b)
-	return nil
 }
 
 func (m *ServiceMgr) validateAliasName(aliasName string) (info *runtimeInfo) {
@@ -573,6 +485,38 @@ func (m *ServiceMgr) validateDeploymentConfig(deploymentConfig *depCfg) (info *r
 
 	info.Code = m.statusCodes.ok.Code
 	return
+}
+
+func (m *ServiceMgr) getBSId(fS *common.FunctionScope) (string, uint32, *runtimeInfo) {
+	info := &runtimeInfo{}
+	info.Code = m.statusCodes.errInvalidConfig.Code
+
+	// Validate if bucket.scope exist or not
+	if info = m.validateNonEmpty(fS.BucketName, "functionScope bucket name"); info.Code != m.statusCodes.ok.Code {
+		return "", 0, info
+	}
+
+	if info = m.validateNonEmpty(fS.ScopeName, "functionScope scope name"); info.Code != m.statusCodes.ok.Code {
+		return "", 0, info
+	}
+
+	if info = m.validateStorageEngine(fS.BucketName); info.Code != m.statusCodes.ok.Code {
+		return "", 0, info
+	}
+
+	bucketUUID, scopeId, err := util.CheckAndGetBktAndScopeIDs(fS, m.restPort)
+	if err == couchbase.ErrBucketNotFound || err == collections.SCOPE_NOT_FOUND {
+		info.Code = m.statusCodes.errBucketMissing.Code
+		return "", 0, info
+	}
+
+	if err != nil {
+		info.Code = m.statusCodes.errEventingBusy.Code
+		return "", 0, info
+	}
+
+	info.Code = m.statusCodes.ok.Code
+	return bucketUUID, scopeId, info
 }
 
 func (m *ServiceMgr) validateBucketBindings(bindings []bucket, existingAliases map[string]struct{}) (info *runtimeInfo) {
@@ -1207,4 +1151,30 @@ func (m *ServiceMgr) validateZeroOrPositiveInteger(field string, settings map[st
 
 	info.Code = m.statusCodes.ok.Code
 	return
+}
+
+// TODO: Should use internal fields and compare the uuid and cid
+func (app *application) functionScopeEquals(tmpApp application) bool {
+	fS := app.FunctionScope
+	tmpFs := tmpApp.FunctionScope
+
+	return (fS.BucketName == tmpFs.BucketName) && (fS.ScopeName == tmpFs.ScopeName)
+}
+
+func (app *application) checkDeploymentConfigPermission() error {
+	sourceKeyspace := &common.Keyspace{BucketName: app.DeploymentConfig.SourceBucket,
+		ScopeName:      app.DeploymentConfig.SourceScope,
+		CollectionName: app.DeploymentConfig.SourceCollection,
+	}
+
+	metadataKeyspace := &common.Keyspace{BucketName: app.DeploymentConfig.MetadataBucket,
+		ScopeName:      app.DeploymentConfig.MetadataScope,
+		CollectionName: app.DeploymentConfig.MetadataCollection,
+	}
+
+	perms := rbac.HandlerBucketPermissions(sourceKeyspace, metadataKeyspace)
+	if _, err := rbac.HasPermissions(app.Owner, perms, true); err != nil {
+		return err
+	}
+	return nil
 }

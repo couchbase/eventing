@@ -2,12 +2,14 @@ package supervisor
 
 import (
 	"fmt"
+	"net"
 	"sync/atomic"
 	"time"
 
 	"github.com/couchbase/eventing/common"
 	couchbase "github.com/couchbase/eventing/dcp"
 	"github.com/couchbase/eventing/logging"
+	"github.com/couchbase/eventing/util"
 	"github.com/couchbase/gocb/v2"
 )
 
@@ -647,19 +649,27 @@ func (s *SuperSupervisor) GetCurrentManifestId(bucketName string) (string, error
 	return bucketWatch.GetManifestId(), nil
 }
 
-func (s *SuperSupervisor) GetCollectionID(bucketName, scopeName, collectionName string) (uint32, error) {
+// Empty collectionName returns collection id as 0
+// Caller of this functions should take care of it
+func (s *SuperSupervisor) GetScopeAndCollectionID(bucketName, scopeName, collectionName string) (uint32, uint32, error) {
 	s.bucketsRWMutex.Lock()
 	defer s.bucketsRWMutex.Unlock()
 	bucketWatch, ok := s.buckets[bucketName]
 	if !ok {
-		return 0, common.BucketNotWatched
+		return 0, 0, common.BucketNotWatched
 	}
 
 	manifest := bucketWatch.b.Manifest
 	if manifest == nil {
-		return 0, nil
+		return 0, 0, nil
 	}
-	return manifest.GetCollectionID(scopeName, collectionName)
+
+	sid, cid, err := manifest.GetScopeAndCollectionID(scopeName, collectionName)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	return sid, cid, nil
 }
 
 func (s *SuperSupervisor) GetMetadataHandle(bucketName, scopeName, collectionName, appName string) (*gocb.Collection, error) {
@@ -727,4 +737,27 @@ func (s *SuperSupervisor) GetGocbSubscribedApps(encryptionEnabled bool) map[stri
 		}
 	}
 	return apps
+}
+
+func (s *SuperSupervisor) GetBSCSnapshot() (map[string]map[string][]string, error) {
+	hostAddress := net.JoinHostPort(util.Localhost(), s.restPort)
+	cic, err := util.FetchClusterInfoClient(hostAddress)
+	if err != nil {
+		return nil, err
+	}
+	cinfo := cic.GetClusterInfoCache()
+	cinfo.RLock()
+	defer cinfo.RUnlock()
+
+	snapshot := make(map[string]map[string][]string)
+	buckets := cinfo.GetBuckets()
+	for _, bucketName := range buckets {
+		scopeList := cinfo.GetScopes(bucketName)
+		if scopeList == nil {
+			snapshot[bucketName] = make(map[string][]string)
+			continue
+		}
+		snapshot[bucketName] = scopeList
+	}
+	return snapshot, nil
 }

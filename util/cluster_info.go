@@ -329,6 +329,11 @@ func (c *ClusterInfoCache) GetNodesByBucket(bucket string) (nids []NodeId, err e
 	return
 }
 
+func (c *ClusterInfoCache) GetBuckets() []string {
+	buckets := c.pool.GetBuckets()
+	return buckets
+}
+
 //
 // Return UUID of a given bucket.
 //
@@ -351,6 +356,15 @@ func (c *ClusterInfoCache) GetBucketUUID(bucket string) (uuid string) {
 
 	// no nodes recognize this bucket
 	return BUCKET_UUID_NIL
+}
+
+func (c *ClusterInfoCache) GetUniqueBSCIds(bucket, scope, collection string) (string, uint32, uint32, error) {
+	bucketUUID := c.GetBucketUUID(bucket)
+	if bucketUUID == BUCKET_UUID_NIL {
+		return BUCKET_UUID_NIL, 0, 0, couchbase.ErrBucketNotFound
+	}
+	sid, cid, err := c.pool.GetUniqueBSCIds(bucket, scope, collection)
+	return bucketUUID, sid, cid, err
 }
 
 func (c *ClusterInfoCache) IsEphemeral(bucket string) (bool, error) {
@@ -883,6 +897,10 @@ func (c *ClusterInfoClient) OptimiseCICFetch(optimise bool) {
 
 func (c *ClusterInfoCache) GetCollectionID(bucket, scope, collection string) (uint32, error) {
 	return c.pool.GetCollectionID(bucket, scope, collection)
+}
+
+func (c *ClusterInfoCache) GetScopes(bucketName string) map[string][]string {
+	return c.pool.GetScopes(bucketName)
 }
 
 func (c *ClusterInfoCache) GetManifestID(bucket string) (string, error) {

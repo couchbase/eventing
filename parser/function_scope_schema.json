@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/schema#",
+  "$id": "function_scope_schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "description": "function scope",
+  "required": ["bucket", "scope"],
+  "properties": {
+    "bucket": {
+      "type": "string",
+      "description": "bucket to which function belongs",
+      "minLength": 1,
+      "maxLength": 100,
+      "pattern": "^[A-Za-z0-9_\\.\\-\\%]+$"
+    },
+    "scope": {
+      "type": "string",
+      "description": "scope to which function belongs",
+      "minLength": 1,
+      "maxLength": 30,
+      "pattern": "^[A-Za-z0-9_\\-][A-Za-z0-9_\\-\\%]*$",
+      "default": "_default"
+    }
+  }
+}

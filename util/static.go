@@ -24,6 +24,7 @@ var (
 	metakvMaxDocSize   = 128 * 1024
 	HTTPRequestTimeout = 10 * time.Second
 	breakpadOn         = true
+	restPort = ""
 )
 
 func init() {
@@ -132,4 +133,13 @@ func SetBreakpad(val bool) {
 
 func BreakpadOn() bool {
 	return breakpadOn
+}
+
+// One time call
+func SetRestPort(flagRestPort string) {
+	restPort = flagRestPort
+}
+
+func GetRestPort() string {
+	return restPort
 }

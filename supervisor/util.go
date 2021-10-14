@@ -19,6 +19,7 @@ import (
 	couchbase "github.com/couchbase/eventing/dcp"
 	"github.com/couchbase/eventing/gen/flatbuf/cfg"
 	"github.com/couchbase/eventing/logging"
+	"github.com/couchbase/eventing/rbac"
 	"github.com/couchbase/eventing/util"
 	"github.com/couchbase/gocb/v2"
 )
@@ -116,39 +117,92 @@ func (s *SuperSupervisor) getStatuses(data []byte) (bool, bool, map[string]inter
 	return pStatus, dStatus, settings, nil
 }
 
-func (s *SuperSupervisor) checkSourceAndMetadataKeyspaceExist(appName string) (bool, bool, error) {
-	source, meta, err := s.getSourceAndMetaKeyspace(appName)
+func (s *SuperSupervisor) isDeployable(appName string) error {
+	depCfg, funcScope, owner, err := s.getFuncDetails(appName)
 	if err != nil {
-		return false, false, err
+		return err
 	}
 
 	hostAddress := net.JoinHostPort(util.Localhost(), s.restPort)
-	sourceExist := util.CheckKeyspaceExist(source.BucketName, source.ScopeName, source.CollectionName, hostAddress)
-	metaDataExist := util.CheckKeyspaceExist(meta.BucketName, meta.ScopeName, meta.CollectionName, hostAddress)
-	return sourceExist, metaDataExist, nil
+	sourceExist := util.CheckKeyspaceExist(depCfg.SourceBucket, depCfg.SourceScope,
+		depCfg.SourceCollection, hostAddress)
+	if !sourceExist {
+		return fmt.Errorf("Source Keyspace doesn't exist")
+	}
+
+	metaExist := util.CheckKeyspaceExist(depCfg.MetadataBucket, depCfg.MetadataScope,
+		depCfg.MetadataCollection, hostAddress)
+	if !metaExist {
+		return fmt.Errorf("Meta Keyspace doesn't exist")
+	}
+
+	if funcScope.BucketName != "" || funcScope.ScopeName != "" {
+		_, _, err = util.CheckAndGetBktAndScopeIDs(funcScope, s.restPort)
+		if err == couchbase.ErrBucketNotFound || err == collections.SCOPE_NOT_FOUND {
+			return fmt.Errorf("Function Scope doesn't exist: %v", err)
+		}
+	}
+
+	if owner.User == "" && owner.Domain == "" {
+		return nil
+	}
+
+	srcKeyspace := &common.Keyspace{
+		BucketName:     depCfg.SourceBucket,
+		ScopeName:      depCfg.SourceScope,
+		CollectionName: depCfg.SourceCollection,
+	}
+
+	metadataKeyspace := &common.Keyspace{
+		BucketName:     depCfg.MetadataBucket,
+		ScopeName:      depCfg.MetadataScope,
+		CollectionName: depCfg.MetadataCollection,
+	}
+	permissions := rbac.HandlerBucketPermissions(srcKeyspace, metadataKeyspace)
+	permissions = append(permissions, rbac.HandlerManagePermissions(funcScope.ToKeyspace())...)
+	_, err = rbac.HasPermissions(owner, permissions, true)
+	// If error is not ErrAuthorisation or not nil then producer will undeploy it
+	if err == rbac.ErrAuthorisation {
+		return err
+	}
+	return nil
 }
 
-func (s *SuperSupervisor) getSourceAndMetaKeyspace(appName string) (*common.Keyspace, *common.Keyspace, error) {
+func (s *SuperSupervisor) getFuncDetails(appName string) (*common.DepCfg, *common.FunctionScope, *common.Owner, error) {
 	var appData []byte
 	err := util.Retry(util.NewFixedBackoff(time.Second), nil, metakvAppCallback, s, MetakvAppsPath, MetakvChecksumPath, appName, &appData)
 	if err == common.ErrRetryTimeout {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	config := cfg.GetRootAsConfig(appData, 0)
 	depcfg := config.DepCfg(new(cfg.DepCfg))
-	source := &common.Keyspace{
-		BucketName:     string(depcfg.SourceBucket()),
-		ScopeName:      common.CheckAndReturnDefaultForScopeOrCollection(string(depcfg.SourceScope())),
-		CollectionName: common.CheckAndReturnDefaultForScopeOrCollection(string(depcfg.SourceCollection())),
+
+	depCfg := &common.DepCfg{
+		SourceBucket:       string(depcfg.SourceBucket()),
+		SourceScope:        common.CheckAndReturnDefaultForScopeOrCollection(string(depcfg.SourceScope())),
+		SourceCollection:   common.CheckAndReturnDefaultForScopeOrCollection(string(depcfg.SourceCollection())),
+		MetadataBucket:     string(depcfg.MetadataBucket()),
+		MetadataScope:      common.CheckAndReturnDefaultForScopeOrCollection(string(depcfg.MetadataScope())),
+		MetadataCollection: common.CheckAndReturnDefaultForScopeOrCollection(string(depcfg.MetadataCollection())),
 	}
 
-	meta := &common.Keyspace{
-		BucketName:     string(depcfg.MetadataBucket()),
-		ScopeName:      common.CheckAndReturnDefaultForScopeOrCollection(string(depcfg.MetadataScope())),
-		CollectionName: common.CheckAndReturnDefaultForScopeOrCollection(string(depcfg.MetadataCollection())),
+	f := new(cfg.FunctionScope)
+	fg := config.FunctionScope(f)
+
+	funcScope := &common.FunctionScope{
+		BucketName: string(fg.BucketName()),
+		ScopeName:  string(fg.ScopeName()),
 	}
 
-	return source, meta, nil
+	o := new(cfg.Owner)
+	ownerEncrypted := config.Owner(o)
+
+	owner := &common.Owner{
+		User:   string(ownerEncrypted.User()),
+		Domain: string(ownerEncrypted.Domain()),
+	}
+
+	return depCfg, funcScope, owner, nil
 }
 
 func (s *SuperSupervisor) getSourceAndMetaBucket(appName string) (source string, meta string, err error) {
@@ -233,10 +287,10 @@ func (s *SuperSupervisor) watchBucketWithLock(bucketName, appName string) error 
 		// forcefully update the manifest of the Bucket
 		bucketWatch.RefreshBucketManifestOnUIDChange("", s.restPort)
 		s.scn.RunObserveCollectionManifestChanges(bucketName)
-		bucketWatch.apps = make(map[string]struct{})
+		bucketWatch.apps = make(map[string]int)
 		s.buckets[bucketName] = bucketWatch
 	}
-	bucketWatch.apps[appName] = struct{}{}
+	bucketWatch.apps[appName]++
 
 	return nil
 }
@@ -316,7 +370,7 @@ func (s *SuperSupervisor) checkDeletedCid(bucketName string) {
 		if mCid == math.MaxUint32 {
 			continue
 		}
-		cid, err := s.GetCollectionID(p.MetadataBucket(), p.MetadataScope(), p.MetadataCollection())
+		_, cid, err := s.GetScopeAndCollectionID(p.MetadataBucket(), p.MetadataScope(), p.MetadataCollection())
 		if err != nil || cid != mCid {
 			logging.Infof("%s Undeploying %s Reason: metadata collection delete err: %v", logPrefix, appName, err)
 			p.UndeployHandler(true)
@@ -327,9 +381,20 @@ func (s *SuperSupervisor) checkDeletedCid(bucketName string) {
 		if sCid == math.MaxUint32 {
 			continue
 		}
-		cid, err = s.GetCollectionID(p.SourceBucket(), p.SourceScope(), p.SourceCollection())
+		_, cid, err = s.GetScopeAndCollectionID(p.SourceBucket(), p.SourceScope(), p.SourceCollection())
 		if err != nil || cid != sCid {
 			logging.Infof("%s Undeploying %s Reason: source collection delete err: %v", logPrefix, appName, err)
+			p.UndeployHandler(false)
+		}
+
+		_, sid := p.GetFuncScopeDetails()
+		if sid == math.MaxUint32 {
+			continue
+		}
+
+		currentSid, _, err := s.GetScopeAndCollectionID(p.FunctionManageBucket(), p.FunctionManageScope(), "")
+		if err != nil || sid != currentSid {
+			logging.Infof("%s Undeploying %s Reason: function manage scope delete err: %v", logPrefix, appName, err)
 			p.UndeployHandler(false)
 		}
 	}
@@ -532,11 +597,14 @@ func (s *SuperSupervisor) unwatchBucket(bucketName, appName string) {
 	defer s.bucketsRWMutex.Unlock()
 	if bucketWatch, ok := s.buckets[bucketName]; ok {
 		if _, ok := bucketWatch.apps[appName]; ok {
-			delete(bucketWatch.apps, appName)
-			if len(bucketWatch.apps) == 0 {
-				bucketWatch.Close()
-				s.scn.StopObserveCollectionManifestChanges(bucketName)
-				delete(s.buckets, bucketName)
+			bucketWatch.apps[appName]--
+			if bucketWatch.apps[appName] <= 0 {
+				delete(bucketWatch.apps, appName)
+				if len(bucketWatch.apps) == 0 {
+					bucketWatch.Close()
+					s.scn.StopObserveCollectionManifestChanges(bucketName)
+					delete(s.buckets, bucketName)
+				}
 			}
 		}
 	}

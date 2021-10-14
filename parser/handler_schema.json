@@ -49,6 +49,9 @@
     },
     "settings": {
       "$ref": "settings_schema.json"
+    },
+    "function_scope": {
+      "$ref": "function_scope_schema.json"
     }
   }
 }

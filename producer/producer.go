@@ -21,6 +21,7 @@ import (
 	"github.com/couchbase/eventing/consumer"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/parser"
+	"github.com/couchbase/eventing/rbac"
 	"github.com/couchbase/eventing/suptree"
 	"github.com/couchbase/eventing/util"
 )
@@ -125,7 +126,14 @@ func (p *Producer) Serve() {
 	}
 
 	go p.undeployHandlerWait()
-	srcCid, err := p.superSup.GetCollectionID(p.handlerConfig.SourceKeyspace.BucketName, p.handlerConfig.SourceKeyspace.ScopeName, p.handlerConfig.SourceKeyspace.CollectionName)
+	p.funcScopeId, _, err = p.superSup.GetScopeAndCollectionID(p.functionScope.BucketName, p.functionScope.ScopeName, "")
+	if err != nil {
+		logging.Errorf("%s [%s] Error in getting function manage scope, err: %v", logPrefix, p.appName, err)
+		p.undeployHandler <- false
+		return
+	}
+
+	_, srcCid, err := p.superSup.GetScopeAndCollectionID(p.handlerConfig.SourceKeyspace.BucketName, p.handlerConfig.SourceKeyspace.ScopeName, p.handlerConfig.SourceKeyspace.CollectionName)
 	if err == common.BucketNotWatched || err == collections.SCOPE_NOT_FOUND || err == collections.COLLECTION_NOT_FOUND {
 		p.undeployHandler <- false
 		logging.Errorf("%s [%s] source scope or collection not found %v", logPrefix, p.appName, err)
@@ -137,7 +145,7 @@ func (p *Producer) Serve() {
 	}
 	atomic.StoreUint32(&p.srcCid, srcCid)
 
-	metaCid, err := p.superSup.GetCollectionID(p.metadataKeyspace.BucketName, p.metadataKeyspace.ScopeName, p.metadataKeyspace.CollectionName)
+	_, metaCid, err := p.superSup.GetScopeAndCollectionID(p.metadataKeyspace.BucketName, p.metadataKeyspace.ScopeName, p.metadataKeyspace.CollectionName)
 	if err == common.BucketNotWatched || err == collections.SCOPE_NOT_FOUND || err == collections.COLLECTION_NOT_FOUND {
 		p.undeployHandler <- true
 		logging.Errorf("%s [%s] metadata scope or collection not found %v", logPrefix, p.appName, err)
@@ -917,6 +925,9 @@ func (p *Producer) updateAppLogSetting(settings map[string]interface{}) {
 }
 
 func (p *Producer) undeployHandlerWait() {
+	t := time.NewTicker(5 * time.Minute)
+	permissions := rbac.HandlerBucketPermissions(p.handlerConfig.SourceKeyspace, p.metadataKeyspace)
+	permissions = append(permissions, rbac.HandlerManagePermissions(p.functionScope)...)
 	updateMetakv := true
 	for {
 		select {
@@ -924,6 +935,18 @@ func (p *Producer) undeployHandlerWait() {
 			if !p.lazyUndeploy {
 				p.lazyUndeploy = true
 				p.superSup.StopProducer(p.appName, skipMetadataCleanup, updateMetakv)
+			}
+
+		case <-t.C:
+			if !p.lazyUndeploy {
+				_, err := rbac.HasPermissions(p.owner, permissions, true)
+				// If user not present it will return as user don't have the permission
+				if err != rbac.ErrAuthorisation {
+					continue
+				}
+
+				p.lazyUndeploy = true
+				p.superSup.StopProducer(p.appName, false, updateMetakv)
 			}
 
 		case <-p.stopUndeployWaitCh:

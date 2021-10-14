@@ -18,10 +18,42 @@
     <div class="panel-content">
       <div class="formrow">
         <label class="inline">
+          Function Group
+          <small> bucket.scope</small>
+        </label>
+        <span class="fa-stack icon-info"
+          uib-tooltip="Function Group"
+          tooltip-placement="right">
+          <span class="icon fa-circle-thin fa-stack-2x"></span>
+          <span class="icon fa-info fa-stack-1x"></span>
+        </span>
+	<div class="row items-bottom">
+          <mn-select
+            mn-disabled="formCtrl.isDisable"
+            ng-model="appModel.function_scope.bucket"
+            ng-init="formCtrl.populatefunctionScopes(appModel.function_scope.bucket)"
+            on-select="formCtrl.populatefunctionScopes(selectedOption)"
+            values="formCtrl.functionBuckets"
+            name="function_bucket"
+            class="margin-right-quarter width-12"
+            has-search="true">
+          </mn-select>
+          <mn-select
+            mn-disabled="formCtrl.isDisable"
+            ng-model="appModel.function_scope.scope"
+            values="formCtrl.functionScopes"
+            has-search="true"
+            name="function_scope"
+            class="margin-right-quarter width-12">
+          </mn-select>
+	</div>
+	<div class="panel-content">
+      <div class="formrow">
+        <label class="inline">
           Listen To Location
           <small> bucket.scope.collection</small>
         </label>
-        <span class="fa-stack icon-info"
+	 <span class="fa-stack icon-info"
           uib-tooltip="The function will listen to this resource for changes. Memcached buckets are not allowed."
           tooltip-placement="right">
           <span class="icon fa-circle-thin fa-stack-2x"></span>
@@ -42,8 +74,8 @@
             mn-disabled="!(appModel.status == 'undeployed') && !formCtrl.isDialog"
             ng-model="appModel.depcfg.source_scope"
             values="formCtrl.sourceScopes"
-            ng-init="formCtrl.populateSourceCollections(appModel.depcfg.source_scope)"
-            on-select="formCtrl.populateSourceCollections(selectedOption)"
+            ng-init="formCtrl.populateSourceCollections(appModel.depcfg.source_bucket, appModel.depcfg.source_scope)"
+            on-select="formCtrl.populateSourceCollections(appModel.depcfg.source_bucket, selectedOption)"
             has-search="true"
             name="source_scope"
             class="margin-right-quarter width-12">
@@ -93,8 +125,8 @@
           <mn-select
             mn-disabled="!(appModel.status == 'undeployed') && !formCtrl.isDialog"
             ng-model="appModel.depcfg.metadata_scope"
-            ng-init="formCtrl.populateMetadataCollections(appModel.depcfg.metadata_scope)"
-            on-select="formCtrl.populateMetadataCollections(selectedOption)"
+            ng-init="formCtrl.populateMetadataCollections(appModel.depcfg.metadata_bucket, appModel.depcfg.metadata_scope)"
+            on-select="formCtrl.populateMetadataCollections(appModel.depcfg.metadata_bucket, selectedOption)"
             values="formCtrl.metadataScopes"
             has-search="true"
             name="metadata_scope"
@@ -380,8 +412,8 @@
                 <mn-select
                   mn-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
                   ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].scope"
-                  ng-init="formCtrl.populateCollections((formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].scope, $index)"
-                  on-select="formCtrl.populateCollections(selectedOption, $index)"
+                  ng-init="formCtrl.populateCollections((formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].name, (formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].scope, $index)"
+                  on-select="formCtrl.populateCollections((formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].name, selectedOption, $index)"
                   mn-placeholder="formCtrl.sourceBuckets == []? '' : '_default'"
                   values="formCtrl.scopes[$index]"
                   class="margin-right-quarter width-12"

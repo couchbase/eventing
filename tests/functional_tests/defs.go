@@ -115,6 +115,7 @@ type application struct {
 	Name             string                 `json:"appname"`
 	Version          string                 `json:"version"`
 	Settings         map[string]interface{} `json:"settings"`
+	FunctionScope    FunctionScope          `json:"function_scope"`
 }
 
 type depCfg struct {
@@ -123,6 +124,11 @@ type depCfg struct {
 	Buckets        []bucket          `json:"buckets,omitempty"`
 	MetadataBucket string            `json:"metadata_bucket"`
 	SourceBucket   string            `json:"source_bucket"`
+}
+
+type FunctionScope struct {
+	BucketName string `json:"bucket,omitempty"`
+	ScopeName  string `json:"scope,omitempty"`
 }
 
 type bucket struct {

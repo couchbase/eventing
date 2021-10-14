@@ -43,6 +43,7 @@ func (c *debugClient) Spawn(debuggerSpawned chan struct{}) {
 
 	executable_img := filepath.Join(filepath.Dir(os.Args[0]), "eventing-consumer")
 
+	c.consumerHandle.GetOwner()
 	c.cmd = exec.Command(
 		executable_img,
 		c.appName,

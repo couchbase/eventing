@@ -15,6 +15,8 @@ table Config {
   constants:[Constant];
   lifecycleState:string;
   version:string;
+  owner:Owner;
+  functionScope:FunctionScope;
 }
 
 table DepCfg {
@@ -48,6 +50,17 @@ table Curl {
 table Constant {
   value: string;
   literal: string;
+}
+
+table Owner {
+  uuid:string;
+  user:string;
+  domain:string;
+}
+
+table FunctionScope {
+  bucketName:string;
+  scopeName:string;
 }
 
 root_type Config;

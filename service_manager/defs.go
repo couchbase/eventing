@@ -46,17 +46,6 @@ const (
 )
 
 const (
-	// EventingPermissionManage for auditing
-	EventingPermissionManage = "cluster.eventing.functions!manage"
-	EventingPermissionStats  = "cluster.admin.internal.stats!read"
-	ClusterPermissionRead    = "cluster.admin.security!read"
-)
-
-var (
-	EventingReadPermissions = []string{EventingPermissionManage, ClusterPermissionRead}
-)
-
-const (
 	headerKey                = "status"
 	maxApplicationNameLength = 100
 	maxAliasLength           = 20 // Technically, there isn't any limit on a JavaScript variable length.
@@ -106,7 +95,7 @@ type ServiceMgr struct {
 	failoverChangeId        string
 	finch                   chan bool
 	fnsInPrimaryStore       map[string]depCfg                           // Access controlled by fnMu
-	fnsInTempStore          map[string]struct{}                         // Access controlled by fnMu
+	fnsInTempStore          map[string]*application                     // Access controlled by fnMu
 	bucketFunctionMap       map[common.Keyspace]map[string]functionInfo // Access controlled by fnMu
 	fnMu                    *sync.RWMutex
 	keepNodeUUIDs           []string
@@ -209,6 +198,9 @@ type application struct {
 	Name               string                 `json:"appname"`
 	Settings           map[string]interface{} `json:"settings"`
 	Metainfo           map[string]interface{} `json:"metainfo,omitempty"`
+	FunctionScope      common.FunctionScope   `json:"function_scope"`
+	Owner              *common.Owner           `json:"owner,omitempty"` // Don't expose. Only used for unmarshaling
+	// Need internal struct to store all the uuids of the function Scope
 }
 
 type depCfg struct {

@@ -109,6 +109,15 @@ ADD_CUSTOM_COMMAND(
 )
 
 ADD_CUSTOM_COMMAND(
+        OUTPUT parser/function_scope_schema.go
+        COMMAND ${PROJECT_SOURCE_DIR}/../../../../bin/convertgo
+        ARGS ../parser/function_scope_schema.json FunctionScopeSchema parser/function_scope_schema.go
+        DEPENDS ../parser/function_scope_schema.json
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        COMMENT "Embedding ../parser/function_scope_schema.json to parser/function_scope_schema.go"
+)
+
+ADD_CUSTOM_COMMAND(
         OUTPUT inspector/v8_inspector_protocol_json.h
         COMMAND ${PYTHON_EXE}
         ARGS
@@ -166,7 +175,7 @@ ADD_CUSTOM_TARGET(eventing-generated DEPENDS
         flatbuf/response_generated.h flatbuf/response/Response.go
         flatbuf/cfg_schema_generated.h flatbuf/cfg_schema/Cfg_schema.go
         auditevent/events.go
-        parser/handler_schema.go parser/depcfg_schema.go parser/settings_schema.go parser/list_schema.go
+        parser/handler_schema.go parser/depcfg_schema.go parser/settings_schema.go parser/list_schema.go parser/function_scope_schema.go
         version/version.go
         version/version.cc
 )

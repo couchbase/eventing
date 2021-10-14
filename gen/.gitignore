@@ -11,6 +11,8 @@ flatbuf/cfg/Config.go
 flatbuf/cfg/DepCfg.go
 flatbuf/cfg/Curl.go
 flatbuf/cfg/Constant.go
+flatbuf/cfg/FunctionScope.go
+flatbuf/cfg/Owner.go
 flatbuf/header/Header.go
 flatbuf/payload/Payload.go
 flatbuf/payload/VbsThreadMap.go
@@ -20,6 +22,7 @@ parser/handler_schema.go
 parser/depcfg_schema.go
 parser/settings_schema.go
 parser/list_schema.go
+parser/function_scope_schema.go
 version/version.go
 version/version.cc
 version/version.js

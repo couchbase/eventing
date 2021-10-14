@@ -45,6 +45,23 @@ func (p *Producer) parseDepcfg() error {
 	lifecycleState := string(config.LifecycleState())
 	p.app.Settings = make(map[string]interface{})
 
+	f := new(cfg.FunctionScope)
+	fs := config.FunctionScope(f)
+
+	funcScope := &common.FunctionScope{
+		BucketName: string(fs.BucketName()),
+		ScopeName:  string(fs.ScopeName()),
+	}
+	p.functionScope = funcScope.ToKeyspace()
+
+	o := new(cfg.Owner)
+	ownerEncrypted := config.Owner(o)
+
+	p.owner = &common.Owner{
+		User:   string(ownerEncrypted.User()),
+		Domain: string(ownerEncrypted.Domain()),
+	}
+
 	d := new(cfg.DepCfg)
 	depcfg := config.DepCfg(d)
 

@@ -29,6 +29,10 @@ import (
 	"github.com/couchbase/eventing/logging"
 )
 
+var (
+	ErrBucketNotFound = errors.New("Bucket does not exist")
+)
+
 // HTTPClient to use for REST and view operations.
 var MaxIdleConnsPerHost = 256
 var HTTPTransport = &http.Transport{MaxIdleConnsPerHost: MaxIdleConnsPerHost}
@@ -941,6 +945,17 @@ func bucketFinalizer(b *Bucket) {
 	}
 }
 
+// Filter out magma buckets
+func (p *Pool) GetBuckets() []string {
+	buckets := make([]string, 0, len(p.BucketMap))
+	for bucketName, b := range p.BucketMap {
+		if b.Storage != "magma" {
+			buckets = append(buckets, bucketName)
+		}
+	}
+	return buckets
+}
+
 // GetBucket gets a bucket from within this pool.
 func (p *Pool) GetBucket(name string) (*Bucket, error) {
 	rv, ok := p.BucketMap[name]
@@ -973,9 +988,27 @@ func (p *Pool) GetCollectionID(bucket, scope, collection string) (uint32, error)
 		if manifest, ok := p.Manifest[bucket]; ok {
 			return manifest.GetCollectionID(scope, collection)
 		}
-		return 0, collections.COLLECTION_ID_NIL
+		return 0, ErrBucketNotFound
 	}
 	return 0, nil
+}
+
+func (p *Pool) GetScopes(bucketName string) map[string][]string {
+	version := p.GetClusterCompatVersion()
+	if version >= collections.COLLECTION_SUPPORTED_VERSION {
+		if manifest, ok := p.Manifest[bucketName]; ok {
+			return manifest.GetScopes()
+		}
+	}
+	return nil
+}
+
+func (p *Pool) GetUniqueBSCIds(bucket, scope, collection string) (uint32, uint32, error) {
+	manifest, ok := p.Manifest[bucket]
+	if !ok {
+		return 0, 0, ErrBucketNotFound
+	}
+	return manifest.GetScopeAndCollectionID(scope, collection)
 }
 
 func (p *Pool) GetManifestID(bucket string) (string, error) {

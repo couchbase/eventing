@@ -40,6 +40,13 @@ type Keyspace struct {
 	CollectionName string
 }
 
+func (k Keyspace) ToFunctionScope() *FunctionScope {
+	return &FunctionScope{
+		BucketName: k.BucketName,
+		ScopeName:  k.ScopeName,
+	}
+}
+
 type Insight struct {
 	Script string              `json:"script"`
 	Lines  map[int]InsightLine `json:"lines"`
@@ -92,6 +99,24 @@ type DebuggerInstance struct {
 	NodesExternalIP []string `json:"nodes_external_ip"` // List of external IP address of the nodes in the cluster
 }
 
+type Owner struct {
+	User   string
+	Domain string
+}
+
+// needed only during 1st creation of the function
+type FunctionScope struct {
+	BucketName string `json:"bucket,omitempty"`
+	ScopeName  string `json:"scope,omitempty"`
+}
+
+func (fs *FunctionScope) ToKeyspace() *Keyspace {
+	return &Keyspace{
+		BucketName: fs.BucketName,
+		ScopeName:  fs.ScopeName,
+	}
+}
+
 type Application struct {
 	AppHandlers        string                 `json:"appcode"`
 	DeploymentConfig   DepCfg                 `json:"depcfg"`
@@ -102,6 +127,8 @@ type Application struct {
 	Name               string                 `json:"appname"`
 	Settings           map[string]interface{} `json:"settings"`
 	Metainfo           map[string]interface{} `json:"metainfo,omitempty"`
+	Owner              *Owner
+	FunctionScope      FunctionScope `json:"function_scope"`
 }
 
 type DepCfg struct {
@@ -243,6 +270,10 @@ type EventingProducer interface {
 	WriteAppLog(log string)
 	WriteDebuggerURL(url string)
 	WriteDebuggerToken(token string, hostnames []string) error
+	GetOwner() *Owner
+	GetFuncScopeDetails() (string, uint32)
+	FunctionManageBucket() string
+	FunctionManageScope() string
 }
 
 // EventingConsumer interface to export functions from eventing_consumer
@@ -301,6 +332,7 @@ type EventingConsumer interface {
 	PauseConsumer()
 	GetAssignedVbs(workerName string) ([]uint16, error)
 	NotifyWorker()
+	GetOwner() *Owner
 }
 
 type EventingSuperSup interface {
@@ -332,7 +364,7 @@ type EventingSuperSup interface {
 	GetMetaStoreStats(appName string) map[string]uint64
 	GetBucket(bucketName, appName string) (*couchbase.Bucket, error)
 	GetMetadataHandle(bucketName, scopeName, collectionName, appName string) (*gocb.Collection, error)
-	GetCollectionID(bucketName, scopeName, collectionName string) (uint32, error)
+	GetScopeAndCollectionID(bucketName, scopeName, collectionName string) (uint32, uint32, error)
 	GetCurrentManifestId(bucketName string) (string, error)
 	GetRegisteredPool() string
 	GetSeqsProcessed(appName string) map[int]int64
@@ -363,6 +395,7 @@ type EventingSuperSup interface {
 	WorkerRespawnedCount() uint32
 	CheckLifeCycleOpsDuringRebalance() bool
 	OptimiseBucketLoading(optimise bool)
+	GetBSCSnapshot() (map[string]map[string][]string, error)
 }
 
 type EventingServiceMgr interface {

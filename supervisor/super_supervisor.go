@@ -267,15 +267,9 @@ func (s *SuperSupervisor) SettingsChangeCallback(kve metakv.KVEntry) error {
 				retryAppDeploy:
 					s.setinitLifecycleEncryptData()
 
-					sourceExist, metaExist, err := s.checkSourceAndMetadataKeyspaceExist(appName)
+					err := s.isDeployable(appName)
 					if err != nil {
-						logging.Errorf("%s [%d] checkSourceAndMetadataKeyspaceExists failed for Function: %s  runningProducer: %v",
-							logPrefix, s.runningFnsCount(), appName, s.runningFns()[appName])
-						return nil
-					}
-					if !sourceExist || !metaExist {
-						logging.Errorf("%s [%d] Source KeySpace or Metadata Keyspace is deleted, Function: %s Begin undeploy process",
-							logPrefix, s.runningFnsCount(), appName)
+						logging.Errorf("%s [%d] Function %s is not deployable: %v", logPrefix, s.runningFnsCount(), appName, err)
 						util.Retry(util.NewExponentialBackoff(), &s.retryCount, undeployFunctionCallback, s, appName)
 						s.appRWMutex.Lock()
 						s.appDeploymentStatus[appName] = false
@@ -546,19 +540,14 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(kve metakv.KVEntry) error 
 				retryAppDeploy:
 					finalEncryptData = false
 					s.setinitLifecycleEncryptData()
-					sourceExist, metaExist, err := s.checkSourceAndMetadataKeyspaceExist(appName)
+					err := s.isDeployable(appName)
 					if err != nil {
-						logging.Errorf("%s [%d] getSourceAndMetaBucketNodeCount failed for Function: %s  runningProducer: %v",
-							logPrefix, s.runningFnsCount(), appName, s.runningFns()[appName])
-						continue
-					}
-
-					if !sourceExist || !metaExist {
-						logging.Errorf("%s [%d] Source Keyspace or Metadata Keyspace is deleted, Function: %s Begin undeploy process",
-							logPrefix, s.runningFnsCount(), appName)
+						logging.Errorf("%s [%d] Function %s is not deployable: %s err: %v",
+							logPrefix, s.runningFnsCount(), appName, err)
 						util.Retry(util.NewExponentialBackoff(), &s.retryCount, undeployFunctionCallback, s, appName)
 						continue
 					}
+
 					logging.Infof("%s [%d] Function: %s begin deployment process", logPrefix, s.runningFnsCount(), appName)
 
 					s.appListRWMutex.Lock()
@@ -764,14 +753,22 @@ func (s *SuperSupervisor) spawnApp(appName string) error {
 	p := producer.NewProducer(appName, s.adminPort.DebuggerPort, s.adminPort.HTTPPort, s.adminPort.SslPort, s.eventingDir,
 		s.kvPort, metakvAppHostPortsPath, s.restPort, s.uuid, s.diagDir, s.memoryQuota, s.numVbuckets, s)
 
-	err := s.watchBucket(p.SourceBucket(), appName)
+	err := s.watchBucket(p.FunctionManageBucket(), appName)
 	if err != nil {
+		util.Retry(util.NewExponentialBackoff(), &s.retryCount, undeployFunctionCallback, s, appName)
+		return err
+	}
+
+	err = s.watchBucket(p.SourceBucket(), appName)
+	if err != nil {
+		s.unwatchBucket(p.FunctionManageBucket(), appName)
 		util.Retry(util.NewExponentialBackoff(), &s.retryCount, undeployFunctionCallback, s, appName)
 		return err
 	}
 
 	err = s.watchBucketWithGocb(p.MetadataBucket(), appName)
 	if err != nil {
+		s.unwatchBucket(p.FunctionManageBucket(), appName)
 		s.unwatchBucket(p.SourceBucket(), appName)
 		util.Retry(util.NewExponentialBackoff(), &s.retryCount, undeployFunctionCallback, s, appName)
 		return err
@@ -897,6 +894,7 @@ func (s *SuperSupervisor) CleanupProducer(appName string, skipMetaCleanup bool, 
 			p.CleanupMetadataBucket(false)
 		}
 
+		s.unwatchBucket(p.FunctionManageBucket(), appName)
 		s.unwatchBucket(p.SourceBucket(), appName)
 		s.unwatchBucketWithGocb(p.MetadataBucket(), appName)
 

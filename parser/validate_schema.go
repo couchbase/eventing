@@ -14,6 +14,7 @@ const (
 	HANDLER_SCHEMA  = "handler_schema.json"
 	SETTINGS_SCHEMA = "settings_schema.json"
 	DEPCFG_SCHEMA   = "depcfg_schema.json"
+	FUNCTION_SCOPE_SCHEMA = "function_scope_schema.json"
 )
 
 var handlerSchema, settingsSchema, listSchema *jsonschema.Schema
@@ -25,6 +26,7 @@ func InitCompiler() {
 	addResource(HANDLER_SCHEMA, parser.HandlerSchema)
 	addResource(SETTINGS_SCHEMA, parser.SettingsSchema)
 	addResource(DEPCFG_SCHEMA, parser.DepcfgSchema)
+	addResource(FUNCTION_SCOPE_SCHEMA, parser.FunctionScopeSchema)
 	listSchema = compiler.MustCompile(LIST_SCHEMA)
 	handlerSchema = compiler.MustCompile(HANDLER_SCHEMA)
 	settingsSchema = compiler.MustCompile(SETTINGS_SCHEMA)
