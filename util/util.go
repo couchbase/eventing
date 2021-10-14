@@ -316,7 +316,7 @@ func CollectionAware(auth, hostaddress string) (bool, error) {
 	cinfo.RLock()
 	defer cinfo.RUnlock()
 
-	ver := cinfo.GetNodeCompatVersion("kv")
+	ver, _ := cinfo.GetNodeCompatVersion()
 	if ver >= collections.COLLECTION_SUPPORTED_VERSION {
 		return true, nil
 	}

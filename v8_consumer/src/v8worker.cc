@@ -195,7 +195,7 @@ void V8Worker::InstallBucketBindings(
                            collection_name == cb_source_collection_;
     bucket_bindings_.emplace_back(isolate_, bucket_factory_, bucket_name,
                                   scope_name, collection_name, bucket_alias,
-                                  bucket_access == "r", source_mutation);
+                                  bucket_access == "r", source_mutation, user_, domain_);
   }
 }
 
@@ -224,7 +224,7 @@ void V8Worker::InitializeIsolateData(const server_settings_t *server_settings,
   data_.exception_insight = new ExceptionInsight(isolate_);
   data_.query_mgr =
       new Query::Manager(isolate_, cb_source_bucket_,
-                         static_cast<std::size_t>(h_config->lcb_inst_capacity));
+                         static_cast<std::size_t>(h_config->lcb_inst_capacity), user_, domain_);
   data_.query_iterable = new Query::Iterable(isolate_, context);
   data_.query_iterable_impl = new Query::IterableImpl(isolate_, context);
   data_.query_iterable_result = new Query::IterableResult(isolate_, context);
@@ -269,7 +269,8 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
                    const std::string &ns_server_port,
                    const int32_t &num_vbuckets, vb_seq_map_t *vb_seq,
                    std::vector<uint64_t> *processed_bucketops,
-                   vb_lock_map_t *vb_locks, int worker_idx)
+			// TODO: put user and domain into Owner class and call .ForKv() and .ForQuery()
+                   vb_lock_map_t *vb_locks, int worker_idx,const std::string &user, const std::string &domain)
     : app_name_(h_config->app_name), settings_(server_settings),
       num_vbuckets_(num_vbuckets),
       timer_reduction_ratio_(
@@ -279,7 +280,7 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
       processed_bucketops_(processed_bucketops), platform_(platform),
       function_name_(function_name), function_id_(function_id),
       user_prefix_(user_prefix), ns_server_port_(ns_server_port),
-      certFile_(server_settings->certFile),
+      certFile_(server_settings->certFile), user_(user), domain_(domain),
       exception_type_names_(
           {"KVError", "N1QLError", "EventingError", "CurlError", "TypeError"}),
       handler_headers_(h_config->handler_headers) {
@@ -364,7 +365,7 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
     auto prefix = user_prefix + "::" + function_id;
     timer_store_ = new timer::TimerStore(
         isolate_, prefix, config->metadata_bucket, config->metadata_scope,
-        config->metadata_collection, num_vbuckets_, timer_reduction_ratio_);
+        config->metadata_collection, num_vbuckets_, timer_reduction_ratio_, user_, domain_);
   }
   delete config;
   this->worker_queue_ = new BlockingDeque<std::unique_ptr<WorkerMessage>>();

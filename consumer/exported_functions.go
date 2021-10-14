@@ -461,7 +461,8 @@ func (c *Consumer) SpawnCompilationWorker(appCode, appContent, appName, eventing
 			"user_prefix",
 			c.nsServerPort,
 			strconv.Itoa(c.numVbuckets),
-			"validate") // this parameter is not read, for tagging
+			"",
+			"") // this parameter is not read, for tagging
 
 		cmd.Env = append(os.Environ(),
 			fmt.Sprintf("CBEVT_CALLBACK_USR=%s", user),

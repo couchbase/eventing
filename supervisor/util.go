@@ -586,6 +586,10 @@ func (s *SuperSupervisor) unwatchBucketWithGocb(bucketName, appName string) {
 }
 
 func (s *SuperSupervisor) watchBucket(bucketName, appName string) error {
+	// Function bucket can be nil
+	if bucketName == "" {
+		return nil
+	}
 	s.bucketsRWMutex.Lock()
 	defer s.bucketsRWMutex.Unlock()
 	return s.watchBucketWithLock(bucketName, appName)
@@ -666,7 +670,7 @@ func (bw *bucketWatchStruct) RefreshBucketManifestOnUIDChange(muid, restPort str
 	}
 	cinfo := cic.GetClusterInfoCache()
 	cinfo.RLock()
-	version := cinfo.GetNodeCompatVersion("")
+	version, _ := cinfo.GetNodeCompatVersion()
 	cinfo.RUnlock()
 
 	if version < collections.COLLECTION_SUPPORTED_VERSION {

@@ -907,28 +907,15 @@ func (c *ClusterInfoCache) GetManifestID(bucket string) (string, error) {
 	return c.pool.GetManifestID(bucket)
 }
 
-// empty string as argument gives cluster compact version of all services in the cluster
-func (c *ClusterInfoCache) GetNodeCompatVersion(service string) uint32 {
-	version := (uint32)(math.MaxUint32)
-	for _, n := range c.nodes {
-		for _, s := range n.Services {
-			if service == "" || s == service {
-				v := uint32(n.ClusterCompatibility / 65536)
-				if v < version {
-					version = v
-				}
-				break
-			}
-		}
-	}
-	return version
+func (c *ClusterInfoCache) GetNodeCompatVersion() (uint32, uint32) {
+	return c.version, c.minorVersion
 }
 
 func (c *ClusterInfoCache) FetchManifestInfo(bucketName string) error {
 	c.Lock()
 	defer c.Unlock()
 
-	compactVersion := c.GetNodeCompatVersion("")
+	compactVersion, _ := c.GetNodeCompatVersion()
 	if compactVersion >= collections.COLLECTION_SUPPORTED_VERSION {
 		pool := &c.pool
 		manifest, err := pool.RefreshBucketManifest(bucketName)

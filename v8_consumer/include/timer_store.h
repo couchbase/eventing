@@ -32,7 +32,8 @@ public:
                       const std::string &metadata_bucket,
                       const std::string &metadata_scope,
                       const std::string &metadata_collection,
-                      int32_t num_vbuckets, int32_t timer_reduction_ratio);
+                      int32_t num_vbuckets, int32_t timer_reduction_ratio,
+			std::string user, std::string domain);
   ~TimerStore();
 
   lcb_STATUS SetTimer(TimerInfo &timer, int max_retry_count,
@@ -111,6 +112,8 @@ private:
   std::mutex store_lock_;
   int32_t num_vbuckets_{1024};
   int32_t timer_reduction_ratio_{1};
+  std::string on_behalf_of_;
+
   friend class Iterator;
 };
 } // namespace timer

@@ -20,13 +20,21 @@
 #include "conn-pool.h"
 #include "query-helper.h"
 #include "query-iterable.h"
+#include "utils.h"
 
 namespace Query {
 class Manager {
 public:
   explicit Manager(v8::Isolate *isolate, const std::string &src_bucket,
-                   const std::size_t pool_size)
-      : isolate_(isolate), conn_pool_(pool_size, src_bucket, isolate) {}
+                   const std::size_t pool_size, std::string user,
+                   std::string domain)
+      : isolate_(isolate), conn_pool_(pool_size, src_bucket, isolate) {
+    if (user.size() != 0 || domain.size() != 0) {
+      on_behalf_of_ = base64Encode(user + ":" + domain);
+    } else {
+      on_behalf_of_ = "";
+    }
+  }
   ~Manager() { ClearQueries(); }
 
   Manager() = delete;
@@ -46,6 +54,7 @@ private:
   v8::Isolate *isolate_;
   Connection::Pool conn_pool_;
   std::unordered_map<lcb_INSTANCE *, std::shared_ptr<Iterator>> iterators_;
+  std::string on_behalf_of_;
 };
 } // namespace Query
 

@@ -95,7 +95,7 @@ public:
   void SetNumVbuckets(const int32_t &num_vbuckets) {
     num_vbuckets_ = num_vbuckets;
   }
-
+  void SetOwner(std::string user, std::string domain) {user_ = user; domain_ = domain; }
   void InitVbMapResources();
 
   std::thread main_uv_loop_thr_;
@@ -166,6 +166,9 @@ private:
   std::string next_message_;
 
   std::string ns_server_port_;
+  // TODO: create a struct
+  std::string user_;
+  std::string domain_;
 
   int32_t num_vbuckets_{1024};
 

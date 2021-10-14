@@ -236,7 +236,7 @@ public:
            Histogram *curl_latency_stats, const std::string &ns_server_port,
            const int32_t &num_vbuckets, vb_seq_map_t *vb_seq,
            std::vector<uint64_t> *processed_bucketops, vb_lock_map_t *vb_locks,
-           int worker_idx);
+           int worker_idx, const std::string &user, const std::string &domain);
   ~V8Worker();
 
   int V8WorkerLoad(std::string source_s);
@@ -400,6 +400,9 @@ private:
   std::string function_instance_id_;
   std::string user_prefix_;
   std::string ns_server_port_;
+  std::string user_;
+  std::string domain_;
+
   timer::TimerStore *timer_store_{nullptr};
   std::atomic<bool> thread_exit_cond_;
   const std::vector<std::string> exception_type_names_;
