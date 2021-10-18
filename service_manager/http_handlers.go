@@ -4806,9 +4806,8 @@ func (m *ServiceMgr) listFunctions(w http.ResponseWriter, r *http.Request) {
 		m.sendErrorInfo(w, info)
 		return
 	}
-	info.Code = m.statusCodes.ok.Code
-	info.Info = fmt.Sprintf("%s", string(response))
-	m.sendResponse(w, info)
+	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
+	fmt.Fprintf(w, "%s", string(response))
 }
 
 func (m *ServiceMgr) triggerInternalRebalance(w http.ResponseWriter, r *http.Request) {
