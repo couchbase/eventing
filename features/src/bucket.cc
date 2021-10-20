@@ -160,7 +160,7 @@ Error Bucket::Connect() {
                                      result);
   }
 
-  auto enable_detailed_err_codes = true;
+  unsigned int enable_detailed_err_codes = 1;
   result = RetryWithFixedBackoff(5, 200, IsRetriable, lcb_cntl, connection_,
                                  LCB_CNTL_SET, LCB_CNTL_DETAILED_ERRCODES,
                                  &enable_detailed_err_codes);
