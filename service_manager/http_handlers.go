@@ -1842,10 +1842,15 @@ func (m *ServiceMgr) getTempStore(appName string) (application, *runtimeInfo) {
 
 	app, ok := m.getAppFromTempStore(appName)
 	if !ok {
-		info.Code = m.statusCodes.errAppNotFoundTs.Code
-		info.Info = fmt.Sprintf("Function: %s not found", appName)
-		logging.Infof("%s %s", logPrefix, info.Info)
-		return application{}, info
+		// Possible due to metakv callback delay
+		// Check if app exists in metakv store
+		app, info = m.getAppFromMetakvTempStore(appName)
+		if info.Code != m.statusCodes.ok.Code {
+			info.Code = m.statusCodes.errAppNotFoundTs.Code
+			info.Info = fmt.Sprintf("Function: %s not found", appName)
+			logging.Infof("%s %s", logPrefix, info.Info)
+			return app, info
+		}
 	}
 
 	m.addDefaultDeploymentConfig(&app)
@@ -1882,6 +1887,27 @@ func (m *ServiceMgr) getAppFromTempStore(appName string) (application, bool) {
 		return application{}, false
 	}
 	return app.copy(), ok
+}
+
+func (m *ServiceMgr) getAppFromMetakvTempStore(appName string) (application, *runtimeInfo) {
+	info := &runtimeInfo{}
+	app := application{}
+
+	data, err := util.ReadAppContent(metakvTempAppsPath, metakvTempChecksumPath, appName)
+	if err != nil || data == nil {
+		info.Code = m.statusCodes.errInternalServer.Code
+		return app, info
+	}
+
+	uErr := json.Unmarshal(data, &app)
+	if uErr != nil {
+		info.Code = m.statusCodes.errReadReq.Code
+		info.Info = fmt.Sprintf("Unmarshalling from metakv failed for Function: %s", appName)
+		return application{}, info
+	}
+
+	info.Code = m.statusCodes.ok.Code
+	return app, info
 }
 
 func (m *ServiceMgr) saveTempStoreHandler(w http.ResponseWriter, r *http.Request) {
@@ -2000,6 +2026,11 @@ func (m *ServiceMgr) saveTempStore(app application) (info *runtimeInfo) {
 		logging.Errorf("%s %s", logPrefix, info.Info)
 		return
 	}
+
+	m.fnMu.Lock()
+	defer m.fnMu.Unlock()
+	// Cache the app in temp store for faster access on this node
+	m.fnsInTempStore[app.Name] = &app
 
 	info.Code = m.statusCodes.ok.Code
 	info.Info = fmt.Sprintf("Function: %s stored in temp store", appName)

@@ -22,7 +22,7 @@
           <small> bucket.scope</small>
         </label>
         <span class="fa-stack icon-info"
-          uib-tooltip="Function Group"
+          uib-tooltip="Function Scope"
           tooltip-placement="right">
           <span class="icon fa-circle-thin fa-stack-2x"></span>
           <span class="icon fa-info fa-stack-1x"></span>
@@ -47,6 +47,12 @@
             class="margin-right-quarter width-12">
           </mn-select>
 	</div>
+        <div class="error field-error"
+          ng-show="formCtrl.functionBuckets.indexOf(appModel.function_scope.bucket) === -1 ||
+                    formCtrl.functionScopes.indexOf(appModel.function_scope.scope) === -1">
+          Please specify a scope to which the function belongs. User should have
+          Eventing Manage Scope Functions permission on this scope
+        </div>
 	<div class="panel-content">
       <div class="formrow">
         <label class="inline">
@@ -95,7 +101,7 @@
           ng-show="formCtrl.sourceBuckets.indexOf(appModel.depcfg.source_bucket) === -1 ||
                       formCtrl.sourceScopes.indexOf(appModel.depcfg.source_scope) === -1 ||
                       formCtrl.sourceCollections.indexOf(appModel.depcfg.source_collection) === -1">
-          Please specify a source location for your function.
+	  Please specify a source location for your function. User should have DCP Data Read permission on this keyspace
         </div>
       </div>
 
@@ -151,7 +157,7 @@
           ng-show="formCtrl.metadataBuckets.indexOf(appModel.depcfg.metadata_bucket) === -1 ||
                     formCtrl.metadataScopes.indexOf(appModel.depcfg.metadata_scope) === -1 ||
                     formCtrl.metadataCollections.indexOf(appModel.depcfg.metadata_collection) === -1">
-          Please specify a location to store Eventing data.
+	  Please specify a location to store Eventing data. User should have read/write permission on this keyspace
         </div>
         <small>
           System data stored in this location will have the document ID prefixed
