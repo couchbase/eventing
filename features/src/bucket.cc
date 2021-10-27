@@ -160,7 +160,7 @@ Error Bucket::Connect() {
                                      result);
   }
 
-  auto enable_detailed_err_codes = true;
+  unsigned int enable_detailed_err_codes = 1;
   result = RetryWithFixedBackoff(5, 200, IsRetriable, lcb_cntl, connection_,
                                  LCB_CNTL_SET, LCB_CNTL_DETAILED_ERRCODES,
                                  &enable_detailed_err_codes);
@@ -800,7 +800,7 @@ void BucketBinding::BucketDelete<v8::Local<v8::Name>>(
       UnwrapInternalField<bool>(info.Holder(), InternalFields::kIsSourceBucket);
   auto bucket = UnwrapInternalField<Bucket>(info.Holder(),
                                             InternalFields::kBucketInstance);
-  auto [error, err_code, result] = BucketDelete(key, is_source_bucket, bucket);
+  auto [error, err_code, result] = BucketDelete(key, *is_source_bucket, bucket);
   if (error != nullptr) {
     js_exception->ThrowEventingError(*error);
     return;
