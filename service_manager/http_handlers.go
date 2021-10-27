@@ -1021,7 +1021,12 @@ func (m *ServiceMgr) getBootstrapAppStatus(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	if info := m.checkAuthAndPermissionWithApp(w, r, appName, rbac.HandlerGetPermissions, false); info.Code != m.statusCodes.ok.Code {
+	info = m.checkAuthAndPermissionWithApp(w, r, appName, rbac.HandlerGetPermissions, false)
+	if info.Code == m.statusCodes.errAppNotFound.Code {
+		w.Write([]byte(strconv.FormatBool(false)))
+	}
+
+	if info.Code != m.statusCodes.ok.Code {
 		m.sendErrorInfo(w, info)
 		return
 	}
@@ -1836,21 +1841,12 @@ func (m *ServiceMgr) getTempStoreHandler(w http.ResponseWriter, r *http.Request)
 
 func (m *ServiceMgr) getTempStore(appName string) (application, *runtimeInfo) {
 	logPrefix := "ServiceMgr::getTempStore"
-
-	info := &runtimeInfo{}
 	logging.Infof("%s Function: %s fetching function draft definitions", logPrefix, appName)
 
-	app, ok := m.getAppFromTempStore(appName)
-	if !ok {
-		// Possible due to metakv callback delay
-		// Check if app exists in metakv store
-		app, info = m.getAppFromMetakvTempStore(appName)
-		if info.Code != m.statusCodes.ok.Code {
-			info.Code = m.statusCodes.errAppNotFoundTs.Code
-			info.Info = fmt.Sprintf("Function: %s not found", appName)
-			logging.Infof("%s %s", logPrefix, info.Info)
-			return app, info
-		}
+	app, info := m.getAppFromTempStore(appName)
+	if info.Code != m.statusCodes.ok.Code {
+		logging.Errorf("%s %s", logPrefix, info.Info)
+		return app, info
 	}
 
 	m.addDefaultDeploymentConfig(&app)
@@ -1878,22 +1874,36 @@ func (m *ServiceMgr) getTempStoreAll() []application {
 	return applications
 }
 
-func (m *ServiceMgr) getAppFromTempStore(appName string) (application, bool) {
+func (m *ServiceMgr) getAppFromTempStore(appName string) (application, *runtimeInfo) {
+	info := &runtimeInfo{}
+	info.Code = m.statusCodes.ok.Code
+
 	m.fnMu.Lock()
 	defer m.fnMu.Unlock()
 
 	app, ok := m.fnsInTempStore[appName]
-	if !ok {
-		return application{}, false
+	if ok {
+		return app.copy(), info
 	}
-	return app.copy(), ok
+
+	// Possible due to metakv callback delay
+	// Check if app exists in metakv store
+	return m.getAppFromMetakvTempStore(appName)
 }
 
 func (m *ServiceMgr) getAppFromMetakvTempStore(appName string) (application, *runtimeInfo) {
 	info := &runtimeInfo{}
+	info.Code = m.statusCodes.ok.Code
+
 	app := application{}
 
 	data, err := util.ReadAppContent(metakvTempAppsPath, metakvTempChecksumPath, appName)
+	if err == util.AppNotExist {
+		info.Code = m.statusCodes.errAppNotFoundTs.Code
+		info.Info = fmt.Sprintf("Function: %s not found", appName)
+		return app, info
+	}
+
 	if err != nil || data == nil {
 		info.Code = m.statusCodes.errInternalServer.Code
 		return app, info
@@ -1906,7 +1916,6 @@ func (m *ServiceMgr) getAppFromMetakvTempStore(appName string) (application, *ru
 		return application{}, info
 	}
 
-	info.Code = m.statusCodes.ok.Code
 	return app, info
 }
 
@@ -1982,12 +1991,11 @@ func (m *ServiceMgr) saveTempStoreHandler(w http.ResponseWriter, r *http.Request
 // Saves application to temp store
 func (m *ServiceMgr) saveTempStore(app application) (info *runtimeInfo) {
 	logPrefix := "ServiceMgr::saveTempStore"
-	info = &runtimeInfo{}
 	appName := app.Name
 
-	currApp, ok := m.checkAppExists(app.Name)
-	if ok {
-		ok = currApp.functionScopeEquals(app)
+	currApp, info := m.checkAppExists(app.Name)
+	if info.Code == m.statusCodes.ok.Code {
+		ok := currApp.functionScopeEquals(app)
 		if !ok {
 			info.Code = m.statusCodes.errSaveConfig.Code
 			info.Info = fmt.Sprintf("Function scope cannot be changed")
@@ -2127,12 +2135,11 @@ func filterFeedBoundary(settings map[string]interface{}) common.DcpStreamBoundar
 func (m *ServiceMgr) savePrimaryStore(app *application) (info *runtimeInfo) {
 	logPrefix := "ServiceMgr::savePrimaryStore"
 
-	info = &runtimeInfo{}
 	logging.Infof("%s Function: %s saving to primary store", logPrefix, app.Name)
 
-	currApp, ok := m.checkAppExists(app.Name)
-	if ok {
-		ok = currApp.functionScopeEquals(*app)
+	currApp, info := m.checkAppExists(app.Name)
+	if info.Code == m.statusCodes.ok.Code {
+		ok := currApp.functionScopeEquals(*app)
 		if !ok {
 			info.Code = m.statusCodes.errSaveConfig.Code
 			info.Info = fmt.Sprintf("Function scope cannot be changed")
@@ -3096,9 +3103,9 @@ func (m *ServiceMgr) functionName(w http.ResponseWriter, r *http.Request, appNam
 			return
 		}
 
-		appInStore, ok := m.checkAppExists(appName)
-		if !ok {
-			info := m.verifyAndCreateApp(cred, &app)
+		appInStore, info := m.checkAppExists(appName)
+		if info.Code != m.statusCodes.ok.Code {
+			info = m.verifyAndCreateApp(cred, &app)
 			if info.Code != m.statusCodes.ok.Code {
 				m.sendErrorInfo(w, info)
 				return
@@ -4527,15 +4534,15 @@ func (m *ServiceMgr) createApplications(cred cbauth.Creds, r *http.Request, appL
 			continue
 		}
 
-		_, ok := m.checkAppExists(app.Name)
-		if !ok {
+		_, info = m.checkAppExists(app.Name)
+		if info.Code != m.statusCodes.ok.Code {
 			info = m.verifyAndCreateApp(cred, &app)
 			if info.Code != m.statusCodes.ok.Code {
 				infoList = append(infoList, info)
 				continue
 			}
 		} else {
-			info := m.checkPermissionFromCred(cred, app.Name, rbac.HandlerManagePermissions, false)
+			info = m.checkPermissionFromCred(cred, app.Name, rbac.HandlerManagePermissions, false)
 			if info.Code != m.statusCodes.ok.Code {
 				infoList = append(infoList, info)
 				continue
@@ -5042,30 +5049,26 @@ func (m *ServiceMgr) checkAuthAndPermissionWithApp(w http.ResponseWriter, r *htt
 }
 
 func (m *ServiceMgr) checkPermissionFromCred(cred cbauth.Creds, appName string,
-	permFunction func(*common.Keyspace) []string, all bool) (info *runtimeInfo) {
+	permFunction func(*common.Keyspace) []string, all bool) *runtimeInfo {
 
-	info = &runtimeInfo{}
-	app, ok := m.checkAppExists(appName)
-	if !ok {
-		info.Code = m.statusCodes.errAppNotFoundTs.Code
-		info.Info = fmt.Sprintf("Function: %s not found", appName)
-		return
+	app, info := m.checkAppExists(appName)
+	if info.Code != m.statusCodes.ok.Code {
+		return info
 	}
 	perm := permFunction(app.FunctionScope.ToKeyspace())
 	if _, err := rbac.IsAllowedCreds(cred, perm, all); err != nil {
 		info.Code = m.statusCodes.errForbidden.Code
 		info.Info = fmt.Sprintf("Forbidden. User needs at least or all the following permissions: %v", perm)
-		return
+		return info
 	}
 
-	info.Code = m.statusCodes.ok.Code
-	return
+	return info
 }
 
 func (m *ServiceMgr) getReadAndWritePermission(appName string) ([]string, []string, error) {
-	app, ok := m.checkAppExists(appName)
-	if !ok {
-		return nil, nil, fmt.Errorf("Function doesn't exist")
+	app, info := m.checkAppExists(appName)
+	if info.Code != m.statusCodes.ok.Code {
+		return nil, nil, fmt.Errorf("%s", info.Info)
 	}
 
 	keyspace := app.FunctionScope.ToKeyspace()

@@ -34,12 +34,12 @@ func init() {
 	}
 }
 
-func (m *ServiceMgr) checkAppExists(appName string) (*application, bool) {
-	app, ok := m.getAppFromTempStore(appName)
-	if !ok {
-		return nil, false
+func (m *ServiceMgr) checkAppExists(appName string) (*application, *runtimeInfo) {
+	app, info := m.getAppFromTempStore(appName)
+	if info.Code != m.statusCodes.ok.Code {
+		return nil, info
 	}
-	return &app, true
+	return &app, info
 }
 
 func (m *ServiceMgr) checkIfDeployed(appName string) bool {
@@ -948,17 +948,17 @@ func (m *ServiceMgr) getTempStoreAppNames() []string {
 }
 
 func (m *ServiceMgr) rbacSupport() bool {
-        hostAddress := net.JoinHostPort(util.Localhost(), m.restPort)
-        cic, err := util.FetchClusterInfoClient(hostAddress)
-        if err != nil {
-                return false
-        }
-        cinfo := cic.GetClusterInfoCache()
-        cinfo.RLock()
-        version, minVer := cinfo.GetNodeCompatVersion()
-        cinfo.RUnlock()
+	hostAddress := net.JoinHostPort(util.Localhost(), m.restPort)
+	cic, err := util.FetchClusterInfoClient(hostAddress)
+	if err != nil {
+		return false
+	}
+	cinfo := cic.GetClusterInfoCache()
+	cinfo.RLock()
+	version, minVer := cinfo.GetNodeCompatVersion()
+	cinfo.RUnlock()
 
-        return version >= 7 && minVer >= 1
+	return version >= 7 && minVer >= 1
 }
 
 func (app *application) copy() application {
