@@ -800,7 +800,7 @@ void BucketBinding::BucketDelete<v8::Local<v8::Name>>(
       UnwrapInternalField<bool>(info.Holder(), InternalFields::kIsSourceBucket);
   auto bucket = UnwrapInternalField<Bucket>(info.Holder(),
                                             InternalFields::kBucketInstance);
-  auto [error, err_code, result] = BucketDelete(key, is_source_bucket, bucket);
+  auto [error, err_code, result] = BucketDelete(key, *is_source_bucket, bucket);
   if (error != nullptr) {
     js_exception->ThrowEventingError(*error);
     return;
