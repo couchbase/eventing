@@ -5107,6 +5107,12 @@ func (m *ServiceMgr) getUserInfo(w http.ResponseWriter, r *http.Request) {
 		DcpStreamPerm: make([]common.Keyspace, 0),
 	}
 
+	k := &common.Keyspace{BucketName: "*", ScopeName: "*"}
+	manage := rbac.GetPermissions(k, rbac.EventingManage)
+	if _, err := rbac.IsAllowedCreds(cred, manage, true); err == nil {
+		u.FuncScope = append(u.FuncScope, *k)
+	}
+
 	for bucketName, scopeMap := range snapShot {
 		for scopeName, collectionList := range scopeMap {
 			k := &common.Keyspace{BucketName: bucketName, ScopeName: scopeName}
@@ -5124,7 +5130,7 @@ func (m *ServiceMgr) getUserInfo(w http.ResponseWriter, r *http.Request) {
 					u.DcpStreamPerm = append(u.DcpStreamPerm, *k)
 				}
 
-				manage := rbac.GetPermissions(k, rbac.BucketRead)
+				manage = rbac.GetPermissions(k, rbac.BucketRead)
 				read, write := false, false
 				// checking read permissions
 				if _, err := rbac.IsAllowedCreds(cred, manage, true); err == nil {

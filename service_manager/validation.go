@@ -489,9 +489,13 @@ func (m *ServiceMgr) validateDeploymentConfig(deploymentConfig *depCfg) (info *r
 
 func (m *ServiceMgr) getBSId(fS *common.FunctionScope) (string, uint32, *runtimeInfo) {
 	info := &runtimeInfo{}
-	info.Code = m.statusCodes.errInvalidConfig.Code
+	info.Code = m.statusCodes.ok.Code
 
-	// Validate if bucket.scope exist or not
+	if (fS.BucketName == "" && fS.ScopeName == "") || (fS.BucketName == "*" && fS.ScopeName == "*") {
+		return "", 0, info
+	}
+
+	// Either both should be empty or none
 	if info = m.validateNonEmpty(fS.BucketName, "functionScope bucket name"); info.Code != m.statusCodes.ok.Code {
 		return "", 0, info
 	}
@@ -515,7 +519,6 @@ func (m *ServiceMgr) getBSId(fS *common.FunctionScope) (string, uint32, *runtime
 		return "", 0, info
 	}
 
-	info.Code = m.statusCodes.ok.Code
 	return bucketUUID, scopeId, info
 }
 
@@ -1157,6 +1160,15 @@ func (m *ServiceMgr) validateZeroOrPositiveInteger(field string, settings map[st
 func (app *application) functionScopeEquals(tmpApp application) bool {
 	fS := app.FunctionScope
 	tmpFs := tmpApp.FunctionScope
+	if fS.BucketName == "" && fS.ScopeName == "" {
+		fS.BucketName = "*"
+		fS.ScopeName = "*"
+	}
+
+	if tmpFs.BucketName == "" && tmpFs.ScopeName == "" {
+		tmpFs.BucketName = "*"
+		tmpFs.ScopeName = "*"
+	}
 
 	return (fS.BucketName == tmpFs.BucketName) && (fS.ScopeName == tmpFs.ScopeName)
 }

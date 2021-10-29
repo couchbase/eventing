@@ -1245,7 +1245,6 @@ angular.module('eventing', [
       }
 
       self.functionBuckets = self.getLatestBuckets(snapshot.data.func_scope);
-      console.log(snapshot.data.func_scope, self.functionBuckets);
       self.sourceBuckets = self.getLatestBuckets(snapshot.data
         .dcp_stream_permission);
       self.metadataBuckets = self.getLatestBuckets(snapshot.data
@@ -1319,6 +1318,13 @@ angular.module('eventing', [
       self.collections = [];
       // TODO : The following two lines may not be needed as we don't allow the user to edit
       //        the source and metadata buckets in the settings page.
+
+      if (appModel.function_scope.bucket == undefined || appModel.function_scope.bucket == "") {
+        appModel.function_scope.bucket = "*";
+      }
+      if (appModel.function_scope.scope == undefined || appModel.function_scope.scope == "") {
+        appModel.function_scope.scope = "*";
+      }
 
       if (appModel.depcfg.source_scope == "") {
         appModel.depcfg.source_scope = "_default";

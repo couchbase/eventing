@@ -52,6 +52,12 @@ func (p *Producer) parseDepcfg() error {
 		BucketName: string(fs.BucketName()),
 		ScopeName:  string(fs.ScopeName()),
 	}
+
+	if funcScope.BucketName == "" && funcScope.ScopeName == "" {
+		funcScope.BucketName = "*"
+		funcScope.ScopeName = "*"
+	}
+
 	p.functionScope = funcScope.ToKeyspace()
 
 	o := new(cfg.Owner)
