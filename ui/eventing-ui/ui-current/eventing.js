@@ -1032,13 +1032,13 @@ angular.module('eventing', [
       };
 
       self.getScopes = function(bucketName, bucketList) {
-        var scope = [];
+        var scope = new Set();
         for (var index in bucketList) {
           if (bucketList[index].BucketName == bucketName) {
-            scope.push(bucketList[index].ScopeName);
+            scope.add(bucketList[index].ScopeName);
           }
         }
-        return scope;
+        return Array.from(scope);
       };
 
       self.getCollection = function(bucketName, scopeName, bucketList) {
@@ -1057,7 +1057,6 @@ angular.module('eventing', [
         for (var index in bucketList) {
           bucketsSet.add(bucketList[index].BucketName);
         }
-        console.log("Here: ", bucketsSet);
         return Array.from(bucketsSet);
       };
 
@@ -1286,13 +1285,13 @@ angular.module('eventing', [
       }
 
       self.getScopes = function(bucketName, bucketList) {
-        var scope = [];
+        var scope = new Set();
         for (var index in bucketList) {
           if (bucketList[index].BucketName == bucketName) {
-            scope.push(bucketList[index].ScopeName);
+            scope.add(bucketList[index].ScopeName);
           }
         }
-        return scope;
+        return Array.from(scope);
       };
 
       self.getCollection = function(bucketName, scopeName, bucketList) {
