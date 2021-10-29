@@ -59,7 +59,7 @@ func (e CouchbaseVer) Compare(need CouchbaseVer) bool {
 
 // returns e == need
 func (e CouchbaseVer) Equals(need CouchbaseVer) bool {
-        return e.major == need.major && e.minor == need.minor && e.mpVersion == need.mpVersion && e.isEnterprise == need.isEnterprise
+	return e.major == need.major && e.minor == need.minor && e.mpVersion == need.mpVersion && e.isEnterprise == need.isEnterprise
 }
 
 func (e CouchbaseVer) String() string {
@@ -116,6 +116,32 @@ func FrameCouchbaseVersion(ver string) (CouchbaseVer, error) {
 
 	eVer.isEnterprise = false
 	if segs[len(segs)-1] == "ee" {
+		eVer.isEnterprise = true
+	}
+
+	return eVer, nil
+}
+
+// major.minor.mpVersion-build-type
+func FrameCouchbaseVerFromNsServerStreamingRestApi(ver string) (CouchbaseVer, error) {
+	segs := strings.Split(ver, "-")
+	if len(segs) < 3 {
+		return CouchbaseVer{}, ErrInvalidVersion
+	}
+
+	eVer, err := FrameCouchbaseVersionShort(segs[0])
+	if err != nil {
+		return eVer, err
+	}
+
+	val, err := strconv.Atoi(segs[1])
+	if err != nil {
+		return eVer, ErrInvalidVersion
+	}
+	eVer.build = val
+
+	eVer.isEnterprise = false
+	if segs[len(segs)-1] == "enterprise" {
 		eVer.isEnterprise = true
 	}
 

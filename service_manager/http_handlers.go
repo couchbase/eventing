@@ -4655,9 +4655,19 @@ func (m *ServiceMgr) isMixedModeCluster() (bool, *runtimeInfo) {
 		return false, info
 	}
 
-	first := nodes[0]
+	ver, err := common.FrameCouchbaseVerFromNsServerStreamingRestApi(nodes[0].Version)
+	if err != nil {
+		info.Code = m.statusCodes.errInternalServer.Code
+		return true, info
+	}
+
 	for _, node := range nodes {
-		if first.Version != node.Version {
+		nVer, err := common.FrameCouchbaseVerFromNsServerStreamingRestApi(node.Version)
+		if err != nil {
+			info.Code = m.statusCodes.errInternalServer.Code
+			return true, info
+		}
+		if !ver.Equals(nVer) {
 			return true, info
 		}
 	}
