@@ -602,11 +602,11 @@ angular.module('eventing', [
               case 'resume':
                 appClone.settings.deployment_status = true;
                 appClone.settings.processing_status = true;
-                return ApplicationService.public.updateSettings(appClone);
+                return ApplicationService.public.resumeApp(appClone);
               case 'pause':
                 appClone.settings.deployment_status = true;
                 appClone.settings.processing_status = false;
-                return ApplicationService.public.updateSettings(appClone);
+                return ApplicationService.public.pauseApp(appClone);
             }
           })
           .then(function(response) {
@@ -706,8 +706,9 @@ angular.module('eventing', [
 
           })
           .catch(function(errResponse) {
+            let info = errResponse.data.runtime_info;
             ApplicationService.server.showErrorAlert(
-              `Undeploy failed due to "${errResponse.data.description}"`);
+                `Undeploy failed due to ` + JSON.stringify(info));
             console.error(errResponse);
           });
       }
@@ -2081,32 +2082,50 @@ angular.module('eventing', [
           },
           deployApp: function(appModel) {
             return $http({
-              url: `/_p/event/api/v1/functions/${appModel.appname}`,
+              url: `/_p/event/api/v1/functions/${appModel.appname}/deploy`,
               method: 'POST',
               mnHttp: {
                 isNotForm: true
               },
               headers: {
                 'Content-Type': 'application/json'
+              }
+            });
+          },
+          resumeApp: function(appModel) {
+            return $http({
+              url: `/_p/event/api/v1/functions/${appModel.appname}/resume`,
+              method: 'POST',
+              mnHttp: {
+                isNotForm: true
               },
-              data: appModel
+              headers: {
+                'Content-Type': 'application/json'
+              }
+            });
+          },
+          pauseApp: function(appModel) {
+            return $http({
+              url: `/_p/event/api/v1/functions/${appModel.appname}/pause`,
+              method: 'POST',
+              mnHttp: {
+                isNotForm: true
+              },
+              headers: {
+                'Content-Type': 'application/json'
+              }
             });
           },
           undeployApp: function(appName) {
-            var settings = {
-              deployment_status: false,
-              processing_status: false
-            };
             return $http({
-              url: `/_p/event/api/v1/functions/${appName}/settings`,
+              url: `/_p/event/api/v1/functions/${appName}/undeploy`,
               method: 'POST',
               mnHttp: {
                 isNotForm: true
               },
               headers: {
                 'Content-Type': 'application/json'
-              },
-              data: settings
+              }
             });
           },
           deleteApp: function(appName) {
