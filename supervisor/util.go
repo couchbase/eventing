@@ -136,7 +136,7 @@ func (s *SuperSupervisor) isDeployable(appName string) error {
 		return fmt.Errorf("Meta Keyspace doesn't exist")
 	}
 
-	if funcScope.BucketName != "" || funcScope.ScopeName != "" {
+	if (funcScope.BucketName != "" || funcScope.ScopeName != "") && (funcScope.BucketName != "*" || funcScope.ScopeName != "*") {
 		_, _, err = util.CheckAndGetBktAndScopeIDs(funcScope, s.restPort)
 		if err == couchbase.ErrBucketNotFound || err == collections.SCOPE_NOT_FOUND {
 			return fmt.Errorf("Function Scope doesn't exist: %v", err)
@@ -587,7 +587,7 @@ func (s *SuperSupervisor) unwatchBucketWithGocb(bucketName, appName string) {
 
 func (s *SuperSupervisor) watchBucket(bucketName, appName string) error {
 	// Function bucket can be nil
-	if bucketName == "" {
+	if bucketName == "" || bucketName == "*" {
 		return nil
 	}
 	s.bucketsRWMutex.Lock()

@@ -380,7 +380,7 @@ func (feed *DcpFeed) connectToNodes(
 			name = feed.name
 		}
 		for i := 0; i < feed.numConnections; i++ {
-			feedname := NewDcpFeedName(fmt.Sprintf("%v/%d", name, i))
+			feedname := NewDcpFeedName(fmt.Sprintf("%s/%d", name.Raw(), i))
 			singleFeed, err := serverConn.StartDcpFeed(
 				feedname, feed.sequence, flags, feed.output, opaque, config)
 			if err != nil {
@@ -423,7 +423,7 @@ func (feed *DcpFeed) reConnectToNodes(
 				name = feed.name
 			}
 
-			feedname := NewDcpFeedName(fmt.Sprintf("%v/%d", name, i))
+			feedname := NewDcpFeedName(fmt.Sprintf("%s/%d", name.Raw(), i))
 			singleFeed, err := serverConn.StartDcpFeed(
 				feedname, feed.sequence, flags, feed.output, opaque, config)
 			if err != nil {

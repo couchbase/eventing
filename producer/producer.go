@@ -128,7 +128,7 @@ func (p *Producer) Serve() {
 	}
 
 	go p.undeployHandlerWait()
-	if p.functionScope.BucketName != "" {
+	if p.functionScope.BucketName != "*" {
 		p.funcScopeId, _, err = p.superSup.GetScopeAndCollectionID(p.functionScope.BucketName, p.functionScope.ScopeName, "")
 		if err != nil {
 			logging.Errorf("%s [%s] Error in getting function manage scope, err: %v", logPrefix, p.appName, err)

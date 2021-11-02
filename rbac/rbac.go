@@ -68,8 +68,8 @@ func keyspaceToRbacString(keyspace *common.Keyspace) string {
 }
 
 func replaceDefault(s string) string {
-	if s == "" {
-		return "."
+	if s == "" || s == "*" {
+		return "*"
 	}
 	return s
 }
