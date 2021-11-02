@@ -4308,7 +4308,6 @@ func (m *ServiceMgr) importHandler(w http.ResponseWriter, r *http.Request) {
 	m.sendRuntimeInfoList(w, infoList)
 }
 
-// TODO: For reimport it needs to check whether its user has the manage permission or not
 func (m *ServiceMgr) backupHandler(w http.ResponseWriter, r *http.Request) {
 	url := filepath.Clean(r.URL.Path)
 	info := &runtimeInfo{}
@@ -4360,7 +4359,7 @@ func (m *ServiceMgr) backupHandler(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case "GET":
 		// call for backup
-		exportedFun := m.backupApps(filterMap, filterType)
+		exportedFun := m.backupApps(cred, filterMap, filterType)
 		data, err := json.MarshalIndent(exportedFun, "", " ")
 		if err != nil {
 			w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
@@ -4419,17 +4418,34 @@ func (m *ServiceMgr) backupHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (m *ServiceMgr) backupApps(filterMap map[string]bool, filterType string) []application {
+func (m *ServiceMgr) backupApps(cred cbauth.Creds, filterMap map[string]bool, filterType string) []application {
 	apps := m.getTempStoreAll()
-	return m.filterAppList(apps, filterMap, filterType, true)
+	appList := make([]application, 0, len(apps))
+	for _, app := range apps {
+		info := m.checkPermissionFromCred(cred, app.Name, rbac.HandlerManagePermissions, false)
+		if info.Code != m.statusCodes.ok.Code {
+			continue
+		}
+		appList = append(appList, app)
+	}
+
+	return m.filterAppList(appList, filterMap, filterType, true)
 }
 
 func (m *ServiceMgr) restoreAppList(apps *[]application, filterMap map[string]bool, remap map[string]common.Keyspace, filterType string) *[]application {
 	filteredApps := m.filterAppList(*apps, filterMap, filterType, false)
 	appList := make([]application, 0, len(filteredApps))
 	for _, app := range filteredApps {
+		val, length, ok := remapContains(remap, app.FunctionScope.BucketName, app.FunctionScope.ScopeName, "")
+		if ok {
+			app.FunctionScope.BucketName = val.BucketName
+			if length == 2 {
+				app.FunctionScope.ScopeName = val.ScopeName
+			}
+		}
+
 		deploymentConfig := app.DeploymentConfig
-		val, length, ok := remapContains(remap, deploymentConfig.SourceBucket, deploymentConfig.SourceScope, deploymentConfig.SourceCollection)
+		val, length, ok = remapContains(remap, deploymentConfig.SourceBucket, deploymentConfig.SourceScope, deploymentConfig.SourceCollection)
 		if ok {
 			app.DeploymentConfig.SourceBucket = val.BucketName
 			if length == 2 {
@@ -4472,7 +4488,7 @@ func (m *ServiceMgr) restoreAppList(apps *[]application, filterMap map[string]bo
 }
 
 func (m *ServiceMgr) filterAppList(apps []application, filterMap map[string]bool, filterType string, backup bool) []application {
-	filteredFns := make([]application, 0)
+	filteredFns := make([]application, 0, len(apps))
 	for _, app := range apps {
 		m.addDefaultDeploymentConfig(&app)
 		if applyFilter(app, filterMap, filterType) {
@@ -4491,7 +4507,6 @@ func (m *ServiceMgr) filterAppList(apps []application, filterMap map[string]bool
 	return filteredFns
 }
 
-// TODO: this should check if app exist and has the required permission or not
 func (m *ServiceMgr) createApplications(cred cbauth.Creds, r *http.Request, appList *[]application, isImport bool) (infoList []*runtimeInfo, importedFns []string) {
 	logPrefix := "ServiceMgr::createApplications"
 
