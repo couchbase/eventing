@@ -414,24 +414,23 @@ type vbStat struct {
 }
 
 type vbucketKVBlob struct {
-	AssignedWorker            string           `json:"assigned_worker"`
-	BootstrapStreamReqDone    bool             `json:"bootstrap_stream_req_done"`
-	CurrentVBOwner            string           `json:"current_vb_owner"`
-	DCPStreamStatus           string           `json:"dcp_stream_status"`
-	DCPStreamRequested        bool             `json:"dcp_stream_requested"`
-	LastCheckpointTime        string           `json:"last_checkpoint_time"`
-	LastDocTimerFeedbackSeqNo uint64           `json:"last_doc_timer_feedback_seqno"`
-	LastSeqNoProcessed        uint64           `json:"last_processed_seq_no"`
-	NodeUUID                  string           `json:"node_uuid"`
-	NodeRequestedVbStream     string           `json:"node_requested_vb_stream"`
-	NodeUUIDRequestedVbStream string           `json:"node_uuid_requested_vb_stream"`
-	OwnershipHistory          []OwnershipEntry `json:"ownership_history"`
-	PreviousAssignedWorker    string           `json:"previous_assigned_worker"`
-	PreviousNodeUUID          string           `json:"previous_node_uuid"`
-	PreviousVBOwner           string           `json:"previous_vb_owner"`
-	VBId                      uint16           `json:"vb_id"`
-	VBuuid                    uint64           `json:"vb_uuid"`
-	WorkerRequestedVbStream   string           `json:"worker_requested_vb_stream"`
+	AssignedWorker            string `json:"assigned_worker"`
+	BootstrapStreamReqDone    bool   `json:"bootstrap_stream_req_done"`
+	CurrentVBOwner            string `json:"current_vb_owner"`
+	DCPStreamStatus           string `json:"dcp_stream_status"`
+	DCPStreamRequested        bool   `json:"dcp_stream_requested"`
+	LastCheckpointTime        string `json:"last_checkpoint_time"`
+	LastDocTimerFeedbackSeqNo uint64 `json:"last_doc_timer_feedback_seqno"`
+	LastSeqNoProcessed        uint64 `json:"last_processed_seq_no"`
+	NodeUUID                  string `json:"node_uuid"`
+	NodeRequestedVbStream     string `json:"node_requested_vb_stream"`
+	NodeUUIDRequestedVbStream string `json:"node_uuid_requested_vb_stream"`
+	PreviousAssignedWorker    string `json:"previous_assigned_worker"`
+	PreviousNodeUUID          string `json:"previous_node_uuid"`
+	PreviousVBOwner           string `json:"previous_vb_owner"`
+	VBId                      uint16 `json:"vb_id"`
+	VBuuid                    uint64 `json:"vb_uuid"`
+	WorkerRequestedVbStream   string `json:"worker_requested_vb_stream"`
 
 	CurrentProcessedDocIDTimer   string `json:"currently_processed_doc_id_timer"`
 	LastCleanedUpDocIDTimerEvent string `json:"last_cleaned_up_doc_id_timer_event"`

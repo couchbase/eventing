@@ -208,16 +208,8 @@ func (c *Consumer) processDCPEvents() {
 							logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket, vbBlob.BootstrapStreamReqDone)
 					}
 
-					entry := OwnershipEntry{
-						AssignedWorker: c.ConsumerName(),
-						CurrentVBOwner: c.HostPortAddr(),
-						Operation:      dcpStreamRunning,
-						SeqNo:          startSeqNo,
-						Timestamp:      time.Now().String(),
-					}
-
 					err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, addOwnershipHistorySRSCallback,
-						c, c.producer.AddMetadataPrefix(vbKey), &vbBlob, &entry, &operr)
+						c, c.producer.AddMetadataPrefix(vbKey), &vbBlob, &operr)
 					if err == common.ErrRetryTimeout {
 						logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 						return
@@ -279,16 +271,9 @@ func (c *Consumer) processDCPEvents() {
 
 					vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppName, e.VBucket)
 
-					entry := OwnershipEntry{
-						AssignedWorker: c.ConsumerName(),
-						CurrentVBOwner: c.HostPortAddr(),
-						Operation:      dcpStreamRequestFailed,
-						Timestamp:      time.Now().String(),
-					}
-
 					var operr error
 					err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, addOwnershipHistorySRFCallback,
-						c, c.producer.AddMetadataPrefix(vbKey), &entry, &operr)
+						c, c.producer.AddMetadataPrefix(vbKey), &operr)
 					if err == common.ErrRetryTimeout {
 						logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 						return
@@ -481,14 +466,6 @@ func (c *Consumer) startDcp() error {
 			vbBlob.PreviousAssignedWorker = c.ConsumerName()
 			vbBlob.PreviousNodeUUID = c.NodeUUID()
 			vbBlob.PreviousVBOwner = c.HostPortAddr()
-
-			entry := OwnershipEntry{
-				AssignedWorker: c.ConsumerName(),
-				CurrentVBOwner: c.HostPortAddr(),
-				Operation:      dcpStreamBootstrap,
-				Timestamp:      time.Now().String(),
-			}
-			vbBlob.OwnershipHistory = append(vbBlob.OwnershipHistory, entry)
 
 			if c.dcpStreamBoundary == common.DcpFromNow {
 				vbBlob.LastSeqNoProcessed = vbSeqnos[int(vb)]
@@ -770,15 +747,8 @@ func (c *Consumer) clearUpOwnershipInfoFromMeta(vb uint16) error {
 	vbBlob.PreviousNodeUUID = c.NodeUUID()
 	vbBlob.PreviousVBOwner = c.HostPortAddr()
 
-	entry := OwnershipEntry{
-		AssignedWorker: c.ConsumerName(),
-		CurrentVBOwner: c.HostPortAddr(),
-		Operation:      dcpStreamStopped,
-		Timestamp:      time.Now().String(),
-	}
-
 	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, addOwnershipHistorySECallback,
-		c, c.producer.AddMetadataPrefix(vbKey), &entry, &operr)
+		c, c.producer.AddMetadataPrefix(vbKey), &operr)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 		return err
@@ -934,19 +904,11 @@ func (c *Consumer) dcpRequestStreamHandle(vb uint16, vbBlob *vbucketKVBlob, star
 		c.inflightDcpStreams[vb] = struct{}{}
 		c.inflightDcpStreamsRWMutex.Unlock()
 
-		entry := OwnershipEntry{
-			AssignedWorker: c.ConsumerName(),
-			CurrentVBOwner: c.HostPortAddr(),
-			Operation:      dcpStreamRequested,
-			SeqNo:          start,
-			Timestamp:      time.Now().String(),
-		}
-
 		vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppName, vb)
 
 		var operr error
 		err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, addOwnershipHistorySRRCallback,
-			c, c.producer.AddMetadataPrefix(vbKey), &entry, &operr)
+			c, c.producer.AddMetadataPrefix(vbKey), &operr)
 		if err == common.ErrRetryTimeout {
 			logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 			return err
@@ -1313,19 +1275,9 @@ func (c *Consumer) handleStreamEnd(vBucket uint16, last_processed_seqno uint64) 
 
 	vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppName, vBucket)
 
-	seqNo := c.vbProcessingStats.getVbStat(vBucket, "last_read_seq_no").(uint64)
-
-	entry := OwnershipEntry{
-		AssignedWorker: c.ConsumerName(),
-		CurrentVBOwner: c.HostPortAddr(),
-		Operation:      dcpStreamStopped,
-		SeqNo:          seqNo,
-		Timestamp:      time.Now().String(),
-	}
-
 	var operr error
 	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, addOwnershipHistorySECallback,
-		c, c.producer.AddMetadataPrefix(vbKey), &entry, &operr)
+		c, c.producer.AddMetadataPrefix(vbKey), &operr)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 		return

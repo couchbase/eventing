@@ -47,18 +47,8 @@ func (c *Consumer) checkAndUpdateMetadata() {
 		}
 
 		if vbBlob.NodeUUID != c.NodeUUID() || vbBlob.DCPStreamStatus != dcpStreamRunning || vbBlob.AssignedWorker != c.ConsumerName() {
-			lastSeqNo := c.vbProcessingStats.getVbStat(vb, "last_read_seq_no").(uint64)
-
-			entry := OwnershipEntry{
-				AssignedWorker: c.ConsumerName(),
-				CurrentVBOwner: c.HostPortAddr(),
-				Operation:      metadataCorrected,
-				SeqNo:          lastSeqNo,
-				Timestamp:      time.Now().String(),
-			}
-
 			err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, metadataCorrectionCallback,
-				c, c.producer.AddMetadataPrefix(vbKey), &entry, &operr)
+				c, c.producer.AddMetadataPrefix(vbKey), &operr)
 			if err == common.ErrRetryTimeout {
 				logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 				return
@@ -69,18 +59,8 @@ func (c *Consumer) checkAndUpdateMetadata() {
 			logging.Infof("%s [%s:%s:%d] vb: %d Checked and updated metadata", logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
 
 			if !c.checkIfCurrentConsumerShouldOwnVb(vb) {
-				lastSeqNo := c.vbProcessingStats.getVbStat(vb, "last_read_seq_no").(uint64)
-
-				entry := OwnershipEntry{
-					AssignedWorker: c.ConsumerName(),
-					CurrentVBOwner: c.HostPortAddr(),
-					Operation:      undoMetadataCorrection,
-					SeqNo:          lastSeqNo,
-					Timestamp:      time.Now().String(),
-				}
-
 				err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, undoMetadataCorrectionCallback,
-					c, c.producer.AddMetadataPrefix(vbKey), &entry, &operr)
+					c, c.producer.AddMetadataPrefix(vbKey), &operr)
 				if err == common.ErrRetryTimeout {
 					logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 					return

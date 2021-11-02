@@ -183,14 +183,6 @@ var recreateCheckpointBlobsFromVbStatsCallback = func(args ...interface{}) error
 	vbBlob.PreviousNodeUUID = c.NodeUUID()
 	vbBlob.PreviousVBOwner = c.HostPortAddr()
 
-	entry := OwnershipEntry{
-		AssignedWorker: c.ConsumerName(),
-		CurrentVBOwner: c.HostPortAddr(),
-		Operation:      metadataRecreated,
-		Timestamp:      time.Now().String(),
-	}
-	vbBlob.OwnershipHistory = append(vbBlob.OwnershipHistory, entry)
-
 	vbBlob.CurrentProcessedDocIDTimer = time.Now().UTC().Format(time.RFC3339)
 	vbBlob.LastProcessedDocIDTimerEvent = time.Now().UTC().Format(time.RFC3339)
 	vbBlob.NextDocIDTimerToProcess = time.Now().UTC().Add(time.Second).Format(time.RFC3339)
@@ -257,14 +249,6 @@ var recreateCheckpointBlobCallback = func(args ...interface{}) error {
 		vbBlob.PreviousNodeUUID = c.NodeUUID()
 		vbBlob.PreviousVBOwner = c.HostPortAddr()
 
-		entry := OwnershipEntry{
-			AssignedWorker: c.ConsumerName(),
-			CurrentVBOwner: c.HostPortAddr(),
-			Operation:      metadataRecreated,
-			Timestamp:      time.Now().String(),
-		}
-		vbBlob.OwnershipHistory = append(vbBlob.OwnershipHistory, entry)
-
 		vbBlob.CurrentProcessedDocIDTimer = time.Now().UTC().Format(time.RFC3339)
 		vbBlob.LastProcessedDocIDTimerEvent = time.Now().UTC().Format(time.RFC3339)
 		vbBlob.NextDocIDTimerToProcess = time.Now().UTC().Add(time.Second).Format(time.RFC3339)
@@ -316,15 +300,7 @@ var periodicCheckpointCallback = func(args ...interface{}) error {
 	}
 
 	if !c.isRebalanceOngoing && !c.vbsStateUpdateRunning && (vbBlob.NodeUUID == "" || vbBlob.CurrentVBOwner == "") {
-		entry := OwnershipEntry{
-			AssignedWorker: c.ConsumerName(),
-			CurrentVBOwner: c.HostPortAddr(),
-			Operation:      metadataUpdatedPeriodicCheck,
-			Timestamp:      time.Now().String(),
-		}
-
 		_, err = c.gocbMetaHandle.MutateIn(vbKey.Raw(), 0, uint32(0)).
-			ArrayAppend("ownership_history", entry, true).
 			UpsertEx("assigned_worker", c.ConsumerName(), gocb.SubdocFlagCreatePath).
 			UpsertEx("current_vb_owner", c.HostPortAddr(), gocb.SubdocFlagCreatePath).
 			UpsertEx("dcp_stream_requested", false, gocb.SubdocFlagCreatePath).
@@ -333,7 +309,6 @@ var periodicCheckpointCallback = func(args ...interface{}) error {
 			UpsertEx("node_uuid", c.NodeUUID(), gocb.SubdocFlagCreatePath).
 			UpsertEx("vb_uuid", vbBlob.VBuuid, gocb.SubdocFlagCreatePath).
 			Execute()
-
 		if err != nil && c.encryptionChangedDuringLifecycle() {
 			*operr = common.ErrEncryptionLevelChanged
 			return nil
@@ -417,14 +392,12 @@ var metadataCorrectionCallback = func(args ...interface{}) error {
 
 	c := args[0].(*Consumer)
 	vbKey := args[1].(common.Key)
-	ownershipEntry := args[2].(*OwnershipEntry)
-	operr := args[3].(*error)
+	operr := args[2].(*error)
 
 retryMetadataCorrection:
 	c.gocbMetaHandleMutex.RLock()
 	defer c.gocbMetaHandleMutex.RUnlock()
 	_, err := c.gocbMetaHandle.MutateIn(vbKey.Raw(), 0, uint32(0)).
-		ArrayAppend("ownership_history", ownershipEntry, true).
 		UpsertEx("assigned_worker", c.ConsumerName(), gocb.SubdocFlagCreatePath).
 		UpsertEx("current_vb_owner", c.HostPortAddr(), gocb.SubdocFlagCreatePath).
 		UpsertEx("dcp_stream_requested", false, gocb.SubdocFlagCreatePath).
@@ -469,14 +442,12 @@ var undoMetadataCorrectionCallback = func(args ...interface{}) error {
 
 	c := args[0].(*Consumer)
 	vbKey := args[1].(common.Key)
-	ownershipEntry := args[2].(*OwnershipEntry)
-	operr := args[3].(*error)
+	operr := args[2].(*error)
 
 retryUndoMetadataCorrection:
 	c.gocbMetaHandleMutex.RLock()
 	defer c.gocbMetaHandleMutex.RUnlock()
 	_, err := c.gocbMetaHandle.MutateIn(vbKey.Raw(), 0, uint32(0)).
-		ArrayAppend("ownership_history", ownershipEntry, true).
 		UpsertEx("assigned_worker", "", gocb.SubdocFlagCreatePath).
 		UpsertEx("current_vb_owner", "", gocb.SubdocFlagCreatePath).
 		UpsertEx("dcp_stream_requested", false, gocb.SubdocFlagCreatePath).
@@ -522,14 +493,12 @@ var addOwnershipHistorySRRCallback = func(args ...interface{}) error {
 
 	c := args[0].(*Consumer)
 	vbKey := args[1].(common.Key)
-	ownershipEntry := args[2].(*OwnershipEntry)
-	operr := args[3].(*error)
+	operr := args[2].(*error)
 
 retrySRRUpdate:
 	c.gocbMetaHandleMutex.RLock()
 	defer c.gocbMetaHandleMutex.RUnlock()
 	_, err := c.gocbMetaHandle.MutateIn(vbKey.Raw(), 0, uint32(0)).
-		ArrayAppend("ownership_history", ownershipEntry, true).
 		UpsertEx("assigned_worker", "", gocb.SubdocFlagCreatePath).
 		UpsertEx("current_vb_owner", "", gocb.SubdocFlagCreatePath).
 		UpsertEx("dcp_stream_requested", true, gocb.SubdocFlagCreatePath).
@@ -578,14 +547,12 @@ var addOwnershipHistorySRFCallback = func(args ...interface{}) error {
 
 	c := args[0].(*Consumer)
 	vbKey := args[1].(common.Key)
-	ownershipEntry := args[2].(*OwnershipEntry)
-	operr := args[3].(*error)
+	operr := args[2].(*error)
 
 retrySRFUpdate:
 	c.gocbMetaHandleMutex.RLock()
 	defer c.gocbMetaHandleMutex.RUnlock()
 	_, err := c.gocbMetaHandle.MutateIn(vbKey.Raw(), 0, uint32(0)).
-		ArrayAppend("ownership_history", ownershipEntry, true).
 		UpsertEx("assigned_worker", "", gocb.SubdocFlagCreatePath).
 		UpsertEx("current_vb_owner", "", gocb.SubdocFlagCreatePath).
 		UpsertEx("dcp_stream_requested", false, gocb.SubdocFlagCreatePath).
@@ -635,15 +602,13 @@ var addOwnershipHistorySRSCallback = func(args ...interface{}) error {
 	c := args[0].(*Consumer)
 	vbKey := args[1].(common.Key)
 	vbBlob := args[2].(*vbucketKVBlob)
-	ownershipEntry := args[3].(*OwnershipEntry)
-	operr := args[4].(*error)
+	operr := args[3].(*error)
 
 retrySRSUpdate:
 
 	c.gocbMetaHandleMutex.RLock()
 	defer c.gocbMetaHandleMutex.RUnlock()
 	_, err := c.gocbMetaHandle.MutateIn(vbKey.Raw(), 0, uint32(0)).
-		ArrayAppend("ownership_history", ownershipEntry, true).
 		UpsertEx("assigned_worker", vbBlob.AssignedWorker, gocb.SubdocFlagCreatePath).
 		UpsertEx("bootstrap_stream_req_done", vbBlob.BootstrapStreamReqDone, gocb.SubdocFlagCreatePath).
 		UpsertEx("current_vb_owner", vbBlob.CurrentVBOwner, gocb.SubdocFlagCreatePath).
@@ -694,14 +659,12 @@ var addOwnershipHistorySECallback = func(args ...interface{}) error {
 
 	c := args[0].(*Consumer)
 	vbKey := args[1].(common.Key)
-	ownershipEntry := args[2].(*OwnershipEntry)
-	operr := args[3].(*error)
+	operr := args[2].(*error)
 
 retrySEUpdate:
 	c.gocbMetaHandleMutex.RLock()
 	defer c.gocbMetaHandleMutex.RUnlock()
 	_, err := c.gocbMetaHandle.MutateIn(vbKey.Raw(), 0, uint32(0)).
-		ArrayAppend("ownership_history", ownershipEntry, true).
 		UpsertEx("dcp_stream_requested", false, gocb.SubdocFlagCreatePath).
 		UpsertEx("last_checkpoint_time", time.Now().String(), gocb.SubdocFlagCreatePath).
 		UpsertEx("node_requested_vb_stream", "", gocb.SubdocFlagCreatePath).

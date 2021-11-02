@@ -87,16 +87,7 @@ func mangleCheckpointBlobs(appName, prefix string, start, end int) {
 		worker := possibleWorkers[random(0, len(possibleWorkers))]
 		ownerNode := possibleVbOwners[random(0, len(possibleVbOwners))]
 
-		entry := ownershipEntry{
-			AssignedWorker: worker,
-			CurrentVBOwner: ownerNode,
-			Operation:      "mangling_checkpoint_blob",
-			SeqNo:          0,
-			Timestamp:      time.Now().String(),
-		}
-
 		_, err := bucket.MutateIn(docID, 0, uint32(0)).
-			ArrayAppend("ownership_history", entry, true).
 			UpsertEx("assigned_worker", worker, gocb.SubdocFlagCreatePath).
 			UpsertEx("current_vb_owner", ownerNode, gocb.SubdocFlagCreatePath).
 			UpsertEx("dcp_stream_status", possibleDcpStreamStates[random(0, len(possibleDcpStreamStates))], gocb.SubdocFlagCreatePath).
