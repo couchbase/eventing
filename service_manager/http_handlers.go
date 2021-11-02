@@ -1460,11 +1460,6 @@ func (m *ServiceMgr) setSettings(appName string, data []byte, force bool) (info 
 	}
 	m.addDefaultDeploymentConfig(&app)
 
-	info = m.checkDeploymentConfigPermission(app)
-	if info.Code != m.statusCodes.ok.Code {
-		return
-	}
-
 	newTPValue, timerPartitionsPresent := settings["num_timer_partitions"]
 	oldTPValue, oldTimerPartitionsPresent := app.Settings["num_timer_partitions"]
 
@@ -2003,6 +1998,11 @@ func (m *ServiceMgr) saveTempStore(app application) (info *runtimeInfo) {
 		}
 
 		app.Owner = currApp.Owner
+	}
+
+	depConfig, dOk := app.Settings["deployment_status"].(bool)
+	processConfig, pOk := app.Settings["deployment_status"].(bool)
+	if dOk && depConfig && pOk && processConfig {
 		info = m.checkDeploymentConfigPermission(app)
 		if info.Code != m.statusCodes.ok.Code {
 			return
@@ -2147,6 +2147,11 @@ func (m *ServiceMgr) savePrimaryStore(app *application) (info *runtimeInfo) {
 		}
 
 		app.Owner = currApp.Owner
+	}
+
+	depConfig, dOk := app.Settings["deployment_status"].(bool)
+	processConfig, pOk := app.Settings["deployment_status"].(bool)
+	if dOk && depConfig && pOk && processConfig {
 		info = m.checkDeploymentConfigPermission(*app)
 		if info.Code != m.statusCodes.ok.Code {
 			return
@@ -2183,7 +2188,7 @@ func (m *ServiceMgr) savePrimaryStore(app *application) (info *runtimeInfo) {
 	}
 
 	mhVersion := common.CouchbaseVerMap["mad-hatter"]
-	if app.Settings["deployment_status"].(bool) && app.Settings["processing_status"].(bool) && m.superSup.GetAppState(app.Name) == common.AppStatePaused && !m.compareEventingVersion(mhVersion) {
+	if dOk && depConfig && pOk && processConfig && m.superSup.GetAppState(app.Name) == common.AppStatePaused && !m.compareEventingVersion(mhVersion) {
 		info.Code = m.statusCodes.errClusterVersion.Code
 		info.Info = fmt.Sprintf("All eventing nodes in the cluster must be on version %s or higher for using the pause functionality",
 			mhVersion)
@@ -3440,11 +3445,6 @@ func (m *ServiceMgr) functionDeploy(w http.ResponseWriter, r *http.Request, appN
 	app, info := m.getTempStore(appName)
 	if info.Code != m.statusCodes.ok.Code {
 		m.sendErrorInfo(w, info)
-		return
-	}
-
-	info = m.checkDeploymentConfigPermission(app)
-	if info.Code != m.statusCodes.ok.Code {
 		return
 	}
 
