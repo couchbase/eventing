@@ -190,14 +190,6 @@ var recreateCheckpointBlobsFromVbStatsCallback = func(args ...interface{}) error
 	vbBlob.PreviousNodeUUID = c.NodeUUID()
 	vbBlob.PreviousVBOwner = c.HostPortAddr()
 
-	entry := OwnershipEntry{
-		AssignedWorker: c.ConsumerName(),
-		CurrentVBOwner: c.HostPortAddr(),
-		Operation:      metadataRecreated,
-		Timestamp:      time.Now().String(),
-	}
-	vbBlob.OwnershipHistory = append(vbBlob.OwnershipHistory, entry)
-
 	vbBlob.CurrentProcessedDocIDTimer = time.Now().UTC().Format(time.RFC3339)
 	vbBlob.LastProcessedDocIDTimerEvent = time.Now().UTC().Format(time.RFC3339)
 	vbBlob.NextDocIDTimerToProcess = time.Now().UTC().Add(time.Second).Format(time.RFC3339)
@@ -264,14 +256,6 @@ var recreateCheckpointBlobCallback = func(args ...interface{}) error {
 		vbBlob.PreviousNodeUUID = c.NodeUUID()
 		vbBlob.PreviousVBOwner = c.HostPortAddr()
 
-		entry := OwnershipEntry{
-			AssignedWorker: c.ConsumerName(),
-			CurrentVBOwner: c.HostPortAddr(),
-			Operation:      metadataRecreated,
-			Timestamp:      time.Now().String(),
-		}
-		vbBlob.OwnershipHistory = append(vbBlob.OwnershipHistory, entry)
-
 		vbBlob.CurrentProcessedDocIDTimer = time.Now().UTC().Format(time.RFC3339)
 		vbBlob.LastProcessedDocIDTimerEvent = time.Now().UTC().Format(time.RFC3339)
 		vbBlob.NextDocIDTimerToProcess = time.Now().UTC().Add(time.Second).Format(time.RFC3339)
@@ -326,16 +310,8 @@ var periodicCheckpointCallback = func(args ...interface{}) error {
 	}
 
 	if !c.isRebalanceOngoing && !c.vbsStateUpdateRunning && (vbBlob.NodeUUID == "" || vbBlob.CurrentVBOwner == "") {
-		entry := OwnershipEntry{
-			AssignedWorker: c.ConsumerName(),
-			CurrentVBOwner: c.HostPortAddr(),
-			Operation:      metadataUpdatedPeriodicCheck,
-			Timestamp:      time.Now().String(),
-		}
-
 		rebalance := make([]gocb.MutateInSpec, 0)
 
-		rebalance = append(rebalance, gocb.ArrayAppendSpec("ownership_history", entry, &gocb.ArrayAppendSpecOptions{CreatePath: true}))
 		rebalance = append(rebalance, gocb.UpsertSpec("assigned_worker", c.ConsumerName(), upsertOptions))
 		rebalance = append(rebalance, gocb.UpsertSpec("current_vb_owner", c.HostPortAddr(), upsertOptions))
 		rebalance = append(rebalance, gocb.UpsertSpec("dcp_stream_requested", false, upsertOptions))
@@ -429,15 +405,13 @@ var metadataCorrectionCallback = func(args ...interface{}) error {
 
 	c := args[0].(*Consumer)
 	vbKey := args[1].(common.Key)
-	ownershipEntry := args[2].(*OwnershipEntry)
-	operr := args[3].(*error)
+	operr := args[2].(*error)
 
 	upsertOptions := &gocb.UpsertSpecOptions{CreatePath: true}
 
 retryMetadataCorrection:
 
 	mutateIn := make([]gocb.MutateInSpec, 0)
-	mutateIn = append(mutateIn, gocb.ArrayAppendSpec("ownership_history", ownershipEntry, &gocb.ArrayAppendSpecOptions{CreatePath: true}))
 	mutateIn = append(mutateIn, gocb.UpsertSpec("assigned_worker", c.ConsumerName(), upsertOptions))
 	mutateIn = append(mutateIn, gocb.UpsertSpec("current_vb_owner", c.HostPortAddr(), upsertOptions))
 	mutateIn = append(mutateIn, gocb.UpsertSpec("dcp_stream_requested", false, upsertOptions))
@@ -483,14 +457,12 @@ var undoMetadataCorrectionCallback = func(args ...interface{}) error {
 
 	c := args[0].(*Consumer)
 	vbKey := args[1].(common.Key)
-	ownershipEntry := args[2].(*OwnershipEntry)
-	operr := args[3].(*error)
+	operr := args[2].(*error)
 	upsertOptions := &gocb.UpsertSpecOptions{CreatePath: true}
 
 retryUndoMetadataCorrection:
 
 	mutateIn := make([]gocb.MutateInSpec, 0)
-	mutateIn = append(mutateIn, gocb.ArrayAppendSpec("ownership_history", ownershipEntry, &gocb.ArrayAppendSpecOptions{CreatePath: true}))
 	mutateIn = append(mutateIn, gocb.UpsertSpec("assigned_worker", "", upsertOptions))
 	mutateIn = append(mutateIn, gocb.UpsertSpec("current_vb_owner", "", upsertOptions))
 	mutateIn = append(mutateIn, gocb.UpsertSpec("dcp_stream_requested", false, upsertOptions))
@@ -537,14 +509,12 @@ var addOwnershipHistorySRRCallback = func(args ...interface{}) error {
 
 	c := args[0].(*Consumer)
 	vbKey := args[1].(common.Key)
-	ownershipEntry := args[2].(*OwnershipEntry)
-	operr := args[3].(*error)
+	operr := args[2].(*error)
 	upsertOptions := &gocb.UpsertSpecOptions{CreatePath: true}
 
 retrySRRUpdate:
 
 	mutateIn := make([]gocb.MutateInSpec, 0)
-	mutateIn = append(mutateIn, gocb.ArrayAppendSpec("ownership_history", ownershipEntry, &gocb.ArrayAppendSpecOptions{CreatePath: true}))
 	mutateIn = append(mutateIn, gocb.UpsertSpec("assigned_worker", "", upsertOptions))
 	mutateIn = append(mutateIn, gocb.UpsertSpec("current_vb_owner", "", upsertOptions))
 	mutateIn = append(mutateIn, gocb.UpsertSpec("dcp_stream_requested", true, upsertOptions))
@@ -594,13 +564,11 @@ var addOwnershipHistorySRFCallback = func(args ...interface{}) error {
 
 	c := args[0].(*Consumer)
 	vbKey := args[1].(common.Key)
-	ownershipEntry := args[2].(*OwnershipEntry)
-	operr := args[3].(*error)
+	operr := args[2].(*error)
 	upsertOptions := &gocb.UpsertSpecOptions{CreatePath: true}
 
 retrySRFUpdate:
 	mutateIn := make([]gocb.MutateInSpec, 0)
-	mutateIn = append(mutateIn, gocb.ArrayAppendSpec("ownership_history", ownershipEntry, &gocb.ArrayAppendSpecOptions{CreatePath: true}))
 	mutateIn = append(mutateIn, gocb.UpsertSpec("assigned_worker", "", upsertOptions))
 	mutateIn = append(mutateIn, gocb.UpsertSpec("current_vb_owner", "", upsertOptions))
 	mutateIn = append(mutateIn, gocb.UpsertSpec("dcp_stream_requested", false, upsertOptions))
@@ -651,15 +619,13 @@ var addOwnershipHistorySRSCallback = func(args ...interface{}) error {
 	c := args[0].(*Consumer)
 	vbKey := args[1].(common.Key)
 	vbBlob := args[2].(*vbucketKVBlob)
-	ownershipEntry := args[3].(*OwnershipEntry)
-	operr := args[4].(*error)
+	operr := args[3].(*error)
 	upsertOptions := &gocb.UpsertSpecOptions{CreatePath: true}
 
 retrySRSUpdate:
 
 	mutateIn := make([]gocb.MutateInSpec, 0)
 
-	mutateIn = append(mutateIn, gocb.ArrayAppendSpec("ownership_history", ownershipEntry, &gocb.ArrayAppendSpecOptions{CreatePath: true}))
 	mutateIn = append(mutateIn, gocb.UpsertSpec("assigned_worker", vbBlob.AssignedWorker, upsertOptions))
 	mutateIn = append(mutateIn, gocb.UpsertSpec("bootstrap_stream_req_done", vbBlob.BootstrapStreamReqDone, upsertOptions))
 	mutateIn = append(mutateIn, gocb.UpsertSpec("current_vb_owner", vbBlob.CurrentVBOwner, upsertOptions))
@@ -710,13 +676,11 @@ var addOwnershipHistorySECallback = func(args ...interface{}) error {
 
 	c := args[0].(*Consumer)
 	vbKey := args[1].(common.Key)
-	ownershipEntry := args[2].(*OwnershipEntry)
-	operr := args[3].(*error)
+	operr := args[2].(*error)
 	upsertOptions := &gocb.UpsertSpecOptions{CreatePath: true}
 
 retrySEUpdate:
 	mutateIn := make([]gocb.MutateInSpec, 0)
-	mutateIn = append(mutateIn, gocb.ArrayAppendSpec("ownership_history", ownershipEntry, &gocb.ArrayAppendSpecOptions{CreatePath: true}))
 	mutateIn = append(mutateIn, gocb.UpsertSpec("dcp_stream_requested", false, upsertOptions))
 	mutateIn = append(mutateIn, gocb.UpsertSpec("last_checkpoint_time", time.Now().String(), upsertOptions))
 	mutateIn = append(mutateIn, gocb.UpsertSpec("node_requested_vb_stream", "", upsertOptions))

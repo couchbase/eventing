@@ -1115,6 +1115,10 @@ func applyFilter(app application, filterMap map[string]bool, filterType string) 
 		return true
 	}
 
+	if val, ok := contains(filterMap, app.FunctionScope.BucketName, app.FunctionScope.ScopeName, ""); ok {
+		return val
+	}
+
 	deploymentConfig := app.DeploymentConfig
 	if val, ok := contains(filterMap, deploymentConfig.SourceBucket, deploymentConfig.SourceScope, deploymentConfig.SourceCollection); ok {
 		return val

@@ -929,6 +929,7 @@ func (p *Producer) updateAppLogSetting(settings map[string]interface{}) {
 }
 
 func (p *Producer) undeployHandlerWait() {
+	logPrefix := "producer:undeployHandlerWait"
 	t := time.NewTicker(5 * time.Minute)
 	permissions := rbac.HandlerBucketPermissions(p.handlerConfig.SourceKeyspace, p.metadataKeyspace)
 	permissions = append(permissions, rbac.HandlerManagePermissions(p.functionScope)...)
@@ -950,13 +951,14 @@ func (p *Producer) undeployHandlerWait() {
 
 		case <-t.C:
 			if !p.lazyUndeploy {
-				_, err := rbac.HasPermissions(p.owner, permissions, true)
+				notAllowed, err := rbac.HasPermissions(p.owner, permissions, true)
 				// If user not present it will return as user don't have the permission
 				if err != rbac.ErrAuthorisation {
 					continue
 				}
 
 				p.lazyUndeploy = true
+				logging.Errorf("%s [%s] Undeploying handler due to handler lost permission. notAllowed: %v", logPrefix, p.appName, notAllowed)
 				p.superSup.StopProducer(p.appName, false, updateMetakv)
 			}
 
