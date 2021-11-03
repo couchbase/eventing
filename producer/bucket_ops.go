@@ -236,6 +236,11 @@ var getOpCallback = func(args ...interface{}) error {
 
 	p.metadataHandleMutex.RLock()
 	defer p.metadataHandleMutex.RUnlock()
+	if p.metadataHandle == nil {
+		*operr = common.ErrHandleEmpty
+		return nil
+	}
+
 	result, err := p.metadataHandle.Get(key.Raw(), nil)
 	if err != nil && p.encryptionChangedDuringLifecycle() {
 		*operr = common.ErrEncryptionLevelChanged

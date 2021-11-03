@@ -1060,12 +1060,6 @@ func (p *Producer) CheckpointBlobDump() map[string]interface{} {
 
 	checkpointBlobDumps := make(map[string]interface{})
 
-	p.metadataHandleMutex.RLock()
-	defer p.metadataHandleMutex.RUnlock()
-	if p.metadataHandle == nil {
-		return checkpointBlobDumps
-	}
-
 	var operr error
 	for vb := 0; vb < p.numVbuckets; vb++ {
 		vbBlob := make(map[string]interface{})
@@ -1076,6 +1070,8 @@ func (p *Producer) CheckpointBlobDump() map[string]interface{} {
 			return nil
 		} else if operr == common.ErrEncryptionLevelChanged {
 			return nil
+		} else if operr == common.ErrHandleEmpty {
+			return checkpointBlobDumps
 		}
 
 		checkpointBlobDumps[vbKey] = vbBlob
@@ -1171,12 +1167,6 @@ func (p *Producer) SpanBlobDump() map[string]interface{} {
 
 	spanBlobDumps := make(map[string]interface{})
 
-	p.metadataHandleMutex.RLock()
-	defer p.metadataHandleMutex.RUnlock()
-	if p.metadataHandle == nil {
-		return spanBlobDumps
-	}
-
 	var operr error
 	for vb := 0; vb < p.numVbuckets; vb++ {
 
@@ -1189,6 +1179,8 @@ func (p *Producer) SpanBlobDump() map[string]interface{} {
 			return nil
 		} else if operr == common.ErrEncryptionLevelChanged {
 			return nil
+		} else if operr == common.ErrHandleEmpty {
+			return spanBlobDumps
 		}
 
 		spanBlobDumps[p.AddMetadataPrefix(vbKey).Raw()] = vbBlob
