@@ -34,12 +34,14 @@ const (
 	EventingManagePermission = "cluster.eventing.functions!manage"
 	EventingPermissionStats  = "cluster.admin.internal.stats!read"
 	ClusterPermissionRead    = "cluster.admin.security!read"
+	EventingAnyPermission    = "cluster.collection[.:.:].eventing.function!manage"
 )
 
 var (
-	EventingPermissionManage = []string{EventingManagePermission}
-	EventingReadPermissions  = []string{EventingManagePermission, ClusterPermissionRead}
-	EventingStatsPermission  = []string{EventingPermissionStats}
+	EventingPermissionManage         = []string{EventingManagePermission}
+	EventingReadPermissions          = []string{EventingManagePermission, ClusterPermissionRead}
+	EventingStatsPermission          = []string{EventingPermissionStats}
+	EventingAnyManageReadPermissions = []string{EventingManagePermission, ClusterPermissionRead, EventingAnyPermission}
 )
 
 func GetPermissions(keySpace *common.Keyspace, perm Permission) (perms []string) {

@@ -977,16 +977,21 @@ angular.module('eventing', [
       self.saveSettings = function(closeDialog) {
         ApplicationService.public.updateConfig({
           enable_debugger: self.enableDebugger
+        }).then(function(response) {
+          if ($stateParams.appName) {
+            let app = ApplicationService.local.getAppByName($stateParams
+              .appName);
+            $rootScope.debugDisable = !(app.settings.deployment_status && app
+              .settings.processing_status) || !self.enableDebugger;
+            closeDialog('ok');
+          } else {
+            closeDialog('ok');
+          }
+       }).catch(function(errResponse) {
+         ApplicationService.server.showErrorAlert("Error in storing config changes: " +
+             JSON.stringify(errResponse.data));
+         closeDialog('error');
         });
-        if ($stateParams.appName) {
-          let app = ApplicationService.local.getAppByName($stateParams
-            .appName);
-          $rootScope.debugDisable = !(app.settings.deployment_status && app
-            .settings.processing_status) || !self.enableDebugger;
-          closeDialog('ok');
-        } else {
-          closeDialog('ok');
-        }
       };
     }
   ])
