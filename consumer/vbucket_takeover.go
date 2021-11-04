@@ -344,10 +344,9 @@ func (c *Consumer) updateVbOwnerAndStartDCPStream(vbKey string, vb uint16, vbBlo
 		return nil
 	}
 
-	if c.checkIfAlreadyEnqueued(vb) {
+	if c.checkAndAddToEnqueueMap(vb) {
 		return nil
 	}
-	c.addToEnqueueMap(vb)
 
 	c.vbProcessingStats.updateVbStat(vb, "last_doc_timer_feedback_seqno", vbBlob.LastDocTimerFeedbackSeqNo)
 	c.vbProcessingStats.updateVbStat(vb, "last_processed_seq_no", vbBlob.LastSeqNoProcessed)

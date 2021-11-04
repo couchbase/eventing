@@ -22,20 +22,28 @@ func (c *Consumer) checkIfAlreadyEnqueued(vb uint16) bool {
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
 		return true
 	}
-	logging.Infof("%s [%s:%s:%d] vb: %d not enqueued",
+	logging.Infof("%s [%s:%s:%d] vb: %d enqueuing",
 		logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
 	return false
 }
 
-func (c *Consumer) addToEnqueueMap(vb uint16) {
-	logPrefix := "Consumer::addToEnqueueMap"
+// Returns true if already added to enque map
+// If not added add it to enqueue map and return false
+func (c *Consumer) checkAndAddToEnqueueMap(vb uint16) bool {
+	logPrefix := "Consumer::checkAndAddToEnqueMap"
 
+	c.vbEnqueuedForStreamReqRWMutex.RLock()
+	defer c.vbEnqueuedForStreamReqRWMutex.RUnlock()
+
+	if _, ok := c.vbEnqueuedForStreamReq[vb]; ok {
+		logging.Tracef("%s [%s:%s:%d] vb: %d already enqueued",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
+		return true
+	}
+	c.vbEnqueuedForStreamReq[vb] = struct{}{}
 	logging.Infof("%s [%s:%s:%d] vb: %d enqueuing",
 		logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
-
-	c.vbEnqueuedForStreamReqRWMutex.Lock()
-	defer c.vbEnqueuedForStreamReqRWMutex.Unlock()
-	c.vbEnqueuedForStreamReq[vb] = struct{}{}
+	return false
 }
 
 func (c *Consumer) deleteFromEnqueueMap(vb uint16) {
