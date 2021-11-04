@@ -325,7 +325,7 @@ func (m *ServiceMgr) validateConfig(c map[string]interface{}) (info *runtimeInfo
 		return
 	}
 
-	if info = m.validatePositiveInteger("ram_quota", c); info.Code != m.statusCodes.ok.Code {
+	if info = m.validateNumberRange("ram_quota", c, 256.0, nil); info.Code != m.statusCodes.ok.Code {
 		return
 	}
 
@@ -1203,5 +1203,35 @@ func (m *ServiceMgr) checkDeploymentConfigPermission(app application) (info *run
 		info.Code = m.statusCodes.errInternalServer.Code
 		return
 	}
+	return
+}
+
+// validateNumberRange checks whether the arguement is a number within a given range, pass nil for unbounded
+func (m *ServiceMgr) validateNumberRange(field string, settings map[string]interface{}, low interface{}, high interface{}) (info *runtimeInfo) {
+	info = &runtimeInfo{}
+	info.Code = m.statusCodes.errInvalidConfig.Code
+
+	lowVal, lOk := low.(float64)
+	highVal, hOk := high.(float64)
+
+	if val, ok := settings[field]; ok {
+		if info = m.validateNumber(field, settings); info.Code != m.statusCodes.ok.Code {
+			return
+		}
+
+		if lOk && val.(float64) < lowVal {
+			info.Code = m.statusCodes.errInvalidConfig.Code
+			info.Info = fmt.Sprintf("%s cannot be less than %v", field, low)
+			return
+		}
+
+		if hOk && val.(float64) > highVal {
+			info.Code = m.statusCodes.errInvalidConfig.Code
+			info.Info = fmt.Sprintf("%s cannot be greater than %v", field, high)
+			return
+		}
+	}
+
+	info.Code = m.statusCodes.ok.Code
 	return
 }
