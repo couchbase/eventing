@@ -410,7 +410,7 @@
                   ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].name"
                   ng-init="formCtrl.populateScope((formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].name, $index)"
                   on-select="formCtrl.populateScope(selectedOption, $index)"
-                  values="formCtrl.sourceBuckets"
+                  values="formCtrl.buckets[$index]"
                   class="margin-right-quarter width-12"
                   has-search="true">
                 </mn-select>
@@ -420,7 +420,6 @@
                   ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].scope"
                   ng-init="formCtrl.populateCollections((formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].name, (formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].scope, $index)"
                   on-select="formCtrl.populateCollections((formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].name, selectedOption, $index)"
-                  mn-placeholder="formCtrl.sourceBuckets == []? '' : '_default'"
                   values="formCtrl.scopes[$index]"
                   class="margin-right-quarter width-12"
                   has-search="true">
@@ -431,7 +430,6 @@
                   ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].collection"
                   values="formCtrl.collections[$index]"
                   class="margin-right-quarter width-12"
-                  mn-placeholder="formCtrl.sourceBuckets == []? '' : '_default'"
                   has-search="true">
                 </mn-select>
               </div>
@@ -441,6 +439,8 @@
               <select
                 ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
                 ng-model="(formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].access"
+                ng-init="formCtrl.populateBuckets((formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].access, $index)"
+                ng-change="formCtrl.populateBuckets((formCtrl.isDialog ? bindings : formCtrl.bindings)[$index].access, $index)"
                 class="flex-grow-0">
                 <option value="r">read only</option>
                 <option value="rw">read and write</option>
