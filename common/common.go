@@ -185,6 +185,7 @@ type SecuritySetting struct {
 var (
 	ErrRetryTimeout           = errors.New("retry timeout")
 	ErrEncryptionLevelChanged = errors.New("Encryption Level changed during boostrap")
+	ErrHandleEmpty            = errors.New("Bucket handle not initialized")
 )
 
 // EventingProducer interface to export functions from eventing_producer
