@@ -2003,7 +2003,7 @@ func (m *ServiceMgr) saveTempStore(app application) (info *runtimeInfo) {
 	depConfig, dOk := app.Settings["deployment_status"].(bool)
 	processConfig, pOk := app.Settings["deployment_status"].(bool)
 	if dOk && depConfig && pOk && processConfig {
-		info = m.checkDeploymentConfigPermission(app)
+		info = m.checkPermissionWithOwner(app)
 		if info.Code != m.statusCodes.ok.Code {
 			return
 		}
@@ -2152,7 +2152,7 @@ func (m *ServiceMgr) savePrimaryStore(app *application) (info *runtimeInfo) {
 	depConfig, dOk := app.Settings["deployment_status"].(bool)
 	processConfig, pOk := app.Settings["deployment_status"].(bool)
 	if dOk && depConfig && pOk && processConfig {
-		info = m.checkDeploymentConfigPermission(*app)
+		info = m.checkPermissionWithOwner(*app)
 		if info.Code != m.statusCodes.ok.Code {
 			return
 		}
