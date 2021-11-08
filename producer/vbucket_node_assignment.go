@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/couchbase/eventing/common"
-	couchbase "github.com/couchbase/eventing/dcp"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
 )
@@ -23,13 +22,7 @@ func (p *Producer) vbEventingNodeAssign(bucketName string, wait bool) error {
 		time.Sleep(5 * time.Second)
 	}
 
-	err := util.Retry(util.NewFixedBackoff(time.Second), &p.retryCount, getKVNodesAddressesOpCallback, p, bucketName)
-	if err == common.ErrRetryTimeout {
-		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
-		return err
-	}
-
-	err = util.Retry(util.NewFixedBackoff(time.Second), &p.retryCount, getEventingNodesAddressesOpCallback, p)
+	err := util.Retry(util.NewFixedBackoff(time.Second), &p.retryCount, getEventingNodesAddressesOpCallback, p)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
 		return err
@@ -306,60 +299,4 @@ func (p *Producer) initWorkerVbMap() map[string][]uint16 {
 	}
 
 	return oldworkerVbucketMap
-}
-
-func (p *Producer) getKvVbMap() error {
-	logPrefix := "Producer::getKvVbMap"
-
-	if p.isTerminateRunning {
-		return nil
-	}
-
-	var cinfo *util.ClusterInfoCache
-
-	err := util.Retry(util.NewFixedBackoff(time.Second), &p.retryCount, getClusterInfoCacheOpCallback, p, &cinfo)
-	if err == common.ErrRetryTimeout {
-		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
-		return err
-	}
-
-	kvAddrs, err := cinfo.GetNodesByBucket(p.SourceBucket())
-	if err != nil {
-		logging.Errorf("%s [%s:%d] Failed to get address of KV host housing source bucket: %s, err: %v",
-			logPrefix, p.appName, p.LenRunningConsumers(), p.SourceBucket(), err)
-		return err
-	}
-
-	logging.Infof("%s [%s:%d] kvAddrs: %v", logPrefix, p.appName, p.LenRunningConsumers(), kvAddrs)
-
-	p.kvVbMap = make(map[uint16]string)
-
-	for _, kvaddr := range kvAddrs {
-		var addr string
-		var err error
-		if couchbase.GetUseTLS() {
-			addr, err = cinfo.GetServiceAddress(kvaddr, dataServiceSSL)
-		} else {
-
-			addr, err = cinfo.GetServiceAddress(kvaddr, dataService)
-		}
-		if err != nil {
-			logging.Errorf("%s [%s:%d] Failed to get address of KV host, err: %v",
-				logPrefix, p.appName, p.LenRunningConsumers(), err)
-			continue
-		}
-
-		vbs, err := cinfo.GetVBuckets(kvaddr, p.SourceBucket())
-		if err != nil {
-			logging.Errorf("%s [%s:%d] Failed to get vbuckets for given kv util.NodeId, err: %v",
-				logPrefix, p.appName, p.LenRunningConsumers(), err)
-			continue
-		}
-
-		for i := 0; i < len(vbs); i++ {
-			p.kvVbMap[uint16(vbs[i])] = addr
-		}
-	}
-
-	return nil
 }
