@@ -4,7 +4,7 @@ import {
 import angular from "angular";
 import _ from "lodash";
 import saveAs from "file-saver"
-import ace from 'ace/ace-wrapper';
+import ace from 'ace/ace';
 
 import uiRouter from "@uirouter/angularjs";
 import uiAce from "ui-ace";
@@ -1562,7 +1562,7 @@ angular.module('eventing', [
           console.log(err);
         });
 
-      var config = require("ace/config");
+      var config = ace.require("ace/config");
       $scope.searchInCode = function() {
         config.loadModule("ace/ext/cb-searchbox",
           function(e) {
