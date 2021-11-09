@@ -345,13 +345,13 @@ func TestCasDelete(t *testing.T) {
 
 func TestCountersIncrement(t *testing.T) {
 	itemCount := 1024
-	addNodeFromRest("http://127.0.0.1:9003", "eventing")
-	addNodeFromRest("http://127.0.0.1:9002", "eventing")
+	addNodeFromRest("https://127.0.0.1:19003", "eventing")
+	addNodeFromRest("https://127.0.0.1:19002", "eventing")
 	rebalanceFromRest([]string{""})
 	waitForRebalanceFinish()
 
 	defer func() {
-		rebalanceFromRest([]string{"http://127.0.0.1:9002", "http://127.0.0.1:9003"})
+		rebalanceFromRest([]string{"http://127.0.0.1:19002", "http://127.0.0.1:19003"})
 		waitForRebalanceFinish()
 	}()
 
@@ -376,13 +376,13 @@ func TestCountersIncrement(t *testing.T) {
 
 func TestCountersDecrement(t *testing.T) {
 	itemCount := 1024
-	addNodeFromRest("http://127.0.0.1:9003", "eventing")
-	addNodeFromRest("http://127.0.0.1:9002", "eventing")
+	addNodeFromRest("https://127.0.0.1:19003", "eventing")
+	addNodeFromRest("https://127.0.0.1:19002", "eventing")
 	rebalanceFromRest([]string{""})
 	waitForRebalanceFinish()
 
 	defer func() {
-		rebalanceFromRest([]string{"http://127.0.0.1:9002", "http://127.0.0.1:9003"})
+		rebalanceFromRest([]string{"http://127.0.0.1:19002", "http://127.0.0.1:19003"})
 		waitForRebalanceFinish()
 	}()
 
