@@ -26,12 +26,12 @@ func eventingRebIn(t *testing.T, handler, testName string, itemCount, opsPSec, r
 
 	go pumpBucketOps(opsType{count: rl.count}, rl)
 
-	addNodeFromRest("http://127.0.0.1:9001", "eventing")
+	addNodeFromRest("https://127.0.0.1:19001", "eventing")
 	rebalanceFromRest([]string{""})
 	waitForRebalanceFinish()
 	metaStateDump()
 
-	rebalanceFromRest([]string{"127.0.0.1:9001"})
+	rebalanceFromRest([]string{"127.0.0.1:19001"})
 	waitForRebalanceFinish()
 	metaStateDump()
 
@@ -72,7 +72,7 @@ func eventingRebOut(t *testing.T, handler, testName string, itemCount, opsPSec, 
 	functionName := t.Name()
 	time.Sleep(5 * time.Second)
 
-	addNodeFromRest("http://127.0.0.1:9001", "eventing")
+	addNodeFromRest("https://127.0.0.1:19001", "eventing")
 	rebalanceFromRest([]string{""})
 	waitForRebalanceFinish()
 
@@ -91,7 +91,7 @@ func eventingRebOut(t *testing.T, handler, testName string, itemCount, opsPSec, 
 
 	go pumpBucketOps(opsType{count: rl.count}, rl)
 
-	rebalanceFromRest([]string{"127.0.0.1:9001"})
+	rebalanceFromRest([]string{"127.0.0.1:19001"})
 	waitForRebalanceFinish()
 	metaStateDump()
 
@@ -147,17 +147,17 @@ func eventingSwapReb(t *testing.T, handler, testName string, itemCount, opsPSec,
 
 	go pumpBucketOps(opsType{count: rl.count}, rl)
 
-	addNodeFromRest("http://127.0.0.1:9001", "eventing")
+	addNodeFromRest("https://127.0.0.1:19001", "eventing")
 	rebalanceFromRest([]string{""})
 	waitForRebalanceFinish()
 	metaStateDump()
 
-	addNodeFromRest("http://127.0.0.1:9002", "eventing")
-	rebalanceFromRest([]string{"127.0.0.1:9001"})
+	addNodeFromRest("https://127.0.0.1:19002", "eventing")
+	rebalanceFromRest([]string{"127.0.0.1:19001"})
 	waitForRebalanceFinish()
 	metaStateDump()
 
-	rebalanceFromRest([]string{"127.0.0.1:9002"})
+	rebalanceFromRest([]string{"127.0.0.1:19002"})
 	waitForRebalanceFinish()
 	metaStateDump()
 
@@ -213,12 +213,12 @@ func kvRebIn(t *testing.T, handler, testName string, itemCount, opsPSec, retryCo
 
 	go pumpBucketOps(opsType{count: rl.count}, rl)
 
-	addNodeFromRest("http://127.0.0.1:9001", "kv")
+	addNodeFromRest("https://127.0.0.1:19001", "kv")
 	rebalanceFromRest([]string{""})
 	waitForRebalanceFinish()
 	metaStateDump()
 
-	rebalanceFromRest([]string{"127.0.0.1:9001"})
+	rebalanceFromRest([]string{"127.0.0.1:19001"})
 	waitForRebalanceFinish()
 	metaStateDump()
 	verifyBucketItemCount(rl, statsLookupRetryCounter)
@@ -258,7 +258,7 @@ func kvRebOut(t *testing.T, handler, testName string, itemCount, opsPSec, retryC
 	functionName := t.Name()
 	time.Sleep(5 * time.Second)
 
-	addNodeFromRest("http://127.0.0.1:9001", "kv")
+	addNodeFromRest("https://127.0.0.1:19001", "kv")
 	rebalanceFromRest([]string{""})
 	waitForRebalanceFinish()
 
@@ -277,7 +277,7 @@ func kvRebOut(t *testing.T, handler, testName string, itemCount, opsPSec, retryC
 
 	go pumpBucketOps(opsType{count: rl.count}, rl)
 
-	rebalanceFromRest([]string{"127.0.0.1:9001"})
+	rebalanceFromRest([]string{"127.0.0.1:19001"})
 	waitForRebalanceFinish()
 	metaStateDump()
 
@@ -333,17 +333,17 @@ func kvSwapReb(t *testing.T, handler, testName string, itemCount, opsPSec, retry
 
 	go pumpBucketOps(opsType{count: rl.count}, rl)
 
-	addNodeFromRest("http://127.0.0.1:9001", "kv")
+	addNodeFromRest("https://127.0.0.1:19001", "kv")
 	rebalanceFromRest([]string{""})
 	waitForRebalanceFinish()
 	metaStateDump()
 
-	addNodeFromRest("http://127.0.0.1:9002", "kv")
-	rebalanceFromRest([]string{"127.0.0.1:9001"})
+	addNodeFromRest("https://127.0.0.1:19002", "kv")
+	rebalanceFromRest([]string{"127.0.0.1:19001"})
 	waitForRebalanceFinish()
 	metaStateDump()
 
-	rebalanceFromRest([]string{"127.0.0.1:9002"})
+	rebalanceFromRest([]string{"127.0.0.1:19002"})
 	waitForRebalanceFinish()
 	metaStateDump()
 

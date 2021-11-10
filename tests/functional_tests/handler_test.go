@@ -667,7 +667,7 @@ func TestPauseResumeWithEventingReb(t *testing.T) {
 	setSettings(functionName, true, false, &commonSettings{})
 	waitForStatusChange(functionName, "paused", statsLookupRetryCounter)
 
-	addNodeFromRest("http://127.0.0.1:9003", "eventing")
+	addNodeFromRest("https://127.0.0.1:19003", "eventing")
 	rebalanceFromRest([]string{""})
 	waitForRebalanceFinish()
 
@@ -683,7 +683,7 @@ func TestPauseResumeWithEventingReb(t *testing.T) {
 		)
 	}
 
-	rebalanceFromRest([]string{"127.0.0.1:9003"})
+	rebalanceFromRest([]string{"127.0.0.1:19003"})
 	waitForRebalanceFinish()
 	metaStateDump()
 
@@ -1101,11 +1101,11 @@ func TestUndeployWithKVFailover(t *testing.T) {
 		)
 	}
 
-	addNodeFromRest("http://127.0.0.1:9003", "kv")
+	addNodeFromRest("https://127.0.0.1:19003", "kv")
 	rebalanceFromRest([]string{""})
 	waitForRebalanceFinish()
 
-	failoverFromRest([]string{"127.0.0.1:9003"})
+	failoverFromRest([]string{"127.0.0.1:19003"})
 	time.Sleep(10 * time.Second)
 
 	setSettings(functionName, false, false, &commonSettings{})
@@ -1203,11 +1203,11 @@ func TestUndeployBackdoorDuringBootstrap(t *testing.T) {
 
 	time.Sleep(5 * time.Second)
 
-	addNodeFromRest("http://127.0.0.1:9003", "kv")
+	addNodeFromRest("https://127.0.0.1:19003", "kv")
 	rebalanceFromRest([]string{""})
 	waitForRebalanceFinish()
 
-	failoverFromRest([]string{"127.0.0.1:9003"})
+	failoverFromRest([]string{"127.0.0.1:19003"})
 
 	handler := "bucket_op_on_update"
 	flushFunctionAndBucket(functionName)
@@ -1650,13 +1650,13 @@ func TestBucketDeleteWithRebOut(t *testing.T) {
 
 	removeAllNodesAtOnce()
 
-	addNodeFromRest("http://127.0.0.1:9001", "kv")
+	addNodeFromRest("https://127.0.0.1:19001", "kv")
 	rebalanceFromRest([]string{""})
 	waitForRebalanceFinish()
 	metaStateDump()
 
-	addNodeFromRest("http://127.0.0.1:9002", "eventing")
-	rebalanceFromRest([]string{"127.0.0.1:9001"})
+	addNodeFromRest("https://127.0.0.1:19002", "eventing")
+	rebalanceFromRest([]string{"127.0.0.1:19001"})
 	waitForRebalanceFinish()
 	metaStateDump()
 
@@ -1667,15 +1667,15 @@ func TestBucketDeleteWithRebOut(t *testing.T) {
 	waitForDeployToFinish(functionName)
 	metaStateDump()
 
-	rebalanceFromRest([]string{"127.0.0.1:9002"})
+	rebalanceFromRest([]string{"127.0.0.1:19002"})
 	waitForRebalanceFinish()
 	metaStateDump()
 
 	log.Println("Deleting source bucket:", srcBucket)
 	deleteBucket(srcBucket)
 
-	addNodeFromRest("http://127.0.0.1:9002", "eventing")
-	rebalanceFromRest([]string{"127.0.0.1:9001"})
+	addNodeFromRest("https://127.0.0.1:19002", "eventing")
+	rebalanceFromRest([]string{"127.0.0.1:19001"})
 	waitForRebalanceFinish()
 	metaStateDump()
 
@@ -1684,7 +1684,7 @@ func TestBucketDeleteWithRebOut(t *testing.T) {
 	createBucket(srcBucket, bucketmemQuota)
 	flushFunctionAndBucket(functionName)
 
-	_, err := addNodeFromRest("http://127.0.0.1:9001", "kv,index,n1ql")
+	_, err := addNodeFromRest("https://127.0.0.1:19001", "kv,index,n1ql")
 	rebalanceFromRest([]string{""})
 	waitForRebalanceFinish()
 
@@ -1701,7 +1701,7 @@ func TestBucketDeleteWithRebOut(t *testing.T) {
 
 func TestN1QLRecursion(t *testing.T) {
 
-	rsp, err := addNodeFromRest("http://127.0.0.1:9003", "eventing")
+	rsp, err := addNodeFromRest("https://127.0.0.1:19003", "eventing")
 	log.Printf("Error in adding nodes : %v, response: %s\n", err, string(rsp))
 	rebalanceFromRest([]string{""})
 	waitForRebalanceFinish()
@@ -1768,7 +1768,7 @@ func TestN1QLRecursion(t *testing.T) {
 		deleteBucket("bucket-1")
 		deleteBucket("bucket-2")
 		deleteBucket("bucket-3")
-		rebalanceFromRest([]string{"127.0.0.1:9003"})
+		rebalanceFromRest([]string{"127.0.0.1:19003"})
 		waitForRebalanceFinish()
 	}()
 
@@ -1792,7 +1792,7 @@ func TestN1QLRecursion(t *testing.T) {
 
 func TestN1QLAllowRecursion(t *testing.T) {
 
-	rsp, err := addNodeFromRest("http://127.0.0.1:9003", "eventing")
+	rsp, err := addNodeFromRest("https://127.0.0.1:19003", "eventing")
 	log.Printf("Error in adding nodes : %v, response: %s\n", err, string(rsp))
 	rebalanceFromRest([]string{""})
 	waitForRebalanceFinish()
@@ -1860,7 +1860,7 @@ func TestN1QLAllowRecursion(t *testing.T) {
 		deleteBucket("bucket-1")
 		deleteBucket("bucket-2")
 		deleteBucket("bucket-3")
-		rebalanceFromRest([]string{"127.0.0.1:9003"})
+		rebalanceFromRest([]string{"127.0.0.1:19003"})
 		waitForRebalanceFinish()
 	}()
 

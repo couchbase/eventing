@@ -666,9 +666,9 @@ func condense(vbs []int) string {
 }
 
 func addAllNodesAtOnce(role string) {
-	addNodeFromRest("http://127.0.0.1:9001", role)
-	addNodeFromRest("http://127.0.0.1:9002", role)
-	addNodeFromRest("http://127.0.0.1:9003", role)
+	addNodeFromRest("https://127.0.0.1:19001", role)
+	addNodeFromRest("https://127.0.0.1:19002", role)
+	addNodeFromRest("https://127.0.0.1:19003", role)
 
 	rebalanceFromRest([]string{""})
 	waitForRebalanceFinish()
@@ -676,38 +676,38 @@ func addAllNodesAtOnce(role string) {
 }
 
 func addAllNodesOneByOne(role string) {
-	addNodeFromRest("http://127.0.0.1:9001", role)
+	addNodeFromRest("https://127.0.0.1:19001", role)
 	rebalanceFromRest([]string{""})
 	waitForRebalanceFinish()
 	metaStateDump()
 
-	addNodeFromRest("http://127.0.0.1:9002", role)
+	addNodeFromRest("https://127.0.0.1:19002", role)
 	rebalanceFromRest([]string{""})
 	waitForRebalanceFinish()
 	metaStateDump()
 
-	addNodeFromRest("http://127.0.0.1:9003", role)
+	addNodeFromRest("https://127.0.0.1:19003", role)
 	rebalanceFromRest([]string{""})
 	waitForRebalanceFinish()
 	metaStateDump()
 }
 
 func removeAllNodesAtOnce() {
-	rebalanceFromRest([]string{"127.0.0.1:9001", "127.0.0.1:9002", "127.0.0.1:9003"})
+	rebalanceFromRest([]string{"127.0.0.1:19001", "127.0.0.1:19002", "127.0.0.1:19003"})
 	waitForRebalanceFinish()
 	metaStateDump()
 }
 
 func removeAllNodesOneByOne() {
-	rebalanceFromRest([]string{"127.0.0.1:9001"})
+	rebalanceFromRest([]string{"127.0.0.1:19001"})
 	waitForRebalanceFinish()
 	metaStateDump()
 
-	rebalanceFromRest([]string{"127.0.0.1:9002"})
+	rebalanceFromRest([]string{"127.0.0.1:19002"})
 	waitForRebalanceFinish()
 	metaStateDump()
 
-	rebalanceFromRest([]string{"127.0.0.1:9003"})
+	rebalanceFromRest([]string{"127.0.0.1:19003"})
 	waitForRebalanceFinish()
 	metaStateDump()
 }

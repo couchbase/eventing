@@ -498,10 +498,8 @@ func (c *Consumer) startDcp(flogs couchbase.FailoverLog) error {
 
 			logging.Infof("%s [%s:%s:%d] vb: %d Created initial metadata blob", logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
 
-			if c.checkIfAlreadyEnqueued(vb) {
+			if c.checkAndAddToEnqueueMap(vb) {
 				continue
-			} else {
-				c.addToEnqueueMap(vb)
 			}
 
 			vbs = append(vbs, vb)
@@ -549,10 +547,8 @@ func (c *Consumer) startDcp(flogs couchbase.FailoverLog) error {
 				c.workerVbucketMapRWMutex.RUnlock()
 
 				if (vbBlob.AssignedWorker == c.ConsumerName() || vbBlob.AssignedWorker == "") || !consumerPresent {
-					if c.checkIfAlreadyEnqueued(vb) {
+					if c.checkAndAddToEnqueueMap(vb) {
 						continue
-					} else {
-						c.addToEnqueueMap(vb)
 					}
 
 					vbs = append(vbs, vb)
@@ -1043,10 +1039,8 @@ func (c *Consumer) handleFailoverLog() {
 
 					c.purgeVbStreamRequested(logPrefix, vbFlog.vb)
 
-					if c.checkIfAlreadyEnqueued(vbFlog.vb) {
+					if c.checkAndAddToEnqueueMap(vbFlog.vb) {
 						continue
-					} else {
-						c.addToEnqueueMap(vbFlog.vb)
 					}
 
 					logging.Infof("%s [%s:%s:%d] vb: %d Sending streamRequestInfo size: %d",
@@ -1096,10 +1090,8 @@ func (c *Consumer) handleFailoverLog() {
 
 					c.purgeVbStreamRequested(logPrefix, vbFlog.vb)
 
-					if c.checkIfAlreadyEnqueued(vbFlog.vb) {
+					if c.checkAndAddToEnqueueMap(vbFlog.vb) {
 						continue
-					} else {
-						c.addToEnqueueMap(vbFlog.vb)
 					}
 
 					logging.Infof("%s [%s:%s:%d] vb: %d Sending streamRequestInfo size: %d",

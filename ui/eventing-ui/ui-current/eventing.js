@@ -4,7 +4,7 @@ import {
 import angular from "angular";
 import _ from "lodash";
 import saveAs from "file-saver"
-import ace from 'ace/ace-wrapper';
+import ace from 'ace/ace';
 
 import uiRouter from "@uirouter/angularjs";
 import uiAce from "ui-ace";
@@ -1014,7 +1014,7 @@ angular.module('eventing', [
       self.bindings = [];
       self.scopes = [];
       self.collections = [];
-
+      self.buckets = [];
       // Checks whether source and metadata buckets are the same.
       self.srcMetaSameBucket = function(appModel) {
         return appModel.depcfg.source_bucket === appModel.depcfg
@@ -1095,17 +1095,32 @@ angular.module('eventing', [
         self.functionScopes = scopes;
       };
 
+      self.populateBuckets = function(access, index) {
+        var list = snapshot.data.read_write_permission;
+        if(access === "r") {
+          list = snapshot.data.read_permission;
+        }
+        self.buckets[index] = self.getLatestBuckets(list);
+        self.populateScope($scope.bindings[index].name, index);
+      }
+
       self.populateScope = function(bucketName, index) {
-        var scopes = self.getScopes(bucketName, snapshot.data
-          .read_write_permission);
+        var list = snapshot.data.read_write_permission;
+        if($scope.bindings[index].access === "r") {
+          list = snapshot.data.read_permission;
+        }
+        var scopes = self.getScopes(bucketName, list);
         self.scopes[index] = scopes;
         self.populateCollections(bucketName, $scope.bindings[index].scope,
           index);
       };
 
       self.populateCollections = function(bucketName, scopeName, index) {
-        var collections = self.getCollection(bucketName, scopeName, snapshot
-          .data.read_write_permission);
+        var list = snapshot.data.read_write_permission;
+        if($scope.bindings[index].access === "r") {
+          list = snapshot.data.read_permission;
+        }
+        var collections = self.getCollection(bucketName, scopeName, list);
         self.collections[index] = collections;
       };
 
@@ -1125,22 +1140,27 @@ angular.module('eventing', [
       self.Initialize = function() {
         $scope.bindings.push({
           type: '',
-          name: self.sourceBuckets[0],
-          scope: '_default',
-          collection: '_default',
+          name: '',
+          scope: '',
+          collection: '',
           value: '',
           auth_type: 'no-auth',
           allow_cookies: true,
           access: 'r'
         });
+        var index = $scope.bindings.length-1;
+        self.buckets.push([]);
         self.scopes.push([]);
         self.collections.push([]);
-        self.populateScope(self.sourceBuckets[0], self.responses.length -
-          1);
+        self.populateBuckets('r', index);
+        if (self.buckets[index].length > 0) {
+          $scope.bindings[index].name = self.buckets[index][0];
+        }
       };
 
       self.Remove = function(index) {
         $scope.bindings.splice(index, 1);
+        self.buckets.splice(index, 1);
         self.scopes.splice(index, 1);
         self.collections.splice(index, 1);
       }
@@ -1185,37 +1205,32 @@ angular.module('eventing', [
       }
 
       for (var binding in $scope.bindings) {
+        self.buckets.push([]);
         self.scopes.push([]);
         self.collections.push([]);
 
+        var collectionList = snapshot.data.read_write_permission;
+        if ($scope.bindings[binding].access === "r") {
+          collectionList = snapshot.data.read_permission;
+        }
 
         // Is the bucketname present in the binding valid?
-        if (!self.isBucketValid($scope.bindings[binding].name, snapshot.data
-            .read_permission)) {
+        if (!self.isBucketValid($scope.bindings[binding].name, collectionList)) {
           $scope.bindings[binding].name = "";
           $scope.bindings[binding].scope = "";
           $scope.bindings[binding].collection = "";
         } else {
           if (!self.isScopeValid($scope.bindings[binding].name, $scope
-              .bindings[binding].scope, snapshot.data.read_write_permission
-            )) {
+              .bindings[binding].scope, collectionList)) {
             $scope.bindings[binding].scope = "";
             $scope.bindings[binding].collection = "";
           } else {
             if (!self.isCollectionValid($scope.bindings[binding].name, $scope
                 .bindings[binding].scope, $scope.bindings[binding].collection,
-                snapshot.data.read_write_permission)) {
+                collectionList)) {
               $scope.bindings[binding].collection = "";
             }
           }
-        }
-
-        if (!$scope.bindings[binding].scope) {
-          $scope.bindings[binding].scope = "_default";
-        }
-
-        if (!$scope.bindings[binding].collection) {
-          $scope.bindings[binding].collection = "_default";
         }
 
         if ($scope.bindings[binding].name != "") {
@@ -1226,22 +1241,6 @@ angular.module('eventing', [
           self.populateCollections($scope.bindings[binding].name, $scope
             .bindings[binding].scope, binding);
         }
-      }
-
-      if (!$scope.appModel.depcfg.source_scope) {
-        $scope.appModel.depcfg.source_scope = "_default";
-      }
-
-      if (!$scope.appModel.depcfg.source_collection) {
-        $scope.appModel.depcfg.source_collection = "_default";
-      }
-
-      if (!$scope.appModel.depcfg.metadata_scope) {
-        $scope.appModel.depcfg.metadata_scope = "_default";
-      }
-
-      if (!$scope.appModel.depcfg.metadata_collection) {
-        $scope.appModel.depcfg.metadata_collection = "_default";
       }
 
       self.functionBuckets = self.getLatestBuckets(snapshot.data.func_scope);
@@ -1316,6 +1315,7 @@ angular.module('eventing', [
 
       self.scopes = [];
       self.collections = [];
+      self.buckets = [];
       // TODO : The following two lines may not be needed as we don't allow the user to edit
       //        the source and metadata buckets in the settings page.
 
@@ -1381,24 +1381,41 @@ angular.module('eventing', [
         return true;
       };
 
+      self.populateBuckets = function(access, index) {
+        var list = snapshot.data.read_write_permission;
+        if(access === "r") {
+          list = snapshot.data.read_permission;
+        }
+        self.buckets[index] = self.getLatestBuckets(list);
+        self.populateScope(self.bindings[index].name, index);
+      }
+
       self.populateScope = function(bucketName, index) {
-        var scopes = self.getScopes(bucketName, snapshot.data
-          .read_write_permission);
+        var list = snapshot.data.read_write_permission;
+        if(self.bindings[index].access === "r") {
+          list = snapshot.data.read_permission;
+        }
+        var scopes = self.getScopes(bucketName, list);
+	console.log(scopes, index);
         self.scopes[index] = scopes;
         self.populateCollections(bucketName, self.bindings[index].scope,
           index);
       };
 
       self.populateCollections = function(bucketName, scopeName, index) {
-        var collections = self.getCollection(bucketName, scopeName, snapshot
-          .data.read_write_permission);
+        var list = snapshot.data.read_write_permission;
+        if(self.bindings[index].access === "r") {
+          list = snapshot.data.read_permission;
+        }
+        var collections = self.getCollection(bucketName, scopeName, list);
         self.collections[index] = collections;
       };
 
       for (var binding in self.bindings) {
+        self.buckets.push([]);
         self.scopes.push([]);
         self.collections.push([]);
-        self.populateScope(self.bindings[binding].name, binding);
+        self.populateBuckets(self.bindings[binding].access, binding);
       }
 
       self.validateVariable = function(binding) {
@@ -1412,22 +1429,25 @@ angular.module('eventing', [
       self.Initialize = function() {
         self.bindings.push({
           type: '',
-          name: self.sourceBuckets[0],
-          scope: '_default',
-          collection: '_default',
+          name: '',
+          scope: '',
+          collection: '',
           value: '',
           auth_type: 'no-auth',
           allow_cookies: true,
           access: 'r'
         });
+        var index = self.bindings.length-1;
+        self.buckets.push([]);
         self.scopes.push([]);
         self.collections.push([]);
-        self.populateScope(self.sourceBuckets[0], self.responses.length -
-          1);
+        self.populateBuckets('r', index);
+        self.bindings[index].name = self.buckets[index][0];
       };
 
       self.Remove = function(index) {
         self.bindings.splice(index, 1);
+        self.buckets.splice(index, 1);
         self.scopes.splice(index, 1);
         self.collections.splice(index, 1);
       }
@@ -1562,7 +1582,7 @@ angular.module('eventing', [
           console.log(err);
         });
 
-      var config = require("ace/config");
+      var config = ace.require("ace/config");
       $scope.searchInCode = function() {
         config.loadModule("ace/ext/cb-searchbox",
           function(e) {

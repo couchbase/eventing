@@ -433,6 +433,11 @@ func (s *SuperSupervisor) SettingsChangeCallback(kve metakv.KVEntry) error {
 					s.deleteFromLocallyDeployedApps(appName)
 					s.CleanupProducer(appName, skipMetaCleanup, updateMetakv)
 					s.deleteFromDeployedApps(appName)
+					s.appListRWMutex.Lock()
+					delete(s.bootstrappingApps, appName)
+					delete(s.pausingApps, appName)
+					s.appListRWMutex.Unlock()
+
 				}
 
 				s.updateQuotaForRunningFns()

@@ -149,9 +149,6 @@ type Producer struct {
 
 	MemoryQuota int64
 
-	// copy of KV vbmap, needed while opening up dcp feed
-	kvVbMap map[uint16]string
-
 	// topologyChangeCh used by super_supervisor to notify producer
 	// about topology change
 	topologyChangeCh chan *common.TopologyChangeMsg

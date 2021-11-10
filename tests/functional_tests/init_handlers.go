@@ -7,9 +7,9 @@ import (
 )
 
 func init() {
-	rsp, err := addNodeFromRest("http://127.0.0.1:9001", "kv,index,n1ql")
+	rsp, err := addNodeFromRest("https://127.0.0.1:19001", "kv,index,n1ql")
 	log.Printf("Error in adding nodes : %v, response: %s\n", err, string(rsp))
-	addNodeFromRest("http://127.0.0.1:9002", "eventing")
+	addNodeFromRest("https://127.0.0.1:19002", "eventing")
 	rebalanceFromRest([]string{""})
 	waitForRebalanceFinish()
 

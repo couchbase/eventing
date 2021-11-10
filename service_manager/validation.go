@@ -1173,7 +1173,7 @@ func (app *application) functionScopeEquals(tmpApp application) bool {
 	return (fS.BucketName == tmpFs.BucketName) && (fS.ScopeName == tmpFs.ScopeName)
 }
 
-func (m *ServiceMgr) checkDeploymentConfigPermission(app application) (info *runtimeInfo) {
+func (m *ServiceMgr) checkPermissionWithOwner(app application) (info *runtimeInfo) {
 	info = &runtimeInfo{}
 	info.Code = m.statusCodes.ok.Code
 
@@ -1181,6 +1181,10 @@ func (m *ServiceMgr) checkDeploymentConfigPermission(app application) (info *run
 		return
 	}
 
+	fs := app.FunctionScope
+	ks := fs.ToKeyspace()
+
+	mPermission := rbac.HandlerManagePermissions(ks)
 	sourceKeyspace := &common.Keyspace{BucketName: app.DeploymentConfig.SourceBucket,
 		ScopeName:      app.DeploymentConfig.SourceScope,
 		CollectionName: app.DeploymentConfig.SourceCollection,
@@ -1191,7 +1195,7 @@ func (m *ServiceMgr) checkDeploymentConfigPermission(app application) (info *run
 		CollectionName: app.DeploymentConfig.MetadataCollection,
 	}
 
-	perms := rbac.HandlerBucketPermissions(sourceKeyspace, metadataKeyspace)
+	perms := append(mPermission, rbac.HandlerBucketPermissions(sourceKeyspace, metadataKeyspace)...)
 	notAllowed, err := rbac.HasPermissions(app.Owner, perms, true)
 	if err == rbac.ErrAuthorisation {
 		info.Code = m.statusCodes.errForbidden.Code
