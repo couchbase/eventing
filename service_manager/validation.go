@@ -304,9 +304,7 @@ func (m *ServiceMgr) validateKeyspaceExists(bucketName, scopeName, collectionNam
 		return
 	}
 
-	//TODO: Optimise to get collection id from streaming rest api
-	cInfo, err := util.FetchNewClusterInfoCache(nsServerEndpoint)
-	_, err = cInfo.GetCollectionID(bucketName, scopeName, collectionName)
+	_, err = clusterInfo.GetCollectionID(bucketName, scopeName, collectionName)
 	if err != nil {
 		info.Code = m.statusCodes.errCollectionMissing.Code
 		info.Info = fmt.Sprintf("%s bucket: %s scope: %s collection: %s", err, bucketName, scopeName, collectionName)
