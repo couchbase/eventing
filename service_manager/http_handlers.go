@@ -2683,7 +2683,7 @@ func (m *ServiceMgr) configHandler(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "ServiceMgr::configHandler"
 
 	w.Header().Set("Content-Type", "application/json")
-	if !rbac.ValidateAuthForOp(w, r, rbac.EventingReadPermissions, rbac.EventingPermissionManage, false) {
+	if !rbac.ValidateAuthForOp(w, r, rbac.EventingAnyManageReadPermissions, rbac.EventingPermissionManage, false) {
 		return
 	}
 
