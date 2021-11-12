@@ -32,8 +32,8 @@ func (c *Consumer) checkIfAlreadyEnqueued(vb uint16) bool {
 func (c *Consumer) checkAndAddToEnqueueMap(vb uint16) bool {
 	logPrefix := "Consumer::checkAndAddToEnqueMap"
 
-	c.vbEnqueuedForStreamReqRWMutex.RLock()
-	defer c.vbEnqueuedForStreamReqRWMutex.RUnlock()
+	c.vbEnqueuedForStreamReqRWMutex.Lock()
+	defer c.vbEnqueuedForStreamReqRWMutex.Unlock()
 
 	if _, ok := c.vbEnqueuedForStreamReq[vb]; ok {
 		logging.Tracef("%s [%s:%s:%d] vb: %d already enqueued",
