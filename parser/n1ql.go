@@ -224,6 +224,11 @@ func (qs *queryStmt) VisitInferKeyspace(stmt *algebra.InferKeyspace) (interface{
 	return stmt, err
 }
 
+func (qs *queryStmt) VisitInferExpression(stmt *algebra.InferExpression) (interface{}, error) {
+	err := handleStmt(qs, stmt.Expressions())
+	return stmt, err
+}
+
 // Visitors for N1QL expressions
 func (qe *queryExpr) VisitAdd(expr *expression.Add) (interface{}, error) {
 	err := handleExpr(qe, expr.Children())
