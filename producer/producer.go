@@ -685,10 +685,18 @@ func (p *Producer) KillAndRespawnEventingConsumer(c common.EventingConsumer) {
 
 	p.runningConsumersRWMutex.Lock()
 	var indexToPurge int
+	consumerFound := false
 	for i, val := range p.runningConsumers {
 		if val == c {
 			indexToPurge = i
+			consumerFound = true
+			break
 		}
+	}
+
+	if !consumerFound {
+		p.runningConsumersRWMutex.Unlock()
+		return
 	}
 
 	if len(p.runningConsumers) > 1 {

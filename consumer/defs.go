@@ -237,6 +237,7 @@ type Consumer struct {
 	workerCount                   int
 	workerVbucketMap              map[string][]uint16 // Access controlled by workerVbucketMapRWMutex
 	workerVbucketMapRWMutex       *sync.RWMutex
+	respawnInvoked                uint32
 
 	executionStats    map[string]interface{} // Access controlled by statsRWMutex
 	failureStats      map[string]interface{} // Access controlled by statsRWMutex

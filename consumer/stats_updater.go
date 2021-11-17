@@ -123,7 +123,7 @@ func (c *Consumer) loadStatsFromConsumer() {
 					logging.Infof("%s [%s:%s:%d] stoppingConsumer: %t re-spawning eventing, %s at %s",
 						logPrefix, c.workerName, c.tcpPort, c.Pid(), c.stoppingConsumer, stopReason, lastTs.String())
 					c.stoppingConsumer = true
-					c.producer.KillAndRespawnEventingConsumer(c)
+					c.killAndRespawn()
 				}
 			}
 

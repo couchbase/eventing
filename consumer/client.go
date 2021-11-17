@@ -147,7 +147,7 @@ func (c *client) Serve() {
 		logging.Infof("%s [%s:%s:%d] Informing Eventing.Producer to stop Eventing.Consumer instance: %v",
 			logPrefix, c.workerName, c.tcpPort, c.osPid, c.consumerHandle)
 
-		c.consumerHandle.producer.KillAndRespawnEventingConsumer(c.consumerHandle)
+		c.consumerHandle.killAndRespawn()
 		c.stopCalled = true
 	}
 }
