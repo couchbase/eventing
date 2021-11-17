@@ -141,6 +141,7 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		workerRespMainLoopThreshold:     hConfig.WorkerResponseTimeout,
 		workerVbucketMap:                workerVbucketMap,
 		workerVbucketMapRWMutex:         &sync.RWMutex{},
+		respawnInvoked:                  0,
 	}
 
 	consumer.binaryDocAllowed = consumer.checkBinaryDocAllowed()
@@ -562,4 +563,11 @@ func (c *Consumer) encryptionChangedDuringLifecycle() bool {
 		return true
 	}
 	return false
+}
+
+func (c *Consumer) killAndRespawn() {
+	if atomic.LoadUint32(&c.isTerminateRunning) == 1 || !atomic.CompareAndSwapUint32(&c.respawnInvoked, 0, 1) {
+		return
+	}
+	c.producer.KillAndRespawnEventingConsumer(c)
 }
