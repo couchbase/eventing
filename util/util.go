@@ -1979,12 +1979,16 @@ func EncodeAppPayload(app *cm.Application) []byte {
 	cfg.FunctionScopeAddScopeName(builder, scopeName)
 	funcScope := cfg.FunctionScopeEnd(builder)
 
-	user := builder.CreateString(app.Owner.User)
-	domain := builder.CreateString(app.Owner.Domain)
+	user, domain := "", ""
+	if app.Owner != nil {
+		user, domain = app.Owner.User, app.Owner.Domain
+	}
 
+	flatbufUser := builder.CreateString(user)
+	flatbufDomain := builder.CreateString(domain)
 	cfg.OwnerStart(builder)
-	cfg.OwnerAddUser(builder, user)
-	cfg.OwnerAddDomain(builder, domain)
+	cfg.OwnerAddUser(builder, flatbufUser)
+	cfg.OwnerAddDomain(builder, flatbufDomain)
 	owner := cfg.OwnerEnd(builder)
 
 	lifecycleState := builder.CreateString(app.Metainfo["lifecycle_state"].(string))
@@ -2100,19 +2104,21 @@ func ParseFunctionPayload(data []byte, fnName string) cm.Application {
 	app.DeploymentConfig = *depcfg
 
 	f := new(cfg.FunctionScope)
-	fg := config.FunctionScope(f)
+	fS := config.FunctionScope(f)
+	funcScope := common.FunctionScope{}
 
-	funcScope := common.FunctionScope{
-		BucketName: string(fg.BucketName()),
-		ScopeName:  string(fg.ScopeName()),
+	if fS != nil {
+		funcScope.BucketName = string(fS.BucketName())
+		funcScope.ScopeName = string(fS.ScopeName())
 	}
 
 	o := new(cfg.Owner)
 	ownerEncrypted := config.Owner(o)
+	owner := &common.Owner{}
 
-	owner := &common.Owner{
-		User:   string(ownerEncrypted.User()),
-		Domain: string(ownerEncrypted.Domain()),
+	if ownerEncrypted != nil {
+		owner.User = string(ownerEncrypted.User())
+		owner.Domain = string(ownerEncrypted.Domain())
 	}
 
 	app.FunctionScope = funcScope

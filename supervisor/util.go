@@ -187,19 +187,21 @@ func (s *SuperSupervisor) getFuncDetails(appName string) (*common.DepCfg, *commo
 	}
 
 	f := new(cfg.FunctionScope)
-	fg := config.FunctionScope(f)
+	fS := config.FunctionScope(f)
+	funcScope := &common.FunctionScope{}
 
-	funcScope := &common.FunctionScope{
-		BucketName: string(fg.BucketName()),
-		ScopeName:  string(fg.ScopeName()),
+	if fS != nil {
+		funcScope.BucketName = string(fS.BucketName())
+		funcScope.ScopeName = string(fS.ScopeName())
 	}
 
 	o := new(cfg.Owner)
 	ownerEncrypted := config.Owner(o)
+	owner := &common.Owner{}
 
-	owner := &common.Owner{
-		User:   string(ownerEncrypted.User()),
-		Domain: string(ownerEncrypted.Domain()),
+	if ownerEncrypted != nil {
+		owner.User = string(ownerEncrypted.User())
+		owner.Domain = string(ownerEncrypted.Domain())
 	}
 
 	return depCfg, funcScope, owner, nil
