@@ -88,7 +88,7 @@ echo "</pre><h3>Building</h3><pre>"
 if [ ! -d ~/.reference ]; then
   mkdir ~/.reference
   cd ~/.reference
-  repo init -u ssh://github.com/couchbase/build-manifests -b master -m $MANIFEST -g all,-analytics --mirror 2>&1 | grep -v "Python 2" >>$WORKSPACE/make.log
+  repo init -u ssh://github.com/couchbase/build-manifests -b master -m $MANIFEST -g all --mirror 2>&1 | grep -v "Python 2" >>$WORKSPACE/make.log
   test $? -eq 0 || error_exit "Repo Init"
 fi
 
@@ -112,7 +112,7 @@ echo "Basing run on $RELEASE-$BLD_NUM <a href=https://github.com/couchbase/build
 find $WORKSPACE -mindepth 1 -not -name '*.log' -exec rm -rf {} + 1>>$WORKSPACE/make.log 2>&1
 mkdir -p $WORKSPACE 1>>$WORKSPACE/make.log 2>&1
 cd $WORKSPACE
-repo init -u ~/.manifests -b thisrun -m $MANIFEST -g all,-analytics --reference=~/.reference 2>&1 | grep -v "Python 2" >>$WORKSPACE/make.log
+repo init -u ~/.manifests -b thisrun -m $MANIFEST -g all --reference=~/.reference 2>&1 | grep -v "Python 2" >>$WORKSPACE/make.log
 test $? -eq 0 || error_exit "Repo Init at $SHA"
 
 echo "Updating tree for run $TS"
@@ -125,10 +125,6 @@ cd $WORKSPACE
 chmod a+w CMakeLists.txt
 perl -pi -e 's/ADD_SUBDIRECTORY \(analytics\)/# No analytics/' CMakeLists.txt
 perl -pi -e 's/ADD_SUBDIRECTORY \(cbas-ui\)/# No cbas-ui/' CMakeLists.txt
-
-chmod a+w tlm/CMakeLists.txt
-perl -pi -e 's/ADD_SUBDIRECTORY \(analytics\)/# No analytics/' tlm/CMakeLists.txt
-perl -pi -e 's/ADD_SUBDIRECTORY \(cbas-ui\)/# No cbas-ui/' tlm/CMakeLists.txt
 
 note_version gocb         $WORKSPACE/godeps/src/github.com/couchbase/gocb/v2
 note_version libcouchbase $WORKSPACE/libcouchbase
