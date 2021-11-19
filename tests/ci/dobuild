@@ -145,6 +145,7 @@ switch_version eventing-ee $WORKSPACE/goproj/src/github.com/couchbase/eventing-e
 gerrit_votelist eventing     $WORKSPACE/goproj/src/github.com/couchbase/eventing
 gerrit_votelist eventing-ee  $WORKSPACE/goproj/src/github.com/couchbase/eventing-ee
 gerrit_votelist libcouchbase $WORKSPACE/libcouchbase
+gerrit_votelist ns_server    $WORKSPACE/ns_server
 
 cd $WORKSPACE
 PRODUCT_VERSION=${RELEASE}-${BLD_NUM}-rel
