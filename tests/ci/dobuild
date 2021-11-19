@@ -122,9 +122,7 @@ test $? -eq 0 || error_exit "Updating tree"
 test $WORKSPACE/cbbuild && test $WORKSPACE/voltron || error_exit "Unable to find voltron"
 
 cd $WORKSPACE
-chmod a+w CMakeLists.txt
-perl -pi -e 's/ADD_SUBDIRECTORY \(analytics\)/# No analytics/' CMakeLists.txt
-perl -pi -e 's/ADD_SUBDIRECTORY \(cbas-ui\)/# No cbas-ui/' CMakeLists.txt
+rm -rf analytics/CMakeLists.txt
 
 note_version gocb         $WORKSPACE/godeps/src/github.com/couchbase/gocb/v2
 note_version libcouchbase $WORKSPACE/libcouchbase
