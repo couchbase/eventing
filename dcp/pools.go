@@ -20,7 +20,7 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/couchbase/eventing/dcp/transport/client"
+	memcached "github.com/couchbase/eventing/dcp/transport/client"
 	"github.com/couchbase/eventing/logging"
 )
 
@@ -405,36 +405,41 @@ func (c *Client) runObserveStreamingEndpoint(path string,
 	}
 
 	reader := bufio.NewReader(res.Body)
+
+	resChannel := make(chan []byte)
+	errorChannel := make(chan error, 1)
+	go func(resChannel chan<- []byte, errorChannel chan<- error) {
+		for {
+			bs, err := reader.ReadBytes('\n')
+			if err != nil {
+				errorChannel <- err
+				return
+			}
+			resChannel <- bs
+		}
+	}(resChannel, errorChannel)
+
 	defer res.Body.Close()
 	for {
-		if cancel != nil {
-			select {
-			case <-cancel:
-				break
-			default:
+		select {
+		case <-cancel:
+			return nil
+		case bs := <-resChannel:
+			if len(bs) == 1 && bs[0] == '\n' {
+				continue
 			}
-		}
-
-		bs, err := reader.ReadBytes('\n')
-		if err != nil {
-			return err
-		}
-		if len(bs) == 1 && bs[0] == '\n' {
-			continue
-		}
-
-		object, err := decoder(bs)
-		if err != nil {
-			return err
-		}
-
-		err = callb(object)
-		if err != nil {
+			object, err := decoder(bs)
+			if err != nil {
+				return err
+			}
+			err = callb(object)
+			if err != nil {
+				return err
+			}
+		case err := <-errorChannel:
 			return err
 		}
 	}
-
-	return nil
 }
 
 func (c *Client) parseURLResponse(path string, out interface{}) error {

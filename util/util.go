@@ -262,6 +262,29 @@ func LocalEventingServiceHost(auth, hostaddress string) (string, error) {
 	return srvAddr, nil
 }
 
+func CheckKeyspaceExist(bucket, hostaddress string) bool {
+	cic, err := FetchClusterInfoClient(hostaddress)
+	if err != nil {
+		return true
+	}
+
+	cinfo := cic.GetClusterInfoCache()
+	cinfo.RLock()
+	defer cinfo.RUnlock()
+	kvAddrs, err := cinfo.GetNodesByBucket(bucket)
+	if err != nil {
+		if err.Error() == fmt.Sprintf("No bucket named "+bucket) {
+			return false
+		}
+		return true
+	}
+
+	if len(kvAddrs) == 0 {
+		return false
+	}
+	return true
+}
+
 func CountActiveKVNodes(bucket, hostaddress string) int {
 	cic, err := FetchClusterInfoClient(hostaddress)
 	if err != nil {

@@ -74,56 +74,6 @@ var dcpGetSeqNosCallback = func(args ...interface{}) error {
 	return err
 }
 
-var gocbConnectMetaBucketCallback = func(args ...interface{}) error {
-	logPrefix := "Producer::gocbConnectMetaBucketCallback"
-
-	p := args[0].(*Producer)
-
-	if p.isTerminateRunning {
-		return nil
-	}
-
-	kvNodes := p.KvHostPorts()
-
-	connStr := "couchbase://"
-	for index, kvNode := range kvNodes {
-		if index != 0 {
-			connStr = connStr + ","
-		}
-		connStr = connStr + kvNode
-	}
-
-	if util.IsIPv6() {
-		connStr += "?ipv6=allow"
-	}
-
-	cluster, err := gocb.Connect(connStr)
-	if err != nil {
-		logging.Errorf("%s [%s:%d] Connect to cluster %rs failed, err: %v",
-			logPrefix, p.appName, p.LenRunningConsumers(), connStr, err)
-		return err
-	}
-
-	err = cluster.Authenticate(&util.DynamicAuthenticator{Caller: logPrefix})
-	if err != nil {
-		logging.Errorf("%s [%s:%d] Failed to authenticate to the cluster %rs failed, err: %v",
-			logPrefix, p.appName, p.LenRunningConsumers(), connStr, err)
-		return err
-	}
-
-	p.metadataBucketHandle, err = cluster.OpenBucket(p.metadatabucket, "")
-	if err != nil {
-		logging.Errorf("%s [%s:%d] Failed to connect to bucket %s, err: %v",
-			logPrefix, p.appName, p.LenRunningConsumers(), p.metadatabucket, err)
-		return err
-	}
-
-	logging.Infof("%s [%s:%d] Connected to metadata bucket %s connStr: %s",
-		logPrefix, p.appName, p.LenRunningConsumers(), p.metadatabucket, connStr)
-
-	return nil
-}
-
 var clearDebuggerInstanceCallback = func(args ...interface{}) error {
 	logPrefix := "Producer::clearDebuggerInstanceCallback"
 

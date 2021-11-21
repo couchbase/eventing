@@ -12,6 +12,7 @@ import (
 	"github.com/couchbase/eventing/dcp"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
+	"gopkg.in/couchbase/gocb.v1"
 )
 
 var getHTTPServiceAuth = func(args ...interface{}) error {
@@ -134,4 +135,77 @@ var commonConnectBucketOpCallback = func(args ...interface{}) error {
 	}
 
 	return err
+}
+
+var gocbConnectCluster = func(args ...interface{}) error {
+	logPrefix := "Supervisor::gocbConnectCluster"
+	gocbCluster := args[0].(**gocb.Cluster)
+	restPort := args[1].(string)
+
+	hostPortAddr := net.JoinHostPort(util.Localhost(), restPort)
+	cic, err := util.FetchClusterInfoClient(hostPortAddr)
+	if err != nil {
+		logging.Errorf("%s Failed to get cluster info cache, err : %v", logPrefix, err)
+		return err
+	}
+
+	cinfo := cic.GetClusterInfoCache()
+	cinfo.RLock()
+	kvNodes, err := cinfo.GetAddressOfActiveKVNodes()
+	cinfo.RUnlock()
+	if err != nil {
+		logging.Errorf("%s Failed to get KV nodes addresses, err : %v", logPrefix, err)
+		return err
+	}
+
+	connStr := "couchbase://"
+	for index, kvNode := range kvNodes {
+		if index != 0 {
+			connStr = connStr + ","
+		}
+		connStr = connStr + kvNode
+	}
+
+	if util.IsIPv6() {
+		connStr += "?ipv6=allow"
+	}
+
+	cluster, err := gocb.Connect(connStr)
+	if err != nil {
+		logging.Errorf("%s Connect to cluster %rs failed, err: %v",
+			logPrefix, connStr, err)
+		return err
+	}
+
+	err = cluster.Authenticate(&util.DynamicAuthenticator{Caller: logPrefix})
+	if err != nil {
+		logging.Errorf("%s [%s:%d] Failed to authenticate to the cluster %rm, err: %v",
+			logPrefix, connStr, err)
+		cluster.Close()
+		return err
+	}
+	*gocbCluster = cluster
+	return nil
+}
+
+var gocbConnectBucket = func(args ...interface{}) error {
+	logPrefix := "Supervisor::gocbConnectBucket"
+	bucketHandle := args[0].(**gocb.Bucket)
+	cluster := args[1].(*gocb.Cluster)
+	bucketName := args[2].(string)
+	hostPortAddr := args[3].(string)
+	bucketNotExist := args[4].(*bool)
+
+	bucket, err := cluster.OpenBucket(bucketName, "")
+	if err != nil {
+		if !util.CheckKeyspaceExist(bucketName, hostPortAddr) {
+			*bucketNotExist = true
+			return nil
+		}
+		logging.Errorf("%s Failed to connect to bucket %s, err: %v",
+			logPrefix, bucketName, err)
+		return err
+	}
+	*bucketHandle = bucket
+	return nil
 }

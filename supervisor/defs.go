@@ -8,6 +8,7 @@ import (
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/dcp"
 	"github.com/couchbase/eventing/suptree"
+	"gopkg.in/couchbase/gocb.v1"
 )
 
 const (
@@ -74,6 +75,17 @@ type bucketWatchStruct struct {
 	apps map[string]struct{}
 }
 
+type gocbBucketInstance struct {
+	apps         map[string]struct{}
+	bucketHandle *gocb.Bucket
+}
+
+type gocbPool struct {
+	sync.RWMutex
+	cluster      *gocb.Cluster
+	bucketHandle map[string]*gocbBucketInstance
+}
+
 // SuperSupervisor is responsible for managing/supervising all producer instances
 type SuperSupervisor struct {
 	auth        string
@@ -126,6 +138,7 @@ type SuperSupervisor struct {
 	runningProducersRWMutex    *sync.RWMutex
 	vbucketsToOwn              []uint16
 
-	serviceMgr common.EventingServiceMgr
+	serviceMgr     common.EventingServiceMgr
+	gocbHandlePool *gocbPool
 	sync.RWMutex
 }

@@ -277,13 +277,6 @@ func (p *Producer) StopProducer() {
 	logging.Infof("%s [%s:%d] Signalled Producer::Serve to exit",
 		logPrefix, p.appName, p.LenRunningConsumers())
 
-	if p.metadataBucketHandle != nil {
-		p.metadataBucketHandle.Close()
-	}
-
-	logging.Infof("%s [%s:%d] Closed metadata bucket handle",
-		logPrefix, p.appName, p.LenRunningConsumers())
-
 	if p.workerSupervisor != nil {
 		p.workerSupervisor.Stop(p.appName)
 	}

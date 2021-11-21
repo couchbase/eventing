@@ -13,10 +13,11 @@ import (
 	"time"
 
 	"github.com/couchbase/eventing/common"
-	"github.com/couchbase/eventing/dcp"
+	couchbase "github.com/couchbase/eventing/dcp"
 	"github.com/couchbase/eventing/gen/flatbuf/cfg"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
+	"gopkg.in/couchbase/gocb.v1"
 )
 
 func (s *SuperSupervisor) assignVbucketsToOwn(addrs []string, currNodeAddr string) {
@@ -296,15 +297,15 @@ func (s *SuperSupervisor) watchBucketChanges() {
 	}
 
 	deletedBuckets, err := s.bucketRefresh(nil)
-        if err != nil {
-                logging.Errorf("%s Error in bucket Refresh: %v", logPrefix, err)
-                selfRestart()
-                return
-        }
+	if err != nil {
+		logging.Errorf("%s Error in bucket Refresh: %v", logPrefix, err)
+		selfRestart()
+		return
+	}
 
-        if len(deletedBuckets) != 0 {
-                delChannel <- deletedBuckets
-        }
+	if len(deletedBuckets) != 0 {
+		delChannel <- deletedBuckets
+	}
 
 	hostPortAddr := net.JoinHostPort(util.Localhost(), s.restPort)
 	clusterAuthURL, err := util.ClusterAuthUrl(hostPortAddr)
@@ -401,6 +402,45 @@ func (s *SuperSupervisor) getConfig() (c common.Config) {
 	return
 }
 
+func (s *SuperSupervisor) watchBucketWithGocb(bucketName, appName string) error {
+	err := s.watchBucket(bucketName, appName)
+	if err != nil {
+		return err
+	}
+
+	err = s.gocbHandlePool.insertBucket(bucketName, appName, s.retryCount, s.restPort)
+	if err != nil {
+		s.unwatchBucket(bucketName, appName)
+	}
+	return err
+}
+
+func (s *SuperSupervisor) unwatchBucketWithGocb(bucketName, appName string) {
+	s.unwatchBucket(bucketName, appName)
+	s.gocbHandlePool.removeBucket(bucketName, appName)
+}
+
+func (s *SuperSupervisor) watchBucket(bucketName, appName string) error {
+	s.bucketsRWMutex.Lock()
+	defer s.bucketsRWMutex.Unlock()
+	return s.watchBucketWithLock(bucketName, appName)
+}
+
+// UnwatchBucket removes the bucket from supervisor
+func (s *SuperSupervisor) unwatchBucket(bucketName, appName string) {
+	s.bucketsRWMutex.Lock()
+	defer s.bucketsRWMutex.Unlock()
+	if bucketWatch, ok := s.buckets[bucketName]; ok {
+		if _, ok := bucketWatch.apps[appName]; ok {
+			delete(bucketWatch.apps, appName)
+			if len(bucketWatch.apps) == 0 {
+				bucketWatch.Close()
+				delete(s.buckets, bucketName)
+			}
+		}
+	}
+}
+
 // returns apps which are watching bucket. If bucket not being watched then 2nd argument will be false
 func (s *SuperSupervisor) getAppsWatchingBucket(bucketName string) ([]string, bool) {
 	s.bucketsRWMutex.RLock()
@@ -450,4 +490,98 @@ func (bw *bucketWatchStruct) AppNames() []string {
 		appNames = append(appNames, appName)
 	}
 	return appNames
+}
+
+func initGoCbPool(retryCount int64, restPort string) (*gocbPool, error) {
+	pool := &gocbPool{
+		bucketHandle: make(map[string]*gocbBucketInstance),
+	}
+
+	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &retryCount, gocbConnectCluster, &pool.cluster, restPort)
+	return pool, err
+}
+
+func (pool *gocbPool) insertBucket(bucketName, label string, retryCount int64, restPort string) error {
+	pool.Lock()
+	defer pool.Unlock()
+	bucket, ok := pool.bucketHandle[bucketName]
+	if !ok {
+		var err error
+		bucket, err = initGocbBucketHandle(bucketName, pool.cluster, retryCount, restPort)
+		if err != nil {
+			return err
+		}
+		pool.bucketHandle[bucketName] = bucket
+	}
+	bucket.insert(label)
+	return nil
+}
+
+func (pool *gocbPool) removeBucket(bucketName, label string) error {
+	pool.Lock()
+	defer pool.Unlock()
+
+	bucket, ok := pool.bucketHandle[bucketName]
+	if !ok {
+		return fmt.Errorf("Bucket: %s is not registered by any app", bucketName)
+	}
+
+	count, err := bucket.remove(label)
+	if err != nil {
+		return err
+	}
+
+	if count == 0 {
+		delete(pool.bucketHandle, bucketName)
+	}
+	return nil
+}
+
+func (pool *gocbPool) getBucket(bucketName, label string) (*gocb.Bucket, error) {
+	pool.RLock()
+	defer pool.RUnlock()
+
+	bucket, ok := pool.bucketHandle[bucketName]
+	if !ok {
+		return nil, fmt.Errorf("Bucket: %s is not registered by any app", bucketName)
+	}
+	return bucket.get(label)
+}
+
+func initGocbBucketHandle(bucketName string, cluster *gocb.Cluster, retryCount int64, restPort string) (*gocbBucketInstance, error) {
+	bucketHandle := &gocbBucketInstance{
+		apps: make(map[string]struct{}),
+	}
+	bucketNotExist := false
+	hostPortAddr := net.JoinHostPort(util.Localhost(), restPort)
+	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &retryCount,
+		gocbConnectBucket, &bucketHandle.bucketHandle,
+		cluster, bucketName, hostPortAddr, &bucketNotExist)
+
+	if bucketNotExist {
+		return nil, fmt.Errorf("Bucket %s doesn't exist", bucketName)
+	}
+	return bucketHandle, err
+}
+
+func (bucket *gocbBucketInstance) insert(label string) {
+	bucket.apps[label] = struct{}{}
+}
+
+func (bucket *gocbBucketInstance) get(label string) (*gocb.Bucket, error) {
+	_, ok := bucket.apps[label]
+	if !ok {
+		return nil, fmt.Errorf("App %s is not registered", label)
+	}
+	return bucket.bucketHandle, nil
+}
+
+func (bucket *gocbBucketInstance) remove(label string) (int, error) {
+	_, err := bucket.get(label)
+	if err != nil {
+		return len(bucket.apps), err
+	}
+
+	delete(bucket.apps, label)
+	return len(bucket.apps), nil
 }

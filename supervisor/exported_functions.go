@@ -2,13 +2,14 @@ package supervisor
 
 import (
 	"fmt"
-	"time"
 	"sync/atomic"
+	"time"
 
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/dcp"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/timers"
+	"gopkg.in/couchbase/gocb.v1"
 )
 
 // ClearEventStats flushes event processing stats
@@ -609,28 +610,6 @@ func (s *SuperSupervisor) GetAppLog(fnName string, sz int64) []string {
 
 }
 
-func (s *SuperSupervisor) WatchBucket(bucketName, appName string) error {
-	s.bucketsRWMutex.Lock()
-	defer s.bucketsRWMutex.Unlock()
-	return s.watchBucketWithLock(bucketName, appName)
-}
-
-// UnwatchBucket removes the bucket from supervisor
-//TODO: Only unwatch bucket to which app register to watch
-func (s *SuperSupervisor) UnwatchBucket(bucketName, appName string) {
-	s.bucketsRWMutex.Lock()
-	defer s.bucketsRWMutex.Unlock()
-	if bucketWatch, ok := s.buckets[bucketName]; ok {
-		if _, ok := bucketWatch.apps[appName]; ok {
-			delete(bucketWatch.apps, appName)
-			if len(bucketWatch.apps) == 0 {
-				bucketWatch.Close()
-				delete(s.buckets, bucketName)
-			}
-		}
-	}
-}
-
 // GetBucket returns the bucket to the caller
 func (s *SuperSupervisor) GetBucket(bucketName, appName string) (*couchbase.Bucket, error) {
 	s.bucketsRWMutex.Lock()
@@ -643,4 +622,8 @@ func (s *SuperSupervisor) GetBucket(bucketName, appName string) (*couchbase.Buck
 	}
 
 	return nil, fmt.Errorf("Function: %s requested bucket: %s is not in watch list", appName, bucketName)
+}
+
+func (s *SuperSupervisor) GetMetadataHandle(bucketName, appName string) (*gocb.Bucket, error) {
+	return s.gocbHandlePool.getBucket(bucketName, appName)
 }

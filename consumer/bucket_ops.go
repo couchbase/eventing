@@ -43,63 +43,6 @@ var vbTakeoverCallback = func(args ...interface{}) error {
 	return err
 }
 
-var gocbConnectMetaBucketCallback = func(args ...interface{}) error {
-	logPrefix := "Consumer::gocbConnectMetaBucketCallback"
-
-	c := args[0].(*Consumer)
-
-	if atomic.LoadUint32(&c.isTerminateRunning) == 1 {
-		logging.Tracef("%s [%s:%s:%d] Exiting as worker is terminating",
-			logPrefix, c.workerName, c.tcpPort, c.Pid())
-		return nil
-	}
-
-	kvNodes := c.getKvNodes()
-
-	connStr := "couchbase://"
-	for index, kvNode := range kvNodes {
-		if index != 0 {
-			connStr = connStr + ","
-		}
-		connStr = connStr + kvNode
-	}
-
-	if util.IsIPv6() {
-		connStr += "?ipv6=allow"
-	}
-	cluster, err := gocb.Connect(connStr)
-	if err != nil {
-		logging.Errorf("%s [%s:%d] Connect to cluster %rm failed, err: %v",
-			logPrefix, c.workerName, c.producer.LenRunningConsumers(), connStr, err)
-		return err
-	}
-
-	err = cluster.Authenticate(&util.DynamicAuthenticator{Caller: logPrefix})
-	if err != nil {
-		logging.Errorf("%s [%s:%d] Failed to authenticate to the cluster %rm, err: %v",
-			logPrefix, c.workerName, c.producer.LenRunningConsumers(), connStr, err)
-		return err
-	}
-
-	c.gocbMetaBucket, err = cluster.OpenBucket(c.producer.MetadataBucket(), "")
-	if err == gocb.ErrBadHosts {
-		logging.Errorf("%s [%s:%d] Failed to connect to metadata bucket %s (bucket got deleted?) , err: %v",
-			logPrefix, c.workerName, c.producer.LenRunningConsumers(), c.producer.MetadataBucket(), err)
-		return err
-	}
-
-	if err != nil {
-		logging.Errorf("%s [%s:%d] Failed to connect to metadata bucket %s, err: %v",
-			logPrefix, c.workerName, c.producer.LenRunningConsumers(), c.producer.MetadataBucket(), err)
-		return err
-	}
-
-	logging.Infof("%s [%s:%d] Successfully connected to metadata bucket %s connStr: %rs",
-		logPrefix, c.workerName, c.producer.LenRunningConsumers(), c.producer.MetadataBucket(), connStr)
-
-	return nil
-}
-
 var setOpCallback = func(args ...interface{}) error {
 	logPrefix := "Consumer::setOpCallback"
 
@@ -107,7 +50,7 @@ var setOpCallback = func(args ...interface{}) error {
 	vbKey := args[1].(common.Key)
 	vbBlob := args[2]
 
-	_, err := c.gocbMetaBucket.Upsert(vbKey.Raw(), vbBlob, 0)
+	_, err := c.gocbMetaHandle.Upsert(vbKey.Raw(), vbBlob, 0)
 	if err != nil {
 		logging.Errorf("%s [%s:%s:%d] Key: %s Bucket set failed, err: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbKey.Raw(), err)
@@ -145,12 +88,12 @@ var getOpCallback = func(args ...interface{}) error {
 		return nil
 	}
 
-	if c.gocbMetaBucket == nil {
+	if c.gocbMetaHandle == nil {
 		return nil
 	}
 
 	var err error
-	*cas, err = c.gocbMetaBucket.Get(vbKey.Raw(), vbBlob)
+	*cas, err = c.gocbMetaHandle.Get(vbKey.Raw(), vbBlob)
 
 	if skipEnoEnt {
 		// 1. If vbKey metadata blob doesn't exist then return nil
@@ -324,7 +267,7 @@ var periodicCheckpointCallback = func(args ...interface{}) error {
 	vbKey := args[1].(common.Key)
 	vbBlob := args[2].(*vbucketKVBlob)
 
-	_, err := c.gocbMetaBucket.MutateIn(vbKey.Raw(), 0, uint32(0)).
+	_, err := c.gocbMetaHandle.MutateIn(vbKey.Raw(), 0, uint32(0)).
 		UpsertEx("currently_processed_doc_id_timer", vbBlob.CurrentProcessedDocIDTimer, gocb.SubdocFlagCreatePath).
 		UpsertEx("currently_processed_cron_timer", vbBlob.CurrentProcessedCronTimer, gocb.SubdocFlagCreatePath).
 		UpsertEx("last_checkpoint_time", time.Now().String(), gocb.SubdocFlagCreatePath).
@@ -345,7 +288,7 @@ var periodicCheckpointCallback = func(args ...interface{}) error {
 			Timestamp:      time.Now().String(),
 		}
 
-		_, err = c.gocbMetaBucket.MutateIn(vbKey.Raw(), 0, uint32(0)).
+		_, err = c.gocbMetaHandle.MutateIn(vbKey.Raw(), 0, uint32(0)).
 			ArrayAppend("ownership_history", entry, true).
 			UpsertEx("assigned_worker", c.ConsumerName(), gocb.SubdocFlagCreatePath).
 			UpsertEx("current_vb_owner", c.HostPortAddr(), gocb.SubdocFlagCreatePath).
@@ -378,7 +321,7 @@ var updateCheckpointCallback = func(args ...interface{}) error {
 
 retryUpdateCheckpoint:
 
-	_, err := c.gocbMetaBucket.MutateIn(vbKey.Raw(), 0, uint32(0)).
+	_, err := c.gocbMetaHandle.MutateIn(vbKey.Raw(), 0, uint32(0)).
 		UpsertEx("assigned_worker", vbBlob.AssignedWorker, gocb.SubdocFlagCreatePath).
 		UpsertEx("bootstrap_stream_req_done", vbBlob.BootstrapStreamReqDone, gocb.SubdocFlagCreatePath).
 		UpsertEx("current_vb_owner", vbBlob.CurrentVBOwner, gocb.SubdocFlagCreatePath).
@@ -427,7 +370,7 @@ var metadataCorrectionCallback = func(args ...interface{}) error {
 	ownershipEntry := args[2].(*OwnershipEntry)
 
 retryMetadataCorrection:
-	_, err := c.gocbMetaBucket.MutateIn(vbKey.Raw(), 0, uint32(0)).
+	_, err := c.gocbMetaHandle.MutateIn(vbKey.Raw(), 0, uint32(0)).
 		ArrayAppend("ownership_history", ownershipEntry, true).
 		UpsertEx("assigned_worker", c.ConsumerName(), gocb.SubdocFlagCreatePath).
 		UpsertEx("current_vb_owner", c.HostPortAddr(), gocb.SubdocFlagCreatePath).
@@ -469,7 +412,7 @@ var undoMetadataCorrectionCallback = func(args ...interface{}) error {
 	ownershipEntry := args[2].(*OwnershipEntry)
 
 retryUndoMetadataCorrection:
-	_, err := c.gocbMetaBucket.MutateIn(vbKey.Raw(), 0, uint32(0)).
+	_, err := c.gocbMetaHandle.MutateIn(vbKey.Raw(), 0, uint32(0)).
 		ArrayAppend("ownership_history", ownershipEntry, true).
 		UpsertEx("assigned_worker", "", gocb.SubdocFlagCreatePath).
 		UpsertEx("current_vb_owner", "", gocb.SubdocFlagCreatePath).
@@ -512,7 +455,7 @@ var addOwnershipHistorySRRCallback = func(args ...interface{}) error {
 	ownershipEntry := args[2].(*OwnershipEntry)
 
 retrySRRUpdate:
-	_, err := c.gocbMetaBucket.MutateIn(vbKey.Raw(), 0, uint32(0)).
+	_, err := c.gocbMetaHandle.MutateIn(vbKey.Raw(), 0, uint32(0)).
 		ArrayAppend("ownership_history", ownershipEntry, true).
 		UpsertEx("assigned_worker", "", gocb.SubdocFlagCreatePath).
 		UpsertEx("current_vb_owner", "", gocb.SubdocFlagCreatePath).
@@ -558,7 +501,7 @@ var addOwnershipHistorySRFCallback = func(args ...interface{}) error {
 	ownershipEntry := args[2].(*OwnershipEntry)
 
 retrySRFUpdate:
-	_, err := c.gocbMetaBucket.MutateIn(vbKey.Raw(), 0, uint32(0)).
+	_, err := c.gocbMetaHandle.MutateIn(vbKey.Raw(), 0, uint32(0)).
 		ArrayAppend("ownership_history", ownershipEntry, true).
 		UpsertEx("assigned_worker", "", gocb.SubdocFlagCreatePath).
 		UpsertEx("current_vb_owner", "", gocb.SubdocFlagCreatePath).
@@ -605,7 +548,7 @@ var addOwnershipHistorySRSCallback = func(args ...interface{}) error {
 	ownershipEntry := args[3].(*OwnershipEntry)
 
 retrySRSUpdate:
-	_, err := c.gocbMetaBucket.MutateIn(vbKey.Raw(), 0, uint32(0)).
+	_, err := c.gocbMetaHandle.MutateIn(vbKey.Raw(), 0, uint32(0)).
 		ArrayAppend("ownership_history", ownershipEntry, true).
 		UpsertEx("assigned_worker", vbBlob.AssignedWorker, gocb.SubdocFlagCreatePath).
 		UpsertEx("bootstrap_stream_req_done", vbBlob.BootstrapStreamReqDone, gocb.SubdocFlagCreatePath).
@@ -652,7 +595,7 @@ var addOwnershipHistorySECallback = func(args ...interface{}) error {
 	ownershipEntry := args[2].(*OwnershipEntry)
 
 retrySEUpdate:
-	_, err := c.gocbMetaBucket.MutateIn(vbKey.Raw(), 0, uint32(0)).
+	_, err := c.gocbMetaHandle.MutateIn(vbKey.Raw(), 0, uint32(0)).
 		ArrayAppend("ownership_history", ownershipEntry, true).
 		UpsertEx("dcp_stream_requested", false, gocb.SubdocFlagCreatePath).
 		UpsertEx("last_checkpoint_time", time.Now().String(), gocb.SubdocFlagCreatePath).
@@ -855,7 +798,7 @@ var acquireDebuggerTokenCallback = func(args ...interface{}) error {
 
 	key := c.producer.AddMetadataPrefix(c.app.AppName).Raw() + "::" + common.DebuggerTokenKey
 
-	cas, err := c.gocbMetaBucket.Get(key, instance)
+	cas, err := c.gocbMetaHandle.Get(key, instance)
 	if err == gocb.ErrKeyNotFound || err == gocb.ErrShutdown {
 		logging.Errorf("%s [%s:%s:%d] Key: %s, debugger token not found or bucket is closed, err: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), key, err)
@@ -879,7 +822,7 @@ var acquireDebuggerTokenCallback = func(args ...interface{}) error {
 
 	instance.Host = c.HostPortAddr()
 	instance.Status = common.MutationTrapped
-	_, err = c.gocbMetaBucket.Replace(key, instance, cas, 0)
+	_, err = c.gocbMetaHandle.Replace(key, instance, cas, 0)
 	if err == nil {
 		logging.Infof("%s [%s:%s:%d] Debugger token acquired", logPrefix, c.workerName, c.tcpPort, c.Pid())
 		*success = true

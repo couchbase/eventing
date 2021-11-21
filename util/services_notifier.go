@@ -2,11 +2,12 @@ package util
 
 import (
 	"errors"
-	"github.com/couchbase/eventing/dcp"
-	"github.com/couchbase/eventing/logging"
 	"strings"
 	"sync"
 	"time"
+
+	couchbase "github.com/couchbase/eventing/dcp"
+	"github.com/couchbase/eventing/logging"
 )
 
 const (
@@ -41,6 +42,7 @@ type serviceNotifierInstance struct {
 	client      couchbase.Client
 	valid       bool
 	waiters     map[int]chan Notification
+	cancelCh    chan bool
 }
 
 func (instance *serviceNotifierInstance) getNotifyCallback(t NotificationType) func(interface{}) error {
@@ -76,7 +78,7 @@ func (instance *serviceNotifierInstance) getNotifyCallback(t NotificationType) f
 
 func (instance *serviceNotifierInstance) RunPoolObserver() {
 	poolCallback := instance.getNotifyCallback(PoolChangeNotification)
-	err := instance.client.RunObservePool(instance.pool, poolCallback, nil)
+	err := instance.client.RunObservePool(instance.pool, poolCallback, instance.cancelCh)
 	if err != nil {
 		logging.Warnf("servicesChangeNotifier: Connection terminated for pool notifier instance of %s, %s (%v)", instance.DebugStr(), instance.pool, err)
 	}
@@ -85,7 +87,7 @@ func (instance *serviceNotifierInstance) RunPoolObserver() {
 
 func (instance *serviceNotifierInstance) RunServicesObserver() {
 	servicesCallback := instance.getNotifyCallback(ServiceChangeNotification)
-	err := instance.client.RunObserveNodeServices(instance.pool, servicesCallback, nil)
+	err := instance.client.RunObserveNodeServices(instance.pool, servicesCallback, instance.cancelCh)
 	if err != nil {
 		logging.Warnf("servicesChangeNotifier: Connection terminated for services notifier instance of %s, %s (%v)", instance.DebugStr(), instance.pool, err)
 	}
@@ -99,6 +101,7 @@ func (instance *serviceNotifierInstance) cleanup() {
 		return
 	}
 
+	close(instance.cancelCh)
 	instance.valid = false
 	singletonServicesContainer.Lock()
 	for _, w := range instance.waiters {
@@ -116,6 +119,12 @@ func (instance *serviceNotifierInstance) DebugStr() string {
 	debugStr += instance.client.BaseURL.Host
 	return debugStr
 
+}
+
+func (instance *serviceNotifierInstance) deleteWaiter(id int) {
+	instance.Lock()
+	defer instance.Unlock()
+	delete(instance.waiters, id)
 }
 
 type Notification struct {
@@ -149,7 +158,12 @@ func NewServicesChangeNotifier(clusterUrl, pool string) (*ServicesChangeNotifier
 	id := clusterUrl + "-" + pool
 
 	if _, ok := singletonServicesContainer.notifiers[id]; !ok {
-		client, err := couchbase.Connect(clusterUrl)
+		clusterAuthUrl, err := ClusterAuthUrl(clusterUrl)
+		if err != nil {
+			logging.Errorf("ClusterInfoClient ClusterAuthUrl(): %v\n", err)
+			return nil, err
+		}
+		client, err := couchbase.Connect(clusterAuthUrl)
 		if err != nil {
 			return nil, err
 		}
@@ -160,6 +174,7 @@ func NewServicesChangeNotifier(clusterUrl, pool string) (*ServicesChangeNotifier
 			pool:       pool,
 			valid:      true,
 			waiters:    make(map[int]chan Notification),
+			cancelCh:   make(chan bool),
 		}
 		logging.Infof("servicesChangeNotifier: Creating new notifier instance for %s, %s", instance.DebugStr(), pool)
 
@@ -205,8 +220,6 @@ func (sn *ServicesChangeNotifier) GetNotifyCh() chan Notification {
 
 // Consumer can cancel and invalidate notifier object by calling Close()
 func (sn *ServicesChangeNotifier) Close() {
-	sn.instance.Lock()
-	defer sn.instance.Unlock()
 	close(sn.cancel)
-	delete(sn.instance.waiters, sn.id)
+	sn.instance.deleteWaiter(sn.id)
 }
