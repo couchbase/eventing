@@ -11,6 +11,7 @@ import uiAce from "ui-ace";
 import mnPoolDefault from "components/mn_pool_default";
 import mnPermissions from "components/mn_permissions";
 import mnSelect from "components/directives/mn_select/mn_select";
+import mnDetailStats from "components/directives/mn_detail_stats_controller";
 
 import Adapter from "./adapter.js";
 
@@ -36,7 +37,8 @@ angular.module('eventing', [
     uiRouter,
     mnPoolDefault,
     mnPermissions,
-    mnSelect
+    mnSelect,
+    mnDetailStats
   ])
   // Controller for the summary page.
   .controller('SummaryCtrl', ['$q', '$scope', '$rootScope', '$state',
