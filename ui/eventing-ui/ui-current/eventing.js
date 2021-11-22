@@ -11,6 +11,7 @@ import uiAce from "ui-ace";
 import mnPoolDefault from "components/mn_pool_default";
 import mnPermissions from "components/mn_permissions";
 import mnSelect from "components/directives/mn_select/mn_select";
+import mnDetailStats from "components/directives/mn_detail_stats_controller";
 
 import Adapter from "./adapter.js";
 
@@ -36,7 +37,8 @@ angular.module('eventing', [
     uiRouter,
     mnPoolDefault,
     mnPermissions,
-    mnSelect
+    mnSelect,
+    mnDetailStats
   ])
   // Controller for the summary page.
   .controller('SummaryCtrl', ['$q', '$scope', '$rootScope', '$state',
@@ -226,14 +228,17 @@ angular.module('eventing', [
               fetchDeployedStats(statsConfig);
             // Only does the fetch if we have one or more items deploying or deployed in the UI
             self.pollingCount += 1;
+
             // Fetch DeployesdStats once every scrapeInterval/2 seconds
-            ApplicationService.server.getScrapeInterval().then(function(
-              value) {
-              if (self.pollingCount >= ((value * 1000) / (self
-                  .statusPollMillis * 2))) {
-                self.pollingCount = 0;
-              }
-            });
+            if ($scope.rbac.cluster.settings.metrics.read) {
+              ApplicationService.server.getScrapeInterval().then(function(
+                value) {
+                if (self.pollingCount >= ((value * 1000) / (self
+                                                            .statusPollMillis * 2))) {
+                  self.pollingCount = 0;
+                }
+              });
+            }
 
           }).catch(function(errResponse) {
             self.errorCode = errResponse && errResponse.status || 500;
