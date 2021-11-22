@@ -149,6 +149,7 @@ typedef struct server_settings_s {
   std::string eventing_port;
   std::string eventing_sslport;
   std::string host_addr;
+  std::string certFile;
 } server_settings_t;
 
 typedef struct handler_config_s {
@@ -379,6 +380,7 @@ private:
   v8::Isolate *isolate_;
   v8::Platform *platform_;
   inspector::Agent *agent_;
+  std::string certFile_;
   std::string function_name_;
   std::string function_id_;
   std::string function_instance_id_;

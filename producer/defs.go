@@ -21,12 +21,10 @@ const (
 
 const (
 	bucketOpRetryInterval = time.Duration(1000) * time.Millisecond
-
-	udsSockPathLimit = 100
-
-	dataService = "kv"
-
-	supervisorTimeout = 60 * time.Second
+	udsSockPathLimit      = 100
+	dataService           = "kv"
+	dataServiceSSL        = "kvSSL"
+	supervisorTimeout     = 60 * time.Second
 
 	// KV blob suffixes to assist in choose right consumer instance
 	// for instantiating V8 Debugger instance
@@ -67,6 +65,7 @@ type Producer struct {
 	kvPort                 string
 	kvHostPorts            []string
 	metadatabucket         string
+	metadataHandleMutex    *sync.RWMutex
 	metadataBucketHandle   *gocb.Bucket
 	metakvAppHostPortsPath string
 	nsServerPort           string

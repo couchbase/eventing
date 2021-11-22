@@ -258,11 +258,14 @@ func (p *Producer) SignalBootstrapFinish() {
 
 // PauseProducer pauses the execution of Eventing.Producer and corresponding Eventing.Consumer instances
 func (p *Producer) PauseProducer() {
+	p.superSup.CheckAndSwitchgocbBucket(p.MetadataBucket(), p.appName, p.superSup.GetSecuritySetting())
 	p.stateChangeCh <- pause
 }
 
 // ResumeProducer after pausing
+// Before resuming the producer, make sure that gocb handle is registered on the correct pool
 func (p *Producer) ResumeProducer() {
+	p.superSup.CheckAndSwitchgocbBucket(p.MetadataBucket(), p.appName, p.superSup.GetSecuritySetting())
 	p.stateChangeCh <- resume
 }
 
@@ -556,7 +559,7 @@ func (p *Producer) CleanupMetadataBucket(skipCheckpointBlobs bool) error {
 	}
 
 	// Distribute vbuckets to cleanup based on planner
-	err := p.vbEventingNodeAssign()
+	err := p.vbEventingNodeAssign(p.metadatabucket, true)
 	if err != nil {
 		logging.Errorf("%s [%s:%d] Failed to get vb to node assignment, err: %v",
 			logPrefix, p.appName, p.LenRunningConsumers(), err)
@@ -584,6 +587,13 @@ func (p *Producer) CleanupMetadataBucket(skipCheckpointBlobs bool) error {
 		logPrefix, p.appName, p.LenRunningConsumers(), eventingNodeAddr, len(vbsToCleanup), util.Condense(vbsToCleanup))
 
 	vbsDistribution := util.VbucketNodeAssignment(vbsToCleanup, p.handlerConfig.UndeployRoutineCount)
+
+	// ensure that metadata handle has been switched over and refreshed before the cleanup activity starts
+	p.superSup.CheckAndSwitchgocbBucket(p.MetadataBucket(), p.appName, p.superSup.GetSecuritySetting())
+	err = p.updatemetadataHandle()
+	if err != nil {
+		logging.Warnf("%s [%s:%d] Failed to refresh meta data handle during undeploy, using the existing handle. Err: %v", logPrefix, p.appName, p.LenRunningConsumers(), err)
+	}
 
 	var undeployWG sync.WaitGroup
 	undeployWG.Add(p.handlerConfig.UndeployRoutineCount)
@@ -998,6 +1008,8 @@ func (p *Producer) CheckpointBlobDump() map[string]interface{} {
 
 	checkpointBlobDumps := make(map[string]interface{})
 
+	p.metadataHandleMutex.RLock()
+	defer p.metadataHandleMutex.RUnlock()
 	if p.metadataBucketHandle == nil {
 		return checkpointBlobDumps
 	}
@@ -1104,6 +1116,8 @@ func (p *Producer) SpanBlobDump() map[string]interface{} {
 
 	spanBlobDumps := make(map[string]interface{})
 
+	p.metadataHandleMutex.RLock()
+	defer p.metadataHandleMutex.RUnlock()
 	if p.metadataBucketHandle == nil {
 		return spanBlobDumps
 	}

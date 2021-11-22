@@ -16,14 +16,15 @@ func newRebalancer(eventingAdminPort string, change service.TopologyChange,
 	done doneCallback, progress progressCallback, keepNodes []string, NumberOfProducers int) *rebalancer {
 
 	r := &rebalancer{
-		adminPort:        eventingAdminPort,
-		c:                make(chan struct{}),
-		cb:               callbacks{done, progress},
-		change:           change,
-		done:             make(chan struct{}),
-		keepNodes:        keepNodes,
-		RebalanceStartTs: time.Now().String(),
-		numApps:          NumberOfProducers,
+		adminPort:           eventingAdminPort,
+		c:                   make(chan struct{}),
+		cb:                  callbacks{done, progress},
+		change:              change,
+		done:                make(chan struct{}),
+		keepNodes:           keepNodes,
+		RebalanceStartTs:    time.Now().String(),
+		numApps:             NumberOfProducers,
+		encryptionChangedCh: make(chan bool, 1),
 	}
 
 	go r.doRebalance()
@@ -214,6 +215,13 @@ retryRebProgress:
 				r.cb.done(nil, r.c)
 				return
 			}
+
+		case <-r.encryptionChangedCh:
+			logging.Errorf("%s Failing rebalance as change in encryption level has been detected", logPrefix)
+			util.Retry(util.NewFixedBackoff(time.Second), nil, stopRebalanceCallback, r.change.ID)
+			r.cb.done(fmt.Errorf("encryption level changed"), r.done)
+			progressTicker.Stop()
+			return
 
 		case <-r.c:
 			return

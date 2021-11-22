@@ -17,6 +17,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
             self.appListStaleCount = 0;
             self.statusPollMillis = 2000;
             self.deployedStats = null;
+            self.appstorefresh = [];
 
             // Broadcast on channel 'isEventingRunning'
             $rootScope.$broadcast('isEventingRunning', self.isEventingRunning);
@@ -48,8 +49,11 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                             lastSampleTime: new Date().valueOf()
                         };
 
+                        let refreshapplist = [];
                         for (var rspApp of response.apps ? response.apps : []) {
-
+                            if (rspApp.hasOwnProperty("redeploy_required") && rspApp.redeploy_required == true) {
+                                refreshapplist.push(rspApp.name);
+                            }
                             rspAppStat.set(rspApp.name, rspApp.composite_status);
 
                             if (!(rspApp.name in self.appList)) {
@@ -73,6 +77,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                                 }
                             }
                         }
+                        self.appstorefresh = refreshapplist;
                         statsConfig.reqstats = "";
                         for (var app of Object.keys(self.appList)) {
                             if (!rspAppList.has(app)) {
@@ -669,7 +674,7 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                             ]
                         }
                     }).result
-                    .then(function(repsonse) { // Upon continue.
+                    .then(function(response) { // Upon continue.
                         Object.assign(creationScope.appModel.depcfg, ApplicationService.convertBindingToConfig(creationScope.bindings));
                         creationScope.appModel.fillWithMissingDefaults();
 
@@ -733,6 +738,11 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                                 function(ApplicationService) {
                                     return ApplicationService.public.getConfig();
                                 }
+                            ],
+                            encryptionLevel: ['ApplicationService',
+                                function(ApplicationService) {
+                                    return ApplicationService.server.getEncryptionLevel();
+                                }
                             ]
                         }
                     }).result
@@ -789,12 +799,20 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
             };
         }
     ])
-    .controller('EventingSettingsCtrl', ['$scope', '$rootScope', '$stateParams', 'ApplicationService', 'config',
-        function($scope, $rootScope, $stateParams, ApplicationService, config) {
+    .controller('EventingSettingsCtrl', ['$scope', '$rootScope', '$stateParams', 'ApplicationService', 'config', 'encryptionLevel',
+        function($scope, $rootScope, $stateParams, ApplicationService, config, encryptionLevel) {
             var self = this;
             config = config.data;
             self.enableDebugger = config.enable_debugger;
+            self.encryptionLevel = encryptionLevel
 
+            if (self.encryptionLevel == 'strict') {
+                $rootScope.debugDisable = true;
+                self.enableDebugger = false;
+                ApplicationService.public.updateConfig({
+                  enable_debugger: self.enableDebugger
+                });
+            }
             self.saveSettings = function(closeDialog) {
                 ApplicationService.public.updateConfig({
                     enable_debugger: self.enableDebugger
@@ -1173,7 +1191,18 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
 
 
             self.debugApp = function() {
-                ApplicationService.primaryStore.getDeployedApps()
+                    ApplicationService.server.getEncryptionLevel()
+                    .then(function(level) {
+                    if (level == 'strict') {
+                        $rootScope.debugDisable = true;
+                        ApplicationService.public.updateConfig({
+                        enable_debugger: false
+                        });
+                        ApplicationService.server.showWarningAlert(`Debugger is disabled as cluster encryption level is strict.`);
+                        return;
+                    }
+                    return ApplicationService.primaryStore.getDeployedApps()
+                    })
                     .then(function(response) {
                         if (!(app.appname in response.data)) {
                             ApplicationService.server.showErrorAlert(`Function ${app.appname} may be undergoing bootstrap. Please try later.`);
@@ -1606,6 +1635,20 @@ angular.module('eventing', ['mnPluggableUiRegistry', 'ui.router', 'mnPoolDefault
                 server: {
                     getDefaultPool: function() {
                         return $http.get('/pools/default');
+                    },
+                    getEncryptionLevel: function() {
+                        return $http.get('/settings/security')
+                        .then(function(result) {
+                            if (result.data.clusterEncryptionLevel == undefined) {
+                                return 'disabled';
+                            } else {
+                                return result.data.clusterEncryptionLevel;
+                            }
+                        })
+                        .catch(function(err) {
+                            console.error(err);
+                            return 'disabled';
+                        });
                     },
                     getLogFileLocation: function() {
                         return $http.get('/_p/event/logFileLocation')

@@ -13,6 +13,7 @@ import (
 	"io"
 	"io/ioutil"
 	"math"
+	"net"
 	"net/url"
 	"os"
 	"reflect"
@@ -20,13 +21,16 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 	"unsafe"
 
 	"github.com/couchbase/cbauth"
 	"github.com/couchbase/cbauth/metakv"
+	"github.com/couchbase/eventing/common"
 	cm "github.com/couchbase/eventing/common"
+	couchbase "github.com/couchbase/eventing/dcp"
 	mcd "github.com/couchbase/eventing/dcp/transport"
 	"github.com/couchbase/eventing/gen/flatbuf/cfg"
 	"github.com/couchbase/eventing/logging"
@@ -37,14 +41,82 @@ import (
 
 const (
 	EventingAdminService = "eventingAdminPort"
+	EventingAdminSSL     = "eventingSSL"
 	DataService          = "kv"
+	DataServiceSSL       = "kvSSL"
 	MgmtService          = "mgmt"
+	MgmtServiceSSL       = "mgmtSSL"
 
 	EPSILON = 1e-5
 	dict    = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ*&"
 )
 
 var GocbCredsRequestCounter = 0
+
+type securitySettings struct {
+	useTLS         bool
+	mu             sync.RWMutex
+	securityConfig *common.SecuritySetting
+}
+
+var settings = &securitySettings{
+	useTLS:         false,
+	mu:             sync.RWMutex{},
+	securityConfig: nil,
+}
+
+func SetUseTLS(value bool) {
+	settings.mu.Lock()
+	defer settings.mu.Unlock()
+	settings.useTLS = value
+}
+
+func getLocalUseTLS() bool {
+	settings.mu.RLock()
+	defer settings.mu.RUnlock()
+	return settings.useTLS
+}
+
+func SetSecurityConfig(config *common.SecuritySetting) {
+	settings.mu.RLock()
+	defer settings.mu.RUnlock()
+	settings.securityConfig = config
+}
+
+func GetSecurityConfig() *common.SecuritySetting {
+	settings.mu.RLock()
+	defer settings.mu.RUnlock()
+	return settings.securityConfig
+}
+
+func CheckTLSandGetClient(HTTPRequestTimeout time.Duration) *Client {
+	var netClient *Client
+	if getLocalUseTLS() {
+		netClient = NewTLSClient(HTTPRequestTimeout, GetSecurityConfig())
+	} else {
+		netClient = NewClient(HTTPRequestTimeout)
+	}
+	return netClient
+}
+
+func CheckTLSandReplaceProtocol(connStr string, args ...interface{}) string {
+	var connectionStr string
+	connectionStr = fmt.Sprintf(connStr, args...)
+	if getLocalUseTLS() {
+		if u, err := url.Parse(connectionStr); err == nil {
+			host, _, _ := net.SplitHostPort(u.Host)
+			ip := net.ParseIP(host)
+			if (ip == nil && strings.EqualFold(host, "localhost")) || (ip != nil && ip.IsLoopback()) {
+				connectionStr = strings.Replace(connectionStr, "https://", "http://", -1)
+				return connectionStr
+			}
+		}
+		connectionStr = strings.Replace(connectionStr, "http://", "https://", -1)
+		return connectionStr
+	}
+	connectionStr = strings.Replace(connectionStr, "https://", "http://", -1)
+	return connectionStr
+}
 
 type Uint16Slice []uint16
 
@@ -154,6 +226,7 @@ func SprintV8Counts(counts map[string]uint64) string {
 }
 
 func NsServerNodesAddresses(auth, hostaddress string) ([]string, error) {
+	logPrefix := "util::NsServerNodesAddresses"
 	cic, err := FetchClusterInfoClient(hostaddress)
 	if err != nil {
 		return nil, err
@@ -162,14 +235,27 @@ func NsServerNodesAddresses(auth, hostaddress string) ([]string, error) {
 	cinfo.RLock()
 	defer cinfo.RUnlock()
 
-	nsServerAddrs := cinfo.GetNodesByServiceType(MgmtService)
-
-	nsServerNodes := []string{}
-	for _, nsServerAddr := range nsServerAddrs {
-		addr, _ := cinfo.GetServiceAddress(nsServerAddr, MgmtService)
-		nsServerNodes = append(nsServerNodes, addr)
+	var nsServerAddrs []NodeId
+	if getLocalUseTLS() {
+		nsServerAddrs = cinfo.GetNodesByServiceType(MgmtServiceSSL)
+	} else {
+		nsServerAddrs = cinfo.GetNodesByServiceType(MgmtService)
 	}
 
+	nsServerNodes := []string{}
+	var addr string
+	for _, nsServerAddr := range nsServerAddrs {
+		if getLocalUseTLS() {
+			addr, err = cinfo.GetServiceAddress(nsServerAddr, MgmtServiceSSL)
+		} else {
+			addr, err = cinfo.GetServiceAddress(nsServerAddr, MgmtService)
+		}
+		if err != nil {
+			logging.Errorf("%s Failed to get ns_server node address, err: %v", logPrefix, err)
+			continue
+		}
+		nsServerNodes = append(nsServerNodes, addr)
+	}
 	sort.Strings(nsServerNodes)
 
 	return nsServerNodes, nil
@@ -190,8 +276,13 @@ func KVNodesAddresses(auth, hostaddress, bucket string) ([]string, error) {
 	}
 
 	kvNodes := []string{}
+	var addr string
 	for _, kvAddr := range kvAddrs {
-		addr, _ := cinfo.GetServiceAddress(kvAddr, DataService)
+		if couchbase.GetUseTLS() {
+			addr, _ = cinfo.GetServiceAddress(kvAddr, DataServiceSSL)
+		} else {
+			addr, _ = cinfo.GetServiceAddress(kvAddr, DataService)
+		}
 		kvNodes = append(kvNodes, addr)
 	}
 
@@ -210,11 +301,27 @@ func EventingNodesAddresses(auth, hostaddress string) ([]string, error) {
 	cinfo.RLock()
 	defer cinfo.RUnlock()
 
-	eventingAddrs := cinfo.GetNodesByServiceType(EventingAdminService)
+	var eventingAddrs []NodeId
+
+	if getLocalUseTLS() {
+		eventingAddrs = cinfo.GetNodesByServiceType(EventingAdminSSL)
+	} else {
+		eventingAddrs = cinfo.GetNodesByServiceType(EventingAdminService)
+	}
 
 	eventingNodes := []string{}
+	var addr string
 	for _, eventingAddr := range eventingAddrs {
-		addr, err := cinfo.GetServiceAddress(eventingAddr, EventingAdminService)
+		if getLocalUseTLS() {
+			addr, err = cinfo.GetServiceAddress(eventingAddr, EventingAdminSSL)
+			host, _, _ := net.SplitHostPort(addr)
+			ip := net.ParseIP(host)
+			if err == nil && (ip == nil && strings.EqualFold(host, "localhost")) || (ip != nil && ip.IsLoopback()) {
+				addr, err = cinfo.GetServiceAddress(eventingAddr, EventingAdminService)
+			}
+		} else {
+			addr, err = cinfo.GetServiceAddress(eventingAddr, EventingAdminService)
+		}
 		if err != nil {
 			logging.Errorf("%s Failed to get eventing node address, err: %v", logPrefix, err)
 			continue
@@ -240,7 +347,18 @@ func CurrentEventingNodeAddress(auth, hostaddress string) (string, error) {
 	defer cinfo.RUnlock()
 
 	cNodeID := cinfo.GetCurrentNode()
-	eventingNode, err := cinfo.GetServiceAddress(cNodeID, EventingAdminService)
+	var eventingNode string
+
+	if getLocalUseTLS() {
+		eventingNode, err = cinfo.GetServiceAddress(cNodeID, EventingAdminSSL)
+		host, _, _ := net.SplitHostPort(eventingNode)
+		ip := net.ParseIP(host)
+		if err == nil && (ip == nil && strings.EqualFold(host, "localhost")) || (ip != nil && ip.IsLoopback()) {
+			eventingNode, err = cinfo.GetServiceAddress(cNodeID, EventingAdminService)
+		}
+	} else {
+		eventingNode, err = cinfo.GetServiceAddress(cNodeID, EventingAdminService)
+	}
 	if err != nil {
 		logging.Errorf("%s Failed to get current eventing node address, err: %v", logPrefix, err)
 		return "", err
@@ -315,12 +433,20 @@ func KVVbMap(auth, bucket, hostaddress string) (map[uint16]string, error) {
 	cinfo.RLock()
 	defer cinfo.RUnlock()
 
-	kvAddrs := cinfo.GetNodesByServiceType(DataService)
+	var serviceType string
+
+	if couchbase.GetUseTLS() {
+		serviceType = DataServiceSSL
+	} else {
+		serviceType = DataService
+	}
+
+	kvAddrs := cinfo.GetNodesByServiceType(serviceType)
 
 	kvVbMap := make(map[uint16]string)
 
 	for _, kvAddr := range kvAddrs {
-		addr, err := cinfo.GetServiceAddress(kvAddr, DataService)
+		addr, err := cinfo.GetServiceAddress(kvAddr, serviceType)
 		if err != nil {
 			logging.Errorf("%s Failed to get address of KV host: %rs, err: %v", logPrefix, kvAddr, err)
 			return nil, err
@@ -356,8 +482,11 @@ func Console(clusterAddr string, format string, v ...interface{}) error {
 }
 
 func StopDebugger(nodeAddr, appName string) {
-	endpointURL := fmt.Sprintf("http://%s/stopDebugger/?name=%s", nodeAddr, appName)
-	netClient := NewClient(HTTPRequestTimeout)
+	var endpointURL string
+	var netClient *Client
+
+	netClient = CheckTLSandGetClient(HTTPRequestTimeout)
+	endpointURL = CheckTLSandReplaceProtocol("https://%s/stopDebugger/?name=%s", nodeAddr, appName)
 
 	res, err := netClient.Get(endpointURL)
 	if err != nil {
@@ -371,13 +500,14 @@ func StopDebugger(nodeAddr, appName string) {
 
 func GetNodeUUIDs(urlSuffix string, nodeAddrs []string) (map[string]string, error) {
 	logPrefix := "util::GetNodeUUIDs"
+	var netClient *Client
 
 	addrUUIDMap := make(map[string]string)
-
-	netClient := NewClient(HTTPRequestTimeout)
+	netClient = CheckTLSandGetClient(HTTPRequestTimeout)
 
 	for _, nodeAddr := range nodeAddrs {
-		endpointURL := fmt.Sprintf("http://%s%s", nodeAddr, urlSuffix)
+		var endpointURL string
+		endpointURL = CheckTLSandReplaceProtocol("http://%s%s", nodeAddr, urlSuffix)
 
 		res, err := netClient.Get(endpointURL)
 		if err != nil {
@@ -402,10 +532,12 @@ func GetEventProcessingStats(urlSuffix string, nodeAddrs []string) (map[string]i
 
 	pStats := make(map[string]int64)
 
-	netClient := NewClient(HTTPRequestTimeout)
+	var netClient *Client
+	netClient = CheckTLSandGetClient(HTTPRequestTimeout)
 
 	for _, nodeAddr := range nodeAddrs {
-		endpointURL := fmt.Sprintf("http://%s%s", nodeAddr, urlSuffix)
+		var endpointURL string
+		endpointURL = CheckTLSandReplaceProtocol("http://%s%s", nodeAddr, urlSuffix)
 
 		res, err := netClient.Get(endpointURL)
 		if err != nil {
@@ -442,15 +574,15 @@ func GetProgress(urlSuffix string, nodeAddrs []string) (*cm.RebalanceProgress, m
 	logPrefix := "util::GetProgress"
 
 	aggProgress := &cm.RebalanceProgress{}
-
-	netClient := NewClient(HTTPRequestTimeout)
+	var netClient *Client
+	netClient = CheckTLSandGetClient(HTTPRequestTimeout)
 
 	errMap := make(map[string]error)
-
 	progressMap := make(map[string]interface{})
 
 	for _, nodeAddr := range nodeAddrs {
-		endpointURL := fmt.Sprintf("http://%s%s", nodeAddr, urlSuffix)
+		var endpointURL string
+		endpointURL = CheckTLSandReplaceProtocol("http://%s%s", nodeAddr, urlSuffix)
 
 		res, err := netClient.Get(endpointURL)
 		if err != nil {
@@ -502,10 +634,12 @@ func GetAppStatus(urlSuffix string, nodeAddrs []string) (map[string]map[string]s
 
 	appStatuses := make(map[string]map[string]string)
 
-	netClient := NewClient(HTTPRequestTimeout)
+	var netClient *Client
+	netClient = CheckTLSandGetClient(HTTPRequestTimeout)
 
 	for _, nodeAddr := range nodeAddrs {
-		endpointURL := fmt.Sprintf("http://%s%s", nodeAddr, urlSuffix)
+		var endpointURL string
+		endpointURL = CheckTLSandReplaceProtocol("http://%s%s", nodeAddr, urlSuffix)
 
 		res, err := netClient.Get(endpointURL)
 		if err != nil {
@@ -1133,10 +1267,12 @@ func (dynAuth *DynamicAuthenticator) Credentials(req gocb.AuthCredsRequest) ([]g
 func CheckIfRebalanceOngoing(urlSuffix string, nodeAddrs []string) (bool, error) {
 	logPrefix := "util::CheckIfRebalanceOngoing"
 
-	netClient := NewClient(HTTPRequestTimeout)
+	var netClient *Client
+	netClient = CheckTLSandGetClient(HTTPRequestTimeout)
 
 	for _, nodeAddr := range nodeAddrs {
-		endpointURL := fmt.Sprintf("http://%s%s", nodeAddr, urlSuffix)
+		var endpointURL string
+		endpointURL = CheckTLSandReplaceProtocol("http://%s%s", nodeAddr, urlSuffix)
 
 		res, err := netClient.Get(endpointURL)
 		if err != nil {
@@ -1171,10 +1307,12 @@ func CheckIfRebalanceOngoing(urlSuffix string, nodeAddrs []string) (bool, error)
 func CheckIfBootstrapOngoing(urlSuffix string, nodeAddrs []string) (bool, error) {
 	logPrefix := "util::CheckIfBootstrapOngoing"
 
-	netClient := NewClient(HTTPRequestTimeout)
+	var netClient *Client
+	netClient = CheckTLSandGetClient(HTTPRequestTimeout)
 
 	for _, nodeAddr := range nodeAddrs {
-		endpointURL := fmt.Sprintf("http://%s%s", nodeAddr, urlSuffix)
+		var endpointURL string
+		endpointURL = CheckTLSandReplaceProtocol("http://%s%s", nodeAddr, urlSuffix)
 
 		res, err := netClient.Get(endpointURL)
 		if err != nil {
@@ -1208,10 +1346,12 @@ func CheckIfBootstrapOngoing(urlSuffix string, nodeAddrs []string) (bool, error)
 func CheckIfAppBootstrapOngoing(urlSuffix string, nodeAddrs []string, appName string) (bool, error) {
 	logPrefix := "util::CheckIfAppBootstrapOngoing"
 
-	netClient := NewClient(HTTPRequestTimeout)
+	var netClient *Client
+	netClient = CheckTLSandGetClient(HTTPRequestTimeout)
 
 	for _, nodeAddr := range nodeAddrs {
-		endpointURL := fmt.Sprintf("http://%s%s?appName=%s", nodeAddr, urlSuffix, appName)
+		var endpointURL string
+		endpointURL = CheckTLSandReplaceProtocol("http://%s%s?appName=%s", nodeAddr, urlSuffix, appName)
 
 		res, err := netClient.Get(endpointURL)
 		if err != nil {
@@ -1244,10 +1384,12 @@ func CheckIfAppBootstrapOngoing(urlSuffix string, nodeAddrs []string, appName st
 func GetAggPausingApps(urlSuffix string, nodeAddrs []string) (bool, error) {
 	logPrefix := "util::GetAggPausingApps"
 
-	netClient := NewClient(HTTPRequestTimeout)
+	var netClient *Client
+	netClient = CheckTLSandGetClient(HTTPRequestTimeout)
 
 	for _, nodeAddr := range nodeAddrs {
-		endpointURL := fmt.Sprintf("http://%s%s", nodeAddr, urlSuffix)
+		var endpointURL string
+		endpointURL = CheckTLSandReplaceProtocol("http://%s%s", nodeAddr, urlSuffix)
 
 		res, err := netClient.Get(endpointURL)
 		if err != nil {
@@ -1280,10 +1422,12 @@ func GetAggPausingApps(urlSuffix string, nodeAddrs []string) (bool, error) {
 func GetAggBootstrappingApps(urlSuffix string, nodeAddrs []string) (bool, error) {
 	logPrefix := "util::GetAggBootstrappingApps"
 
-	netClient := NewClient(HTTPRequestTimeout)
+	var netClient *Client
+	netClient = CheckTLSandGetClient(HTTPRequestTimeout)
 
 	for _, nodeAddr := range nodeAddrs {
-		endpointURL := fmt.Sprintf("http://%s%s", nodeAddr, urlSuffix)
+		var endpointURL string
+		endpointURL = CheckTLSandReplaceProtocol("http://%s%s", nodeAddr, urlSuffix)
 
 		res, err := netClient.Get(endpointURL)
 		if err != nil {
@@ -1316,8 +1460,12 @@ func GetAggBootstrappingApps(urlSuffix string, nodeAddrs []string) (bool, error)
 func GetAggBootstrapStatus(nodeAddr string) (bool, error) {
 	logPrefix := "util::GetAggBootstrapStatus"
 
-	netClient := NewClient(HTTPRequestTimeout)
-	url := fmt.Sprintf("http://%s/getAggBootstrapStatus", nodeAddr)
+	var netClient *Client
+	var url string
+
+	url = CheckTLSandReplaceProtocol("https://%s/getAggBootstrapStatus", nodeAddr)
+	netClient = CheckTLSandGetClient(HTTPRequestTimeout)
+
 	res, err := netClient.Get(url)
 	if err != nil {
 		logging.Errorf("%s Failed to gather bootstrap status from url: %rs, err: %v", logPrefix, url, err)
@@ -1340,11 +1488,15 @@ func GetAggBootstrapStatus(nodeAddr string) (bool, error) {
 	return status, nil
 }
 
-func GetAggBootstrapAppStatus(nodeAddr string, appName string) (bool, error) {
+func GetAggBootstrapAppStatus(nodeAddr string, appName string, isLocalhost bool) (bool, error) {
 	logPrefix := "util::GetAggBootstrapAppStatus"
 
-	netClient := NewClient(HTTPRequestTimeout)
-	url := fmt.Sprintf("http://%s/getAggBootstrapAppStatus?appName=%s", nodeAddr, appName)
+	var netClient *Client
+	var url string
+
+	url = CheckTLSandReplaceProtocol("https://%s/getAggBootstrapAppStatus?appName=%s", nodeAddr, appName)
+	netClient = CheckTLSandGetClient(HTTPRequestTimeout)
+
 	res, err := netClient.Get(url)
 	if err != nil {
 		logging.Errorf("%s Failed to gather bootstrap status from url: %rs, err: %v", logPrefix, url, err)
@@ -1370,12 +1522,14 @@ func GetAggBootstrapAppStatus(nodeAddr string, appName string) (bool, error) {
 func GetEventingVersion(urlSuffix string, nodeAddrs []string) ([]string, error) {
 	logPrefix := "util::GetEventingVersion"
 
-	netClient := NewClient(HTTPRequestTimeout)
+	var netClient *Client
+	netClient = CheckTLSandGetClient(HTTPRequestTimeout)
 
 	versions := make([]string, 0)
 
 	for _, nodeAddr := range nodeAddrs {
-		endpointURL := fmt.Sprintf("http://%s%s", nodeAddr, urlSuffix)
+		var endpointURL string
+		endpointURL = CheckTLSandReplaceProtocol("http://%s%s", nodeAddr, urlSuffix)
 
 		res, err := netClient.Get(endpointURL)
 		if err != nil {

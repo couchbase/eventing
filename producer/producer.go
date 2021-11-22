@@ -49,6 +49,8 @@ func NewProducer(appName, debuggerPort, eventingPort, eventingSSLPort, eventingD
 		stateChangeCh:                make(chan state, 1),
 		plannerNodeMappingsRWMutex:   &sync.RWMutex{},
 		pollBucketStopCh:             make(chan struct{}, 1),
+		metadataHandleMutex:          &sync.RWMutex{},
+		metadataBucketHandle:         nil,
 		MemoryQuota:                  memoryQuota,
 		retryCount:                   -1,
 		runningConsumersRWMutex:      &sync.RWMutex{},
@@ -136,7 +138,7 @@ func (p *Producer) Serve() {
 	p.isPlannerRunning = true
 	logging.Infof("%s [%s:%d] Planner status: %t, before vbucket to node assignment", logPrefix, p.appName, p.LenRunningConsumers(), p.isPlannerRunning)
 
-	err = p.vbEventingNodeAssign()
+	err = p.vbEventingNodeAssign(p.SourceBucket(), true)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
 		p.isPlannerRunning = false
@@ -180,7 +182,7 @@ func (p *Producer) Serve() {
 	p.workerSupervisor = suptree.New(p.appName, spec)
 	p.workerSupervisor.ServeBackground(p.appName)
 
-	p.metadataBucketHandle, err = p.superSup.GetMetadataHandle(p.metadatabucket, p.appName)
+	err = p.updatemetadataHandle()
 	if err != nil {
 		logging.Errorf("%s [%s:%d] Failed to get meta data handle , err: %v", logPrefix, p.appName, p.LenRunningConsumers(), err)
 		return
@@ -216,7 +218,7 @@ func (p *Producer) Serve() {
 				oldKvNodes := p.getKvNodeAddrs()
 
 				// vbEventingNodeAssign() would update list of KV nodes. We need them soon after this call
-				err = p.vbEventingNodeAssign()
+				err = p.vbEventingNodeAssign(p.SourceBucket(), true)
 				if err == common.ErrRetryTimeout {
 					logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
 					p.isPlannerRunning = false
@@ -317,6 +319,11 @@ func (p *Producer) Serve() {
 				logging.Infof("%s [%s:%d] Function Paused", logPrefix, p.appName, p.LenRunningConsumers())
 			case resume:
 				logging.Infof("%s [%s] Resuming producer", logPrefix, p.appName)
+				err = p.updatemetadataHandle()
+				if err != nil {
+					logging.Errorf("%s [%s:%d] Failed to get meta data handle while resuming, err: %v", logPrefix, p.appName, p.LenRunningConsumers(), err)
+					return
+				}
 				err = p.resumeProducer()
 				p.notifySupervisorCh <- struct{}{}
 				if err != nil {
@@ -326,7 +333,6 @@ func (p *Producer) Serve() {
 				}
 				logging.Infof("%s [%s:%d] Function Resumed", logPrefix, p.appName, p.LenRunningConsumers())
 			}
-
 		case <-p.stopProducerCh:
 			logging.Infof("%s [%s:%d] Explicitly asked to shutdown producer routine", logPrefix, p.appName, p.LenRunningConsumers())
 
@@ -911,7 +917,7 @@ func (p *Producer) getConsumers() []common.EventingConsumer {
 	return workers
 }
 
-// This routine cleans up everything apart from metadataHandle,
+// This routine cleans up everything apart from metadataBucketHandle,
 // which would be needed to clean up metadata bucket
 func (p *Producer) pauseProducer() error {
 	p.isPausing = true
@@ -965,6 +971,7 @@ func (p *Producer) pauseProducer() error {
 }
 
 func (p *Producer) resumeProducer() error {
+	logPrefix := "Producer::resumeProducer"
 	p.isBootstrapping = true
 	p.stopChClosed = false
 	p.stopCh = make(chan struct{}, 1)
@@ -987,6 +994,13 @@ func (p *Producer) resumeProducer() error {
 	p.updateStatsTicker = time.NewTicker(time.Duration(p.handlerConfig.CheckpointInterval) * time.Millisecond)
 
 	p.isPlannerRunning = true
+	err = p.vbEventingNodeAssign(p.SourceBucket(), false)
+	if err == common.ErrRetryTimeout {
+		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
+		p.isPlannerRunning = false
+		logging.Infof("%s [%s:%d] Planner status: %t, after vbucket to node assignment", logPrefix, p.appName, p.LenRunningConsumers(), p.isPlannerRunning)
+		return err
+	}
 	p.vbNodeWorkerMap()
 	p.initWorkerVbMap()
 	p.isPlannerRunning = false
@@ -1001,4 +1015,12 @@ func (p *Producer) resumeProducer() error {
 		p.notifyInitCh <- struct{}{}
 	}
 	return nil
+}
+
+func (p *Producer) updatemetadataHandle() error {
+	var err error
+	p.metadataHandleMutex.Lock()
+	defer p.metadataHandleMutex.Unlock()
+	p.metadataBucketHandle, err = p.superSup.GetMetadataHandle(p.metadatabucket, p.appName)
+	return err
 }

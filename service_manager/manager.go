@@ -3,9 +3,11 @@ package servicemanager
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	_ "expvar" // For stat collection
 	"fmt"
+	"io/ioutil"
 	"net"
 	"net/http"
 	_ "net/http/pprof" // For debugging
@@ -18,6 +20,7 @@ import (
 	"github.com/couchbase/cbauth/metakv"
 	"github.com/couchbase/cbauth/service"
 	"github.com/couchbase/eventing/common"
+	couchbase "github.com/couchbase/eventing/dcp"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
 )
@@ -40,20 +43,28 @@ func NewServiceMgr(config util.Config, rebalanceRunning bool, superSup common.Ev
 	mu := &sync.RWMutex{}
 
 	mgr := &ServiceMgr{
-		consistencyValues: []string{"none", "request"},
-		graph:             newBucketMultiDiGraph(),
-		fnsInPrimaryStore: make(map[string]depCfg),
-		fnsInTempStore:    make(map[string]struct{}),
-		bucketFunctionMap: make(map[string]map[string]functionInfo),
-		fnMu:              &sync.RWMutex{},
-		failoverMu:        &sync.RWMutex{},
-		mu:                mu,
-		rebalancerMutex:   &sync.RWMutex{},
-		servers:           make([]service.NodeID, 0),
-		state:             NewState(),
-		stopTracerCh:      make(chan struct{}, 1),
-		superSup:          superSup,
-		finch:             make(chan bool),
+		consistencyValues:       []string{"none", "request"},
+		clusterEncryptionConfig: nil,
+		configMutex:             &sync.RWMutex{},
+		httpServerSignal:        make(chan bool),
+		httpServerMutex:         &sync.Mutex{},
+		httpServer:              nil,
+		tlsServerMutex:          &sync.Mutex{},
+		tlsServer:               nil,
+		graph:                   newBucketMultiDiGraph(),
+		fnsInPrimaryStore:       make(map[string]depCfg),
+		fnsInTempStore:          make(map[string]struct{}),
+		bucketFunctionMap:       make(map[string]map[string]functionInfo),
+		fnMu:                    &sync.RWMutex{},
+		failoverMu:              &sync.RWMutex{},
+		mu:                      mu,
+		rebalancerMutex:         &sync.RWMutex{},
+		servers:                 make([]service.NodeID, 0),
+		state:                   NewState(),
+		stopTracerCh:            make(chan struct{}, 1),
+		superSup:                superSup,
+		supWaitCh:               make(chan bool, 2),
+		finch:                   make(chan bool),
 	}
 
 	mgr.config.Store(config)
@@ -80,6 +91,9 @@ func (m *ServiceMgr) initService() {
 	m.restPort = cfg["rest_port"].(string)
 	m.uuid = cfg["uuid"].(string)
 	m.initErrCodes()
+
+	couchbase.SetCertFile(m.certFile)
+	couchbase.SetKeyFile(m.keyFile)
 
 	logging.Infof("%s adminHTTPPort: %s adminSSLPort: %s", logPrefix, m.adminHTTPPort, m.adminSSLPort)
 	logging.Infof("%s certFile: %s keyFile: %s", logPrefix, m.certFile, m.keyFile)
@@ -181,57 +195,202 @@ func (m *ServiceMgr) initService() {
 	mux.HandleFunc("/api/v1/list/functions", m.listFunctions)
 	mux.HandleFunc("/api/v1/list/functions/", m.listFunctions)
 
+	var listenOnLoopback bool
 	go func() {
-		addr := net.JoinHostPort("", m.adminHTTPPort)
+		var serveErr error
+		for {
+			m.httpServerMutex.Lock()
+			var addr string
+			if listenOnLoopback {
+				addr = net.JoinHostPort(util.Localhost(), m.adminHTTPPort)
+			} else {
+				addr = net.JoinHostPort("", m.adminHTTPPort)
+			}
+			m.httpServer = &http.Server{
+				Addr:         addr,
+				ReadTimeout:  httpReadTimeOut,
+				WriteTimeout: httpWriteTimeOut,
+				Handler:      mux,
+			}
+			proto := util.GetNetworkProtocol()
+			listner, err := net.Listen(proto, addr)
+			if err != nil {
+				logging.Errorf("Failed to start http service ip family: %v address: %v error: %v", proto, addr, err)
+				time.Sleep(1 * time.Second)
+				os.Exit(1)
+			}
 
-		srv := &http.Server{
-			Addr:         addr,
-			ReadTimeout:  httpReadTimeOut,
-			WriteTimeout: httpWriteTimeOut,
-			Handler:      mux,
+			logging.Infof("%s Admin HTTP server started: %s", logPrefix, addr)
+			m.httpServerMutex.Unlock()
+			serveErr = m.httpServer.Serve(listner)
+			if serveErr != nil && serveErr == http.ErrServerClosed {
+				logging.Infof("%s Got a signal to stop running HTTP server", logPrefix)
+			} else {
+				logging.Fatalf("%s Received error while either starting or stopping HTTP Server: %v", logPrefix, err)
+			}
+			m.httpServerMutex.Lock()
+			m.httpServer = nil
+			m.httpServerMutex.Unlock()
 		}
-		proto := util.GetNetworkProtocol()
-		listner, err := net.Listen(proto, addr)
-		if err != nil {
-			logging.Errorf("Failed to start http service ip family: %v address: %v error: %v", proto, addr, err)
-			time.Sleep(1 * time.Second)
-			os.Exit(1)
-		}
-
-		logging.Infof("%s Admin HTTP server started: %s", logPrefix, addr)
-		srv.Serve(listner)
-		logging.Fatalf("%s Error in Admin HTTP Server: %v", logPrefix, err)
 	}()
 
 	if m.adminSSLPort != "" {
-		var reload bool = false
-		var sslsrv *http.Server = nil
 		sslAddr := net.JoinHostPort("", m.adminSSLPort)
 
-		refresh := func() error {
-			if sslsrv != nil {
-				reload = true
-				sslsrv.Shutdown(context.Background())
+		refresh := func(configChange uint64) error {
+			gethost := func(server *http.Server) (string, error) {
+				if server == nil {
+					return "", fmt.Errorf("server instance is nil")
+				}
+				host, _, err := net.SplitHostPort(server.Addr)
+				if err != nil {
+					return "", err
+				}
+				return host, nil
 			}
+
+			stopserver := func(server **http.Server) {
+				ctx, _ := context.WithTimeout(context.Background(), 120*time.Second)
+				if err := (*server).Shutdown(ctx); err != nil && err != http.ErrServerClosed {
+					logging.Errorf("Could not gracefully stop running server due to %v, attempting a force stop", err)
+					(*server).Close()
+				}
+				logging.Infof("Successfully stopped running HTTP server")
+			}
+
+			if (configChange & cbauth.CFG_CHANGE_CLUSTER_ENCRYPTION) != 0 {
+				logging.Infof("Cluster Encryption Settings have been changed by ns server.\n")
+				// Stop any ongoing rebalances
+				m.rebalancerMutex.RLock()
+				if m.rebalancer != nil {
+					m.rebalancer.encryptionChangedCh <- true
+				}
+				m.rebalancerMutex.RUnlock()
+				err := m.UpdateNodeToNodeEncryptionLevel()
+				if err == nil {
+					//---------- Check and configure enforce TLS settings ---------
+
+					m.configMutex.RLock()
+					sslOnly := m.clusterEncryptionConfig != nil && m.clusterEncryptionConfig.DisableNonSSLPorts
+					m.configMutex.RUnlock()
+
+					m.httpServerMutex.Lock()
+					if sslOnly {
+						m.disableDebugger()
+						if m.httpServer != nil {
+							hostname, err := gethost(m.httpServer)
+							if hostname == "" && err == nil {
+								logging.Infof("Attempting to restart HTTP server to listen on loopback interface")
+								stopserver(&m.httpServer)
+							}
+							if err != nil {
+								logging.Infof("Skipping restart of HTTP server due to error while getting hostname: %v", err)
+							}
+						}
+						listenOnLoopback = true
+					} else {
+						if m.httpServer != nil {
+							hostname, err := gethost(m.httpServer)
+							if hostname == util.Localhost() || err != nil || hostname != "" {
+								logging.Infof("Attempting to restart HTTP server to listen on all interfaces")
+								stopserver(&m.httpServer)
+							}
+							if err != nil {
+								logging.Infof("Skipping restart of HTTP server due to error while getting hostname: %v", err)
+							}
+						}
+						listenOnLoopback = false
+					}
+					m.httpServerMutex.Unlock()
+
+					//---------- Check and configure N2N encryption settings ----------
+
+					m.configMutex.RLock()
+					encryptOn := m.clusterEncryptionConfig != nil && m.clusterEncryptionConfig.EncryptData
+					m.configMutex.RUnlock()
+					if encryptOn {
+						// notify utils to use TLS for eventing2eventing communication
+						util.SetUseTLS(true)
+
+						// notify dcp package to use TLS for memcached communication
+						couchbase.SetCertFile(m.certFile)
+						couchbase.SetKeyFile(m.keyFile)
+						couchbase.SetUseTLS(true)
+					} else {
+						// notify utils to use plain text for eventing2eventing communication
+						couchbase.SetUseTLS(false)
+						// notify dcp package to use plain text for memcached communication
+						// existing TLS connections remain unchanged. New connections will be plain text
+						util.SetUseTLS(false)
+					}
+					// Wait for the supervisor's scn before we go ahead and refresh
+					<-m.supWaitCh
+					// refresh vb map, nodes list and connection pool for each bucket to use TLS
+					util.SingletonServicesContainer.Lock()
+					notiferInstance, ok := util.SingletonServicesContainer.Notifiers[m.superSup.GetRegisteredPool()]
+					util.SingletonServicesContainer.Unlock()
+					if ok {
+						notiferInstance.NotifyEncryptionLevelChange(true)
+					}
+				}
+			}
+
+			if (configChange & cbauth.CFG_CHANGE_CERTS_TLSCONFIG) != 0 {
+				logging.Infof("Certificates have been refreshed by ns server. Restarting TLS server.")
+				if m.clusterEncryptionConfig != nil {
+					m.tlsServerMutex.Lock()
+					if m.tlsServer != nil {
+						stopserver(&m.tlsServer)
+					}
+					m.tlsServerMutex.Unlock()
+				}
+			}
+
+			rootCertPool := x509.NewCertPool()
+			certInBytes, err := ioutil.ReadFile(m.certFile)
+
+			if err != nil {
+				logging.Errorf("Error while reading cert file error : %s. Passing RootCAs as nil", err)
+			}
+
+			ok := rootCertPool.AppendCertsFromPEM(certInBytes)
+
+			if !ok {
+				logging.Errorf("Error creating cert pool error : %s. Passing RootCAs as nil", err)
+			}
+
+			m.configMutex.RLock()
+			setting := &common.SecuritySetting{
+				EncryptData:        m.clusterEncryptionConfig.EncryptData,
+				DisableNonSSLPorts: m.clusterEncryptionConfig.DisableNonSSLPorts,
+				CertFile:           m.certFile,
+				KeyFile:            m.keyFile,
+				RootCAs:            rootCertPool}
+			m.configMutex.RUnlock()
+			util.SetSecurityConfig(setting)
+			m.superSup.SetSecuritySetting(setting)
 			return nil
 		}
 
 		go func() {
 			for {
-				err := cbauth.RegisterTLSRefreshCallback(refresh)
+				err := cbauth.RegisterConfigRefreshCallback(refresh)
 				if err == nil {
 					break
 				}
 				logging.Errorf("%s Unable to register for cert refresh, will retry: %v", logPrefix, err)
 				time.Sleep(10 * time.Second)
 			}
+
 			for {
+				var tlsserveErr error
 				tlscfg, err := m.getTLSConfig(logPrefix)
 				if err != nil {
 					logging.Errorf("%s Error configuring TLS: %v", logPrefix, err)
 					return
 				}
-				sslsrv = &http.Server{
+				m.tlsServerMutex.Lock()
+				m.tlsServer = &http.Server{
 					Addr:         sslAddr,
 					ReadTimeout:  httpReadTimeOut,
 					WriteTimeout: httpWriteTimeOut,
@@ -247,10 +406,18 @@ func (m *ServiceMgr) initService() {
 					time.Sleep(1 * time.Second)
 					os.Exit(1)
 				}
-
-				logging.Infof("%s SSL server started: %v", logPrefix, sslsrv)
 				tls_ln := tls.NewListener(ln, tlscfg)
-				sslsrv.Serve(tls_ln)
+				logging.Infof("%s SSL server started: %v", logPrefix, m.tlsServer)
+				m.tlsServerMutex.Unlock()
+				tlsserveErr = m.tlsServer.Serve(tls_ln)
+				if tlsserveErr != nil && tlsserveErr == http.ErrServerClosed {
+					logging.Infof("%s Received request to stop TLS server", logPrefix)
+				} else {
+					logging.Fatalf("%s Received error while either starting or stopping TLS Server: %v", logPrefix, err)
+				}
+				m.tlsServerMutex.Lock()
+				m.tlsServer = nil
+				m.tlsServerMutex.Unlock()
 			}
 		}()
 	}
@@ -438,12 +605,14 @@ func (m *ServiceMgr) disableDebugger() {
 		return
 	}
 
-	if _, exists := config["enable_debugger"]; exists {
-		logging.Tracef("%s enable_debugger field exists , not making any change", logPrefix)
-		return
+	if enabled, exists := config["enable_debugger"]; exists {
+		if enabled == false {
+			logging.Tracef("%s enable_debugger is already false, not making any change", logPrefix)
+			return
+		}
 	}
 
-	logging.Tracef("%s enable_debugger field does not exist, enabling it", logPrefix)
+	logging.Tracef("%s enable_debugger field does not exist or is enabled, disabling it", logPrefix)
 
 	config["enable_debugger"] = false
 	if info := m.saveConfig(config); info.Code != m.statusCodes.ok.Code {

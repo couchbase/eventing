@@ -2,10 +2,12 @@ package servicemanager
 
 import (
 	"math"
+	"net/http"
 	"runtime"
 	"sync"
 	"time"
 
+	"github.com/couchbase/cbauth"
 	"github.com/couchbase/cbauth/service"
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/util"
@@ -66,28 +68,35 @@ var (
 
 // ServiceMgr implements cbauth_service interface
 type ServiceMgr struct {
-	adminHTTPPort     string
-	adminSSLPort      string
-	auth              string
-	graph             *bucketMultiDiGraph
-	certFile          string
-	config            util.ConfigHolder
-	ejectNodeUUIDs    []string
-	eventingNodeAddrs []string
-	failoverMu        *sync.RWMutex
-	failoverCounter   uint32
-	failoverNotifTs   int64
-	failoverChangeId  string
-	finch             chan bool
-	fnsInPrimaryStore map[string]depCfg                  // Access controlled by fnMu
-	fnsInTempStore    map[string]struct{}                // Access controlled by fnMu
-	bucketFunctionMap map[string]map[string]functionInfo // Access controlled by fnMu
-	fnMu              *sync.RWMutex
-	keepNodeUUIDs     []string
-	keyFile           string
-	lcbCredsCounter   int64
-	mu                *sync.RWMutex
-	uuid              string
+	adminHTTPPort           string
+	adminSSLPort            string
+	auth                    string
+	graph                   *bucketMultiDiGraph
+	certFile                string
+	config                  util.ConfigHolder
+	clusterEncryptionConfig *cbauth.ClusterEncryptionConfig
+	configMutex             *sync.RWMutex
+	httpServerSignal        chan bool
+	httpServerMutex         *sync.Mutex
+	httpServer              *http.Server
+	tlsServerMutex          *sync.Mutex
+	tlsServer               *http.Server
+	ejectNodeUUIDs          []string
+	eventingNodeAddrs       []string
+	failoverMu              *sync.RWMutex
+	failoverCounter         uint32
+	failoverNotifTs         int64
+	failoverChangeId        string
+	finch                   chan bool
+	fnsInPrimaryStore       map[string]depCfg                  // Access controlled by fnMu
+	fnsInTempStore          map[string]struct{}                // Access controlled by fnMu
+	bucketFunctionMap       map[string]map[string]functionInfo // Access controlled by fnMu
+	fnMu                    *sync.RWMutex
+	keepNodeUUIDs           []string
+	keyFile                 string
+	lcbCredsCounter         int64
+	mu                      *sync.RWMutex
+	uuid                    string
 
 	stopTracerCh chan struct{} // chan used to signal stopping of runtime.Trace
 
@@ -101,8 +110,9 @@ type ServiceMgr struct {
 	servers  []service.NodeID
 	state
 
-	superSup common.EventingSuperSup
-	waiters  waiters
+	supWaitCh chan bool
+	superSup  common.EventingSuperSup
+	waiters   waiters
 
 	statusCodes   statusCodes
 	statusPayload []byte
@@ -146,6 +156,7 @@ type rebalancer struct {
 	TotalVbsToShuffle     int
 	VbsRemainingToShuffle int
 	numApps               int
+	encryptionChangedCh   chan bool
 }
 
 type rebalanceContext struct {
@@ -243,6 +254,7 @@ type appStatus struct {
 	NumDeployedNodes      int    `json:"num_deployed_nodes"`
 	DeploymentStatus      bool   `json:"deployment_status"`
 	ProcessingStatus      bool   `json:"processing_status"`
+	RedeployRequired      bool   `json:"redeploy_required"`
 }
 
 type appStatusResponse struct {

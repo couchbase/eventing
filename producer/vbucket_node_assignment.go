@@ -8,19 +8,22 @@ import (
 	"time"
 
 	"github.com/couchbase/eventing/common"
+	couchbase "github.com/couchbase/eventing/dcp"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
 )
 
 // Generates the vbucket to eventing node assignment, ideally generated map should
 // be consistent across all nodes
-func (p *Producer) vbEventingNodeAssign() error {
+func (p *Producer) vbEventingNodeAssign(bucketName string, wait bool) error {
 	logPrefix := "Producer::vbEventingNodeAssign"
 
 	// Adding a sleep to mitigate stale values from metakv
-	time.Sleep(5 * time.Second)
+	if wait {
+		time.Sleep(5 * time.Second)
+	}
 
-	err := util.Retry(util.NewFixedBackoff(time.Second), &p.retryCount, getKVNodesAddressesOpCallback, p, p.handlerConfig.SourceBucket)
+	err := util.Retry(util.NewFixedBackoff(time.Second), &p.retryCount, getKVNodesAddressesOpCallback, p, bucketName)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
 		return err
@@ -332,7 +335,13 @@ func (p *Producer) getKvVbMap() error {
 	p.kvVbMap = make(map[uint16]string)
 
 	for _, kvaddr := range kvAddrs {
-		addr, err := cinfo.GetServiceAddress(kvaddr, dataService)
+		var addr string
+		var err error
+		if couchbase.GetUseTLS() {
+			addr, err = cinfo.GetServiceAddress(kvaddr, dataServiceSSL)
+		} else {
+			addr, err = cinfo.GetServiceAddress(kvaddr, dataService)
+		}
 		if err != nil {
 			logging.Errorf("%s [%s:%d] Failed to get address of KV host, err: %v",
 				logPrefix, p.appName, p.LenRunningConsumers(), err)

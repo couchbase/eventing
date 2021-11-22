@@ -5,7 +5,7 @@ import (
 	"net"
 
 	"github.com/couchbase/eventing/common"
-	"github.com/couchbase/eventing/dcp"
+	couchbase "github.com/couchbase/eventing/dcp"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
 	"gopkg.in/couchbase/gocb.v1"
@@ -81,6 +81,8 @@ var clearDebuggerInstanceCallback = func(args ...interface{}) error {
 	if p.isTerminateRunning {
 		return nil
 	}
+	p.metadataHandleMutex.RLock()
+	defer p.metadataHandleMutex.RUnlock()
 	if p.metadataBucketHandle == nil {
 		logging.Errorf("%s [%s:%d] Metadata bucket handle not initialized",
 			logPrefix, p.appName, p.LenRunningConsumers())
@@ -119,6 +121,8 @@ var writeDebuggerURLCallback = func(args ...interface{}) error {
 	if p.isTerminateRunning {
 		return nil
 	}
+	p.metadataHandleMutex.RLock()
+	defer p.metadataHandleMutex.RUnlock()
 	if p.metadataBucketHandle == nil {
 		logging.Errorf("%s [%s:%d] Metadata bucket handle not initialized",
 			logPrefix, p.appName, p.LenRunningConsumers())
@@ -160,6 +164,8 @@ var setOpCallback = func(args ...interface{}) error {
 		return nil
 	}
 
+	p.metadataHandleMutex.RLock()
+	defer p.metadataHandleMutex.RUnlock()
 	if p.metadataBucketHandle == nil {
 		logging.Errorf("%s [%s:%d] Bucket handle not initialized",
 			logPrefix, p.appName, p.LenRunningConsumers())
@@ -183,6 +189,8 @@ var getOpCallback = func(args ...interface{}) error {
 	key := args[1].(common.Key)
 	blob := args[2]
 
+	p.metadataHandleMutex.RLock()
+	defer p.metadataHandleMutex.RUnlock()
 	_, err := p.metadataBucketHandle.Get(key.Raw(), blob)
 	if gocb.IsKeyNotFoundError(err) || err == gocb.ErrShutdown || err == gocb.ErrKeyNotFound {
 		return nil
@@ -200,6 +208,8 @@ var deleteOpCallback = func(args ...interface{}) error {
 	p := args[0].(*Producer)
 	key := args[1].(string)
 
+	p.metadataHandleMutex.RLock()
+	defer p.metadataHandleMutex.RUnlock()
 	_, err := p.metadataBucketHandle.Remove(key, 0)
 	if gocb.IsKeyNotFoundError(err) || err == gocb.ErrShutdown {
 		return nil

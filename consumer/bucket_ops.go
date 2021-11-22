@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/couchbase/eventing/common"
-	"github.com/couchbase/eventing/dcp"
+	couchbase "github.com/couchbase/eventing/dcp"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
 	"gopkg.in/couchbase/gocb.v1"
@@ -50,6 +50,8 @@ var setOpCallback = func(args ...interface{}) error {
 	vbKey := args[1].(common.Key)
 	vbBlob := args[2]
 
+	c.gocbMetaHandleMutex.RLock()
+	defer c.gocbMetaHandleMutex.RUnlock()
 	_, err := c.gocbMetaHandle.Upsert(vbKey.Raw(), vbBlob, 0)
 	if err != nil {
 		logging.Errorf("%s [%s:%s:%d] Key: %s Bucket set failed, err: %v",
@@ -88,6 +90,8 @@ var getOpCallback = func(args ...interface{}) error {
 		return nil
 	}
 
+	c.gocbMetaHandleMutex.RLock()
+	defer c.gocbMetaHandleMutex.RUnlock()
 	if c.gocbMetaHandle == nil {
 		return nil
 	}
@@ -267,6 +271,8 @@ var periodicCheckpointCallback = func(args ...interface{}) error {
 	vbKey := args[1].(common.Key)
 	vbBlob := args[2].(*vbucketKVBlob)
 
+	c.gocbMetaHandleMutex.RLock()
+	defer c.gocbMetaHandleMutex.RUnlock()
 	_, err := c.gocbMetaHandle.MutateIn(vbKey.Raw(), 0, uint32(0)).
 		UpsertEx("currently_processed_doc_id_timer", vbBlob.CurrentProcessedDocIDTimer, gocb.SubdocFlagCreatePath).
 		UpsertEx("currently_processed_cron_timer", vbBlob.CurrentProcessedCronTimer, gocb.SubdocFlagCreatePath).
@@ -320,6 +326,8 @@ var updateCheckpointCallback = func(args ...interface{}) error {
 	vbBlob := args[2].(*vbucketKVBlob)
 
 retryUpdateCheckpoint:
+	c.gocbMetaHandleMutex.RLock()
+	defer c.gocbMetaHandleMutex.RUnlock()
 
 	_, err := c.gocbMetaHandle.MutateIn(vbKey.Raw(), 0, uint32(0)).
 		UpsertEx("assigned_worker", vbBlob.AssignedWorker, gocb.SubdocFlagCreatePath).
@@ -370,6 +378,8 @@ var metadataCorrectionCallback = func(args ...interface{}) error {
 	ownershipEntry := args[2].(*OwnershipEntry)
 
 retryMetadataCorrection:
+	c.gocbMetaHandleMutex.RLock()
+	defer c.gocbMetaHandleMutex.RUnlock()
 	_, err := c.gocbMetaHandle.MutateIn(vbKey.Raw(), 0, uint32(0)).
 		ArrayAppend("ownership_history", ownershipEntry, true).
 		UpsertEx("assigned_worker", c.ConsumerName(), gocb.SubdocFlagCreatePath).
@@ -412,6 +422,8 @@ var undoMetadataCorrectionCallback = func(args ...interface{}) error {
 	ownershipEntry := args[2].(*OwnershipEntry)
 
 retryUndoMetadataCorrection:
+	c.gocbMetaHandleMutex.RLock()
+	defer c.gocbMetaHandleMutex.RUnlock()
 	_, err := c.gocbMetaHandle.MutateIn(vbKey.Raw(), 0, uint32(0)).
 		ArrayAppend("ownership_history", ownershipEntry, true).
 		UpsertEx("assigned_worker", "", gocb.SubdocFlagCreatePath).
@@ -455,6 +467,8 @@ var addOwnershipHistorySRRCallback = func(args ...interface{}) error {
 	ownershipEntry := args[2].(*OwnershipEntry)
 
 retrySRRUpdate:
+	c.gocbMetaHandleMutex.RLock()
+	defer c.gocbMetaHandleMutex.RUnlock()
 	_, err := c.gocbMetaHandle.MutateIn(vbKey.Raw(), 0, uint32(0)).
 		ArrayAppend("ownership_history", ownershipEntry, true).
 		UpsertEx("assigned_worker", "", gocb.SubdocFlagCreatePath).
@@ -501,6 +515,8 @@ var addOwnershipHistorySRFCallback = func(args ...interface{}) error {
 	ownershipEntry := args[2].(*OwnershipEntry)
 
 retrySRFUpdate:
+	c.gocbMetaHandleMutex.RLock()
+	defer c.gocbMetaHandleMutex.RUnlock()
 	_, err := c.gocbMetaHandle.MutateIn(vbKey.Raw(), 0, uint32(0)).
 		ArrayAppend("ownership_history", ownershipEntry, true).
 		UpsertEx("assigned_worker", "", gocb.SubdocFlagCreatePath).
@@ -548,6 +564,8 @@ var addOwnershipHistorySRSCallback = func(args ...interface{}) error {
 	ownershipEntry := args[3].(*OwnershipEntry)
 
 retrySRSUpdate:
+	c.gocbMetaHandleMutex.RLock()
+	defer c.gocbMetaHandleMutex.RUnlock()
 	_, err := c.gocbMetaHandle.MutateIn(vbKey.Raw(), 0, uint32(0)).
 		ArrayAppend("ownership_history", ownershipEntry, true).
 		UpsertEx("assigned_worker", vbBlob.AssignedWorker, gocb.SubdocFlagCreatePath).
@@ -595,6 +613,8 @@ var addOwnershipHistorySECallback = func(args ...interface{}) error {
 	ownershipEntry := args[2].(*OwnershipEntry)
 
 retrySEUpdate:
+	c.gocbMetaHandleMutex.RLock()
+	defer c.gocbMetaHandleMutex.RUnlock()
 	_, err := c.gocbMetaHandle.MutateIn(vbKey.Raw(), 0, uint32(0)).
 		ArrayAppend("ownership_history", ownershipEntry, true).
 		UpsertEx("dcp_stream_requested", false, gocb.SubdocFlagCreatePath).
@@ -770,6 +790,7 @@ var populateDcpFeedVbEntriesCallback = func(args ...interface{}) error {
 
 		vbSeqNos, err := feed.DcpGetSeqnos()
 		if err != nil {
+			feed.Close()
 			logging.Infof("%s [%s:%s:%d] Failed to get vb seqnos from dcp handle: %v, err: %v",
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), dcpFeed, err)
 			return err
@@ -798,6 +819,8 @@ var acquireDebuggerTokenCallback = func(args ...interface{}) error {
 
 	key := c.producer.AddMetadataPrefix(c.app.AppName).Raw() + "::" + common.DebuggerTokenKey
 
+	c.gocbMetaHandleMutex.RLock()
+	defer c.gocbMetaHandleMutex.RUnlock()
 	cas, err := c.gocbMetaHandle.Get(key, instance)
 	if err == gocb.ErrKeyNotFound || err == gocb.ErrShutdown {
 		logging.Errorf("%s [%s:%s:%d] Key: %s, debugger token not found or bucket is closed, err: %v",

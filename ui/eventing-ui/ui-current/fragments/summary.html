@@ -22,6 +22,14 @@
           <p>There are {{summaryCtrl.workerCount}} eventing workers configured to run on {{summaryCtrl.cpuCount}} cores. A sizing exercise is recommended.</p>
         </div>
       </div>
+      <div ng-show="summaryCtrl.appstorefresh.length > 0">
+        <div class="alert alert-warning">
+          <p> Change in cluster encryption level detected. Please pause-resume or undeploy-deploy
+            the following functions to align with the set encryption level:
+            {{summaryCtrl.appstorefresh.toString()}}
+          </p>
+        </div>
+      </div>
     </mn-element-cargo>
     <div class="cbui-table">
       <div class="cbui-table-header" ng-if="!summaryCtrl.isAppListEmpty()">

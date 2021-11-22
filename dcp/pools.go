@@ -3,6 +3,8 @@ package couchbase
 import (
 	"bufio"
 	"bytes"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -16,6 +18,7 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 	"unsafe"
@@ -35,6 +38,60 @@ var PoolSize = 64
 // PoolOverflow is the number of overflow connections allowed in a
 // pool.
 var PoolOverflow = PoolSize
+var StreamingEndpointClosed = errors.New("Streaming endpoint closed by caller")
+
+// Used to decide whether to skip verification of certificates when
+// connecting to an ssl port.
+
+type securitySettings struct {
+	useTLS        bool
+	securityMutex sync.RWMutex
+	certFile      string
+	keyFile       string
+}
+
+var settings = &securitySettings{
+	useTLS:        false,
+	securityMutex: sync.RWMutex{},
+	certFile:      "",
+	keyFile:       "",
+}
+
+func SetUseTLS(value bool) {
+	settings.securityMutex.Lock()
+	defer settings.securityMutex.Unlock()
+	settings.useTLS = value
+}
+
+func SetCertFile(cert string) {
+	settings.securityMutex.Lock()
+	defer settings.securityMutex.Unlock()
+	settings.certFile = cert
+}
+
+func SetKeyFile(key string) {
+	settings.securityMutex.Lock()
+	defer settings.securityMutex.Unlock()
+	settings.keyFile = key
+}
+
+func GetUseTLS() bool {
+	settings.securityMutex.RLock()
+	defer settings.securityMutex.RUnlock()
+	return settings.useTLS
+}
+
+func GetCertFile() string {
+	settings.securityMutex.RLock()
+	defer settings.securityMutex.RUnlock()
+	return settings.certFile
+}
+
+func GetKeyFile() string {
+	settings.securityMutex.RLock()
+	defer settings.securityMutex.RUnlock()
+	return settings.keyFile
+}
 
 // AuthHandler is a callback that gets the auth username and password
 // for the given bucket.
@@ -296,6 +353,21 @@ func maybeAddAuth(req *http.Request, ah AuthHandler) {
 	}
 }
 
+func ClientConfigForX509(certFile, keyFile string) (*tls.Config, error) {
+	config := &tls.Config{}
+	caCertPool := x509.NewCertPool()
+	caCert, err := ioutil.ReadFile(certFile)
+	if err != nil {
+		logging.Errorf("Error while reading SSL certificate: %v", err)
+		return nil, err
+	}
+	caCertPool.AppendCertsFromPEM(caCert)
+
+	config.RootCAs = caCertPool
+
+	return config, nil
+}
+
 func queryRestAPI(
 	baseURL *url.URL,
 	path string,
@@ -423,7 +495,7 @@ func (c *Client) runObserveStreamingEndpoint(path string,
 	for {
 		select {
 		case <-cancel:
-			return nil
+			return StreamingEndpointClosed
 		case bs := <-resChannel:
 			if len(bs) == 1 && bs[0] == '\n' {
 				continue
@@ -579,11 +651,38 @@ func (b *Bucket) init(nb *Bucket) {
 	}
 
 	newcps := make([]*connectionPool, len(nb.VBSMJson.ServerList))
+	var cfg *tls.Config = nil
+	var err error
+	if GetUseTLS() == true {
+		cfg, err = ClientConfigForX509(GetCertFile(), GetKeyFile())
+		if err != nil {
+			logging.Errorf("Error fetching TLS config: %v", err)
+			cfg = nil
+		}
+	}
+
 	for i := range newcps {
 		nb.VBSMJson.ServerList[i] = normalizeHost(connHost, nb.VBSMJson.ServerList[i])
+		if GetUseTLS() == true {
+			ps, err := b.pool.client.GetPoolServices("default")
+			if err == nil {
+				server, notSameNode, errorKv := MapKVtoSSL(nb.VBSMJson.ServerList[i], &ps)
+				if errorKv == nil && notSameNode == true {
+					nb.VBSMJson.ServerList[i] = server
+				} else {
+					logging.Errorf("Error fetching the KV SSL port: %s", errorKv)
+					SetUseTLS(false)
+					cfg = nil
+				}
+			} else {
+				logging.Errorf("Error while fetching Pool Services: %s \n", err)
+				SetUseTLS(false)
+				cfg = nil
+			}
+		}
 		newcps[i] = newConnectionPool(
 			nb.VBSMJson.ServerList[i],
-			b.authHandler(), PoolSize, PoolOverflow)
+			b.authHandler(), PoolSize, PoolOverflow, cfg)
 	}
 	b.replaceConnPools(newcps)
 	atomic.StorePointer(&b.vBucketServerMap, unsafe.Pointer(&nb.VBSMJson))

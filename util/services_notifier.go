@@ -11,7 +11,9 @@ import (
 )
 
 const (
-	notifyWaitTimeout = time.Second * 5
+	notifyWaitTimeout = time.Second * 15
+	retryTimeout      = time.Second * 1
+	maxRetryCount     = 10
 )
 
 type NotificationType int
@@ -19,6 +21,7 @@ type NotificationType int
 const (
 	ServiceChangeNotification NotificationType = iota
 	PoolChangeNotification
+	EncryptionLevelChangeNotification
 )
 
 var (
@@ -28,9 +31,9 @@ var (
 )
 
 // Implements nodeServices change notifier system
-var singletonServicesContainer struct {
+var SingletonServicesContainer struct {
 	sync.Mutex
-	notifiers map[string]*serviceNotifierInstance
+	Notifiers map[string]*serviceNotifierInstance
 }
 
 type serviceNotifierInstance struct {
@@ -76,20 +79,40 @@ func (instance *serviceNotifierInstance) getNotifyCallback(t NotificationType) f
 	return fn
 }
 
+func (instance *serviceNotifierInstance) NotifyEncryptionLevelChange(msg interface{}) {
+	instance.getNotifyCallback(EncryptionLevelChangeNotification)(msg)
+}
+
 func (instance *serviceNotifierInstance) RunPoolObserver() {
 	poolCallback := instance.getNotifyCallback(PoolChangeNotification)
-	err := instance.client.RunObservePool(instance.pool, poolCallback, instance.cancelCh)
-	if err != nil {
-		logging.Warnf("servicesChangeNotifier: Connection terminated for pool notifier instance of %s, %s (%v)", instance.DebugStr(), instance.pool, err)
+	var count int
+	for {
+		count++
+		err := instance.client.RunObservePool(instance.pool, poolCallback, instance.cancelCh)
+		if err != nil {
+			logging.Warnf("servicesChangeNotifier: Connection terminated for pool notifier instance of %s, %s (%v). Retrying...", instance.DebugStr(), instance.pool, err)
+			if count > maxRetryCount {
+				break
+			}
+			time.Sleep(retryTimeout)
+		}
 	}
 	instance.cleanup()
 }
 
 func (instance *serviceNotifierInstance) RunServicesObserver() {
 	servicesCallback := instance.getNotifyCallback(ServiceChangeNotification)
-	err := instance.client.RunObserveNodeServices(instance.pool, servicesCallback, instance.cancelCh)
-	if err != nil {
-		logging.Warnf("servicesChangeNotifier: Connection terminated for services notifier instance of %s, %s (%v)", instance.DebugStr(), instance.pool, err)
+	var count int
+	for {
+		count++
+		err := instance.client.RunObserveNodeServices(instance.pool, servicesCallback, instance.cancelCh)
+		if err != nil {
+			logging.Warnf("servicesChangeNotifier: Connection terminated for services notifier instance of %s, %s (%v). Retrying...", instance.DebugStr(), instance.pool, err)
+			if count > maxRetryCount {
+				break
+			}
+			time.Sleep(retryTimeout)
+		}
 	}
 	instance.cleanup()
 }
@@ -103,12 +126,12 @@ func (instance *serviceNotifierInstance) cleanup() {
 
 	close(instance.cancelCh)
 	instance.valid = false
-	singletonServicesContainer.Lock()
+	SingletonServicesContainer.Lock()
 	for _, w := range instance.waiters {
 		close(w)
 	}
-	delete(singletonServicesContainer.notifiers, instance.id)
-	singletonServicesContainer.Unlock()
+	delete(SingletonServicesContainer.Notifiers, instance.id)
+	SingletonServicesContainer.Unlock()
 }
 
 func (instance *serviceNotifierInstance) DebugStr() string {
@@ -136,6 +159,8 @@ func (n Notification) String() string {
 	var t string = "ServiceChangeNotification"
 	if n.Type == PoolChangeNotification {
 		t = "PoolChangeNotification"
+	} else if n.Type == EncryptionLevelChangeNotification {
+		t = "EncryptionLevelChangeNotification"
 	}
 	return t
 }
@@ -148,16 +173,16 @@ type ServicesChangeNotifier struct {
 }
 
 func init() {
-	singletonServicesContainer.notifiers = make(map[string]*serviceNotifierInstance)
+	SingletonServicesContainer.Notifiers = make(map[string]*serviceNotifierInstance)
 }
 
 // Initialize change notifier object for a clusterUrl
 func NewServicesChangeNotifier(clusterUrl, pool string) (*ServicesChangeNotifier, error) {
-	singletonServicesContainer.Lock()
-	defer singletonServicesContainer.Unlock()
+	SingletonServicesContainer.Lock()
+	defer SingletonServicesContainer.Unlock()
 	id := clusterUrl + "-" + pool
 
-	if _, ok := singletonServicesContainer.notifiers[id]; !ok {
+	if _, ok := SingletonServicesContainer.Notifiers[id]; !ok {
 		clusterAuthUrl, err := ClusterAuthUrl(clusterUrl)
 		if err != nil {
 			logging.Errorf("ClusterInfoClient ClusterAuthUrl(): %v\n", err)
@@ -178,12 +203,12 @@ func NewServicesChangeNotifier(clusterUrl, pool string) (*ServicesChangeNotifier
 		}
 		logging.Infof("servicesChangeNotifier: Creating new notifier instance for %s, %s", instance.DebugStr(), pool)
 
-		singletonServicesContainer.notifiers[id] = instance
+		SingletonServicesContainer.Notifiers[id] = instance
 		go instance.RunPoolObserver()
 		go instance.RunServicesObserver()
 	}
 
-	notifier := singletonServicesContainer.notifiers[id]
+	notifier := SingletonServicesContainer.Notifiers[id]
 	notifier.Lock()
 	defer notifier.Unlock()
 	notifier.waiterCount++
@@ -220,6 +245,11 @@ func (sn *ServicesChangeNotifier) GetNotifyCh() chan Notification {
 
 // Consumer can cancel and invalidate notifier object by calling Close()
 func (sn *ServicesChangeNotifier) Close() {
+	defer func() {
+		if err := recover(); err != nil {
+			logging.Errorf("Received panic while closing ServiceChangeNotifier: %v", err)
+		}
+	}()
 	close(sn.cancel)
 	sn.instance.deleteWaiter(sn.id)
 }

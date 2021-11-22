@@ -172,6 +172,7 @@ type Consumer struct {
 	filterVbEvents                map[uint16]struct{} // Access controlled by filterVbEventsRWMutex
 	filterVbEventsRWMutex         *sync.RWMutex
 	filterDataCh                  chan *vbSeqNo
+	gocbMetaHandleMutex           *sync.RWMutex
 	gocbMetaHandle                *gocb.Bucket
 	idleCheckpointInterval        time.Duration
 	index                         int

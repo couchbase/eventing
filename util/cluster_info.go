@@ -243,8 +243,14 @@ func (c *ClusterInfoCache) GetNodesByServiceType(srvc string) (nids []NodeId) {
 }
 
 func (c *ClusterInfoCache) GetAddressOfActiveKVNodes() (addresses []string, err error) {
-	for _, nodeID := range c.GetNodesByServiceType(DataService) {
-		address, err := c.GetServiceAddress(nodeID, DataService)
+	var serviceType string
+	if couchbase.GetUseTLS() {
+		serviceType = DataServiceSSL
+	} else {
+		serviceType = DataService
+	}
+	for _, nodeID := range c.GetNodesByServiceType(serviceType) {
+		address, err := c.GetServiceAddress(nodeID, serviceType)
 		if err != nil {
 			return addresses, err
 		}
@@ -756,10 +762,10 @@ func (c *ClusterInfoClient) watchClusterChanges() {
 	}
 
 	if err := c.cinfo.FetchWithLock(false); err != nil {
-                logging.Errorf("cic.cinfo.FetchWithLock(): %v\n", err)
-                selfRestart()
-                return
-        }
+		logging.Errorf("cic.cinfo.FetchWithLock(): %v\n", err)
+		selfRestart()
+		return
+	}
 
 	clusterAuthURL, err := ClusterAuthUrl(c.clusterURL)
 	if err != nil {

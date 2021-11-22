@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net"
+	"strings"
 	"time"
 
 	"github.com/couchbase/cbauth"
-	"github.com/couchbase/eventing/dcp"
+	"github.com/couchbase/eventing/common"
+	couchbase "github.com/couchbase/eventing/dcp"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
 	"gopkg.in/couchbase/gocb.v1"
@@ -141,6 +143,7 @@ var gocbConnectCluster = func(args ...interface{}) error {
 	logPrefix := "Supervisor::gocbConnectCluster"
 	gocbCluster := args[0].(**gocb.Cluster)
 	restPort := args[1].(string)
+	securitySetting := args[2].(*common.SecuritySetting)
 
 	hostPortAddr := net.JoinHostPort(util.Localhost(), restPort)
 	cic, err := util.FetchClusterInfoClient(hostPortAddr)
@@ -165,11 +168,14 @@ var gocbConnectCluster = func(args ...interface{}) error {
 		}
 		connStr = connStr + kvNode
 	}
-
+	connStr += "?network=default"
 	if util.IsIPv6() {
-		connStr += "?ipv6=allow"
+		connStr += "&ipv6=allow"
 	}
-
+	if securitySetting != nil && securitySetting.EncryptData == true {
+		connStr = strings.Replace(connStr, "couchbase://", "couchbases://", -1)
+		connStr += "&certpath=" + securitySetting.CertFile
+	}
 	cluster, err := gocb.Connect(connStr)
 	if err != nil {
 		logging.Errorf("%s Connect to cluster %rs failed, err: %v",

@@ -1,6 +1,7 @@
 package common
 
 import (
+	"crypto/x509"
 	"errors"
 	"net"
 
@@ -117,6 +118,14 @@ type Credential struct {
 	Username  string `json:"username"`
 	Password  string `json:"password"`
 	BearerKey string `json:"bearer_key"`
+}
+
+type SecuritySetting struct {
+	EncryptData        bool
+	DisableNonSSLPorts bool
+	CertFile           string
+	KeyFile            string
+	RootCAs            *x509.CertPool
 }
 
 var ErrRetryTimeout = errors.New("retry timeout")
@@ -258,6 +267,7 @@ type EventingSuperSup interface {
 	BootstrapAppList() map[string]string
 	BootstrapAppStatus(appName string) bool
 	BootstrapStatus() bool
+	CheckAndSwitchgocbBucket(bucketName, appName string, setting *SecuritySetting) error
 	CheckpointBlobDump(appName string) (interface{}, error)
 	ClearEventStats()
 	CleanupProducer(appName string, skipMetaCleanup bool, updateMetakv bool) error
@@ -281,6 +291,7 @@ type EventingSuperSup interface {
 	GetMetaStoreStats(appName string) map[string]uint64
 	GetBucket(bucketName, appName string) (*couchbase.Bucket, error)
 	GetMetadataHandle(bucketName, appName string) (*gocb.Bucket, error)
+	GetRegisteredPool() string
 	GetSeqsProcessed(appName string) map[int]int64
 	InternalVbDistributionStats(appName string) map[string]string
 	KillAllConsumers()
@@ -291,6 +302,9 @@ type EventingSuperSup interface {
 	RebalanceTaskProgress(appName string) (*RebalanceProgress, error)
 	RemoveProducerToken(appName string)
 	RestPort() string
+	SetSecuritySetting(setting *SecuritySetting) bool
+	GetSecuritySetting() *SecuritySetting
+	GetGocbSubscribedApps(encryptionEnabled bool) map[string]struct{}
 	SignalStopDebugger(appName string) error
 	SpanBlobDump(appName string) (interface{}, error)
 	StopProducer(appName string, skipMetaCleanup bool, updateMetakv bool)
@@ -308,6 +322,7 @@ type EventingServiceMgr interface {
 	ResetFailoverStatus()
 	GetFailoverStatus() (failoverNotifTs int64, changeId string)
 	OptimiseLoadingCIC(bool) error
+	NotifySupervisorWaitCh()
 }
 
 type Config map[string]interface{}

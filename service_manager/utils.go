@@ -39,11 +39,21 @@ func (m *ServiceMgr) checkIfDeployed(appName string) bool {
 	return false
 }
 
+func (m *ServiceMgr) checkAndGetAdminPort() string {
+	m.configMutex.RLock()
+	check := m.clusterEncryptionConfig != nil && m.clusterEncryptionConfig.EncryptData
+	m.configMutex.RUnlock()
+	if check {
+		return m.adminSSLPort
+	}
+	return m.adminHTTPPort
+}
+
 func (m *ServiceMgr) checkIfDeployedAndRunning(appName string) bool {
 	mhVersion := common.CouchbaseVerMap["mad-hatter"]
 	if m.compareEventingVersion(mhVersion) {
 		logPrefix := "ServiceMgr::CheckIfDeployedAndRunning"
-		bootstrapStatus, err := util.GetAggBootstrapAppStatus(net.JoinHostPort(util.Localhost(), m.adminHTTPPort), appName)
+		bootstrapStatus, err := util.GetAggBootstrapAppStatus(net.JoinHostPort(util.Localhost(), m.adminHTTPPort), appName, true)
 		if err != nil {
 			logging.Errorf("%s %s", logPrefix, err)
 			return false
@@ -428,6 +438,18 @@ func (m *ServiceMgr) UpdateBucketGraphFromMetakv(functionName string) error {
 		m.graph.insertEdges(functionName, source, destinations)
 	}
 	return nil
+}
+
+// block until servicemgr's first callback fires
+func (m *ServiceMgr) NotifySupervisorWaitCh() {
+	defer func() {
+		if err := recover(); err != nil {
+			logging.Warnf("While trying to send over the waitch, got error: %v. Skipping sending to channel", err)
+		}
+	}()
+
+	m.supWaitCh <- true
+	close(m.supWaitCh)
 }
 
 func (m *ServiceMgr) validateQueryKey(query url.Values) (info *runtimeInfo) {

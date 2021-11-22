@@ -311,8 +311,8 @@ bool IsExecutionTerminating(v8::Isolate *isolate) {
   return isolate->IsExecutionTerminating();
 }
 
-Utils::Utils(v8::Isolate *isolate, const v8::Local<v8::Context> &context)
-    : isolate_(isolate), curl_handle_(curl_easy_init()) {
+Utils::Utils(v8::Isolate *isolate, const v8::Local<v8::Context> &context, std::string certFile)
+    : isolate_(isolate), curl_handle_(curl_easy_init()), certFile_(certFile) {
   v8::HandleScope handle_scope(isolate_);
 
   context_.Reset(isolate_, context);
@@ -447,7 +447,7 @@ ConnStrInfo Utils::GetConnectionString(const std::string &bucket) const {
     return conn_info;
   }
   conn_info.is_valid = true;
-  conn_info.conn_str = GetConnectionStr(nodes_info.kv_nodes.front(), bucket);
+  conn_info.conn_str = GetConnectionStr(nodes_info.kv_nodes.front(), bucket, certFile_);
   return conn_info;
 }
 
@@ -655,10 +655,15 @@ void Crc64Function(const v8::FunctionCallbackInfo<v8::Value> &args) {
 }
 
 std::string GetConnectionStr(const std::string &end_point,
-                             const std::string &bucket_name) {
+                             const std::string &bucket_name,
+                             const std::string certFile) {
   std::stringstream conn_str;
-  conn_str << "couchbase://" << end_point << '/' << bucket_name
-           << "?select_bucket=true&detailed_errcodes=1";
+  if (certFile != "")
+    conn_str << "couchbases://" << end_point << '/' << bucket_name
+             << "?select_bucket=true&detailed_errcodes=1&certpath=" << certFile;
+  else
+    conn_str << "couchbase://" << end_point << '/' << bucket_name
+             << "?select_bucket=true&detailed_errcodes=1";
   if (IsIPv6()) {
     conn_str << "&ipv6=allow";
   }

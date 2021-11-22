@@ -11,9 +11,9 @@ import (
 	"time"
 
 	"github.com/couchbase/eventing/common"
-	"github.com/couchbase/eventing/dcp"
+	couchbase "github.com/couchbase/eventing/dcp"
 	mcd "github.com/couchbase/eventing/dcp/transport"
-	"github.com/couchbase/eventing/dcp/transport/client"
+	memcached "github.com/couchbase/eventing/dcp/transport/client"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/suptree"
 	"github.com/couchbase/eventing/util"
@@ -67,6 +67,7 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		filterVbEventsRWMutex:           &sync.RWMutex{},
 		filterDataCh:                    make(chan *vbSeqNo, numVbuckets),
 		gracefulShutdownChan:            make(chan struct{}, 1),
+		gocbMetaHandleMutex:             &sync.RWMutex{},
 		handlerFooters:                  hConfig.HandlerFooters,
 		handlerHeaders:                  hConfig.HandlerHeaders,
 		index:                           index,
@@ -191,7 +192,7 @@ func (c *Consumer) Serve() {
 		return
 	}
 
-	c.gocbMetaHandle, err = c.superSup.GetMetadataHandle(c.producer.MetadataBucket(), c.app.AppName)
+	err = c.updategocbMetaHandle()
 	if err != nil {
 		logging.Errorf("%s [%s:%s:%d] Exiting due to err: %v", logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
 		return
@@ -541,4 +542,12 @@ func (c *Consumer) getKvNodes() []string {
 	copy(kvNodes, c.kvNodes)
 
 	return kvNodes
+}
+
+func (c *Consumer) updategocbMetaHandle() error {
+	var err error
+	c.gocbMetaHandleMutex.Lock()
+	defer c.gocbMetaHandleMutex.Unlock()
+	c.gocbMetaHandle, err = c.superSup.GetMetadataHandle(c.producer.MetadataBucket(), c.app.AppName)
+	return err
 }

@@ -9,8 +9,9 @@ import (
 	"time"
 
 	"github.com/couchbase/cbauth"
-	"github.com/couchbase/eventing/dcp"
-	"github.com/couchbase/eventing/dcp/transport/client"
+	"github.com/couchbase/eventing/common"
+	couchbase "github.com/couchbase/eventing/dcp"
+	memcached "github.com/couchbase/eventing/dcp/transport/client"
 	"github.com/couchbase/eventing/logging"
 	"gopkg.in/couchbase/gocb.v1"
 )
@@ -131,7 +132,7 @@ func ConnectBucket(cluster, pooln, bucketn string) (*couchbase.Bucket, error) {
 	return bucket, err
 }
 
-func GetConnectionStr(kvVBMap map[uint16]string) string {
+func GetConnectionStr(kvVBMap map[uint16]string, s common.EventingSuperSup) string {
 	var connBuffer bytes.Buffer
 	connBuffer.WriteString("couchbase://")
 	visited := make(map[string]struct{})
@@ -145,10 +146,17 @@ func GetConnectionStr(kvVBMap map[uint16]string) string {
 	if len(kvVBMap) > 0 {
 		connBuffer.Truncate(connBuffer.Len() - 1)
 	}
+	connBuffer.WriteString("?network=default")
 	if IsIPv6() {
-		connBuffer.WriteString("?ipv6=allow")
+		connBuffer.WriteString("&ipv6=allow")
 	}
-	return connBuffer.String()
+	connStr := connBuffer.String()
+	if couchbase.GetUseTLS() == true {
+		securityConfig := s.GetSecuritySetting()
+		connStr = strings.Replace(connStr, "couchbase://", "couchbases://", -1)
+		connStr += "&certpath=" + securityConfig.CertFile
+	}
+	return connStr
 }
 
 func GetCluster(caller, connstr string) (*gocb.Cluster, error) {
@@ -161,6 +169,7 @@ func GetCluster(caller, connstr string) (*gocb.Cluster, error) {
 	authenticator := &DynamicAuthenticator{Caller: caller}
 	err = conn.Authenticate(authenticator)
 	if err != nil {
+		conn.Close()
 		logging.Errorf("Error setting dynamic auth on connection %rs: %v", connstr, err)
 		return nil, err
 	}
@@ -168,7 +177,7 @@ func GetCluster(caller, connstr string) (*gocb.Cluster, error) {
 	return conn, nil
 }
 
-func IsSyncGatewayEnabled(caller, bucketName, restPort string) (enabled bool, err error) {
+func IsSyncGatewayEnabled(caller, bucketName, restPort string, s common.EventingSuperSup) (enabled bool, err error) {
 	logPrefix := "util::IsSyncGatewayEnabled"
 
 	addr := net.JoinHostPort(Localhost(), restPort)
@@ -186,7 +195,7 @@ func IsSyncGatewayEnabled(caller, bucketName, restPort string) (enabled bool, er
 		return
 	}
 
-	connStr := GetConnectionStr(kvVbMap)
+	connStr := GetConnectionStr(kvVbMap, s)
 
 	cluster, err := GetCluster(caller, connStr)
 	if err != nil {

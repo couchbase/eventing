@@ -2,6 +2,7 @@
 package memcached
 
 import (
+	"crypto/tls"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -45,6 +46,15 @@ func SetDcpMemcachedTimeout(val uint32) {
 // Connect to a memcached server.
 func Connect(prot, dest string) (rv *Client, err error) {
 	conn, err := dialFun(prot, dest)
+	if err != nil {
+		return nil, err
+	}
+	return Wrap(conn)
+}
+
+// Connect to a memcached server using TLS.
+func ConnectTLS(prot, dest string, config *tls.Config) (rv *Client, err error) {
+	conn, err := tls.Dial(prot, dest, config)
 	if err != nil {
 		return nil, err
 	}

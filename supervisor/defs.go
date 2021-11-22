@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/couchbase/eventing/common"
-	"github.com/couchbase/eventing/dcp"
+	couchbase "github.com/couchbase/eventing/dcp"
 	"github.com/couchbase/eventing/suptree"
 	"gopkg.in/couchbase/gocb.v1"
 )
@@ -86,6 +86,15 @@ type gocbPool struct {
 	bucketHandle map[string]*gocbBucketInstance
 }
 
+type gocbGlobalConfig struct {
+	sync.RWMutex
+	plaingocbPool     *gocbPool
+	encryptedgocbPool *gocbPool
+	appEncryptionMap  map[string]bool
+	nsServerPort      string
+	retrycount        int64
+}
+
 // SuperSupervisor is responsible for managing/supervising all producer instances
 type SuperSupervisor struct {
 	auth        string
@@ -102,6 +111,8 @@ type SuperSupervisor struct {
 	supCmdCh    chan supCmdMsg
 	uuid        string
 	diagDir     string
+	hostport    string
+	pool        string
 
 	bucketsRWMutex                     *sync.RWMutex
 	servicesNotifierRetryTm            uint
@@ -138,7 +149,10 @@ type SuperSupervisor struct {
 	runningProducersRWMutex    *sync.RWMutex
 	vbucketsToOwn              []uint16
 
-	serviceMgr     common.EventingServiceMgr
-	gocbHandlePool *gocbPool
+	serviceMgr             common.EventingServiceMgr
+	gocbGlobalConfigHandle *gocbGlobalConfig
 	sync.RWMutex
+
+	securitySetting *common.SecuritySetting // access controlled by securityMutex
+	securityMutex   *sync.RWMutex
 }

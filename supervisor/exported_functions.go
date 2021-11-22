@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/couchbase/eventing/common"
-	"github.com/couchbase/eventing/dcp"
+	couchbase "github.com/couchbase/eventing/dcp"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/timers"
 	"gopkg.in/couchbase/gocb.v1"
@@ -144,6 +144,11 @@ func (s *SuperSupervisor) GetSeqsProcessed(appName string) map[int]int64 {
 		return p.GetSeqsProcessed()
 	}
 	return nil
+}
+
+// Gets the cluster url and pool supervisor is observing ns_server changes on.
+func (s *SuperSupervisor) GetRegisteredPool() string {
+	return s.hostport + "-" + s.pool
 }
 
 // RestPort returns ns_server port(typically 8091/9000)
@@ -620,10 +625,52 @@ func (s *SuperSupervisor) GetBucket(bucketName, appName string) (*couchbase.Buck
 		}
 		return bucketWatch.b, nil
 	}
-
 	return nil, fmt.Errorf("Function: %s requested bucket: %s is not in watch list", appName, bucketName)
 }
 
+func (s *SuperSupervisor) GetGocbHandle(bucketName, appName string) (*gocb.Bucket, error) {
+	return s.gocbGlobalConfigHandle.getBucket(bucketName, appName)
+}
+
+func (s *SuperSupervisor) CheckAndSwitchgocbBucket(bucketName, appName string, setting *common.SecuritySetting) error {
+	return s.gocbGlobalConfigHandle.maybeRegistergocbBucket(bucketName, appName, setting)
+}
+
 func (s *SuperSupervisor) GetMetadataHandle(bucketName, appName string) (*gocb.Bucket, error) {
-	return s.gocbHandlePool.getBucket(bucketName, appName)
+	return s.gocbGlobalConfigHandle.getBucket(bucketName, appName)
+}
+
+// SetSecuritySetting Sets the new security settings and returns whether reload is required or not
+func (s *SuperSupervisor) SetSecuritySetting(setting *common.SecuritySetting) bool {
+	s.securityMutex.Lock()
+	defer s.securityMutex.Unlock()
+	if s.securitySetting != nil {
+		// TODO: 7.0.1 Change return value based on EncryptData and DisableNonSSLPorts since both can change
+		if s.securitySetting.EncryptData == false && setting.EncryptData == false {
+			s.securitySetting = setting
+			return false
+		}
+		s.securitySetting = setting
+		return true
+	}
+	s.securitySetting = setting
+	return false
+}
+
+func (s *SuperSupervisor) GetSecuritySetting() *common.SecuritySetting {
+	s.securityMutex.RLock()
+	defer s.securityMutex.RUnlock()
+	return s.securitySetting
+}
+
+func (s *SuperSupervisor) GetGocbSubscribedApps(encryptionEnabled bool) map[string]struct{} {
+	apps := make(map[string]struct{})
+	s.gocbGlobalConfigHandle.RLock()
+	defer s.gocbGlobalConfigHandle.RUnlock()
+	for appName, appencrypted := range s.gocbGlobalConfigHandle.appEncryptionMap {
+		if appencrypted == encryptionEnabled {
+			apps[appName] = struct{}{}
+		}
+	}
+	return apps
 }

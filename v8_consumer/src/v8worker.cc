@@ -154,7 +154,7 @@ void V8Worker::InitializeIsolateData(const server_settings_t *server_settings,
 
   auto context = context_.Get(isolate_);
   data_.v8worker = this;
-  data_.utils = new Utils(isolate_, context);
+  data_.utils = new Utils(isolate_, context, certFile_);
   data_.js_exception = new JsException(isolate_);
   auto key = GetLocalKey();
   data_.comm = new Communicator(server_settings->host_addr,
@@ -221,6 +221,7 @@ V8Worker::V8Worker(
       platform_(platform), function_name_(function_name),
       function_id_(function_id), user_prefix_(user_prefix),
       ns_server_port_(ns_server_port),
+      certFile_(server_settings->certFile),
       exception_type_names_(
           {"KVError", "N1QLError", "EventingError", "CurlError", "TypeError"}),
       handler_headers_(h_config->handler_headers),

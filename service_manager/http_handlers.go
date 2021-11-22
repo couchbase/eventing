@@ -327,8 +327,21 @@ func getGlobalAppLog(m *ServiceMgr, appName string, sz int64, creds http.Header)
 
 	var lines []string
 	for _, node := range nodes {
-		url := "http://" + node + "/getAppLog?name=" + appName + "&aggregate=false" + "&size=" + strconv.Itoa(int(psz))
-		client := http.Client{Timeout: time.Second * 15}
+		var url string
+		var client *util.Client
+
+		m.configMutex.RLock()
+		check := m.clusterEncryptionConfig != nil && m.clusterEncryptionConfig.EncryptData
+		m.configMutex.RUnlock()
+
+		if check {
+			url = "https://" + node + "/getAppLog?name=" + appName + "&aggregate=false" + "&size=" + strconv.Itoa(int(psz))
+			client = util.NewTLSClient(time.Second*15, m.superSup.GetSecuritySetting())
+		} else {
+			url = "http://" + node + "/getAppLog?name=" + appName + "&aggregate=false" + "&size=" + strconv.Itoa(int(psz))
+			client = util.NewClient(time.Second * 15)
+		}
+
 		req, err := http.NewRequest(http.MethodGet, url, nil)
 		if err != nil {
 			logging.Errorf("Got failure creating http request to %v: %v", node, err)
@@ -377,8 +390,20 @@ func getGlobalInsights(m *ServiceMgr, apps []string, creds http.Header) *common.
 		return insights
 	}
 	for _, node := range nodes {
-		url := "http://" + node + "/getInsight?aggregate=false"
-		client := http.Client{Timeout: time.Second * 15}
+		var url string
+		var client *util.Client
+
+		m.configMutex.RLock()
+		check := m.clusterEncryptionConfig != nil && m.clusterEncryptionConfig.EncryptData
+		m.configMutex.RUnlock()
+
+		if check {
+			url = "https://" + node + "/getInsight?aggregate=false"
+			client = util.NewTLSClient(time.Second*15, m.superSup.GetSecuritySetting())
+		} else {
+			url = "http://" + node + "/getInsight?aggregate=false"
+			client = util.NewClient(time.Second * 15)
+		}
 		req, err := http.NewRequest(http.MethodGet, url, nil)
 		if err != nil {
 			logging.Errorf("Got failure creating http request to %v: %v", node, err)
@@ -1001,7 +1026,7 @@ func (m *ServiceMgr) getAggBootstrapStatus(w http.ResponseWriter, r *http.Reques
 
 // Report aggregated bootstrap status of an app from all Eventing nodes in the cluster
 func (m *ServiceMgr) getAggBootstrapAppStatus(w http.ResponseWriter, r *http.Request) {
-	logPrefix := "SeriveMgr::getAggBootstrapAppStatus"
+	logPrefix := "ServiceMgr::getAggBootstrapAppStatus"
 	if !m.validateAuth(w, r, EventingPermissionManage) {
 		return
 	}
@@ -1249,7 +1274,7 @@ func (m *ServiceMgr) setSettings(appName string, data []byte, force bool) (info 
 	if procStatExists || depStatExists {
 		if m.compareEventingVersion(mhVersion) {
 			if settings["deployment_status"].(bool) {
-				status, err := util.GetAggBootstrapAppStatus(net.JoinHostPort(util.Localhost(), m.adminHTTPPort), appName)
+				status, err := util.GetAggBootstrapAppStatus(net.JoinHostPort(util.Localhost(), m.adminHTTPPort), appName, true)
 				if err != nil {
 					logging.Errorf("%s %s", logPrefix, err)
 					info.Code = m.statusCodes.errStatusesNotFound.Code
@@ -1961,7 +1986,7 @@ func (m *ServiceMgr) savePrimaryStore(app *application) (info *runtimeInfo) {
 	}
 
 	if app.SrcMutationEnabled {
-		if enabled, err := util.IsSyncGatewayEnabled(logPrefix, app.DeploymentConfig.SourceBucket, m.restPort); err == nil && enabled {
+		if enabled, err := util.IsSyncGatewayEnabled(logPrefix, app.DeploymentConfig.SourceBucket, m.restPort, m.superSup); err == nil && enabled {
 			info.Code = m.statusCodes.errSyncGatewayEnabled.Code
 			info.Info = fmt.Sprintf("SyncGateway is enabled on: %s, deployement of source bucket mutating handler will cause Intra Bucket Recursion", app.DeploymentConfig.SourceBucket)
 			return
@@ -2451,6 +2476,21 @@ func (m *ServiceMgr) configHandler(w http.ResponseWriter, r *http.Request) {
 		if info := m.validateConfig(c); info.Code != m.statusCodes.ok.Code {
 			m.sendErrorInfo(w, info)
 			return
+		}
+
+		if value, exists := c["enable_debugger"]; exists {
+			securitySetting := m.superSup.GetSecuritySetting()
+			DisableNonSSLPorts := false
+			if securitySetting != nil {
+				DisableNonSSLPorts = securitySetting.DisableNonSSLPorts
+			}
+			if value == true && DisableNonSSLPorts == true {
+				info.Code = m.statusCodes.errDebuggerDisabled.Code
+				info.Info = "Debugger cannot be enabled as encryption level is strict"
+				logging.Errorf("%s %s", logPrefix, info.Info)
+				m.sendErrorInfo(w, info)
+				return
+			}
 		}
 
 		if info = m.saveConfig(c); info.Code != m.statusCodes.ok.Code {
@@ -3259,6 +3299,15 @@ func (m *ServiceMgr) statusHandlerImpl() (response appStatusResponse, info *runt
 	appsNames := m.getTempStoreAppNames()
 
 	response.NumEventingNodes = numEventingNodes
+
+	// Get a list of apps that need to be redeployed on encryption level change
+	encryptionEnabled := false
+	var alreadyRedeployedApps map[string]struct{}
+	if securitySetting := m.superSup.GetSecuritySetting(); securitySetting != nil {
+		encryptionEnabled = securitySetting.EncryptData
+	}
+	alreadyRedeployedApps = m.superSup.GetGocbSubscribedApps(encryptionEnabled)
+
 	for _, fnName := range appsNames {
 		deploymentStatus, processingStatus, err := m.getStatuses(fnName)
 		if err != nil {
@@ -3270,6 +3319,7 @@ func (m *ServiceMgr) statusHandlerImpl() (response appStatusResponse, info *runt
 			Name:             fnName,
 			DeploymentStatus: deploymentStatus,
 			ProcessingStatus: processingStatus,
+			RedeployRequired: false,
 		}
 		if num, exists := appDeployedNodesCounter[fnName]; exists {
 			status.NumDeployedNodes = num
@@ -3280,7 +3330,7 @@ func (m *ServiceMgr) statusHandlerImpl() (response appStatusResponse, info *runt
 
 		mhVersion := common.CouchbaseVerMap["mad-hatter"]
 		if m.compareEventingVersion(mhVersion) {
-			bootstrapStatus, err := util.GetAggBootstrapAppStatus(net.JoinHostPort(util.Localhost(), m.adminHTTPPort), status.Name)
+			bootstrapStatus, err := util.GetAggBootstrapAppStatus(net.JoinHostPort(util.Localhost(), m.adminHTTPPort), status.Name, true)
 			if err != nil {
 				info.Code = m.statusCodes.errInvalidConfig.Code
 				return
@@ -3288,6 +3338,10 @@ func (m *ServiceMgr) statusHandlerImpl() (response appStatusResponse, info *runt
 			status.CompositeStatus = m.determineStatus(status, appPausingNodesCounter, numEventingNodes, bootstrapStatus)
 		} else {
 			status.CompositeStatus = m.determineStatus(status, appPausingNodesCounter, numEventingNodes, false)
+		}
+
+		if _, found := alreadyRedeployedApps[fnName]; !found && status.CompositeStatus == "deployed" {
+			status.RedeployRequired = true
 		}
 		response.Apps = append(response.Apps, status)
 	}
