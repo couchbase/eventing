@@ -13,7 +13,7 @@ angular
       name: 'Eventing',
       state: 'app.admin.eventing.summary',
       plugIn: 'workbenchTab',
-      ngShow: "rbac.cluster.bucket['.'].settings.read && rbac.cluster.collection['.:.:.'].eventing.function.manage",
+      ngShow: "rbac.cluster.collection['.:.:.'].eventing.function.manage",
       index: 4,
       responsiveHide: true
     });

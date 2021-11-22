@@ -228,14 +228,17 @@ angular.module('eventing', [
               fetchDeployedStats(statsConfig);
             // Only does the fetch if we have one or more items deploying or deployed in the UI
             self.pollingCount += 1;
+
             // Fetch DeployesdStats once every scrapeInterval/2 seconds
-            ApplicationService.server.getScrapeInterval().then(function(
-              value) {
-              if (self.pollingCount >= ((value * 1000) / (self
-                  .statusPollMillis * 2))) {
-                self.pollingCount = 0;
-              }
-            });
+            if ($scope.rbac.cluster.settings.metrics.read) {
+              ApplicationService.server.getScrapeInterval().then(function(
+                value) {
+                if (self.pollingCount >= ((value * 1000) / (self
+                                                            .statusPollMillis * 2))) {
+                  self.pollingCount = 0;
+                }
+              });
+            }
 
           }).catch(function(errResponse) {
             self.errorCode = errResponse && errResponse.status || 500;
