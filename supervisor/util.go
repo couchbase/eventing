@@ -200,6 +200,7 @@ func (s *SuperSupervisor) getFuncDetails(appName string) (*common.DepCfg, *commo
 	owner := &common.Owner{}
 
 	if ownerEncrypted != nil {
+		owner.UUID =   string(ownerEncrypted.Uuid())
 		owner.User = string(ownerEncrypted.User())
 		owner.Domain = string(ownerEncrypted.Domain())
 	}

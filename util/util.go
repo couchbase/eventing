@@ -1979,16 +1979,20 @@ func EncodeAppPayload(app *cm.Application) []byte {
 	cfg.FunctionScopeAddScopeName(builder, scopeName)
 	funcScope := cfg.FunctionScopeEnd(builder)
 
-	user, domain := "", ""
+	user, domain, uuid := "", "", ""
 	if app.Owner != nil {
+		uuid = app.Owner.UUID
 		user, domain = app.Owner.User, app.Owner.Domain
 	}
 
 	flatbufUser := builder.CreateString(user)
 	flatbufDomain := builder.CreateString(domain)
+	flatbufUuid := builder.CreateString(uuid)
+
 	cfg.OwnerStart(builder)
 	cfg.OwnerAddUser(builder, flatbufUser)
 	cfg.OwnerAddDomain(builder, flatbufDomain)
+	cfg.OwnerAddUuid(builder, flatbufUuid)
 	owner := cfg.OwnerEnd(builder)
 
 	lifecycleState := builder.CreateString(app.Metainfo["lifecycle_state"].(string))
@@ -2117,6 +2121,7 @@ func ParseFunctionPayload(data []byte, fnName string) cm.Application {
 	owner := &common.Owner{}
 
 	if ownerEncrypted != nil {
+		owner.UUID = string(ownerEncrypted.Uuid())
 		owner.User = string(ownerEncrypted.User())
 		owner.Domain = string(ownerEncrypted.Domain())
 	}
