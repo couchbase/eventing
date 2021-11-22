@@ -1695,19 +1695,21 @@ func (m *ServiceMgr) parseFunctionPayload(data []byte, fnName string) applicatio
 	app.DeploymentConfig = *depcfg
 
 	f := new(cfg.FunctionScope)
-	fs := config.FunctionScope(f)
+	fS := config.FunctionScope(f)
+	funcScope := common.FunctionScope{}
 
-	funcScope := common.FunctionScope{
-		BucketName: string(fs.BucketName()),
-		ScopeName:  string(fs.ScopeName()),
+	if fS != nil {
+		funcScope.BucketName = string(fS.BucketName())
+		funcScope.ScopeName = string(fS.ScopeName())
 	}
 
 	o := new(cfg.Owner)
 	ownerEncrypted := config.Owner(o)
+	owner := &common.Owner{}
 
-	owner := &common.Owner{
-		User:   string(ownerEncrypted.User()),
-		Domain: string(ownerEncrypted.Domain()),
+	if ownerEncrypted != nil {
+		owner.User = string(ownerEncrypted.User())
+		owner.Domain = string(ownerEncrypted.Domain())
 	}
 
 	app.FunctionScope = funcScope

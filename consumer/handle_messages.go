@@ -646,7 +646,7 @@ func (c *Consumer) sendMessageLoop() {
 						}
 
 						c.stoppingConsumer = true
-						c.producer.KillAndRespawnEventingConsumer(c)
+						c.killAndRespawn()
 					}
 
 					// Reset the sendMessage buffer and message counter
@@ -741,7 +741,7 @@ func (c *Consumer) sendMessage(m *msgToTransmit) error {
 					return err
 				}
 
-				c.producer.KillAndRespawnEventingConsumer(c)
+				c.killAndRespawn()
 				return err
 			}
 		} else if c.debugConn != nil {

@@ -171,9 +171,9 @@ var gocbConnectCluster = func(args ...interface{}) error {
 		}
 		connStr = connStr + kvNode
 	}
-
+	connStr += "?network=default"
 	if util.IsIPv6() {
-		connStr += "?ipv6=allow"
+		connStr += "&ipv6=allow"
 	}
 
 	authenticator := &util.DynamicAuthenticator{Caller: logPrefix}

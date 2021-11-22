@@ -47,10 +47,11 @@ func (p *Producer) parseDepcfg() error {
 
 	f := new(cfg.FunctionScope)
 	fs := config.FunctionScope(f)
+	funcScope := &common.FunctionScope{}
 
-	funcScope := &common.FunctionScope{
-		BucketName: string(fs.BucketName()),
-		ScopeName:  string(fs.ScopeName()),
+	if fs != nil {
+		funcScope.BucketName = string(fs.BucketName())
+		funcScope.ScopeName = string(fs.ScopeName())
 	}
 
 	if funcScope.BucketName == "" && funcScope.ScopeName == "" {
@@ -62,11 +63,13 @@ func (p *Producer) parseDepcfg() error {
 
 	o := new(cfg.Owner)
 	ownerEncrypted := config.Owner(o)
+	owner := &common.Owner{}
 
-	p.owner = &common.Owner{
-		User:   string(ownerEncrypted.User()),
-		Domain: string(ownerEncrypted.Domain()),
+	if ownerEncrypted != nil {
+		owner.User = string(ownerEncrypted.User())
+		owner.Domain = string(ownerEncrypted.Domain())
 	}
+	p.owner = owner
 
 	d := new(cfg.DepCfg)
 	depcfg := config.DepCfg(d)
