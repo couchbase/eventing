@@ -4,7 +4,8 @@
   </div>
   <div class="panel-content">
     <div>
-      <input type="checkbox" id="debugger" ng-model="ctrl.enableDebugger" ng-disabled="ctrl.encryptionLevel == 'strict'"
+      <input type="checkbox" id="debugger" ng-model="ctrl.enableDebugger"
+        ng-disabled="ctrl.encryptionLevel == 'strict'"
         ng-click="$event.stopPropagation();">
       <label for="debugger" class="margin-right-0">Enable debugger</label>
       <span class="fa-stack icon-info"
@@ -16,7 +17,8 @@
         <span class="icon fa-info fa-stack-1x"></span>
       </span>
     </div>
-    <div class="error error-form text-smaller" ng-show="ctrl.encryptionLevel == 'strict'">
+    <div class="error error-form text-smaller"
+      ng-show="ctrl.encryptionLevel == 'strict'">
       Eventing debugger is disabled as cluster encryption level is strict.
     </div>
   </div>

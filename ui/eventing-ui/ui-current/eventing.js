@@ -234,7 +234,7 @@ angular.module('eventing', [
               ApplicationService.server.getScrapeInterval().then(function(
                 value) {
                 if (self.pollingCount >= ((value * 1000) / (self
-                                                            .statusPollMillis * 2))) {
+                    .statusPollMillis * 2))) {
                   self.pollingCount = 0;
                 }
               });
@@ -713,7 +713,7 @@ angular.module('eventing', [
           .catch(function(errResponse) {
             let info = errResponse.data.runtime_info;
             ApplicationService.server.showErrorAlert(
-                `Undeploy failed due to ` + JSON.stringify(info));
+              `Undeploy failed due to ` + JSON.stringify(info));
             console.error(errResponse);
           });
       }
@@ -986,16 +986,18 @@ angular.module('eventing', [
           if ($stateParams.appName) {
             let app = ApplicationService.local.getAppByName($stateParams
               .appName);
-            $rootScope.debugDisable = !(app.settings.deployment_status && app
+            $rootScope.debugDisable = !(app.settings
+              .deployment_status && app
               .settings.processing_status) || !self.enableDebugger;
             closeDialog('ok');
           } else {
             closeDialog('ok');
           }
-       }).catch(function(errResponse) {
-         ApplicationService.server.showErrorAlert("Error in storing config changes: " +
-             JSON.stringify(errResponse.data));
-         closeDialog('error');
+        }).catch(function(errResponse) {
+          ApplicationService.server.showErrorAlert(
+            "Error in storing config changes: " +
+            JSON.stringify(errResponse.data));
+          closeDialog('error');
         });
       };
     }
@@ -1107,7 +1109,7 @@ angular.module('eventing', [
 
       self.populateBuckets = function(access, index) {
         var list = snapshot.data.read_write_permission;
-        if(access === "r") {
+        if (access === "r") {
           list = snapshot.data.read_permission;
         }
         self.buckets[index] = self.getLatestBuckets(list);
@@ -1116,7 +1118,7 @@ angular.module('eventing', [
 
       self.populateScope = function(bucketName, index) {
         var list = snapshot.data.read_write_permission;
-        if($scope.bindings[index].access === "r") {
+        if ($scope.bindings[index].access === "r") {
           list = snapshot.data.read_permission;
         }
         var scopes = self.getScopes(bucketName, list);
@@ -1127,7 +1129,7 @@ angular.module('eventing', [
 
       self.populateCollections = function(bucketName, scopeName, index) {
         var list = snapshot.data.read_write_permission;
-        if($scope.bindings[index].access === "r") {
+        if ($scope.bindings[index].access === "r") {
           list = snapshot.data.read_permission;
         }
         var collections = self.getCollection(bucketName, scopeName, list);
@@ -1158,7 +1160,7 @@ angular.module('eventing', [
           allow_cookies: true,
           access: 'r'
         });
-        var index = $scope.bindings.length-1;
+        var index = $scope.bindings.length - 1;
         self.buckets.push([]);
         self.scopes.push([]);
         self.collections.push([]);
@@ -1225,7 +1227,8 @@ angular.module('eventing', [
         }
 
         // Is the bucketname present in the binding valid?
-        if (!self.isBucketValid($scope.bindings[binding].name, collectionList)) {
+        if (!self.isBucketValid($scope.bindings[binding].name,
+          collectionList)) {
           $scope.bindings[binding].name = "";
           $scope.bindings[binding].scope = "";
           $scope.bindings[binding].collection = "";
@@ -1329,10 +1332,12 @@ angular.module('eventing', [
       // TODO : The following two lines may not be needed as we don't allow the user to edit
       //        the source and metadata buckets in the settings page.
 
-      if (appModel.function_scope.bucket == undefined || appModel.function_scope.bucket == "") {
+      if (appModel.function_scope.bucket == undefined || appModel
+        .function_scope.bucket == "") {
         appModel.function_scope.bucket = "*";
       }
-      if (appModel.function_scope.scope == undefined || appModel.function_scope.scope == "") {
+      if (appModel.function_scope.scope == undefined || appModel
+        .function_scope.scope == "") {
         appModel.function_scope.scope = "*";
       }
 
@@ -1393,7 +1398,7 @@ angular.module('eventing', [
 
       self.populateBuckets = function(access, index) {
         var list = snapshot.data.read_write_permission;
-        if(access === "r") {
+        if (access === "r") {
           list = snapshot.data.read_permission;
         }
         self.buckets[index] = self.getLatestBuckets(list);
@@ -1402,11 +1407,11 @@ angular.module('eventing', [
 
       self.populateScope = function(bucketName, index) {
         var list = snapshot.data.read_write_permission;
-        if(self.bindings[index].access === "r") {
+        if (self.bindings[index].access === "r") {
           list = snapshot.data.read_permission;
         }
         var scopes = self.getScopes(bucketName, list);
-	console.log(scopes, index);
+        console.log(scopes, index);
         self.scopes[index] = scopes;
         self.populateCollections(bucketName, self.bindings[index].scope,
           index);
@@ -1414,7 +1419,7 @@ angular.module('eventing', [
 
       self.populateCollections = function(bucketName, scopeName, index) {
         var list = snapshot.data.read_write_permission;
-        if(self.bindings[index].access === "r") {
+        if (self.bindings[index].access === "r") {
           list = snapshot.data.read_permission;
         }
         var collections = self.getCollection(bucketName, scopeName, list);
@@ -1447,7 +1452,7 @@ angular.module('eventing', [
           allow_cookies: true,
           access: 'r'
         });
-        var index = self.bindings.length-1;
+        var index = self.bindings.length - 1;
         self.buckets.push([]);
         self.scopes.push([]);
         self.collections.push([]);

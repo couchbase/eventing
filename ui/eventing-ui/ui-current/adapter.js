@@ -38,7 +38,7 @@ Adapter.prototype.convertConfigToBindings = function(config) {
     bindings.push(adapter.createCurlBinding(curlConfig));
   });
   (config.constants ? config.constants : []).forEach(function(
-  constantConfig) {
+    constantConfig) {
     bindings.push(adapter.createConstantBinding(constantConfig));
   });
   return bindings;

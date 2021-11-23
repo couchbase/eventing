@@ -1,325 +1,324 @@
 {
-  "version" : 2,
-  "module" : "eventing",
-  "events" : [
-   {
-     "id" : 32768,
-     "name" : "Create Function",
-     "description" : "Eventing function definition was created or updated",
-     "sync" : false,
-     "enabled" : true,
-     "filtering_permitted" : true,
-     "mandatory_fields" : {
-       "timestamp" : "",
-       "user" : {"domain" : "", "user" : ""},
-       "local" : {"ip" : "", "port" : ""},
-       "remote" : {"ip" : "", "port" : ""}
+  "version": 2,
+  "module": "eventing",
+  "events": [{
+      "id": 32768,
+      "name": "Create Function",
+      "description": "Eventing function definition was created or updated",
+      "sync": false,
+      "enabled": true,
+      "filtering_permitted": true,
+      "mandatory_fields": {
+        "timestamp": "",
+        "user": { "domain": "", "user": "" },
+        "local": { "ip": "", "port": "" },
+        "remote": { "ip": "", "port": "" }
       },
-      "optional_fields" : {"context" : ""}
-   },
-   {
-     "id" : 32769,
-     "name" : "Delete Function",
-     "description" : "Eventing function definition was deleted",
-     "sync" : false,
-     "enabled" : true,
-     "filtering_permitted" : true,
-     "mandatory_fields" : {
-       "timestamp" : "",
-       "user" : {"domain" : "", "user" : ""},
-       "local" : {"ip" : "", "port" : ""},
-       "remote" : {"ip" : "", "port" : ""}
+      "optional_fields": { "context": "" }
+    },
+    {
+      "id": 32769,
+      "name": "Delete Function",
+      "description": "Eventing function definition was deleted",
+      "sync": false,
+      "enabled": true,
+      "filtering_permitted": true,
+      "mandatory_fields": {
+        "timestamp": "",
+        "user": { "domain": "", "user": "" },
+        "local": { "ip": "", "port": "" },
+        "remote": { "ip": "", "port": "" }
       },
-      "optional_fields" : {"context" : ""}
-   },
-   {
-     "id" : 32770,
-     "name" : "Fetch Functions",
-     "description" : "Eventing function definition was read",
-     "sync" : false,
-     "enabled" : false,
-     "filtering_permitted" : true,
-     "mandatory_fields" : {
-       "timestamp" : "",
-       "user" : {"domain" : "", "user" : ""},
-       "local" : {"ip" : "", "port" : ""},
-       "remote" : {"ip" : "", "port" : ""}
+      "optional_fields": { "context": "" }
+    },
+    {
+      "id": 32770,
+      "name": "Fetch Functions",
+      "description": "Eventing function definition was read",
+      "sync": false,
+      "enabled": false,
+      "filtering_permitted": true,
+      "mandatory_fields": {
+        "timestamp": "",
+        "user": { "domain": "", "user": "" },
+        "local": { "ip": "", "port": "" },
+        "remote": { "ip": "", "port": "" }
       },
-      "optional_fields" : {"context" : ""}
-   },
-   {
-     "id" : 32771,
-     "name" : "List Deployed",
-     "description" : "Eventing deployed functions list was read",
-     "sync" : false,
-     "enabled" : false,
-     "filtering_permitted" : true,
-     "mandatory_fields" : {
-       "timestamp" : "",
-       "user" : {"domain" : "", "user" : ""},
-       "local" : {"ip" : "", "port" : ""},
-       "remote" : {"ip" : "", "port" : ""}
+      "optional_fields": { "context": "" }
+    },
+    {
+      "id": 32771,
+      "name": "List Deployed",
+      "description": "Eventing deployed functions list was read",
+      "sync": false,
+      "enabled": false,
+      "filtering_permitted": true,
+      "mandatory_fields": {
+        "timestamp": "",
+        "user": { "domain": "", "user": "" },
+        "local": { "ip": "", "port": "" },
+        "remote": { "ip": "", "port": "" }
       },
-      "optional_fields" : {"context" : ""}
-   },
-   {
-     "id" : 32772,
-     "name" : "Fetch Drafts",
-     "description" : "Eventing function draft definitions were read",
-     "sync" : false,
-     "enabled" : false,
-     "filtering_permitted" : true,
-     "mandatory_fields" : {
-       "timestamp" : "",
-       "user" : {"domain" : "", "user" : ""},
-       "local" : {"ip" : "", "port" : ""},
-       "remote" : {"ip" : "", "port" : ""}
+      "optional_fields": { "context": "" }
+    },
+    {
+      "id": 32772,
+      "name": "Fetch Drafts",
+      "description": "Eventing function draft definitions were read",
+      "sync": false,
+      "enabled": false,
+      "filtering_permitted": true,
+      "mandatory_fields": {
+        "timestamp": "",
+        "user": { "domain": "", "user": "" },
+        "local": { "ip": "", "port": "" },
+        "remote": { "ip": "", "port": "" }
       },
-      "optional_fields" : {"context" : ""}
-   },
-   {
-     "id" : 32773,
-     "name" : "Delete Drafts",
-     "description" : "Eventing function draft definitions were deleted",
-     "sync" : false,
-     "enabled" : true,
-     "filtering_permitted" : true,
-     "mandatory_fields" : {
-       "timestamp" : "",
-       "user" : {"domain" : "", "user" : ""},
-       "local" : {"ip" : "", "port" : ""},
-       "remote" : {"ip" : "", "port" : ""}
+      "optional_fields": { "context": "" }
+    },
+    {
+      "id": 32773,
+      "name": "Delete Drafts",
+      "description": "Eventing function draft definitions were deleted",
+      "sync": false,
+      "enabled": true,
+      "filtering_permitted": true,
+      "mandatory_fields": {
+        "timestamp": "",
+        "user": { "domain": "", "user": "" },
+        "local": { "ip": "", "port": "" },
+        "remote": { "ip": "", "port": "" }
       },
-      "optional_fields" : {"context" : ""}
-   },
-   {
-     "id" : 32774,
-     "name" : "Save Draft",
-     "description" : "Save a draft definition to the store",
-     "sync" : false,
-     "enabled" : true,
-     "filtering_permitted" : true,
-     "mandatory_fields" : {
-       "timestamp" : "",
-       "user" : {"domain" : "", "user" : ""},
-       "local" : {"ip" : "", "port" : ""},
-       "remote" : {"ip" : "", "port" : ""}
+      "optional_fields": { "context": "" }
+    },
+    {
+      "id": 32774,
+      "name": "Save Draft",
+      "description": "Save a draft definition to the store",
+      "sync": false,
+      "enabled": true,
+      "filtering_permitted": true,
+      "mandatory_fields": {
+        "timestamp": "",
+        "user": { "domain": "", "user": "" },
+        "local": { "ip": "", "port": "" },
+        "remote": { "ip": "", "port": "" }
       },
-      "optional_fields" : {"context" : ""}
-   },
-   {
-     "id" : 32775,
-     "name" : "Start Debug",
-     "description" : "Start eventing function debugger",
-     "sync" : false,
-     "enabled" : true,
-     "filtering_permitted" : true,
-     "mandatory_fields" : {
-       "timestamp" : "",
-       "user" : {"domain" : "", "user" : ""},
-       "local" : {"ip" : "", "port" : ""},
-       "remote" : {"ip" : "", "port" : ""}
+      "optional_fields": { "context": "" }
+    },
+    {
+      "id": 32775,
+      "name": "Start Debug",
+      "description": "Start eventing function debugger",
+      "sync": false,
+      "enabled": true,
+      "filtering_permitted": true,
+      "mandatory_fields": {
+        "timestamp": "",
+        "user": { "domain": "", "user": "" },
+        "local": { "ip": "", "port": "" },
+        "remote": { "ip": "", "port": "" }
       },
-      "optional_fields" : {"context" : ""}
-   },
-   {
-     "id" : 32776,
-     "name" : "Stop Debug",
-     "description" : "Stop eventing function debugger",
-     "sync" : false,
-     "enabled" : true,
-     "filtering_permitted" : true,
-     "mandatory_fields" : {
-       "timestamp" : "",
-       "user" : {"domain" : "", "user" : ""},
-       "local" : {"ip" : "", "port" : ""},
-       "remote" : {"ip" : "", "port" : ""}
+      "optional_fields": { "context": "" }
+    },
+    {
+      "id": 32776,
+      "name": "Stop Debug",
+      "description": "Stop eventing function debugger",
+      "sync": false,
+      "enabled": true,
+      "filtering_permitted": true,
+      "mandatory_fields": {
+        "timestamp": "",
+        "user": { "domain": "", "user": "" },
+        "local": { "ip": "", "port": "" },
+        "remote": { "ip": "", "port": "" }
       },
-      "optional_fields" : {"context" : ""}
-   },
-   {
-     "id" : 32777,
-     "name" : "Start Tracing",
-     "description" : "Start tracing eventing function execution",
-     "sync" : false,
-     "enabled" : true,
-     "filtering_permitted" : true,
-     "mandatory_fields" : {
-       "timestamp" : "",
-       "user" : {"domain" : "", "user" : ""},
-       "local" : {"ip" : "", "port" : ""},
-       "remote" : {"ip" : "", "port" : ""}
+      "optional_fields": { "context": "" }
+    },
+    {
+      "id": 32777,
+      "name": "Start Tracing",
+      "description": "Start tracing eventing function execution",
+      "sync": false,
+      "enabled": true,
+      "filtering_permitted": true,
+      "mandatory_fields": {
+        "timestamp": "",
+        "user": { "domain": "", "user": "" },
+        "local": { "ip": "", "port": "" },
+        "remote": { "ip": "", "port": "" }
       },
-      "optional_fields" : {"context" : ""}
-   },
-   {
-     "id" : 32778,
-     "name" : "Stop Tracing",
-     "description" : "Stop tracing eventing function execution",
-     "sync" : false,
-     "enabled" : true,
-     "filtering_permitted" : true,
-     "mandatory_fields" : {
-       "timestamp" : "",
-       "user" : {"domain" : "", "user" : ""},
-       "local" : {"ip" : "", "port" : ""},
-       "remote" : {"ip" : "", "port" : ""}
+      "optional_fields": { "context": "" }
+    },
+    {
+      "id": 32778,
+      "name": "Stop Tracing",
+      "description": "Stop tracing eventing function execution",
+      "sync": false,
+      "enabled": true,
+      "filtering_permitted": true,
+      "mandatory_fields": {
+        "timestamp": "",
+        "user": { "domain": "", "user": "" },
+        "local": { "ip": "", "port": "" },
+        "remote": { "ip": "", "port": "" }
       },
-      "optional_fields" : {"context" : ""}
-   },
-   {
-     "id" : 32779,
-     "name" : "Set Settings",
-     "description" : "Save settings for a given app",
-     "sync" : false,
-     "enabled" : true,
-     "filtering_permitted" : true,
-     "mandatory_fields" : {
-       "timestamp" : "",
-       "user" : {"domain" : "", "user" : ""},
-       "local" : {"ip" : "", "port" : ""},
-       "remote" : {"ip" : "", "port" : ""}
+      "optional_fields": { "context": "" }
+    },
+    {
+      "id": 32779,
+      "name": "Set Settings",
+      "description": "Save settings for a given app",
+      "sync": false,
+      "enabled": true,
+      "filtering_permitted": true,
+      "mandatory_fields": {
+        "timestamp": "",
+        "user": { "domain": "", "user": "" },
+        "local": { "ip": "", "port": "" },
+        "remote": { "ip": "", "port": "" }
       },
-      "optional_fields" : {"context" : ""}
-   },
-   {
-     "id" : 32780,
-     "name" : "Fetch Config",
-     "description" : "Get config for eventing",
-     "sync" : false,
-     "enabled" : false,
-     "filtering_permitted" : true,
-     "mandatory_fields" : {
-       "timestamp" : "",
-       "user" : {"domain" : "", "user" : ""},
-       "local" : {"ip" : "", "port" : ""},
-       "remote" : {"ip" : "", "port" : ""}
+      "optional_fields": { "context": "" }
+    },
+    {
+      "id": 32780,
+      "name": "Fetch Config",
+      "description": "Get config for eventing",
+      "sync": false,
+      "enabled": false,
+      "filtering_permitted": true,
+      "mandatory_fields": {
+        "timestamp": "",
+        "user": { "domain": "", "user": "" },
+        "local": { "ip": "", "port": "" },
+        "remote": { "ip": "", "port": "" }
       },
-      "optional_fields" : {"context" : ""}
-   },
-   {
-     "id" : 32781,
-     "name" : "Save Config",
-     "description" : "Save config for eventing",
-     "sync" : false,
-     "enabled" : true,
-     "filtering_permitted" : true,
-     "mandatory_fields" : {
-       "timestamp" : "",
-       "user" : {"domain" : "", "user" : ""},
-       "local" : {"ip" : "", "port" : ""},
-       "remote" : {"ip" : "", "port" : ""}
+      "optional_fields": { "context": "" }
+    },
+    {
+      "id": 32781,
+      "name": "Save Config",
+      "description": "Save config for eventing",
+      "sync": false,
+      "enabled": true,
+      "filtering_permitted": true,
+      "mandatory_fields": {
+        "timestamp": "",
+        "user": { "domain": "", "user": "" },
+        "local": { "ip": "", "port": "" },
+        "remote": { "ip": "", "port": "" }
       },
-      "optional_fields" : {"context" : ""}
-   },
-   {
-     "id" : 32782,
-     "name" : "Cleanup Eventing",
-     "description" : "Clears up app definitions and settings from metakv",
-     "sync" : false,
-     "enabled" : true,
-     "filtering_permitted" : true,
-     "mandatory_fields" : {
-       "timestamp" : "",
-       "user" : {"domain" : "", "user" : ""},
-       "local" : {"ip" : "", "port" : ""},
-       "remote" : {"ip" : "", "port" : ""}
-     },
-     "optional_fields" : {"context" : ""}
-   },
-   {
-     "id" : 32783,
-     "name" : "Get Settings",
-     "description" : "Get settings for a given app",
-     "sync" : false,
-     "enabled" : false,
-     "filtering_permitted" : true,
-     "mandatory_fields" : {
-       "timestamp" : "",
-       "user" : {"domain" : "", "user" : ""},
-       "local" : {"ip" : "", "port" : ""},
-       "remote" : {"ip" : "", "port" : ""}
+      "optional_fields": { "context": "" }
+    },
+    {
+      "id": 32782,
+      "name": "Cleanup Eventing",
+      "description": "Clears up app definitions and settings from metakv",
+      "sync": false,
+      "enabled": true,
+      "filtering_permitted": true,
+      "mandatory_fields": {
+        "timestamp": "",
+        "user": { "domain": "", "user": "" },
+        "local": { "ip": "", "port": "" },
+        "remote": { "ip": "", "port": "" }
       },
-      "optional_fields" : {"context" : ""}
-   },
-   {
-     "id" : 32784,
-     "name" : "Import Functions",
-     "description" : "Import a list of functions",
-     "sync" : false,
-     "enabled" : false,
-     "filtering_permitted" : true,
-     "mandatory_fields" : {
-       "timestamp" : "",
-       "user" : {"source" : "", "user" : ""},
-       "local" : {"ip" : "", "port" : ""},
-       "remote" : {"ip" : "", "port" : ""}
+      "optional_fields": { "context": "" }
+    },
+    {
+      "id": 32783,
+      "name": "Get Settings",
+      "description": "Get settings for a given app",
+      "sync": false,
+      "enabled": false,
+      "filtering_permitted": true,
+      "mandatory_fields": {
+        "timestamp": "",
+        "user": { "domain": "", "user": "" },
+        "local": { "ip": "", "port": "" },
+        "remote": { "ip": "", "port": "" }
       },
-      "optional_fields" : {"context" : ""}
-   },
-   {
-     "id" : 32785,
-     "name" : "Export Functions",
-     "description" : "Export the list of functions",
-     "sync" : false,
-     "enabled" : false,
-     "filtering_permitted" : true,
-     "mandatory_fields" : {
-       "timestamp" : "",
-       "user" : {"source" : "", "user" : ""},
-       "local" : {"ip" : "", "port" : ""},
-       "remote" : {"ip" : "", "port" : ""}
+      "optional_fields": { "context": "" }
+    },
+    {
+      "id": 32784,
+      "name": "Import Functions",
+      "description": "Import a list of functions",
+      "sync": false,
+      "enabled": false,
+      "filtering_permitted": true,
+      "mandatory_fields": {
+        "timestamp": "",
+        "user": { "source": "", "user": "" },
+        "local": { "ip": "", "port": "" },
+        "remote": { "ip": "", "port": "" }
       },
-      "optional_fields" : {"context" : ""}
-   },
-   {
-     "id" : 32786,
-     "name" : "List Running",
-     "description" : "Eventing running function list was read",
-     "sync" : false,
-     "enabled" : false,
-     "filtering_permitted" : true,
-     "mandatory_fields" : {
-       "timestamp" : "",
-       "user" : {"source" : "", "user" : ""},
-       "local" : {"ip" : "", "port" : ""},
-       "remote" : {"ip" : "", "port" : ""}
-     },
-     "optional_fields" : {"context" : ""}
-   },
-   {
-     "id" : 32787,
-     "name" : "Authentication Failure",
-     "description" : "Authentication failed",
-     "sync" : false,
-     "enabled" : true,
-     "filtering_permitted" : true,
-     "mandatory_fields" : {
-       "timestamp" : "",
-       "user" : {"source" : "", "user" : ""},
-       "local" : {"ip" : "", "port" : ""},
-       "remote" : {"ip" : "", "port" : ""},
-       "url" : "",
-       "method" : ""
-     },
-     "optional_fields" : {"context" : ""}
-   },
-   {
-     "id" : 32788,
-     "name" : "Authorization Failure",
-     "description" : "Authorization failed",
-     "sync" : false,
-     "enabled" : true,
-     "filtering_permitted" : true,
-     "mandatory_fields" : {
-       "timestamp" : "",
-       "user" : {"source" : "", "user" : ""},
-       "local" : {"ip" : "", "port" : ""},
-       "remote" : {"ip" : "", "port" : ""},
-       "url" : "",
-       "method" : ""
-     },
-     "optional_fields" : {"context" : ""}
-   }
+      "optional_fields": { "context": "" }
+    },
+    {
+      "id": 32785,
+      "name": "Export Functions",
+      "description": "Export the list of functions",
+      "sync": false,
+      "enabled": false,
+      "filtering_permitted": true,
+      "mandatory_fields": {
+        "timestamp": "",
+        "user": { "source": "", "user": "" },
+        "local": { "ip": "", "port": "" },
+        "remote": { "ip": "", "port": "" }
+      },
+      "optional_fields": { "context": "" }
+    },
+    {
+      "id": 32786,
+      "name": "List Running",
+      "description": "Eventing running function list was read",
+      "sync": false,
+      "enabled": false,
+      "filtering_permitted": true,
+      "mandatory_fields": {
+        "timestamp": "",
+        "user": { "source": "", "user": "" },
+        "local": { "ip": "", "port": "" },
+        "remote": { "ip": "", "port": "" }
+      },
+      "optional_fields": { "context": "" }
+    },
+    {
+      "id": 32787,
+      "name": "Authentication Failure",
+      "description": "Authentication failed",
+      "sync": false,
+      "enabled": true,
+      "filtering_permitted": true,
+      "mandatory_fields": {
+        "timestamp": "",
+        "user": { "source": "", "user": "" },
+        "local": { "ip": "", "port": "" },
+        "remote": { "ip": "", "port": "" },
+        "url": "",
+        "method": ""
+      },
+      "optional_fields": { "context": "" }
+    },
+    {
+      "id": 32788,
+      "name": "Authorization Failure",
+      "description": "Authorization failed",
+      "sync": false,
+      "enabled": true,
+      "filtering_permitted": true,
+      "mandatory_fields": {
+        "timestamp": "",
+        "user": { "source": "", "user": "" },
+        "local": { "ip": "", "port": "" },
+        "remote": { "ip": "", "port": "" },
+        "url": "",
+        "method": ""
+      },
+      "optional_fields": { "context": "" }
+    }
   ]
 }
