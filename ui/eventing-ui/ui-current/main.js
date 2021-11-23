@@ -8,7 +8,8 @@ import { UIRouterUpgradeModule } from '@uirouter/angular-hybrid';
 angular
   .module(app)
   .config(function(mnPluggableUiRegistryProvider, mnPermissionsProvider) {
-    mnPermissionsProvider.set("cluster.collection[.:.:.].eventing.function!manage");
+    mnPermissionsProvider.set(
+      "cluster.collection[.:.:.].eventing.function!manage");
     mnPluggableUiRegistryProvider.registerConfig({
       name: 'Eventing',
       state: 'app.admin.eventing.summary',
@@ -28,7 +29,8 @@ class EventingUI {
             states: [{
               name: "app.admin.eventing.**",
               url: "/eventing",
-              lazyLoad: mnLazyload(() => import('./eventing.js'), 'eventing')
+              lazyLoad: mnLazyload(() => import('./eventing.js'),
+                'eventing')
             }]
           })
         ]

@@ -955,7 +955,7 @@ func (p *Producer) undeployHandlerWait() {
 			if !p.lazyUndeploy {
 				notAllowed, err := rbac.HasPermissions(p.owner, permissions, true)
 				// If user not present it will return as user don't have the permission
-				if err != rbac.ErrAuthorisation {
+				if !checkUndeployHandlerForUser(err) {
 					continue
 				}
 
@@ -1111,4 +1111,9 @@ func (p *Producer) encryptionChangedDuringLifecycle() bool {
 		return true
 	}
 	return false
+}
+
+func checkUndeployHandlerForUser(err error) bool {
+	return (err == rbac.ErrAuthorisation) ||
+		(err == rbac.ErrUserDeleted)
 }

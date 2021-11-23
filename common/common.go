@@ -100,6 +100,7 @@ type DebuggerInstance struct {
 }
 
 type Owner struct {
+	UUID   string
 	User   string
 	Domain string
 }

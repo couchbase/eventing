@@ -1,155 +1,171 @@
 <!--This is the summary page-->
 <div ng-if="summaryCtrl.isEventingRunning">
-<div ng-if="!summaryCtrl.errorState">
-  <mn-element-cargo depot="alerts">
-    <div ng-show="summaryCtrl.showSuccessAlert">
-      <div class="alert alert-success">
-        <p>{{summaryCtrl.successMessage}}</p>
+  <div ng-if="!summaryCtrl.errorState">
+    <mn-element-cargo depot="alerts">
+      <div ng-show="summaryCtrl.showSuccessAlert">
+        <div class="alert alert-success">
+          <p>{{summaryCtrl.successMessage}}</p>
+        </div>
       </div>
-    </div>
-    <div ng-show="summaryCtrl.showWarningAlert">
-      <div class="alert alert-warning">
-        <p>{{summaryCtrl.warningMessage}}</p>
+      <div ng-show="summaryCtrl.showWarningAlert">
+        <div class="alert alert-warning">
+          <p>{{summaryCtrl.warningMessage}}</p>
+        </div>
       </div>
-    </div>
-    <div ng-show="summaryCtrl.showErrorAlert">
-      <div class="alert alert-error">
-        <p>{{summaryCtrl.errorMessage}}</p>
+      <div ng-show="summaryCtrl.showErrorAlert">
+        <div class="alert alert-error">
+          <p>{{summaryCtrl.errorMessage}}</p>
+        </div>
       </div>
-    </div>
-  </mn-element-cargo>
-  <div class="cbui-table">
-    <div class="warning field-warning" ng-show="summaryCtrl.workerCount > 2 * summaryCtrl.cpuCount">
-      <p>There are {{summaryCtrl.workerCount}} eventing workers configured
-        to run on {{summaryCtrl.cpuCount}} cores. A sizing exercise is
-        recommended.
-      </p>
-    </div>
-    <div class="warning field-warning" ng-show="summaryCtrl.appstorefresh.length > 0">
-      <p> Change in cluster encryption level detected. Please pause-resume or undeploy-deploy
-      the following functions to align with the set encryption level:
-      {{summaryCtrl.appstorefresh.toString()}}
-      </p>
-    </div>
-    <div class="cbui-table-header" ng-if="!summaryCtrl.isAppListEmpty()">
-      <span class="cbui-table-cell flex-grow-2">function name</span>
-      <span class="cbui-table-cell flex-grow-2">source keyspace</span>
-      <span class="cbui-table-cell flex-grow-half">status</span>
-      <span class="cbui-table-cell"></span>
-    </div>
-    <section class="has-hover"
-      ng-repeat="(appname, app) in summaryCtrl.appList"
-      ng-class="['dynamic_' + app.uiState]"
-      ng-click="app.toggleActionsVisibility()">
-      <div class="cbui-tablerow">
-        <span class="cbui-table-cell cbui-tablerow-title flex-grow-2">{{appname}}</span>
-        <span
-          class="cbui-table-cell flex-grow-2">{{app.depcfg.source_bucket}}.{{app.depcfg.source_scope}}.{{app.depcfg.source_collection}}</span>
-        <span class="cbui-table-cell flex-grow-half">
+    </mn-element-cargo>
+    <div class="cbui-table">
+      <div class="warning field-warning"
+        ng-show="summaryCtrl.workerCount > 2 * summaryCtrl.cpuCount">
+        <p>There are {{summaryCtrl.workerCount}} eventing workers configured
+          to run on {{summaryCtrl.cpuCount}} cores. A sizing exercise is
+          recommended.
+        </p>
+      </div>
+      <div class="warning field-warning"
+        ng-show="summaryCtrl.appstorefresh.length > 0">
+        <p> Change in cluster encryption level detected. Please pause-resume or
+          undeploy-deploy
+          the following functions to align with the set encryption level:
+          {{summaryCtrl.appstorefresh.toString()}}
+        </p>
+      </div>
+      <div class="cbui-table-header" ng-if="!summaryCtrl.isAppListEmpty()">
+        <span class="cbui-table-cell flex-grow-2">function name</span>
+        <span class="cbui-table-cell flex-grow-2">source keyspace</span>
+        <span class="cbui-table-cell flex-grow-half">status</span>
+        <span class="cbui-table-cell"></span>
+      </div>
+      <section class="has-hover"
+        ng-repeat="(appname, app) in summaryCtrl.appList"
+        ng-class="['dynamic_' + app.uiState]"
+        ng-click="app.toggleActionsVisibility()">
+        <div class="cbui-tablerow">
+          <span
+            class="cbui-table-cell cbui-tablerow-title flex-grow-2">{{appname}}</span>
+          <span
+            class="cbui-table-cell flex-grow-2">{{app.depcfg.source_bucket}}.{{app.depcfg.source_scope}}.{{app.depcfg.source_collection}}</span>
+          <span class="cbui-table-cell flex-grow-half">
             {{app.status === 'deployed' || app.status === 'undeployed' || app.status === 'paused' ? app.status : app.status + '...'}}
-            <span class="icon fa-warning orange-3" ng-show="app.status === 'deployed' &&
+            <span class="icon fa-warning orange-3"
+              ng-show="app.status === 'deployed' &&
               (app.cluster_stats.failure_gt_zero == true || app.cluster_stats.timeout_gt_zero == true )"></span>
-        </span>
-        <span class="cbui-table-cell text-right">
-        <a ng-click="$event.stopPropagation();summaryCtrl.openWarnings(appname);"
-          ng-hide="app.warnings && app.warnings.length === 0">
-        {{app.warnings ? 'Warnings(' + app.warnings.length + ')' : ''}}
-        </a>
-        <a ng-click="$event.stopPropagation();summaryCtrl.openAppLog(appname);"
-          ng-hide="app.status !== 'deployed' && app.status !== 'deploying'">
-        Log
-        </a>
-        <a class="margin-left-half" ng-click="$event.stopPropagation();summaryCtrl.openSettings(appname);">
-        Settings
-        </a>
-        </span>
-      </div>
-      <div class="cbui-tablerow-expanded" ng-if="app.actionsVisible">
-        <p class="width-6">{{app.settings.description}}</p>
-        <p class="width-6 error field-error" ng-show="app.overloadedNames">
-          Function tries to overload following builtin API(s):
-          {{app.overloadedNames}}
-        </p>
-        <p class="width-6 error field-error" ng-show="app.deprecatedNames">
-          Function uses deprecated API(s): {{app.deprecatedNames}}
-        </p>
-        <div>
-          <div style="display:flex;justify-content:flex-start;flex-wrap:wrap-reverse;">
-            <div class="text-small" style="display:table;clear:both;float:left;"
-              ng-show="app.status === 'deployed'">
-              <div style="margin-top:4px;margin-left:6px;margin-right:6px;display:inline-block;white-space:nowrap;">
-                <div class="text-medium" style="float:left;width:12em;font-weight:400;">
-                  Deployment Statistics:
-                </div>
-                <div style="float:left;width:5em;margin-left:0em;text-align:right;">
-                  success
-                </div>
-                <div style="position:relative;top:2.4em;float:left;width:5em;margin-left:-5em;text-align:right;" class=" ng-binding">
-                  {{app.cluster_stats.success}}
-                </div>
-                <div style="float:left;width:5em;margin-left:0px;text-align:right;">
-                  failure
-                </div>
-                <div style="position:relative;top:2.4em;float:left;width:5em;margin-left:-5em;text-align:right;">
-                  <div style="display:inline-block;" ng-if="app.cluster_stats.failure_gt_zero == false">
-                    {{app.cluster_stats.failure}}
+          </span>
+          <span class="cbui-table-cell text-right">
+            <a ng-click="$event.stopPropagation();summaryCtrl.openWarnings(appname);"
+              ng-hide="app.warnings && app.warnings.length === 0">
+              {{app.warnings ? 'Warnings(' + app.warnings.length + ')' : ''}}
+            </a>
+            <a ng-click="$event.stopPropagation();summaryCtrl.openAppLog(appname);"
+              ng-hide="app.status !== 'deployed' && app.status !== 'deploying'">
+              Log
+            </a>
+            <a class="margin-left-half"
+              ng-click="$event.stopPropagation();summaryCtrl.openSettings(appname);">
+              Settings
+            </a>
+          </span>
+        </div>
+        <div class="cbui-tablerow-expanded" ng-if="app.actionsVisible">
+          <p class="width-6">{{app.settings.description}}</p>
+          <p class="width-6 error field-error" ng-show="app.overloadedNames">
+            Function tries to overload following builtin API(s):
+            {{app.overloadedNames}}
+          </p>
+          <p class="width-6 error field-error" ng-show="app.deprecatedNames">
+            Function uses deprecated API(s): {{app.deprecatedNames}}
+          </p>
+          <div>
+            <div
+              style="display:flex;justify-content:flex-start;flex-wrap:wrap-reverse;">
+              <div class="text-small"
+                style="display:table;clear:both;float:left;"
+                ng-show="app.status === 'deployed'">
+                <div
+                  style="margin-top:4px;margin-left:6px;margin-right:6px;display:inline-block;white-space:nowrap;">
+                  <div class="text-medium"
+                    style="float:left;width:12em;font-weight:400;">
+                    Deployment Statistics:
                   </div>
-                  <div style="color:#CC0000;display:inline-block;" ng-if="app.cluster_stats.failure_gt_zero == true ">
-                    {{app.cluster_stats.failure}}
+                  <div
+                    style="float:left;width:5em;margin-left:0em;text-align:right;">
+                    success
                   </div>
-                </div>
-                <div style="float:left;width:5em;margin-left:0px;text-align:right;">
-                  timeout
-                </div>
-                <div style="position:relative;top:2.4em;float:left;width:5em;margin-left:-5em;text-align:right;">
-                  <div style="display:inline-block;" ng-if="app.cluster_stats.timeout_gt_zero == false">
-                    {{app.cluster_stats.timeout}}
+                  <div
+                    style="position:relative;top:2.4em;float:left;width:5em;margin-left:-5em;text-align:right;"
+                    class=" ng-binding">
+                    {{app.cluster_stats.success}}
                   </div>
-                  <div style="color:#CC0000;display:inline-block;" ng-if="app.cluster_stats.timeout_gt_zero == true ">
-                    {{app.cluster_stats.timeout}}
+                  <div
+                    style="float:left;width:5em;margin-left:0px;text-align:right;">
+                    failure
+                  </div>
+                  <div
+                    style="position:relative;top:2.4em;float:left;width:5em;margin-left:-5em;text-align:right;">
+                    <div style="display:inline-block;"
+                      ng-if="app.cluster_stats.failure_gt_zero == false">
+                      {{app.cluster_stats.failure}}
+                    </div>
+                    <div style="color:#CC0000;display:inline-block;"
+                      ng-if="app.cluster_stats.failure_gt_zero == true ">
+                      {{app.cluster_stats.failure}}
+                    </div>
+                  </div>
+                  <div
+                    style="float:left;width:5em;margin-left:0px;text-align:right;">
+                    timeout
+                  </div>
+                  <div
+                    style="position:relative;top:2.4em;float:left;width:5em;margin-left:-5em;text-align:right;">
+                    <div style="display:inline-block;"
+                      ng-if="app.cluster_stats.timeout_gt_zero == false">
+                      {{app.cluster_stats.timeout}}
+                    </div>
+                    <div style="color:#CC0000;display:inline-block;"
+                      ng-if="app.cluster_stats.timeout_gt_zero == true ">
+                      {{app.cluster_stats.timeout}}
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-            <div  style="margin-left:auto;">
-              <button class="outline"
-                ng-click="$event.stopPropagation();summaryCtrl.deleteApp(app.appname)"
-                ng-disabled=" app.status !== 'undeployed' || app.uiState === 'healthy'">
-              Delete
-              </button>
-              <button class="outline"
-                ng-click="$event.stopPropagation();summaryCtrl.exportApp(app.appname)">
-              Export
-              </button>
-              <button class="outline"
-                ng-disabled="app.status === 'deploying' || app.status === 'undeploying' || app.status === 'pausing'"
-                ng-click="$event.stopPropagation();summaryCtrl.toggleDeployment(app)">
-              {{app.getDeploymentStatus(true)}}
-              </button>
-              <button class="outline"
-                ng-disabled="app.status === 'deploying' || app.status === 'undeploying' || app.status === 'undeployed' || app.status === 'pausing'"
-                ng-click="$event.stopPropagation();summaryCtrl.toggleProcessing(app)">
-              {{app.getProcessingStatus(true)}}
-              </button>
-              <button
-                ui-sref="app.admin.eventing.handler({appName:app.appname})"
-                ng-disabled="summaryCtrl.disableEditButton"
-                ng-click="$event.stopPropagation();">
-              {{app.status === 'deployed' || app.status === 'deploying' || app.status === 'pausing' || app.status === 'undeploying' ? 'View JavaScript' : 'Edit JavaScript'}}
-              </button>
+              <div style="margin-left:auto;">
+                <button class="outline"
+                  ng-click="$event.stopPropagation();summaryCtrl.deleteApp(app.appname)"
+                  ng-disabled=" app.status !== 'undeployed' || app.uiState === 'healthy'">
+                  Delete
+                </button>
+                <button class="outline"
+                  ng-click="$event.stopPropagation();summaryCtrl.exportApp(app.appname)">
+                  Export
+                </button>
+                <button class="outline"
+                  ng-disabled="app.status === 'deploying' || app.status === 'undeploying' || app.status === 'pausing'"
+                  ng-click="$event.stopPropagation();summaryCtrl.toggleDeployment(app)">
+                  {{app.getDeploymentStatus(true)}}
+                </button>
+                <button class="outline"
+                  ng-disabled="app.status === 'deploying' || app.status === 'undeploying' || app.status === 'undeployed' || app.status === 'pausing'"
+                  ng-click="$event.stopPropagation();summaryCtrl.toggleProcessing(app)">
+                  {{app.getProcessingStatus(true)}}
+                </button>
+                <button
+                  ui-sref="app.admin.eventing.handler({appName:app.appname})"
+                  ng-disabled="summaryCtrl.disableEditButton"
+                  ng-click="$event.stopPropagation();">
+                  {{app.status === 'deployed' || app.status === 'deploying' || app.status === 'pausing' || app.status === 'undeploying' ? 'View JavaScript' : 'Edit JavaScript'}}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-        <mn-detail-stats
-            class="block eventing-charts"
-            ng-show="app.status === 'deployed'"
-            node-name="all"
-            mn-title="Charts"
-            item-id="{{app.appname}}"
-            service="eventing"
-            prefix="eventing"
-            ></mn-detail-stats>
-    </section>
+          <mn-detail-stats class="block eventing-charts"
+            ng-show="app.status === 'deployed'" node-name="all"
+            mn-title="Charts" item-id="{{app.appname}}" service="eventing"
+            prefix="eventing"></mn-detail-stats>
+      </section>
     </div>
     <div ng-if="summaryCtrl.isAppListEmpty()">
       <p class="zero-content">No Functions running currently. Import or use ADD

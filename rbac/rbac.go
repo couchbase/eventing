@@ -17,6 +17,7 @@ import (
 
 var (
 	ErrAuthorisation = errors.New("One or more requested permissions missing")
+	ErrUserDeleted   = errors.New("User deleted")
 )
 
 type Permission uint8
@@ -86,6 +87,16 @@ func IsAllowed(req *http.Request, permissions []string, union bool) ([]string, e
 // recreate all the request and all
 // If union is true then all permission to should be satisfied
 func HasPermissions(owner *common.Owner, permissions []string, union bool) ([]string, error) {
+        if owner.UUID != "" {
+                uuid, err := cbauth.GetUserUuid(owner.User, owner.Domain)
+                if err != nil {
+                        return nil, err
+                }
+                if uuid != owner.UUID {
+                        return nil, ErrUserDeleted
+                }
+        }
+
 	req, err := http.NewRequest(http.MethodGet, "", nil)
 	if err != nil {
 		return nil, err
@@ -100,6 +111,7 @@ func HasPermissions(owner *common.Owner, permissions []string, union bool) ([]st
 
 	onBehalfUser := encodeCbOnBehalfOfHeader(owner)
 	req.Header.Set("cb-on-behalf-of", onBehalfUser)
+
 	return authenticateAndCheck(req, permissions, union)
 }
 

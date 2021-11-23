@@ -1195,9 +1195,15 @@ func (m *ServiceMgr) checkPermissionWithOwner(app application) (info *runtimeInf
 
 	perms := append(mPermission, rbac.HandlerBucketPermissions(sourceKeyspace, metadataKeyspace)...)
 	notAllowed, err := rbac.HasPermissions(app.Owner, perms, true)
+	if err == rbac.ErrUserDeleted {
+		info.Code = m.statusCodes.errForbidden.Code
+		info.Info = fmt.Sprintf("User who created the function does not exist in the system")
+		return
+	}
+
 	if err == rbac.ErrAuthorisation {
 		info.Code = m.statusCodes.errForbidden.Code
-		info.Info = fmt.Sprintf("Forbidden. User needs one of the following permission: %v", notAllowed)
+		info.Info = fmt.Sprintf("Forbidden. User who created the function is missing all of the following permissions: %v", notAllowed)
 		return
 	}
 

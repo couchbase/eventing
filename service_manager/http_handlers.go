@@ -1710,6 +1710,7 @@ func (m *ServiceMgr) parseFunctionPayload(data []byte, fnName string) applicatio
 	if ownerEncrypted != nil {
 		owner.User = string(ownerEncrypted.User())
 		owner.Domain = string(ownerEncrypted.Domain())
+		owner.UUID = string(ownerEncrypted.Uuid())
 	}
 
 	app.FunctionScope = funcScope
@@ -3227,7 +3228,18 @@ func (m *ServiceMgr) verifyAndCreateApp(cred cbauth.Creds, app *application) (in
 
 	if rbacSupport {
 		name, domain := cred.User()
+		uuid := ""
+		// GetUserUuid returns error when domain is not local
+		// This will ensure that eventing won't throw error when domain is local
+		if domain == "local" {
+			uuid, err = cbauth.GetUserUuid(name, domain)
+			if err != nil {
+				info.Code = m.statusCodes.errInternalServer.Code
+				return
+			}
+		}
 		app.Owner = &common.Owner{
+			UUID:   uuid,
 			User:   name,
 			Domain: domain,
 		}

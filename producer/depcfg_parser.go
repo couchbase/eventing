@@ -66,6 +66,7 @@ func (p *Producer) parseDepcfg() error {
 	owner := &common.Owner{}
 
 	if ownerEncrypted != nil {
+		owner.UUID = string(ownerEncrypted.Uuid())
 		owner.User = string(ownerEncrypted.User())
 		owner.Domain = string(ownerEncrypted.Domain())
 	}
