@@ -448,7 +448,13 @@ func (m *ServiceMgr) getDebuggerURL(w http.ResponseWriter, r *http.Request) {
 	logging.Debugf("%s Function: %s got request to get V8 debugger url", logPrefix, appName)
 
 	if m.checkIfDeployed(appName) {
-		debugURL, _ := m.superSup.GetDebuggerURL(appName)
+		debugURL, err := m.superSup.GetDebuggerURL(appName)
+		if err != nil {
+			logging.Errorf("Error in getting debugger url for %s err: %v", appName, err)
+			w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errRequestedOpFailed.Code))
+			fmt.Fprintf(w, "%v", err)
+			return
+		}
 		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
 		fmt.Fprintf(w, "%s", debugURL)
 		return
@@ -456,7 +462,6 @@ func (m *ServiceMgr) getDebuggerURL(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotDeployed.Code))
 	fmt.Fprintf(w, "Function: %s not deployed", appName)
-
 }
 
 func (m *ServiceMgr) getLocalDebugURL(w http.ResponseWriter, r *http.Request) {
@@ -618,7 +623,13 @@ func (m *ServiceMgr) stopDebugger(w http.ResponseWriter, r *http.Request) {
 	audit.Log(auditevent.StopDebug, r, appName)
 
 	if m.checkIfDeployed(appName) {
-		m.superSup.SignalStopDebugger(appName)
+		err := m.superSup.SignalStopDebugger(appName)
+		if err != nil {
+			logging.Errorf("Error in stopping debugger for %s err: %v", appName, err)
+			w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errRequestedOpFailed.Code))
+			fmt.Fprintf(w, "%v", err)
+			return
+		}
 		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
 		fmt.Fprintf(w, "Function: %s stopped Debugger", appName)
 		return

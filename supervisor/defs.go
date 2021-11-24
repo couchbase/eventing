@@ -153,6 +153,8 @@ type SuperSupervisor struct {
 	gocbGlobalConfigHandle *gocbGlobalConfig
 	sync.RWMutex
 
-	securitySetting *common.SecuritySetting // access controlled by securityMutex
-	securityMutex   *sync.RWMutex
+	securitySetting          *common.SecuritySetting // access controlled by securityMutex
+	securityMutex            *sync.RWMutex
+	initEncryptDataMutex     *sync.RWMutex
+	initLifecycleEncryptData bool
 }

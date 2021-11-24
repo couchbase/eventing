@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/couchbase/eventing/common"
-	"github.com/couchbase/eventing/dcp"
+	couchbase "github.com/couchbase/eventing/dcp"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
 	"gopkg.in/couchbase/gocb.v1"
@@ -36,10 +36,13 @@ func (c *Consumer) checkAndUpdateMetadata() {
 
 		vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppName, vb)
 
+		var operr error
 		err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getOpCallback,
-			c, c.producer.AddMetadataPrefix(vbKey), &vbBlob, &cas, false)
+			c, c.producer.AddMetadataPrefix(vbKey), &vbBlob, &cas, &operr, false)
 		if err == common.ErrRetryTimeout {
 			logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+			return
+		} else if operr == common.ErrEncryptionLevelChanged {
 			return
 		}
 
@@ -55,9 +58,11 @@ func (c *Consumer) checkAndUpdateMetadata() {
 			}
 
 			err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, metadataCorrectionCallback,
-				c, c.producer.AddMetadataPrefix(vbKey), &entry)
+				c, c.producer.AddMetadataPrefix(vbKey), &entry, &operr)
 			if err == common.ErrRetryTimeout {
 				logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+				return
+			} else if operr == common.ErrEncryptionLevelChanged {
 				return
 			}
 
@@ -75,9 +80,11 @@ func (c *Consumer) checkAndUpdateMetadata() {
 				}
 
 				err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, undoMetadataCorrectionCallback,
-					c, c.producer.AddMetadataPrefix(vbKey), &entry)
+					c, c.producer.AddMetadataPrefix(vbKey), &entry, &operr)
 				if err == common.ErrRetryTimeout {
 					logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+					return
+				} else if operr == common.ErrEncryptionLevelChanged {
 					return
 				}
 
@@ -222,11 +229,14 @@ func (c *Consumer) doVbTakeover(vb uint16) error {
 
 	vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppName, vb)
 
+	var operr error
 	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getOpCallback,
-		c, c.producer.AddMetadataPrefix(vbKey), &vbBlob, &cas, true, &isNoEnt, true)
+		c, c.producer.AddMetadataPrefix(vbKey), &vbBlob, &cas, &operr, true, &isNoEnt, true)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 		return err
+	} else if operr == common.ErrEncryptionLevelChanged {
+		return operr
 	}
 
 	var possibleConsumers []string
@@ -396,11 +406,14 @@ func (c *Consumer) updateCheckpoint(vbKey string, vb uint16, vbBlob *vbucketKVBl
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, vbBlob.BootstrapStreamReqDone)
 	}
 
+	var operr error
 	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, updateCheckpointCallback,
-		c, c.producer.AddMetadataPrefix(vbKey), vbBlob)
+		c, c.producer.AddMetadataPrefix(vbKey), vbBlob, &operr)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 		return err
+	} else if operr == common.ErrEncryptionLevelChanged {
+		return operr
 	}
 
 	c.vbProcessingStats.updateVbStat(vb, "assigned_worker", vbBlob.AssignedWorker)
@@ -597,6 +610,8 @@ func (c *Consumer) doCleanupForPreviouslyOwnedVbs() error {
 		if err == common.ErrRetryTimeout {
 			logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 			return err
+		} else if err == common.ErrEncryptionLevelChanged {
+			return err
 		}
 	}
 
@@ -611,17 +626,22 @@ func (c *Consumer) cleanupVbMetadata(vb uint16) error {
 	var vbBlob vbucketKVBlob
 	var cas gocb.Cas
 
+	var operr error
 	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getOpCallback,
-		c, c.producer.AddMetadataPrefix(vbKey), &vbBlob, &cas, false)
+		c, c.producer.AddMetadataPrefix(vbKey), &vbBlob, &cas, &operr, false)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 		return err
+	} else if operr == common.ErrEncryptionLevelChanged {
+		return operr
 	}
 
 	if vbBlob.NodeUUID == c.NodeUUID() && vbBlob.AssignedWorker == c.ConsumerName() && vbBlob.DCPStreamStatus == dcpStreamRunning {
 		err = c.updateCheckpoint(vbKey, vb, &vbBlob)
 		if err == common.ErrRetryTimeout {
 			logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+			return err
+		} else if err == common.ErrEncryptionLevelChanged {
 			return err
 		}
 		logging.Infof("%s [%s:%s:%d] vb: %d cleaned up ownership", logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)

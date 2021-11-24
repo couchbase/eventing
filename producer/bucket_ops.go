@@ -159,6 +159,12 @@ var setOpCallback = func(args ...interface{}) error {
 	p := args[0].(*Producer)
 	key := args[1].(common.Key)
 	blob := args[2]
+	var operr *error
+	failfast := false
+	if len(args) > 3 {
+		failfast = true
+		operr = args[3].(*error)
+	}
 
 	if p.isTerminateRunning {
 		return nil
@@ -173,6 +179,10 @@ var setOpCallback = func(args ...interface{}) error {
 	}
 
 	_, err := p.metadataBucketHandle.Upsert(key.Raw(), blob, 0)
+	if failfast && err != nil && p.encryptionChangedDuringLifecycle() {
+		*operr = common.ErrEncryptionLevelChanged
+		return nil
+	}
 	if err == gocb.ErrShutdown {
 		return nil
 	} else if err != nil {
@@ -188,10 +198,16 @@ var getOpCallback = func(args ...interface{}) error {
 	p := args[0].(*Producer)
 	key := args[1].(common.Key)
 	blob := args[2]
+	operr := args[3].(*error)
 
 	p.metadataHandleMutex.RLock()
 	defer p.metadataHandleMutex.RUnlock()
 	_, err := p.metadataBucketHandle.Get(key.Raw(), blob)
+	if err != nil && p.encryptionChangedDuringLifecycle() {
+		*operr = common.ErrEncryptionLevelChanged
+		return nil
+	}
+
 	if gocb.IsKeyNotFoundError(err) || err == gocb.ErrShutdown || err == gocb.ErrKeyNotFound {
 		return nil
 	} else if err != nil {
@@ -207,10 +223,16 @@ var deleteOpCallback = func(args ...interface{}) error {
 
 	p := args[0].(*Producer)
 	key := args[1].(string)
+	operr := args[2].(*error)
 
 	p.metadataHandleMutex.RLock()
 	defer p.metadataHandleMutex.RUnlock()
 	_, err := p.metadataBucketHandle.Remove(key, 0)
+	if err != nil && p.encryptionChangedDuringLifecycle() {
+		*operr = common.ErrEncryptionLevelChanged
+		return nil
+	}
+
 	if gocb.IsKeyNotFoundError(err) || err == gocb.ErrShutdown {
 		return nil
 	} else if err != nil {
@@ -233,11 +255,16 @@ var deleteOpCallback = func(args ...interface{}) error {
 
 var checkIfQueuesAreDrained = func(args ...interface{}) error {
 	p := args[0].(*Producer)
+	operr := args[1].(*error)
 
 	var err error
 	for _, c := range p.getConsumers() {
 		err = c.CheckIfQueuesAreDrained()
 		if err != nil {
+			if p.encryptionChangedDuringLifecycle() {
+				*operr = common.ErrEncryptionLevelChanged
+				return nil
+			}
 			return err
 		}
 	}

@@ -778,10 +778,15 @@ func (p *Producer) SignalStopDebugger() error {
 
 	key := p.AddMetadataPrefix(p.app.AppName + "::" + common.DebuggerTokenKey)
 	var instance common.DebuggerInstance
-	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, getOpCallback, p, key, &instance)
+	var opErr error
+	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, getOpCallback, p, key, &instance, &opErr)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
 		return err
+	}
+	if opErr == common.ErrEncryptionLevelChanged {
+		logging.Errorf("%s [%s:%d] Exiting due to encryption level changed", logPrefix, p.appName, p.LenRunningConsumers())
+		return opErr
 	}
 
 	consumers := p.getConsumers()
@@ -811,13 +816,16 @@ func (p *Producer) GetDebuggerURL() (string, error) {
 
 	var instance common.DebuggerInstance
 	key := p.AddMetadataPrefix(p.app.AppName + "::" + common.DebuggerTokenKey)
+	var opErr error
 	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount,
-		getOpCallback, p, key, &instance)
+		getOpCallback, p, key, &instance, &opErr)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
 		return "", common.ErrRetryTimeout
 	}
-
+	if opErr == common.ErrEncryptionLevelChanged {
+		return "", opErr
+	}
 	return instance.URL, nil
 }
 
@@ -832,6 +840,8 @@ func (p *Producer) updateStats() {
 				logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
 				p.updateStatsTicker.Stop()
 				return
+			} else if err == common.ErrEncryptionLevelChanged {
+				continue
 			}
 
 			err = p.getSeqsProcessed()
@@ -839,6 +849,8 @@ func (p *Producer) updateStats() {
 				logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
 				p.updateStatsTicker.Stop()
 				return
+			} else if err == common.ErrEncryptionLevelChanged {
+				continue
 			}
 
 		case <-p.stopCh:
@@ -928,7 +940,8 @@ func (p *Producer) pauseProducer() error {
 		c.CloseAllRunningDcpFeeds()
 	}
 
-	err := util.Retry(util.NewFixedBackoff(time.Second), &p.retryCount, checkIfQueuesAreDrained, p)
+	var operr error
+	err := util.Retry(util.NewFixedBackoff(time.Second), &p.retryCount, checkIfQueuesAreDrained, p, &operr)
 	if err == common.ErrRetryTimeout {
 		return fmt.Errorf("Exiting due to timeout")
 	}
@@ -1023,4 +1036,11 @@ func (p *Producer) updatemetadataHandle() error {
 	defer p.metadataHandleMutex.Unlock()
 	p.metadataBucketHandle, err = p.superSup.GetMetadataHandle(p.metadatabucket, p.appName)
 	return err
+}
+
+func (p *Producer) encryptionChangedDuringLifecycle() bool {
+	if (p.isBootstrapping || p.isPausing) && p.superSup.EncryptionChangedDuringLifecycle() {
+		return true
+	}
+	return false
 }

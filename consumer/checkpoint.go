@@ -54,12 +54,16 @@ func (c *Consumer) doLastSeqNoCheckpoint() {
 					if c.isVbIdle(vb, &checkpoints[vb]) {
 						continue
 					}
+
+					var operr error
 					// Metadata blob doesn't exist probably the app is deployed for the first time.
 					err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getOpCallback,
-						c, c.producer.AddMetadataPrefix(vbKey), &vbBlob, &cas, true, &isNoEnt)
+						c, c.producer.AddMetadataPrefix(vbKey), &vbBlob, &cas, &operr, true, &isNoEnt)
 					if err == common.ErrRetryTimeout {
 						logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 						return
+					} else if operr == common.ErrEncryptionLevelChanged {
+						continue
 					}
 
 					if isNoEnt {
@@ -67,16 +71,20 @@ func (c *Consumer) doLastSeqNoCheckpoint() {
 							logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
 
 						err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, recreateCheckpointBlobsFromVbStatsCallback, c,
-							c.producer.AddMetadataPrefix(vbKey), &vbBlob)
+							c.producer.AddMetadataPrefix(vbKey), &vbBlob, &operr)
 						if err == common.ErrRetryTimeout {
 							logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 							return
+						} else if operr == common.ErrEncryptionLevelChanged {
+							continue
 						}
 
 						err = c.updateCheckpointInfo(vbKey, vb, &vbBlob)
 						if err == common.ErrRetryTimeout {
 							logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 							return
+						} else if err == common.ErrEncryptionLevelChanged {
+							continue
 						}
 
 						continue
@@ -88,6 +96,8 @@ func (c *Consumer) doLastSeqNoCheckpoint() {
 						if err == common.ErrRetryTimeout {
 							logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 							return
+						} else if err == common.ErrEncryptionLevelChanged {
+							continue
 						}
 
 						continue
@@ -101,6 +111,8 @@ func (c *Consumer) doLastSeqNoCheckpoint() {
 						if err == common.ErrRetryTimeout {
 							logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 							return
+						} else if err == common.ErrEncryptionLevelChanged {
+							continue
 						}
 
 						continue
@@ -136,11 +148,14 @@ func (c *Consumer) updateCheckpointInfo(vbKey string, vb uint16, vbBlob *vbucket
 	vbBlob.NextCronTimerToProcess = c.vbProcessingStats.getVbStat(vb, "next_cron_timer_to_process").(string)
 	vbBlob.VBuuid = c.vbProcessingStats.getVbStat(vb, "vb_uuid").(uint64)
 
+	var operr error
 	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, periodicCheckpointCallback,
-		c, c.producer.AddMetadataPrefix(vbKey), vbBlob)
+		c, c.producer.AddMetadataPrefix(vbKey), vbBlob, &operr)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 		return err
+	} else if operr == common.ErrEncryptionLevelChanged {
+		return operr
 	}
 
 	return nil

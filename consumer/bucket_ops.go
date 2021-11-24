@@ -33,6 +33,9 @@ var vbTakeoverCallback = func(args ...interface{}) error {
 		return nil
 	}
 
+	if err == common.ErrEncryptionLevelChanged {
+		return nil
+	}
 	if err != nil {
 		logging.Infof("%s [%s:%s:%d] vb: %d vbTakeover request, msg: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, err)
@@ -49,6 +52,7 @@ var setOpCallback = func(args ...interface{}) error {
 	c := args[0].(*Consumer)
 	vbKey := args[1].(common.Key)
 	vbBlob := args[2]
+	operr := args[3].(*error)
 
 	c.gocbMetaHandleMutex.RLock()
 	defer c.gocbMetaHandleMutex.RUnlock()
@@ -56,6 +60,10 @@ var setOpCallback = func(args ...interface{}) error {
 	if err != nil {
 		logging.Errorf("%s [%s:%s:%d] Key: %s Bucket set failed, err: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbKey.Raw(), err)
+		if c.encryptionChangedDuringLifecycle() {
+			*operr = common.ErrEncryptionLevelChanged
+			return nil
+		}
 	}
 
 	if err == gocb.ErrShutdown {
@@ -72,16 +80,17 @@ var getOpCallback = func(args ...interface{}) error {
 	vbKey := args[1].(common.Key)
 	vbBlob := args[2]
 	cas := args[3].(*gocb.Cas)
-	skipEnoEnt := args[4].(bool)
+	skipEnoEnt := args[5].(bool)
+	operr := args[4].(*error)
 
 	var isNoEnt *bool
 	if skipEnoEnt {
-		isNoEnt = args[5].(*bool)
+		isNoEnt = args[6].(*bool)
 	}
 
 	var createIfMissing bool
-	if len(args) == 7 {
-		createIfMissing = args[6].(bool)
+	if len(args) == 8 {
+		createIfMissing = args[7].(bool)
 	}
 
 	if atomic.LoadUint32(&c.isTerminateRunning) == 1 {
@@ -98,6 +107,10 @@ var getOpCallback = func(args ...interface{}) error {
 
 	var err error
 	*cas, err = c.gocbMetaHandle.Get(vbKey.Raw(), vbBlob)
+	if err != nil && c.encryptionChangedDuringLifecycle() {
+		*operr = common.ErrEncryptionLevelChanged
+		return nil
+	}
 
 	if skipEnoEnt {
 		// 1. If vbKey metadata blob doesn't exist then return nil
@@ -119,10 +132,12 @@ var getOpCallback = func(args ...interface{}) error {
 	}
 
 	if err == gocb.ErrKeyNotFound && createIfMissing {
-		err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, recreateCheckpointBlobsFromVbStatsCallback, c, vbKey, vbBlob)
+		err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, recreateCheckpointBlobsFromVbStatsCallback, c, vbKey, vbBlob, operr)
 		if err == common.ErrRetryTimeout {
 			logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 			return err
+		} else if operr != nil && *operr == common.ErrEncryptionLevelChanged {
+			return nil
 		}
 
 		return nil
@@ -146,6 +161,7 @@ var recreateCheckpointBlobsFromVbStatsCallback = func(args ...interface{}) error
 	c := args[0].(*Consumer)
 	vbKey := args[1].(common.Key)
 	vbBlob := args[2].(*vbucketKVBlob)
+	operr := args[3].(*error)
 
 	entries := strings.Split(vbKey.Raw(), "::")
 	vb, err := strconv.Atoi(entries[len(entries)-1])
@@ -186,10 +202,12 @@ var recreateCheckpointBlobsFromVbStatsCallback = func(args ...interface{}) error
 
 	logging.Infof("%s [%s:%s:%d] vb: %d Recreating missing checkpoint blob", logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
 
-	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, setOpCallback, c, vbKey, &vbBlobVer)
+	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, setOpCallback, c, vbKey, &vbBlobVer, operr)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 		return err
+	} else if operr != nil && *operr == common.ErrEncryptionLevelChanged {
+		return nil
 	}
 
 	logging.Infof("%s [%s:%s:%d] vb: %d Recreated missing checkpoint blob", logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
@@ -203,6 +221,7 @@ var recreateCheckpointBlobCallback = func(args ...interface{}) error {
 	c := args[0].(*Consumer)
 	vbKey := args[1].(common.Key)
 	vbBlob := args[2].(*vbucketKVBlob)
+	operr := args[3].(*error)
 
 	entries := strings.Split(vbKey.Raw(), "::")
 	vb, err := strconv.Atoi(entries[len(entries)-1])
@@ -213,10 +232,12 @@ var recreateCheckpointBlobCallback = func(args ...interface{}) error {
 	var flogs couchbase.FailoverLog
 	var vbuuid uint64
 
-	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getEFFailoverLogOpAllVbucketsCallback, c, &flogs, uint16(vb))
+	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getEFFailoverLogOpAllVbucketsCallback, c, &flogs, uint16(vb), operr)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 		return err
+	} else if operr != nil && *operr == common.ErrEncryptionLevelChanged {
+		return nil
 	}
 
 	logging.Infof("%s [%s:%s:%d] vb: %d Recreating missing checkpoint blob", logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
@@ -252,10 +273,12 @@ var recreateCheckpointBlobCallback = func(args ...interface{}) error {
 			*vbBlob,
 			util.EventingVer(),
 		}
-		err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, setOpCallback, c, vbKey, &vbBlobVer)
+		err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, setOpCallback, c, vbKey, &vbBlobVer, operr)
 		if err == common.ErrRetryTimeout {
 			logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 			return err
+		} else if operr != nil && *operr == common.ErrEncryptionLevelChanged {
+			return nil
 		}
 	}
 
@@ -270,6 +293,7 @@ var periodicCheckpointCallback = func(args ...interface{}) error {
 	c := args[0].(*Consumer)
 	vbKey := args[1].(common.Key)
 	vbBlob := args[2].(*vbucketKVBlob)
+	operr := args[3].(*error)
 
 	c.gocbMetaHandleMutex.RLock()
 	defer c.gocbMetaHandleMutex.RUnlock()
@@ -285,6 +309,11 @@ var periodicCheckpointCallback = func(args ...interface{}) error {
 		UpsertEx("last_processed_seq_no", vbBlob.LastSeqNoProcessed, gocb.SubdocFlagCreatePath).
 		UpsertEx("vb_uuid", vbBlob.VBuuid, gocb.SubdocFlagCreatePath).
 		Execute()
+
+	if err != nil && c.encryptionChangedDuringLifecycle() {
+		*operr = common.ErrEncryptionLevelChanged
+		return nil
+	}
 
 	if !c.isRebalanceOngoing && !c.vbsStateUpdateRunning && (vbBlob.NodeUUID == "" || vbBlob.CurrentVBOwner == "") {
 		entry := OwnershipEntry{
@@ -304,6 +333,11 @@ var periodicCheckpointCallback = func(args ...interface{}) error {
 			UpsertEx("node_uuid", c.NodeUUID(), gocb.SubdocFlagCreatePath).
 			UpsertEx("vb_uuid", vbBlob.VBuuid, gocb.SubdocFlagCreatePath).
 			Execute()
+
+		if err != nil && c.encryptionChangedDuringLifecycle() {
+			*operr = common.ErrEncryptionLevelChanged
+			return nil
+		}
 	}
 
 	if err == gocb.ErrShutdown || err == gocb.ErrKeyNotFound {
@@ -324,6 +358,7 @@ var updateCheckpointCallback = func(args ...interface{}) error {
 	c := args[0].(*Consumer)
 	vbKey := args[1].(common.Key)
 	vbBlob := args[2].(*vbucketKVBlob)
+	operr := args[3].(*error)
 
 retryUpdateCheckpoint:
 	c.gocbMetaHandleMutex.RLock()
@@ -345,14 +380,20 @@ retryUpdateCheckpoint:
 		UpsertEx("worker_requested_vb_stream", "", gocb.SubdocFlagCreatePath).
 		UpsertEx("last_processed_seq_no", vbBlob.LastSeqNoProcessed, gocb.SubdocFlagCreatePath).
 		Execute()
+	if err != nil && c.encryptionChangedDuringLifecycle() {
+		*operr = common.ErrEncryptionLevelChanged
+		return nil
+	}
 
 	if err == gocb.ErrKeyNotFound {
 		var vbBlob vbucketKVBlob
 
-		err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, recreateCheckpointBlobsFromVbStatsCallback, c, vbKey, &vbBlob)
+		err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, recreateCheckpointBlobsFromVbStatsCallback, c, vbKey, &vbBlob, operr)
 		if err == common.ErrRetryTimeout {
 			logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 			return err
+		} else if operr != nil && *operr == common.ErrEncryptionLevelChanged {
+			return nil
 		}
 
 		goto retryUpdateCheckpoint
@@ -376,6 +417,7 @@ var metadataCorrectionCallback = func(args ...interface{}) error {
 	c := args[0].(*Consumer)
 	vbKey := args[1].(common.Key)
 	ownershipEntry := args[2].(*OwnershipEntry)
+	operr := args[3].(*error)
 
 retryMetadataCorrection:
 	c.gocbMetaHandleMutex.RLock()
@@ -390,6 +432,11 @@ retryMetadataCorrection:
 		UpsertEx("node_uuid", c.NodeUUID(), gocb.SubdocFlagCreatePath).
 		Execute()
 
+	if err != nil && c.encryptionChangedDuringLifecycle() {
+		*operr = common.ErrEncryptionLevelChanged
+		return nil
+	}
+
 	if err == gocb.ErrShutdown {
 		return nil
 	}
@@ -397,10 +444,12 @@ retryMetadataCorrection:
 	if err == gocb.ErrKeyNotFound {
 		var vbBlob vbucketKVBlob
 
-		err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, recreateCheckpointBlobCallback, c, vbKey, &vbBlob)
+		err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, recreateCheckpointBlobCallback, c, vbKey, &vbBlob, operr)
 		if err == common.ErrRetryTimeout {
 			logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 			return err
+		} else if operr != nil && *operr == common.ErrEncryptionLevelChanged {
+			return nil
 		}
 
 		goto retryMetadataCorrection
@@ -420,6 +469,7 @@ var undoMetadataCorrectionCallback = func(args ...interface{}) error {
 	c := args[0].(*Consumer)
 	vbKey := args[1].(common.Key)
 	ownershipEntry := args[2].(*OwnershipEntry)
+	operr := args[3].(*error)
 
 retryUndoMetadataCorrection:
 	c.gocbMetaHandleMutex.RLock()
@@ -434,6 +484,11 @@ retryUndoMetadataCorrection:
 		UpsertEx("node_uuid", "", gocb.SubdocFlagCreatePath).
 		Execute()
 
+	if err != nil && c.encryptionChangedDuringLifecycle() {
+		*operr = common.ErrEncryptionLevelChanged
+		return nil
+	}
+
 	if err == gocb.ErrShutdown {
 		return nil
 	}
@@ -441,10 +496,12 @@ retryUndoMetadataCorrection:
 	if err == gocb.ErrKeyNotFound {
 		var vbBlob vbucketKVBlob
 
-		err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, recreateCheckpointBlobCallback, c, vbKey, &vbBlob)
+		err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, recreateCheckpointBlobCallback, c, vbKey, &vbBlob, operr)
 		if err == common.ErrRetryTimeout {
 			logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 			return err
+		} else if operr != nil && *operr == common.ErrEncryptionLevelChanged {
+			return nil
 		}
 
 		goto retryUndoMetadataCorrection
@@ -465,6 +522,7 @@ var addOwnershipHistorySRRCallback = func(args ...interface{}) error {
 	c := args[0].(*Consumer)
 	vbKey := args[1].(common.Key)
 	ownershipEntry := args[2].(*OwnershipEntry)
+	operr := args[3].(*error)
 
 retrySRRUpdate:
 	c.gocbMetaHandleMutex.RLock()
@@ -482,6 +540,11 @@ retrySRRUpdate:
 		UpsertEx("worker_requested_vb_stream", c.ConsumerName(), gocb.SubdocFlagCreatePath).
 		Execute()
 
+	if err != nil && c.encryptionChangedDuringLifecycle() {
+		*operr = common.ErrEncryptionLevelChanged
+		return nil
+	}
+
 	if err == gocb.ErrShutdown {
 		return nil
 	}
@@ -489,10 +552,12 @@ retrySRRUpdate:
 	if err == gocb.ErrKeyNotFound {
 		var vbBlob vbucketKVBlob
 
-		err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, recreateCheckpointBlobCallback, c, vbKey, &vbBlob)
+		err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, recreateCheckpointBlobCallback, c, vbKey, &vbBlob, operr)
 		if err == common.ErrRetryTimeout {
 			logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 			return err
+		} else if operr != nil && *operr == common.ErrEncryptionLevelChanged {
+			return nil
 		}
 
 		goto retrySRRUpdate
@@ -513,6 +578,7 @@ var addOwnershipHistorySRFCallback = func(args ...interface{}) error {
 	c := args[0].(*Consumer)
 	vbKey := args[1].(common.Key)
 	ownershipEntry := args[2].(*OwnershipEntry)
+	operr := args[3].(*error)
 
 retrySRFUpdate:
 	c.gocbMetaHandleMutex.RLock()
@@ -530,6 +596,11 @@ retrySRFUpdate:
 		UpsertEx("worker_requested_vb_stream", "", gocb.SubdocFlagCreatePath).
 		Execute()
 
+	if err != nil && c.encryptionChangedDuringLifecycle() {
+		*operr = common.ErrEncryptionLevelChanged
+		return nil
+	}
+
 	if err == gocb.ErrShutdown {
 		return nil
 	}
@@ -537,10 +608,12 @@ retrySRFUpdate:
 	if err == gocb.ErrKeyNotFound {
 		var vbBlob vbucketKVBlob
 
-		err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, recreateCheckpointBlobCallback, c, vbKey, &vbBlob)
+		err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, recreateCheckpointBlobCallback, c, vbKey, &vbBlob, operr)
 		if err == common.ErrRetryTimeout {
 			logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 			return err
+		} else if operr != nil && *operr == common.ErrEncryptionLevelChanged {
+			return nil
 		}
 
 		goto retrySRFUpdate
@@ -562,6 +635,7 @@ var addOwnershipHistorySRSCallback = func(args ...interface{}) error {
 	vbKey := args[1].(common.Key)
 	vbBlob := args[2].(*vbucketKVBlob)
 	ownershipEntry := args[3].(*OwnershipEntry)
+	operr := args[4].(*error)
 
 retrySRSUpdate:
 	c.gocbMetaHandleMutex.RLock()
@@ -581,6 +655,11 @@ retrySRSUpdate:
 		UpsertEx("worker_requested_vb_stream", "", gocb.SubdocFlagCreatePath).
 		Execute()
 
+	if err != nil && c.encryptionChangedDuringLifecycle() {
+		*operr = common.ErrEncryptionLevelChanged
+		return nil
+	}
+
 	if err == gocb.ErrShutdown {
 		return nil
 	}
@@ -588,10 +667,12 @@ retrySRSUpdate:
 	if err == gocb.ErrKeyNotFound {
 		var vbBlob vbucketKVBlob
 
-		err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, recreateCheckpointBlobsFromVbStatsCallback, c, vbKey, &vbBlob)
+		err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, recreateCheckpointBlobsFromVbStatsCallback, c, vbKey, &vbBlob, operr)
 		if err == common.ErrRetryTimeout {
 			logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 			return err
+		} else if operr != nil && *operr == common.ErrEncryptionLevelChanged {
+			return nil
 		}
 
 		goto retrySRSUpdate
@@ -611,6 +692,7 @@ var addOwnershipHistorySECallback = func(args ...interface{}) error {
 	c := args[0].(*Consumer)
 	vbKey := args[1].(common.Key)
 	ownershipEntry := args[2].(*OwnershipEntry)
+	operr := args[3].(*error)
 
 retrySEUpdate:
 	c.gocbMetaHandleMutex.RLock()
@@ -624,6 +706,11 @@ retrySEUpdate:
 		UpsertEx("worker_requested_vb_stream", "", gocb.SubdocFlagCreatePath).
 		Execute()
 
+	if err != nil && c.encryptionChangedDuringLifecycle() {
+		*operr = common.ErrEncryptionLevelChanged
+		return nil
+	}
+
 	if err == gocb.ErrShutdown || err == gocb.ErrKeyNotFound {
 		return nil
 	}
@@ -631,10 +718,12 @@ retrySEUpdate:
 	if err == gocb.ErrKeyNotFound {
 		var vbBlob vbucketKVBlob
 
-		err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, recreateCheckpointBlobsFromVbStatsCallback, c, vbKey, &vbBlob)
+		err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, recreateCheckpointBlobsFromVbStatsCallback, c, vbKey, &vbBlob, operr)
 		if err == common.ErrRetryTimeout {
 			logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 			return err
+		} else if operr != nil && *operr == common.ErrEncryptionLevelChanged {
+			return nil
 		}
 
 		goto retrySEUpdate
@@ -653,6 +742,7 @@ var getFailoverLogOpCallback = func(args ...interface{}) error {
 
 	c := args[0].(*Consumer)
 	flogs := args[1].(*couchbase.FailoverLog)
+	reterr := args[2].(*error)
 
 	if atomic.LoadUint32(&c.isTerminateRunning) == 1 {
 		logging.Tracef("%s [%s:%s:%d] Exiting as worker is terminating",
@@ -665,6 +755,10 @@ var getFailoverLogOpCallback = func(args ...interface{}) error {
 	if err != nil {
 		logging.Errorf("%s [%s:%s:%d] Failed to get failover logs, err: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
+		if c.encryptionChangedDuringLifecycle() {
+			*reterr = common.ErrEncryptionLevelChanged
+			return nil
+		}
 	}
 
 	return err
@@ -677,6 +771,7 @@ var getEFFailoverLogOpAllVbucketsCallback = func(args ...interface{}) error {
 	c := args[0].(*Consumer)
 	flogs := args[1].(*couchbase.FailoverLog)
 	vb := args[2].(uint16)
+	reterr := args[3].(*error)
 
 	vbs := make([]uint16, 0)
 	for vb := 0; vb < c.numVbuckets; vb++ {
@@ -694,6 +789,10 @@ var getEFFailoverLogOpAllVbucketsCallback = func(args ...interface{}) error {
 	if err != nil {
 		logging.Errorf("%s [%s:%s:%d] vb: %d Failed to get failover logs, err: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, err)
+		if c.encryptionChangedDuringLifecycle() {
+			*reterr = common.ErrEncryptionLevelChanged
+			return nil
+		}
 	}
 
 	return err
@@ -705,6 +804,7 @@ var startDCPFeedOpCallback = func(args ...interface{}) error {
 	c := args[0].(*Consumer)
 	feedName := args[1].(couchbase.DcpFeedName)
 	kvHostPort := args[2].(string)
+	operr := args[3].(*error)
 
 	if atomic.LoadUint32(&c.isTerminateRunning) == 1 {
 		logging.Tracef("%s [%s:%s:%d] Exiting as worker is terminating",
@@ -719,6 +819,11 @@ var startDCPFeedOpCallback = func(args ...interface{}) error {
 	if err != nil {
 		logging.Errorf("%s [%s:%s:%d] Failed to start dcp feed for bucket: %v from kv node: %rs, err: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), c.bucket, kvHostPort, err)
+
+		if c.encryptionChangedDuringLifecycle() {
+			*operr = common.ErrEncryptionLevelChanged
+			return nil
+		}
 		return err
 	}
 	logging.Infof("%s [%s:%s:%d] Started up dcp feed for bucket: %v from kv node: %rs",
@@ -734,6 +839,7 @@ var populateDcpFeedVbEntriesCallback = func(args ...interface{}) error {
 	logPrefix := "Consumer::populateDcpFeedVbEntriesCallback"
 
 	c := args[0].(*Consumer)
+	streamcreateerr := args[1].(*error)
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -785,6 +891,10 @@ var populateDcpFeedVbEntriesCallback = func(args ...interface{}) error {
 
 		err := startFeed()
 		if err != nil {
+			if c.encryptionChangedDuringLifecycle() {
+				*streamcreateerr = common.ErrEncryptionLevelChanged
+				return nil
+			}
 			return err
 		}
 
@@ -871,10 +981,16 @@ var checkIfVbStreamsOpenedCallback = func(args ...interface{}) error {
 
 	c := args[0].(*Consumer)
 	vbs := args[1].([]uint16)
+	operr := args[2].(*error)
 
 	if atomic.LoadUint32(&c.isTerminateRunning) == 1 {
 		logging.Tracef("%s [%s:%s:%d] Exiting as worker is terminating",
 			logPrefix, c.workerName, c.tcpPort, c.Pid())
+		return nil
+	}
+
+	if c.encryptionChangedDuringLifecycle() {
+		*operr = common.ErrEncryptionLevelChanged
 		return nil
 	}
 

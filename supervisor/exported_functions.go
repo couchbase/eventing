@@ -58,7 +58,7 @@ func (s *SuperSupervisor) GetDebuggerURL(appName string) (string, error) {
 		return p.GetDebuggerURL()
 	}
 
-	return "", nil
+	return "", fmt.Errorf("App %s not running", appName)
 }
 
 // GetDeployedApps returns list of deployed apps and their last deployment time
@@ -158,20 +158,14 @@ func (s *SuperSupervisor) RestPort() string {
 
 // SignalStopDebugger stops V8 Debugger for a specific deployed lambda
 func (s *SuperSupervisor) SignalStopDebugger(appName string) error {
-	logPrefix := "SuperSupervisor::SignalStopDebugger"
-
 	p, ok := s.runningFns()[appName]
-	if ok {
-		err := p.SignalStopDebugger()
-		if err == common.ErrRetryTimeout {
-			logging.Errorf("%s [%d] Exiting due to timeout", logPrefix, s.runningFnsCount())
-			return err
-		}
-	} else {
-		logging.Errorf("%s [%d] Function: %s request didn't go through as Eventing.Producer instance isn't alive",
-			logPrefix, s.runningFnsCount(), appName)
+	if !ok {
+		return fmt.Errorf("Producer %s not running", appName)
 	}
-
+	err := p.SignalStopDebugger()
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -633,7 +627,7 @@ func (s *SuperSupervisor) GetGocbHandle(bucketName, appName string) (*gocb.Bucke
 }
 
 func (s *SuperSupervisor) CheckAndSwitchgocbBucket(bucketName, appName string, setting *common.SecuritySetting) error {
-	return s.gocbGlobalConfigHandle.maybeRegistergocbBucket(bucketName, appName, setting)
+	return s.gocbGlobalConfigHandle.maybeRegistergocbBucket(bucketName, appName, setting, s)
 }
 
 func (s *SuperSupervisor) GetMetadataHandle(bucketName, appName string) (*gocb.Bucket, error) {
@@ -673,4 +667,20 @@ func (s *SuperSupervisor) GetGocbSubscribedApps(encryptionEnabled bool) map[stri
 		}
 	}
 	return apps
+}
+
+func (s *SuperSupervisor) EncryptionChangedDuringLifecycle() bool {
+	s.initEncryptDataMutex.RLock()
+	initencryptData := s.initLifecycleEncryptData
+	defer s.initEncryptDataMutex.RUnlock()
+
+	currentencryptData := false
+	if securitySetting := s.GetSecuritySetting(); securitySetting != nil {
+		currentencryptData = securitySetting.EncryptData
+	}
+
+	if initencryptData != currentencryptData {
+		return true
+	}
+	return false
 }

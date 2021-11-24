@@ -141,9 +141,11 @@ var commonConnectBucketOpCallback = func(args ...interface{}) error {
 
 var gocbConnectCluster = func(args ...interface{}) error {
 	logPrefix := "Supervisor::gocbConnectCluster"
-	gocbCluster := args[0].(**gocb.Cluster)
-	restPort := args[1].(string)
-	securitySetting := args[2].(*common.SecuritySetting)
+	sup := args[0].(*SuperSupervisor)
+	gocbCluster := args[1].(**gocb.Cluster)
+	restPort := args[2].(string)
+	securitySetting := args[3].(*common.SecuritySetting)
+	operr := args[4].(*error)
 
 	hostPortAddr := net.JoinHostPort(util.Localhost(), restPort)
 	cic, err := util.FetchClusterInfoClient(hostPortAddr)
@@ -178,6 +180,10 @@ var gocbConnectCluster = func(args ...interface{}) error {
 	}
 	cluster, err := gocb.Connect(connStr)
 	if err != nil {
+		if sup.EncryptionChangedDuringLifecycle() {
+			*operr = common.ErrEncryptionLevelChanged
+			return nil
+		}
 		logging.Errorf("%s Connect to cluster %rs failed, err: %v",
 			logPrefix, connStr, err)
 		return err
@@ -196,14 +202,20 @@ var gocbConnectCluster = func(args ...interface{}) error {
 
 var gocbConnectBucket = func(args ...interface{}) error {
 	logPrefix := "Supervisor::gocbConnectBucket"
-	bucketHandle := args[0].(**gocb.Bucket)
-	cluster := args[1].(*gocb.Cluster)
-	bucketName := args[2].(string)
-	hostPortAddr := args[3].(string)
-	bucketNotExist := args[4].(*bool)
+	sup := args[0].(*SuperSupervisor)
+	bucketHandle := args[1].(**gocb.Bucket)
+	cluster := args[2].(*gocb.Cluster)
+	bucketName := args[3].(string)
+	hostPortAddr := args[4].(string)
+	bucketNotExist := args[5].(*bool)
+	operr := args[6].(*error)
 
 	bucket, err := cluster.OpenBucket(bucketName, "")
 	if err != nil {
+		if sup.EncryptionChangedDuringLifecycle() {
+			*operr = common.ErrEncryptionLevelChanged
+			return nil
+		}
 		if !util.CheckKeyspaceExist(bucketName, hostPortAddr) {
 			*bucketNotExist = true
 			return nil
