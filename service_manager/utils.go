@@ -832,7 +832,7 @@ func (m *ServiceMgr) checkTopologyChangeReadiness(changeType service.TopologyCha
 	logPrefix := "ServiceMgr::checkTopologyChangeReadiness"
 
 	nodeAddrs, err := m.getActiveNodeAddrs()
-	logging.Infof("%s Active Eventing nodes in the cluster: %rs", logPrefix, nodeAddrs)
+	logging.Tracef("%s Active Eventing nodes in the cluster: %rs", logPrefix, nodeAddrs)
 
 	if len(nodeAddrs) > 0 && err == nil {
 
@@ -849,19 +849,17 @@ func (m *ServiceMgr) checkTopologyChangeReadiness(changeType service.TopologyCha
 			}
 		} else {
 			appsBootstrapStatus, err := util.CheckIfBootstrapOngoing("/getBootstrapStatus", nodeAddrs)
-			logging.Infof("%s Bootstrap status across all Eventing nodes: %v", logPrefix, appsBootstrapStatus)
+			logging.Infof("%s Bootstrap status across all Eventing nodes: %v err: %v", logPrefix, appsBootstrapStatus, err)
 			if err != nil {
 				return err
 			}
 			if appsBootstrapStatus {
-				logging.Warnf("%s Some apps are undergoing bootstrap", logPrefix)
 				return fmt.Errorf("Some apps are deploying or resuming on some or all Eventing nodes")
 			}
 
 			appsPausing, err := util.GetAggPausingApps("/getPausingApps", nodeAddrs)
-			logging.Infof("%s Status of pausing apps across all Eventing nodes: %v %v", logPrefix, appsPausing, err)
+			logging.Infof("%s Status of pausing apps across all Eventing nodes: %v err: %v", logPrefix, appsPausing, err)
 			if err != nil {
-				logging.Warnf("%s Some apps are being paused on some or all Eventing nodes, err: %v", logPrefix, err)
 				return err
 			}
 		}

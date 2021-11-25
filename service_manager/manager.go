@@ -109,7 +109,7 @@ func (m *ServiceMgr) initService() {
 		for {
 			err := m.registerWithServer()
 			if err != nil {
-				logging.Infof("%s Retrying to register against cbauth_service", logPrefix)
+				logging.Infof("%s Retrying to register against cbauth_service err: %v", logPrefix, err)
 				time.Sleep(2 * time.Second)
 			} else {
 				break
@@ -570,7 +570,7 @@ func (m *ServiceMgr) settingChangeCallback(kve metakv.KVEntry) error {
 
 	pathTokens := strings.Split(kve.Path, "/")
 	if len(pathTokens) != 4 {
-		logging.Errorf("%s Invalid setting path, path: %s", logPrefix, kve.Path)
+		logging.Errorf("%s Expected path length 4, path: %s encoded value size: %d", logPrefix, kve.Path, len(kve.Value))
 		return nil
 	}
 
@@ -672,14 +672,13 @@ func (m *ServiceMgr) disableDebugger() {
 
 func (m *ServiceMgr) registerWithServer() error {
 	cfg := m.config.Load()
-	logging.Infof("Registering against cbauth_service, uuid: %v", cfg["uuid"].(string))
 
 	err := service.RegisterManager(m, nil)
 	if err != nil {
-		logging.Errorf("Failed to register against cbauth_service, err: %v", err)
 		return err
 	}
 
+	logging.Infof("Registered against cbauth_service, uuid: %v", cfg["uuid"].(string))
 	return nil
 }
 
@@ -704,7 +703,6 @@ func (m *ServiceMgr) startRebalance(change service.TopologyChange) error {
 		rev:    0,
 	}
 
-	logging.Infof("%s Garbage collecting old rebalance tokens", logPrefix)
 	// Garbage collect old Rebalance Tokens
 	util.Retry(util.NewFixedBackoff(time.Second), nil, cleanupEventingMetaKvPath, metakvRebalanceTokenPath)
 	logging.Infof("%s Writing rebalance token: %s to metakv", logPrefix, change.ID)

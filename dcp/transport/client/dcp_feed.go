@@ -206,9 +206,9 @@ loop:
 		case <-latencyTm.C:
 
 			fmsg := "%v dcp latency stats %v\n"
-			logging.Infof(fmsg, feed.logPrefix, feed.dcplatency)
+			logging.Debugf(fmsg, feed.logPrefix, feed.dcplatency)
 			fmsg = "%v dcp stats %v\n"
-			logging.Infof(fmsg, feed.logPrefix, feed.stats.String(feed))
+			logging.Debugf(fmsg, feed.logPrefix, feed.stats.String(feed))
 
 		case msg := <-reqch:
 			if feed.handleControlRequest(msg, rcvch, nil) == "break" {
