@@ -332,17 +332,6 @@ func (m *ServiceMgr) initService() {
 						couchbase.SetCertFile(m.certFile)
 						couchbase.SetKeyFile(m.keyFile)
 						couchbase.SetUseTLS(true)
-
-						// Wait for the supervisor's scn before we go ahead and refresh
-						<-m.supWaitCh
-
-						// refresh vb map, nodes list and connection pool for each bucket to use TLS
-						util.SingletonServicesContainer.Lock()
-						notiferInstance, ok := util.SingletonServicesContainer.Notifiers[m.superSup.GetRegisteredPool()]
-						util.SingletonServicesContainer.Unlock()
-						if ok {
-							notiferInstance.NotifyEncryptionLevelChange(true)
-						}
 					} else {
 						// notify utils to use plain text for eventing2eventing communication
 						couchbase.SetUseTLS(false)
@@ -350,6 +339,15 @@ func (m *ServiceMgr) initService() {
 						// notify dcp package to use plain text for memcached communication
 						// existing TLS connections remain unchanged. New connections will be plain text
 						util.SetUseTLS(false)
+					}
+					// Wait for the supervisor's scn before we go ahead and refresh
+					<-m.supWaitCh
+					// refresh vb map, nodes list and connection pool for each bucket with current encryption level
+					util.SingletonServicesContainer.Lock()
+					notiferInstance, ok := util.SingletonServicesContainer.Notifiers[m.superSup.GetRegisteredPool()]
+					util.SingletonServicesContainer.Unlock()
+					if ok {
+						notiferInstance.NotifyEncryptionLevelChange(true)
 					}
 				}
 			}
