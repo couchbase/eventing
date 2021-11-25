@@ -1,14 +1,17 @@
 package util
 
-import "sync"
-import "time"
-import "fmt"
-import "sort"
-import "errors"
+import (
+	"errors"
+	"fmt"
+	"sort"
+	"strings"
+	"sync"
+	"time"
 
-import "github.com/couchbase/eventing/dcp"
-import "github.com/couchbase/eventing/dcp/transport/client"
-import "github.com/couchbase/eventing/logging"
+	couchbase "github.com/couchbase/eventing/dcp"
+	memcached "github.com/couchbase/eventing/dcp/transport/client"
+	"github.com/couchbase/eventing/logging"
+)
 
 const seqsReqChanSize = 20000
 const seqsBufSize = 64 * 1024
@@ -260,6 +263,25 @@ func BucketSeqnos(cluster, pooln, bucketn string) (l_seqnos []uint64, err error)
 
 	l_seqnos, err = reader.GetSeqnos()
 	return
+}
+
+func GetSeqnos(args ...interface{}) error {
+	cluster := args[0].(string)
+	pool := args[1].(string)
+	bucket := args[2].(string)
+	l_seqnos := args[3].(*[]uint64)
+
+	seqnos, err := BucketSeqnos(cluster, pool, bucket)
+	if err == nil {
+		*l_seqnos = seqnos
+		return nil
+	}
+	if strings.Contains(err.Error(), "No bucket") {
+		logging.Infof("No bucket named %s found", bucket)
+		return nil
+	}
+	logging.Warnf("Got error while trying to get bucket sequence numbers: %v Retrying...", err)
+	return err
 }
 
 func CollectSeqnos(kvfeeds map[string]*kvConn) (l_seqnos []uint64, err error) {

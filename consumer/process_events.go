@@ -420,7 +420,8 @@ func (c *Consumer) startDcp() error {
 	var vbSeqnos []uint64
 	// Fetch high seq number only if dcp stream boundary is from now
 	if c.dcpStreamBoundary == common.DcpFromNow {
-		vbSeqnos, err = util.BucketSeqnos(c.producer.NsServerHostPort(), "default", c.bucket)
+		err = util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), c.retryCount, util.GetSeqnos,
+			c.producer.NsServerHostPort(), "default", c.bucket, &vbSeqnos)
 		if err != nil {
 			logging.Errorf("%s [%s:%s:%d] Failed to fetch vb seqnos, err: %v", logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
 			return nil
@@ -428,7 +429,6 @@ func (c *Consumer) startDcp() error {
 	} else {
 		vbSeqnos = make([]uint64, c.numVbuckets)
 	}
-
 	logging.Debugf("%s [%s:%s:%d] get_all_vb_seqnos: len => %d dump => %v",
 		logPrefix, c.workerName, c.tcpPort, c.Pid(), len(vbSeqnos), vbSeqnos)
 	vbs := make([]uint16, 0, len(vbSeqnos))
@@ -1074,9 +1074,9 @@ func (c *Consumer) handleFailoverLog() {
 					// maintain that information
 					c.sendVbFilterData(vbFlog.vb, vbFlog.seqNo, true)
 					streamInfo := &streamRequestInfo{
-						vb:          vbFlog.vb,
-						vbBlob:      &vbBlob,
-						startSeqNo:  startSeqNo,
+						vb:         vbFlog.vb,
+						vbBlob:     &vbBlob,
+						startSeqNo: startSeqNo,
 					}
 
 					select {
@@ -1095,7 +1095,9 @@ func (c *Consumer) handleFailoverLog() {
 						case <-c.stopConsumerCh:
 							return
 						default:
-							vbSeqNos, err := util.BucketSeqnos(c.producer.NsServerHostPort(), "default", c.bucket)
+							var vbSeqNos []uint64
+							err := util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), c.retryCount, util.GetSeqnos,
+								c.producer.NsServerHostPort(), "default", c.bucket, &vbSeqNos)
 							if err == nil {
 								break vbLabel
 							}
