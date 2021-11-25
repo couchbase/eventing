@@ -351,7 +351,7 @@ type EventingSuperSup interface {
 	GetEventProcessingStats(appName string) map[string]uint64
 	GetAppCode(appName string) string
 	GetAppLog(appName string, sz int64) []string
-	GetAppState(appName string) int8
+	GetAppCompositeState(appName string) int8
 	GetDcpEventsRemainingToProcess(appName string) uint64
 	GetDebuggerURL(appName string) (string, error)
 	GetDeployedApps() map[string]string
@@ -593,4 +593,24 @@ func CheckAndReturnDefaultForScopeOrCollection(key string) string {
 		return "_default"
 	}
 	return key
+}
+
+func GetCompositeState(dStatus, pStatus bool) int8 {
+	switch dStatus {
+	case true:
+		switch pStatus {
+		case true:
+			return AppStateEnabled
+		case false:
+			return AppStatePaused
+		}
+	case false:
+		switch pStatus {
+		case true:
+			return AppStateUnexpected
+		case false:
+			return AppStateUndeployed
+		}
+	}
+	return AppState
 }

@@ -241,7 +241,7 @@ func (s *SuperSupervisor) SettingsChangeCallback(kve metakv.KVEntry) error {
 		s.appRWMutex.Unlock()
 
 		logging.Infof("%s [%d] Function: %s current state: %d requested status for deployment: %t processing: %t",
-			logPrefix, s.runningFnsCount(), appName, s.GetAppState(appName), deploymentStatus, processingStatus)
+			logPrefix, s.runningFnsCount(), appName, s.GetAppCompositeState(appName), deploymentStatus, processingStatus)
 
 		/*
 			Undeployed	S1	deployment_status: false	processing_status: false
@@ -261,7 +261,7 @@ func (s *SuperSupervisor) SettingsChangeCallback(kve metakv.KVEntry) error {
 			switch processingStatus {
 			case true:
 				logging.Infof("%s [%d] Function: %s begin deployment process", logPrefix, s.runningFnsCount(), appName)
-				state := s.GetAppState(appName)
+				state := s.GetAppCompositeState(appName)
 
 				if state == common.AppStateUndeployed || state == common.AppStatePaused {
 				retryAppDeploy:
@@ -368,7 +368,7 @@ func (s *SuperSupervisor) SettingsChangeCallback(kve metakv.KVEntry) error {
 
 			case false:
 
-				state := s.GetAppState(appName)
+				state := s.GetAppCompositeState(appName)
 
 				if state == common.AppStateEnabled {
 
@@ -414,7 +414,7 @@ func (s *SuperSupervisor) SettingsChangeCallback(kve metakv.KVEntry) error {
 				logging.Infof("%s [%d] Function: %s Unexpected status requested", logPrefix, s.runningFnsCount(), appName)
 
 			case false:
-				state := s.GetAppState(appName)
+				state := s.GetAppCompositeState(appName)
 				updateMetakv := false
 				skipMetaCleanup := false
 
