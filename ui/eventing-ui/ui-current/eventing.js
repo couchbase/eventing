@@ -1228,7 +1228,7 @@ angular.module('eventing', [
 
         // Is the bucketname present in the binding valid?
         if (!self.isBucketValid($scope.bindings[binding].name,
-          collectionList)) {
+            collectionList)) {
           $scope.bindings[binding].name = "";
           $scope.bindings[binding].scope = "";
           $scope.bindings[binding].collection = "";
@@ -2760,6 +2760,10 @@ angular.module('eventing', [
             form.timer_context_size.$error.min ||
             form.timer_context_size.$error.max ||
             form.timer_context_size.$error.isnan ||
+            !formCtrl.functionBuckets.includes(form.function_bucket && form
+              .function_bucket.$viewValue) ||
+            !formCtrl.functionScopes.includes(form.function_scope && form
+              .function_scope.$viewValue) ||
             !formCtrl.metadataBuckets.includes(form.metadata_bucket && form
               .metadata_bucket.$viewValue) ||
             !formCtrl.metadataScopes.includes(form.metadata_scope && form
