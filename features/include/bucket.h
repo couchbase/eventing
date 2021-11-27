@@ -46,16 +46,20 @@ private:
 class Bucket {
 public:
   Bucket(v8::Isolate *isolate, std::string bucket_name, std::string scope_name,
-         std::string collection_name, const std::string &user, const std::string &domain)
+         std::string collection_name, const std::string &user,
+         const std::string &domain)
       : isolate_(isolate), bucket_name_(std::move(bucket_name)),
         scope_name_(std::move(scope_name)),
         collection_name_(std::move(collection_name)) {
     scope_length_ = scope_name_.size();
     collection_length_ = collection_name_.size();
-    if(domain == "external") {
-        on_behalf_of_ = "^"+user;
+
+    on_behalf_of_privilege_ = "SystemXattrWrite";
+
+    if (domain == "external") {
+      on_behalf_of_ = "^" + user;
     } else {
-        on_behalf_of_ = std::move(user);
+      on_behalf_of_ = std::move(user);
     }
   }
   ~Bucket();
@@ -138,6 +142,7 @@ private:
   lcb_INSTANCE *connection_{nullptr};
   bool is_connected_{false};
   std::string on_behalf_of_;
+  std::string on_behalf_of_privilege_;
 };
 
 class BucketBinding {
@@ -148,11 +153,12 @@ public:
   BucketBinding(v8::Isolate *isolate, std::shared_ptr<BucketFactory> factory,
                 const std::string &bucket_name, const std::string &scope_name,
                 const std::string &collection_name, std::string alias,
-                bool block_mutation, bool is_source_bucket, const std::string &user, const std::string &domain)
+                bool block_mutation, bool is_source_bucket,
+                const std::string &user, const std::string &domain)
       : block_mutation_(block_mutation), is_source_bucket_(is_source_bucket),
         bucket_name_(bucket_name), bucket_alias_(std::move(alias)),
-        factory_(std::move(factory)),
-        bucket_(isolate, bucket_name, scope_name, collection_name, user, domain) {}
+        factory_(std::move(factory)), bucket_(isolate, bucket_name, scope_name,
+                                              collection_name, user, domain) {}
 
   Error InstallBinding(v8::Isolate *isolate,
                        const v8::Local<v8::Context> &context);

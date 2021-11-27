@@ -284,7 +284,8 @@ Bucket::GetWithMeta(const std::string &key) {
   lcb_cmdsubdoc_timeout(cmd, lcb_timeout);
 
   if (on_behalf_of_.size() != 0) {
-    lcb_cmdsubdoc_on_behalf_of(cmd, on_behalf_of_.c_str(), on_behalf_of_.size());
+    lcb_cmdsubdoc_on_behalf_of(cmd, on_behalf_of_.c_str(),
+                               on_behalf_of_.size());
   }
 
   auto [err_code, result] = TryLcbCmdWithRefreshConnIfNecessary(
@@ -332,7 +333,8 @@ Bucket::CounterWithoutXattr(const std::string &key, uint64_t cas,
   lcb_cmdsubdoc_timeout(cmd, lcb_timeout);
 
   if (on_behalf_of_.size() != 0) {
-    lcb_cmdsubdoc_on_behalf_of(cmd, on_behalf_of_.c_str(), on_behalf_of_.size());
+    lcb_cmdsubdoc_on_behalf_of(cmd, on_behalf_of_.c_str(),
+                               on_behalf_of_.size());
   }
 
   auto [err_code, result] = TryLcbCmdWithRefreshConnIfNecessary(
@@ -401,7 +403,10 @@ Bucket::CounterWithXattr(const std::string &key, uint64_t cas, lcb_U32 expiry,
   lcb_cmdsubdoc_timeout(cmd, lcb_timeout);
 
   if (on_behalf_of_.size() != 0) {
-    lcb_cmdsubdoc_on_behalf_of(cmd, on_behalf_of_.c_str(), on_behalf_of_.size());
+    lcb_cmdsubdoc_on_behalf_of(cmd, on_behalf_of_.c_str(),
+                               on_behalf_of_.size());
+    lcb_cmdsubdoc_on_behalf_of_extra_privilege(
+        cmd, on_behalf_of_privilege_.c_str(), on_behalf_of_privilege_.size());
   }
 
   auto [err_code, result] = TryLcbCmdWithRefreshConnIfNecessary(
@@ -472,7 +477,10 @@ Bucket::SetWithXattr(const std::string &key, const std::string &value,
   lcb_cmdsubdoc_timeout(cmd, lcb_timeout);
 
   if (on_behalf_of_.size() != 0) {
-    lcb_cmdsubdoc_on_behalf_of(cmd, on_behalf_of_.c_str(), on_behalf_of_.size());
+    lcb_cmdsubdoc_on_behalf_of(cmd, on_behalf_of_.c_str(),
+                               on_behalf_of_.size());
+    lcb_cmdsubdoc_on_behalf_of_extra_privilege(
+        cmd, on_behalf_of_privilege_.c_str(), on_behalf_of_privilege_.size());
   }
 
   auto [err_code, result] = TryLcbCmdWithRefreshConnIfNecessary(
@@ -585,7 +593,10 @@ Bucket::DeleteWithXattr(const std::string &key, uint64_t cas) {
   lcb_cmdsubdoc_timeout(cmd, lcb_timeout);
 
   if (on_behalf_of_.size() != 0) {
-    lcb_cmdsubdoc_on_behalf_of(cmd, on_behalf_of_.c_str(), on_behalf_of_.size());
+    lcb_cmdsubdoc_on_behalf_of(cmd, on_behalf_of_.c_str(),
+                               on_behalf_of_.size());
+    lcb_cmdsubdoc_on_behalf_of_extra_privilege(
+        cmd, on_behalf_of_privilege_.c_str(), on_behalf_of_privilege_.size());
   }
 
   auto [err_code, result] = TryLcbCmdWithRefreshConnIfNecessary(
@@ -625,7 +636,8 @@ Bucket::DeleteWithoutXattr(const std::string &key, uint64_t cas) {
   lcb_cmdremove_timeout(cmd, lcb_timeout);
 
   if (on_behalf_of_.size() != 0) {
-    lcb_cmdremove_on_behalf_of(cmd, on_behalf_of_.c_str(), on_behalf_of_.size());
+    lcb_cmdremove_on_behalf_of(cmd, on_behalf_of_.c_str(),
+                               on_behalf_of_.size());
   }
 
   auto [err_code, result] = TryLcbCmdWithRefreshConnIfNecessary(
