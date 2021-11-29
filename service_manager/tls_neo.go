@@ -9,9 +9,9 @@ import (
 	"crypto/x509"
 	"io/ioutil"
 
-	cbtls "github.com/couchbase/goutils/tls"
 	"github.com/couchbase/cbauth"
 	"github.com/couchbase/eventing/logging"
+	cbtls "github.com/couchbase/goutils/tls"
 )
 
 func (m *ServiceMgr) getTLSConfig(logPrefix string) (*tls.Config, error) {

@@ -271,18 +271,14 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
                    std::vector<uint64_t> *processed_bucketops,
 			// TODO: put user and domain into Owner class and call .ForKv() and .ForQuery()
                    vb_lock_map_t *vb_locks, int worker_idx,const std::string &user, const std::string &domain)
-    : app_name_(h_config->app_name), settings_(server_settings),
-      num_vbuckets_(num_vbuckets),
+    : app_name_(h_config->app_name), settings_(server_settings), num_vbuckets_(num_vbuckets),
       timer_reduction_ratio_(
           int(num_vbuckets / h_config->num_timer_partitions)),
-      latency_stats_(latency_stats), curl_latency_stats_(curl_latency_stats),
-      vb_seq_(vb_seq), vb_locks_(vb_locks), worker_idx_(worker_idx),
-      processed_bucketops_(processed_bucketops), platform_(platform),
-      function_name_(function_name), function_id_(function_id),
-      user_prefix_(user_prefix), ns_server_port_(ns_server_port),
-      certFile_(server_settings->certFile), user_(user), domain_(domain),
-      exception_type_names_(
-          {"KVError", "N1QLError", "EventingError", "CurlError", "TypeError"}),
+      latency_stats_(latency_stats), curl_latency_stats_(curl_latency_stats), vb_seq_(vb_seq),
+      vb_locks_(vb_locks), worker_idx_(worker_idx), processed_bucketops_(processed_bucketops),
+      platform_(platform), certFile_(server_settings->certFile), function_name_(function_name),
+      function_id_(function_id), user_prefix_(user_prefix), ns_server_port_(ns_server_port),
+      user_(user), domain_(domain), exception_type_names_({"KVError", "N1QLError", "EventingError", "CurlError", "TypeError"}),
       handler_headers_(h_config->handler_headers) {
   auto config = ParseDeployment(h_config->dep_cfg.c_str());
   cb_source_bucket_.assign(config->source_bucket);

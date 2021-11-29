@@ -190,7 +190,7 @@ Error Bucket::FormatErrorAndDestroyConn(const std::string &message,
 // but couldn't recreate
 bool Bucket::MaybeRecreateConnOnAuthErr(const lcb_STATUS &status,
                                         bool should_check_autherr) {
-  lcb_INSTANCE *tmp_instance;
+  lcb_INSTANCE *tmp_instance = nullptr;
   if (status == LCB_ERR_AUTHENTICATION_FAILURE && should_check_autherr) {
     if (is_connected_) {
       LOG(logError) << "Got LCB_ERR_AUTHENTICATION_FAILURE for bucket: "
@@ -206,8 +206,9 @@ bool Bucket::MaybeRecreateConnOnAuthErr(const lcb_STATUS &status,
         is_connected_ = true;
       return false;
     }
-    if (tmp_instance != nullptr)
-      lcb_destroy(tmp_instance);
+    if (tmp_instance != nullptr) {
+        lcb_destroy(tmp_instance);
+    }
     return true;
   }
   return false;
