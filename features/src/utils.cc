@@ -447,7 +447,16 @@ ConnStrInfo Utils::GetConnectionString(const std::string &bucket) const {
     return conn_info;
   }
   conn_info.is_valid = true;
-  conn_info.conn_str = GetConnectionStr(nodes_info.kv_nodes.front(), bucket, certFile_);
+  std::string nodes_list;
+  for (std::vector<std::string>::const_iterator nodes_iter = nodes_info.kv_nodes.begin();
+      nodes_iter != nodes_info.kv_nodes.end();
+      ++nodes_iter) {
+    nodes_list += *nodes_iter;
+    if (nodes_iter != nodes_info.kv_nodes.end() - 1) {
+      nodes_list += ',';
+    }
+  }
+  conn_info.conn_str = GetConnectionStr(nodes_list, bucket, certFile_);
   return conn_info;
 }
 
