@@ -13,7 +13,7 @@ import (
 )
 
 func (m *ServiceMgr) logSystemEvent(eventId systemeventlog.EventId,
-		severity systemeventlog.EventSeverity, extraAttributes interface{}) {
+	severity systemeventlog.EventSeverity, extraAttributes interface{}) {
 
 	util.LogSystemEvent(m.sel, eventId, severity, extraAttributes)
 }
@@ -22,7 +22,7 @@ func (m *ServiceMgr) logSystemEvent(eventId systemeventlog.EventId,
 func (m *ServiceMgr) GetNodeInfo() (*service.NodeInfo, error) {
 	logPrefix := "ServiceMgr::GetNodeInfo"
 
-	logging.Infof("%s nodeInfo: %#v", logPrefix, m.nodeInfo)
+	logging.Tracef("%s nodeInfo: %#v", logPrefix, m.nodeInfo)
 	return m.nodeInfo, nil
 }
 
@@ -39,7 +39,7 @@ func (m *ServiceMgr) Shutdown() error {
 func (m *ServiceMgr) GetTaskList(rev service.Revision, cancel service.Cancel) (*service.TaskList, error) {
 	logPrefix := "ServiceMgr::GetTaskList"
 
-	logging.Infof("%s rev: %#v", logPrefix, rev)
+	logging.Tracef("%s rev: %#v", logPrefix, rev)
 
 	state, err := m.wait(rev, cancel)
 	if err != nil {
@@ -59,7 +59,7 @@ func (m *ServiceMgr) CancelTask(id string, rev service.Revision) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	logging.Infof("%s id: %s rev: %#v", logPrefix, id, rev)
+	logging.Tracef("%s id: %s rev: %#v", logPrefix, id, rev)
 
 	tasks := stateToTaskList(m.state).Tasks
 	task := (*service.Task)(nil)
@@ -92,7 +92,7 @@ func (m *ServiceMgr) CancelTask(id string, rev service.Revision) error {
 func (m *ServiceMgr) GetCurrentTopology(rev service.Revision, cancel service.Cancel) (*service.Topology, error) {
 	logPrefix := "ServiceMgr::GetCurrentTopology"
 
-	logging.Infof("%s rev: %#v", logPrefix, rev)
+	logging.Tracef("%s rev: %#v", logPrefix, rev)
 
 	state, err := m.wait(rev, cancel)
 	if err != nil {
@@ -152,14 +152,12 @@ func (m *ServiceMgr) PrepareTopologyChange(change service.TopologyChange) error 
 		nodeList = append(nodeList, n.NodeID)
 	}
 
-	logging.Infof("%s ejectNodeUUIDs: %v keepNodeUUIDs: %v", logPrefix, m.ejectNodeUUIDs, m.keepNodeUUIDs)
+	logging.Infof("%s ejectNodeUUIDs: %v keepNodeUUIDs: %v rebalanceID: %v", logPrefix, m.ejectNodeUUIDs, m.keepNodeUUIDs, m.rebalanceID)
 
 	m.updateStateLocked(func(s *state) {
 		m.rebalanceID = change.ID
 		m.servers = nodeList
 	})
-
-	logging.Infof("%s m.rebalanceID: %v m.servers: %v", logPrefix, m.rebalanceID, m.servers)
 
 	m.superSup.NotifyPrepareTopologyChange(m.ejectNodeUUIDs, m.keepNodeUUIDs, change.Type)
 
@@ -168,7 +166,7 @@ func (m *ServiceMgr) PrepareTopologyChange(change service.TopologyChange) error 
 	}
 
 	m.isBalanced = true
-	logging.Infof("%s completed, isBalanced: %v", logPrefix, m.isBalanced)
+	logging.Infof("%s completed", logPrefix)
 	return nil
 }
 

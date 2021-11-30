@@ -271,8 +271,6 @@ func (bg *bucketMultiDiGraph) isAcyclicInsertPossible(label string, source commo
 		}
 	}()
 
-	logging.Infof("%s adjacencyList: %v, indegreeMap: %v, outDegreeMap: %v destinations: %v",
-		logPrefix, bg.adjacenyList, bg.inDegreeLabels, bg.outDegreeLabels, destinations)
 	for dest := range destinations {
 		if reachable, path := bg.hasPath(dest, source); reachable {
 			possible = false
@@ -282,6 +280,8 @@ func (bg *bucketMultiDiGraph) isAcyclicInsertPossible(label string, source commo
 		inserted = append(inserted, dest)
 		bg.insertEdge(label, source, dest)
 	}
+        logging.Infof("%s adjacencyList: %v, indegreeMap: %v, outDegreeMap: %v destinations: %v",
+                logPrefix, bg.adjacenyList, bg.inDegreeLabels, bg.outDegreeLabels, destinations)
 	return
 }
 

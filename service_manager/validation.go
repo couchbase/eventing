@@ -111,6 +111,10 @@ func (m *ServiceMgr) validateApplication(app *application) (info *runtimeInfo) {
 		return
 	}
 
+	if _, _, info = m.getBSId(&app.FunctionScope); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
 	if info = m.validateNonEmpty(app.AppHandlers, "Function handler"); info.Code != m.statusCodes.ok.Code {
 		return
 	}
@@ -502,10 +506,6 @@ func (m *ServiceMgr) getBSId(fS *common.FunctionScope) (string, uint32, *runtime
 		return "", 0, info
 	}
 
-	if info = m.validateStorageEngine(fS.BucketName); info.Code != m.statusCodes.ok.Code {
-		return "", 0, info
-	}
-
 	bucketUUID, scopeId, err := util.CheckAndGetBktAndScopeIDs(fS, m.restPort)
 	if err == couchbase.ErrBucketNotFound || err == collections.SCOPE_NOT_FOUND {
 		info.Code = m.statusCodes.errBucketMissing.Code
@@ -513,7 +513,11 @@ func (m *ServiceMgr) getBSId(fS *common.FunctionScope) (string, uint32, *runtime
 	}
 
 	if err != nil {
-		info.Code = m.statusCodes.errEventingBusy.Code
+		info.Code = m.statusCodes.errInternalServer.Code
+		return "", 0, info
+	}
+
+	if info = m.validateStorageEngine(fS.BucketName); info.Code != m.statusCodes.ok.Code {
 		return "", 0, info
 	}
 

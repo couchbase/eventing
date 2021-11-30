@@ -342,7 +342,7 @@ bool IsExecutionTerminating(v8::Isolate *isolate) {
 
 Utils::Utils(v8::Isolate *isolate, const v8::Local<v8::Context> &context,
              std::string certFile)
-    : isolate_(isolate), curl_handle_(curl_easy_init()), certFile_(certFile) {
+    : certFile_(certFile), isolate_(isolate), curl_handle_(curl_easy_init()) {
   v8::HandleScope handle_scope(isolate_);
 
   context_.Reset(isolate_, context);

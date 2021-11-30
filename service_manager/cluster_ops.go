@@ -72,7 +72,7 @@ var storeKeepNodesCallback = func(args ...interface{}) error {
 		return err
 	}
 
-	logging.Infof("%s Keep nodes UUID(s): %v", logPrefix, keepNodeUUIDs)
+	logging.Debugf("%s Keep nodes UUID(s): %v", logPrefix, keepNodeUUIDs)
 	return nil
 }
 
