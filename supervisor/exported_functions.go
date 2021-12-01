@@ -179,28 +179,14 @@ func (s *SuperSupervisor) SignalStopDebugger(appName string) error {
 	return nil
 }
 
-// GetAppState returns current state of app
-func (s *SuperSupervisor) GetAppState(appName string) int8 {
+// GetAppCompositeState returns current state of app
+func (s *SuperSupervisor) GetAppCompositeState(appName string) int8 {
 	s.appRWMutex.RLock()
 	defer s.appRWMutex.RUnlock()
 
-	switch s.appDeploymentStatus[appName] {
-	case true:
-		switch s.appProcessingStatus[appName] {
-		case true:
-			return common.AppStateEnabled
-		case false:
-			return common.AppStatePaused
-		}
-	case false:
-		switch s.appProcessingStatus[appName] {
-		case true:
-			return common.AppStateUnexpected
-		case false:
-			return common.AppStateUndeployed
-		}
-	}
-	return common.AppState
+	dStatus := s.appDeploymentStatus[appName]
+	pStatus := s.appProcessingStatus[appName]
+	return common.GetCompositeState(dStatus, pStatus)
 }
 
 // GetDcpEventsRemainingToProcess returns remaining dcp events to process

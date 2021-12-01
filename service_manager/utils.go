@@ -76,12 +76,12 @@ func (m *ServiceMgr) checkIfDeployedAndRunning(appName string) bool {
 			return false
 		}
 
-		return m.superSup.GetAppState(appName) == common.AppStateEnabled
+		return m.superSup.GetAppCompositeState(appName) == common.AppStateEnabled
 	}
 	bootstrappingApps := m.superSup.BootstrapAppList()
 	_, isBootstrapping := bootstrappingApps[appName]
 
-	return !isBootstrapping && m.superSup.GetAppState(appName) == common.AppStateEnabled
+	return !isBootstrapping && m.superSup.GetAppCompositeState(appName) == common.AppStateEnabled
 }
 
 func (m *ServiceMgr) checkCompressHandler() bool {
@@ -399,7 +399,7 @@ func (m *ServiceMgr) isAppDeployable(app *application) bool {
 	}
 
 	for _, appName := range m.superSup.DeployedAppList() {
-		if appName == app.Name || m.superSup.GetAppState(appName) != common.AppStateEnabled {
+		if appName == app.Name || m.superSup.GetAppCompositeState(appName) != common.AppStateEnabled {
 			continue
 		}
 		data, err := util.ReadAppContent(metakvAppsPath, metakvChecksumPath, appName)
@@ -957,6 +957,29 @@ func (m *ServiceMgr) rbacSupport() bool {
 	cinfo.RUnlock()
 
 	return version >= 7 && minVer >= 1
+}
+
+func (m *ServiceMgr) fetchAppCompositeState(appName string) (int8, *runtimeInfo) {
+	app, info := m.getAppFromTempStore(appName)
+	if info.Code == m.statusCodes.errAppNotFoundTs.Code {
+		info.Code = m.statusCodes.ok.Code
+		return common.AppStateUndeployed, info
+	}
+
+	if info.Code != m.statusCodes.ok.Code {
+		return common.AppStateUndeployed, info
+	}
+
+	dStatus, ok := app.Settings["deployment_status"].(bool)
+	if !ok {
+		dStatus = false
+	}
+	pStatus, ok := app.Settings["processing_status"].(bool)
+	if !ok {
+		pStatus = false
+	}
+
+	return common.GetCompositeState(dStatus, pStatus), info
 }
 
 func (app *application) copy() application {

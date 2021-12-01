@@ -128,8 +128,12 @@ func (m *ServiceMgr) deletePrimaryStore(cred cbauth.Creds, appName string) (info
 
 	logging.Infof("%s Function: %s deleting from primary store", logPrefix, appName)
 
-	appState := m.superSup.GetAppState(appName)
-	if appState != common.AppStateUndeployed {
+	appStateCached, info := m.fetchAppCompositeState(appName)
+	if info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
+	if appStateCached != common.AppStateUndeployed {
 		info.Code = m.statusCodes.errAppNotUndeployed.Code
 		info.Info = fmt.Sprintf("Function: %s skipping delete request from primary store, as it hasn't been undeployed", appName)
 		logging.Errorf("%s %s", logPrefix, info.Info)
@@ -196,8 +200,12 @@ func (m *ServiceMgr) deleteTempStore(cred cbauth.Creds, appName string) (info *r
 		return
 	}
 
-	appState := m.superSup.GetAppState(appName)
-	if appState != common.AppStateUndeployed {
+	appStateCached, info := m.fetchAppCompositeState(appName)
+	if info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
+	if appStateCached != common.AppStateUndeployed {
 		info.Code = m.statusCodes.errAppNotUndeployed.Code
 		info.Info = fmt.Sprintf("Function: %s skipping delete request from temp store, as it hasn't been undeployed", appName)
 		logging.Errorf("%s %s", logPrefix, info.Info)
@@ -1463,7 +1471,7 @@ func (m *ServiceMgr) setSettings(appName string, data []byte, force bool) (info 
 	newTPValue, timerPartitionsPresent := settings["num_timer_partitions"]
 	oldTPValue, oldTimerPartitionsPresent := app.Settings["num_timer_partitions"]
 
-	deployed := (m.superSup.GetAppState(appName) == common.AppStateEnabled)
+	deployed := (m.superSup.GetAppCompositeState(appName) == common.AppStateEnabled)
 
 	for setting := range settings {
 		if deployed && !isDynamicSetting(setting) && app.Settings[setting] != settings[setting] {
@@ -1533,7 +1541,7 @@ func (m *ServiceMgr) setSettings(appName string, data []byte, force bool) (info 
 			}
 		}
 
-		if deploymentStatus && processingStatus && m.superSup.GetAppState(appName) == common.AppStatePaused && !m.compareEventingVersion(mhVersion) {
+		if deploymentStatus && processingStatus && m.superSup.GetAppCompositeState(appName) == common.AppStatePaused && !m.compareEventingVersion(mhVersion) {
 			info.Code = m.statusCodes.errClusterVersion.Code
 			info.Info = fmt.Sprintf("All eventing nodes in cluster must be on version %s or higher for resuming function execution",
 				mhVersion)
@@ -1543,7 +1551,7 @@ func (m *ServiceMgr) setSettings(appName string, data []byte, force bool) (info 
 
 		if deploymentStatus && processingStatus {
 
-			if m.superSup.GetAppState(appName) == common.AppStatePaused {
+			if m.superSup.GetAppCompositeState(appName) == common.AppStatePaused {
 				if oldTimerPartitionsPresent {
 					if timerPartitionsPresent && oldTPValue != newTPValue {
 						info.Code = m.statusCodes.errInvalidConfig.Code
@@ -2167,7 +2175,7 @@ func (m *ServiceMgr) savePrimaryStore(app *application) (info *runtimeInfo) {
 		return
 	}
 
-	if m.checkIfDeployed(app.Name) && m.superSup.GetAppState(app.Name) != common.AppStatePaused {
+	if m.checkIfDeployed(app.Name) && m.superSup.GetAppCompositeState(app.Name) != common.AppStatePaused {
 		info.Code = m.statusCodes.errAppDeployed.Code
 		info.Info = fmt.Sprintf("Function: %s another function with same name is already deployed, skipping save request", app.Name)
 		logging.Errorf("%s %s", logPrefix, info.Info)
@@ -2191,7 +2199,7 @@ func (m *ServiceMgr) savePrimaryStore(app *application) (info *runtimeInfo) {
 	}
 
 	mhVersion := common.CouchbaseVerMap["mad-hatter"]
-	if dOk && depConfig && pOk && processConfig && m.superSup.GetAppState(app.Name) == common.AppStatePaused && !m.compareEventingVersion(mhVersion) {
+	if dOk && depConfig && pOk && processConfig && m.superSup.GetAppCompositeState(app.Name) == common.AppStatePaused && !m.compareEventingVersion(mhVersion) {
 		info.Code = m.statusCodes.errClusterVersion.Code
 		info.Info = fmt.Sprintf("All eventing nodes in the cluster must be on version %s or higher for using the pause functionality",
 			mhVersion)
@@ -2816,7 +2824,7 @@ func (m *ServiceMgr) assignFunctionID(fnName string, app *application, info *run
 func (m *ServiceMgr) assignFunctionInstanceID(functionName string, app *application, info *runtimeInfo) error {
 	logPrefix := "ServiceMgr:assignFunctionInstanceID"
 
-	if m.superSup.GetAppState(functionName) != common.AppStatePaused {
+	if m.superSup.GetAppCompositeState(functionName) != common.AppStatePaused {
 		fiid, err := util.GenerateFunctionInstanceID()
 		if err != nil {
 			info.Code = m.statusCodes.errFunctionInstanceIDGen.Code
@@ -3132,7 +3140,7 @@ func (m *ServiceMgr) functionName(w http.ResponseWriter, r *http.Request, appNam
 			return
 		}
 
-		if m.superSup.GetAppState(appName) != common.AppStateUndeployed {
+		if m.superSup.GetAppCompositeState(appName) != common.AppStateUndeployed {
 			if !CheckIfAppKeyspacesAreSame(*appInStore, app) {
 				info.Code = m.statusCodes.errInvalidConfig.Code
 				info.Info = "Source and Meta Keyspaces can only be changed when the function is in undeployed state."
@@ -3361,7 +3369,7 @@ func (m *ServiceMgr) functionUndeploy(w http.ResponseWriter, r *http.Request, ap
 		return
 	}
 
-	appState := m.superSup.GetAppState(appName)
+	appState := m.superSup.GetAppCompositeState(appName)
 
 	if appState == common.AppStateUndeployed {
 		info.Code = m.statusCodes.errAppNotDeployed.Code
@@ -3408,7 +3416,7 @@ func (m *ServiceMgr) functionDeploy(w http.ResponseWriter, r *http.Request, appN
 		return
 	}
 
-	appState := m.superSup.GetAppState(appName)
+	appState := m.superSup.GetAppCompositeState(appName)
 
 	if appState == common.AppStateEnabled {
 		info.Code = m.statusCodes.errAppDeployed.Code
@@ -3504,7 +3512,7 @@ func (m *ServiceMgr) functionPause(w http.ResponseWriter, r *http.Request, appNa
 		return
 	}
 
-	appState := m.superSup.GetAppState(appName)
+	appState := m.superSup.GetAppCompositeState(appName)
 
 	if appState == common.AppStatePaused {
 		info.Code = m.statusCodes.errAppNotDeployed.Code
@@ -3551,7 +3559,7 @@ func (m *ServiceMgr) functionResume(w http.ResponseWriter, r *http.Request, appN
 		return
 	}
 
-	appState := m.superSup.GetAppState(appName)
+	appState := m.superSup.GetAppCompositeState(appName)
 
 	if appState == common.AppStateEnabled {
 		info.Code = m.statusCodes.errAppDeployed.Code
@@ -3620,7 +3628,7 @@ func (m *ServiceMgr) functionAppcode(w http.ResponseWriter, r *http.Request, app
 			return
 		}
 
-		appState := m.superSup.GetAppState(appName)
+		appState := m.superSup.GetAppCompositeState(appName)
 		if appState == common.AppStateEnabled {
 			info.Code = m.statusCodes.errAppDeployed.Code
 			info.Info = fmt.Sprintf("Function: %s is in deployed state, appcode can only be updated when a function is either undeployed or paused", appName)
@@ -3717,7 +3725,7 @@ func (m *ServiceMgr) functionConfig(w http.ResponseWriter, r *http.Request, appN
 			m.sendErrorInfo(w, info)
 			return
 		}
-		appState := m.superSup.GetAppState(appName)
+		appState := m.superSup.GetAppCompositeState(appName)
 		if appState == common.AppStateEnabled {
 			info.Code = m.statusCodes.errAppDeployed.Code
 			info.Info = fmt.Sprintf("Function: %s is in deployed state, config can only be updated when a function is either undeployed or paused", appName)
@@ -3814,7 +3822,7 @@ func (m *ServiceMgr) addDefaultTimerPartitionsIfMissing(app *application) {
 func (m *ServiceMgr) addLifeCycleStateByFunctionState(app *application) {
 	deploymentStatus, _ := app.Settings["deployment_status"]
 	processingStatus, _ := app.Settings["processing_status"]
-	state := m.superSup.GetAppState(app.Name)
+	state := m.superSup.GetAppCompositeState(app.Name)
 	if app.Metainfo == nil {
 		app.Metainfo = make(map[string]interface{})
 	}
@@ -5057,7 +5065,7 @@ func (m *ServiceMgr) resetNodeStatsCounters(w http.ResponseWriter, r *http.Reque
 		m.sendErrorInfo(w, info)
 		return
 	}
-	appState := m.superSup.GetAppState(appName)
+	appState := m.superSup.GetAppCompositeState(appName)
 	if appState != common.AppStateEnabled {
 		info.Code = m.statusCodes.errAppNotDeployed.Code
 		info.Info = fmt.Sprintf("Function: %v should be in deployed state", appName)
