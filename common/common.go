@@ -396,7 +396,6 @@ type EventingSuperSup interface {
 	IncWorkerRespawnedCount()
 	WorkerRespawnedCount() uint32
 	CheckLifeCycleOpsDuringRebalance() bool
-	OptimiseBucketLoading(optimise bool)
 	GetBSCSnapshot() (map[string]map[string][]string, error)
 }
 
@@ -405,7 +404,6 @@ type EventingServiceMgr interface {
 	ResetFailoverStatus()
 	GetFailoverStatus() (failoverNotifTs int64, changeId string)
 	CheckLifeCycleOpsDuringRebalance() bool
-	OptimiseLoadingCIC(bool) error
 	NotifySupervisorWaitCh()
 }
 

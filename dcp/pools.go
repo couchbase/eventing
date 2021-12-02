@@ -156,11 +156,17 @@ type Node struct {
 	Services             []string           `json:"services,omitempty"`
 }
 
+type BucketInfo struct {
+	BucketName string `json:"bucketName"`
+	Uuid       string `json:"uuid"`
+}
+
 // A Pool of nodes and buckets.
 type Pool struct {
-	BucketMap map[string]Bucket
-	Nodes     []Node
-	Manifest  map[string]*collections.CollectionManifest
+	BucketMap  map[string]Bucket
+	Nodes      []Node
+	Manifest   map[string]*collections.CollectionManifest
+	BucketList []*BucketInfo `json:"bucketNames"`
 
 	BucketURL       map[string]string `json:"buckets"`
 	ServerGroupsUri string            `json:"serverGroupsUri"`
@@ -660,6 +666,10 @@ func Connect(baseU string) (Client, error) {
 	return ConnectWithAuth(baseU, basicAuthFromURL(baseU))
 }
 
+func (b *Bucket) RefreshFromBucket(bucket *Bucket) {
+	b.init(bucket)
+}
+
 func (b *Bucket) Refresh() error {
 	pool := b.pool
 	tmpb := &Bucket{}
@@ -973,6 +983,11 @@ func bucketFinalizer(b *Bucket) {
 	if connPools != nil {
 		logging.Debugf("Warning: Finalizing a bucket with active connections.")
 	}
+}
+
+func (p *Pool) Connect(baseU string) (err error) {
+	p.client, err = Connect(baseU)
+	return
 }
 
 // Filter out magma buckets

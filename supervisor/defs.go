@@ -119,7 +119,6 @@ type SuperSupervisor struct {
 	servicesNotifierRetryTm            uint
 	finch                              chan bool
 	buckets                            map[string]*bucketWatchStruct // Access controlled by bucketsRWMutex
-	fetchBucketInfoOnURIHashChangeOnly int32
 	isRebalanceOngoing                 int32
 
 	appRWMutex *sync.RWMutex

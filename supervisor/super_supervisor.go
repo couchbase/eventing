@@ -29,36 +29,35 @@ import (
 func NewSuperSupervisor(adminPort AdminPortConfig, eventingDir, kvPort, restPort, uuid, diagDir string, numVbuckets int) *SuperSupervisor {
 	logPrefix := "SuperSupervisor::NewSupervisor"
 	s := &SuperSupervisor{
-		adminPort:                          adminPort,
-		pool:                               "default",
-		appDeploymentStatus:                make(map[string]bool),
-		appProcessingStatus:                make(map[string]bool),
-		bootstrappingApps:                  make(map[string]string),
-		pausingApps:                        make(map[string]string),
-		CancelCh:                           make(chan struct{}, 1),
-		cleanedUpAppMap:                    make(map[string]struct{}),
-		deployedApps:                       make(map[string]string),
-		diagDir:                            diagDir,
-		ejectNodes:                         make([]string, 0),
-		eventingDir:                        eventingDir,
-		keepNodes:                          make([]string, 0),
-		kvPort:                             kvPort,
-		locallyDeployedApps:                make(map[string]string),
-		numVbuckets:                        numVbuckets,
-		producerSupervisorTokenMap:         make(map[common.EventingProducer]suptree.ServiceToken),
-		restPort:                           restPort,
-		retryCount:                         60,
-		runningProducers:                   make(map[string]common.EventingProducer),
-		runningProducersRWMutex:            &sync.RWMutex{},
-		securitySetting:                    nil,
-		securityMutex:                      &sync.RWMutex{},
-		supCmdCh:                           make(chan supCmdMsg, 10),
-		superSup:                           suptree.NewSimple("super_supervisor"),
-		tokenMapRWMutex:                    &sync.RWMutex{},
-		uuid:                               uuid,
-		fetchBucketInfoOnURIHashChangeOnly: 1,
-		initEncryptDataMutex:               &sync.RWMutex{},
-		initLifecycleEncryptData:           false,
+		adminPort:                  adminPort,
+		pool:                       "default",
+		appDeploymentStatus:        make(map[string]bool),
+		appProcessingStatus:        make(map[string]bool),
+		bootstrappingApps:          make(map[string]string),
+		pausingApps:                make(map[string]string),
+		CancelCh:                   make(chan struct{}, 1),
+		cleanedUpAppMap:            make(map[string]struct{}),
+		deployedApps:               make(map[string]string),
+		diagDir:                    diagDir,
+		ejectNodes:                 make([]string, 0),
+		eventingDir:                eventingDir,
+		keepNodes:                  make([]string, 0),
+		kvPort:                     kvPort,
+		locallyDeployedApps:        make(map[string]string),
+		numVbuckets:                numVbuckets,
+		producerSupervisorTokenMap: make(map[common.EventingProducer]suptree.ServiceToken),
+		restPort:                   restPort,
+		retryCount:                 60,
+		runningProducers:           make(map[string]common.EventingProducer),
+		runningProducersRWMutex:    &sync.RWMutex{},
+		securitySetting:            nil,
+		securityMutex:              &sync.RWMutex{},
+		supCmdCh:                   make(chan supCmdMsg, 10),
+		superSup:                   suptree.NewSimple("super_supervisor"),
+		tokenMapRWMutex:            &sync.RWMutex{},
+		uuid:                       uuid,
+		initEncryptDataMutex:       &sync.RWMutex{},
+		initLifecycleEncryptData:   false,
 	}
 	s.appRWMutex = &sync.RWMutex{}
 	s.appListRWMutex = &sync.RWMutex{}
@@ -469,8 +468,6 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(kve metakv.KVEntry) error 
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if kve.Value != nil {
-		s.serviceMgr.OptimiseLoadingCIC(false)
-
 		if string(kve.Value) == stopRebalance {
 			topologyChangeMsg.CType = common.StopRebalanceCType
 		} else if string(kve.Value) == startFailover {
@@ -632,7 +629,6 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(kve metakv.KVEntry) error 
 	} else {
 		// Empty value means no rebalance. We clear out the value from topologyChange when rebalance completes
 		// Need to think about it in mixed mode cluster
-		s.serviceMgr.OptimiseLoadingCIC(true)
 	}
 
 	return nil
