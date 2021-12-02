@@ -170,10 +170,11 @@ type Pool struct {
 
 // VBucketServerMap is the a mapping of vbuckets to nodes.
 type VBucketServerMap struct {
-	HashAlgorithm string   `json:"hashAlgorithm"`
-	NumReplicas   int      `json:"numReplicas"`
-	ServerList    []string `json:"serverList"`
-	VBucketMap    [][]int  `json:"vBucketMap"`
+	HashAlgorithm     string   `json:"hashAlgorithm"`
+	NumReplicas       int      `json:"numReplicas"`
+	ServerList        []string `json:"serverList"`
+	VBucketMap        [][]int  `json:"vBucketMap"`
+	VBucketForwardMap [][]int  `json:"vBucketMapForward,omitempty"`
 }
 
 // Bucket is the primary entry point for most data operations.
@@ -246,7 +247,13 @@ func (b *Bucket) GetVBmap(addrs []string) (map[string][]uint16, error) {
 	for _, addr := range addrs {
 		m[addr] = make([]uint16, 0)
 	}
-	for vbno, idxs := range vbmap.VBucketMap {
+
+	vbucketMap := vbmap.VBucketMap
+	if len(vbmap.VBucketForwardMap) != 0 {
+		vbucketMap = vbmap.VBucketForwardMap
+	}
+
+	for vbno, idxs := range vbucketMap {
 		if len(idxs) == 0 {
 			return nil, fmt.Errorf("vbmap: No KV node no for vb %d", vbno)
 		} else if idxs[0] < 0 || idxs[0] >= len(servers) {
@@ -257,7 +264,30 @@ func (b *Bucket) GetVBmap(addrs []string) (map[string][]uint16, error) {
 			m[addr] = append(m[addr], uint16(vbno))
 		}
 	}
+
 	return m, nil
+}
+
+// Returns vb to kv node mapping
+func (b *Bucket) GetKvVbMap() (map[uint16]string, error) {
+	vbmap := b.VBServerMap()
+	servers := vbmap.ServerList
+	vbToKvMap := make(map[uint16]string)
+
+	vbucketMap := vbmap.VBucketMap
+	if len(vbmap.VBucketForwardMap) != 0 {
+		vbucketMap = vbmap.VBucketForwardMap
+	}
+
+	for vbno, idxs := range vbucketMap {
+		if len(idxs) == 0 {
+			return nil, fmt.Errorf("vbmap: No KV node no for vb %d", vbno)
+		} else if idxs[0] < 0 || idxs[0] >= len(servers) {
+			return nil, fmt.Errorf("vbmap: Invalid KV node no %d for vb %d", idxs[0], vbno)
+		}
+		vbToKvMap[uint16(vbno)] = servers[idxs[0]]
+	}
+	return vbToKvMap, nil
 }
 
 // Nodes returns the current list of nodes servicing this bucket.

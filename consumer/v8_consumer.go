@@ -79,7 +79,6 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		hostDcpFeedRWMutex:              &sync.RWMutex{},
 		insight:                         make(chan *common.Insight),
 		kvHostDcpFeedMap:                make(map[string]*couchbase.DcpFeed),
-		kvNodesRWMutex:                  &sync.RWMutex{},
 		lcbInstCapacity:                 hConfig.LcbInstCapacity,
 		n1qlConsistency:                 hConfig.N1qlConsistency,
 		logLevel:                        hConfig.LogLevel,
@@ -192,12 +191,7 @@ func (c *Consumer) Serve() {
 
 	c.cppWorkerThrPartitionMap()
 
-	err := util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), c.retryCount, getKvNodesFromVbMap, c)
-	if err == common.ErrRetryTimeout {
-		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-		return
-	}
-
+	var err error
 	c.cbBucket, err = c.superSup.GetBucket(c.sourceKeyspace.BucketName, c.app.AppName)
 	if err != nil {
 		return
@@ -233,38 +227,6 @@ func (c *Consumer) Serve() {
 
 	logging.Infof("%s [%s:%s:%d] Spawning worker corresponding to producer, node addr: %rs",
 		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.HostPortAddr())
-
-	var feedName couchbase.DcpFeedName
-
-	err = util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), c.retryCount, getKvNodesFromVbMap, c)
-	if err == common.ErrRetryTimeout {
-		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-		return
-	}
-
-	for _, kvHostPort := range c.getKvNodes() {
-		if atomic.LoadUint32(&c.isTerminateRunning) == 1 {
-			continue
-		}
-
-		feedName = couchbase.NewDcpFeedName(c.workerName + "_" + kvHostPort + "_" + c.HostPortAddr())
-
-		c.hostDcpFeedRWMutex.Lock()
-		err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, startDCPFeedOpCallback, c, feedName, kvHostPort, &operr)
-		if err == common.ErrRetryTimeout {
-			logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-			return
-		} else if operr == common.ErrEncryptionLevelChanged {
-			c.hostDcpFeedRWMutex.Unlock()
-			break
-		}
-
-		logging.Infof("%s [%s:%s:%d] vbKvAddr: %s Spawned aggChan routine",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), kvHostPort)
-
-		c.addToAggChan(c.kvHostDcpFeedMap[kvHostPort])
-		c.hostDcpFeedRWMutex.Unlock()
-	}
 
 	if atomic.LoadUint32(&c.isTerminateRunning) == 0 {
 		c.client = newClient(c, c.app.AppName, c.tcpPort, c.feedbackTCPPort, c.workerName, c.eventingAdminPort)
@@ -548,16 +510,6 @@ func (c *Consumer) getBuilder() *flatbuffers.Builder {
 func (c *Consumer) putBuilder(b *flatbuffers.Builder) {
 	b.Reset()
 	c.builderPool.Put(b)
-}
-
-func (c *Consumer) getKvNodes() []string {
-	c.kvNodesRWMutex.Lock()
-	defer c.kvNodesRWMutex.Unlock()
-
-	kvNodes := make([]string, len(c.kvNodes))
-	copy(kvNodes, c.kvNodes)
-
-	return kvNodes
 }
 
 func (c *Consumer) getManifestUID(bucketName string) (string, error) {

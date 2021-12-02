@@ -198,8 +198,6 @@ type Consumer struct {
 	isTerminateRunning            uint32                        // To signify if Consumer::Stop is running
 	kvHostDcpFeedMap              map[string]*couchbase.DcpFeed // Access controlled by hostDcpFeedRWMutex
 	hostDcpFeedRWMutex            *sync.RWMutex
-	kvNodes                       []string // Access controlled by kvNodesRWMutex
-	kvNodesRWMutex                *sync.RWMutex
 	kvVbMap                       map[uint16]string // Access controlled by default lock
 	logLevel                      string
 	numVbuckets                   int
