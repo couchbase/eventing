@@ -25,7 +25,7 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 	index int, uuid, nsServerPort string, eventingNodeUUIDs []string, vbnos []uint16, app *common.AppConfig,
 	dcpConfig map[string]interface{}, p common.EventingProducer, s common.EventingSuperSup,
 	numVbuckets int, retryCount *int64, vbEventingNodeAssignMap map[uint16]string,
-	workerVbucketMap map[string][]uint16) *Consumer {
+	workerVbucketMap map[string][]uint16, featureMatrix uint32) *Consumer {
 
 	var b *couchbase.Bucket
 	consumer := &Consumer{
@@ -145,6 +145,7 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		workerVbucketMap:                workerVbucketMap,
 		workerVbucketMapRWMutex:         &sync.RWMutex{},
 		respawnInvoked:                  0,
+		featureMatrix:                   featureMatrix,
 	}
 
 	consumer.srcCid = p.GetSourceCid()
@@ -314,6 +315,8 @@ func (c *Consumer) HandleV8Worker() error {
 	c.sendInitV8Worker(payload, false, pBuilder)
 
 	c.sendLoadV8Worker(c.app.ParsedAppCode, false)
+
+	c.sendFeatureMatrix(atomic.LoadUint32(&c.featureMatrix))
 
 	c.workerExited = false
 

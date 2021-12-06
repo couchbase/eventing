@@ -28,6 +28,8 @@ event_type getEvent(int8_t event) {
     return eInternal;
   if (event == 8)
     return ePauseConsumer;
+  if (event == 9)
+    return eConfigChange;
   return Event_Unknown;
 }
 
@@ -107,4 +109,10 @@ debugger_opcode getDebuggerOpcode(int8_t opcode) {
   if (opcode == 2)
     return oDebuggerStop;
   return Debugger_Opcode_Unknown;
+}
+
+config_opcode getConfigOpcode(int8_t opcode) {
+  if (opcode == 1)
+    return oUpdateDisableFeatureList;
+  return Config_Opcode_Unknown;
 }

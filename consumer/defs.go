@@ -395,6 +395,7 @@ type Consumer struct {
 	bucketCacheAge        int64
 
 	binaryDocAllowed bool
+	featureMatrix    uint32
 }
 
 // For V8 worker spawned for debugging purpose

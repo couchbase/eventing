@@ -193,9 +193,9 @@ void V8Worker::InstallBucketBindings(
     auto source_mutation = bucket_name == cb_source_bucket_ &&
                            scope_name == cb_source_scope_ &&
                            collection_name == cb_source_collection_;
-    bucket_bindings_.emplace_back(isolate_, bucket_factory_, bucket_name,
-                                  scope_name, collection_name, bucket_alias,
-                                  bucket_access == "r", source_mutation, user_, domain_);
+    bucket_bindings_.emplace_back(
+        isolate_, bucket_factory_, bucket_name, scope_name, collection_name,
+        bucket_alias, bucket_access == "r", source_mutation, user_, domain_);
   }
 }
 
@@ -222,9 +222,9 @@ void V8Worker::InitializeIsolateData(const server_settings_t *server_settings,
   data_.curl_codex = new CurlCodex;
   data_.code_insight = new CodeInsight(isolate_);
   data_.exception_insight = new ExceptionInsight(isolate_);
-  data_.query_mgr =
-      new Query::Manager(isolate_, cb_source_bucket_,
-                         static_cast<std::size_t>(h_config->lcb_inst_capacity), user_, domain_);
+  data_.query_mgr = new Query::Manager(
+      isolate_, cb_source_bucket_,
+      static_cast<std::size_t>(h_config->lcb_inst_capacity), user_, domain_);
   data_.query_iterable = new Query::Iterable(isolate_, context);
   data_.query_iterable_impl = new Query::IterableImpl(isolate_, context);
   data_.query_iterable_result = new Query::IterableResult(isolate_, context);
@@ -250,6 +250,7 @@ void V8Worker::InitializeIsolateData(const server_settings_t *server_settings,
   data_.insight_line_offset = h_config->handler_headers.size();
 
   data_.bucket_ops = new BucketOps(isolate_, context);
+  data_.feature_matrix = 0;
 }
 
 void V8Worker::InitializeCurlBindingValues(
@@ -269,16 +270,22 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
                    const std::string &ns_server_port,
                    const int32_t &num_vbuckets, vb_seq_map_t *vb_seq,
                    std::vector<uint64_t> *processed_bucketops,
-			// TODO: put user and domain into Owner class and call .ForKv() and .ForQuery()
-                   vb_lock_map_t *vb_locks, int worker_idx,const std::string &user, const std::string &domain)
-    : app_name_(h_config->app_name), settings_(server_settings), num_vbuckets_(num_vbuckets),
+                   // TODO: put user and domain into Owner class and call
+                   // .ForKv() and .ForQuery()
+                   vb_lock_map_t *vb_locks, int worker_idx,
+                   const std::string &user, const std::string &domain)
+    : app_name_(h_config->app_name), settings_(server_settings),
+      num_vbuckets_(num_vbuckets),
       timer_reduction_ratio_(
           int(num_vbuckets / h_config->num_timer_partitions)),
-      latency_stats_(latency_stats), curl_latency_stats_(curl_latency_stats), vb_seq_(vb_seq),
-      vb_locks_(vb_locks), worker_idx_(worker_idx), processed_bucketops_(processed_bucketops),
-      platform_(platform), certFile_(server_settings->certFile), function_name_(function_name),
-      function_id_(function_id), user_prefix_(user_prefix), ns_server_port_(ns_server_port),
-      user_(user), domain_(domain), exception_type_names_({"KVError", "N1QLError", "EventingError", "CurlError", "TypeError"}),
+      latency_stats_(latency_stats), curl_latency_stats_(curl_latency_stats),
+      vb_seq_(vb_seq), vb_locks_(vb_locks), worker_idx_(worker_idx),
+      processed_bucketops_(processed_bucketops), platform_(platform),
+      certFile_(server_settings->certFile), function_name_(function_name),
+      function_id_(function_id), user_prefix_(user_prefix),
+      ns_server_port_(ns_server_port), user_(user), domain_(domain),
+      exception_type_names_(
+          {"KVError", "N1QLError", "EventingError", "CurlError", "TypeError"}),
       handler_headers_(h_config->handler_headers) {
   auto config = ParseDeployment(h_config->dep_cfg.c_str());
   cb_source_bucket_.assign(config->source_bucket);
@@ -361,7 +368,8 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
     auto prefix = user_prefix + "::" + function_id;
     timer_store_ = new timer::TimerStore(
         isolate_, prefix, config->metadata_bucket, config->metadata_scope,
-        config->metadata_collection, num_vbuckets_, timer_reduction_ratio_, user_, domain_);
+        config->metadata_collection, num_vbuckets_, timer_reduction_ratio_,
+        user_, domain_);
   }
   delete config;
   this->worker_queue_ = new BlockingDeque<std::unique_ptr<WorkerMessage>>();
@@ -666,6 +674,20 @@ void V8Worker::RouteMessage() {
 
       default:
         LOG(logError) << "Received invalid debugger opcode" << std::endl;
+        break;
+      }
+      break;
+    case eConfigChange:
+      switch (getConfigOpcode(msg->header.opcode)) {
+      case oUpdateDisableFeatureList: {
+        int32_t feature_matrix =
+            static_cast<uint32_t>(std::stoul(msg->header.metadata));
+        this->SetFeatureList(feature_matrix);
+        break;
+      }
+
+      default:
+        LOG(logError) << "Received invalid config opcode" << std::endl;
         break;
       }
       break;
@@ -1503,4 +1525,8 @@ std::string V8Worker::AddHeadersAndFooters(std::string code) {
   }
 
   return final_code;
+}
+
+void V8Worker::SetFeatureList(uint32_t feature_matrix) {
+  data_.feature_matrix = feature_matrix;
 }

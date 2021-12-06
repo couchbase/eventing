@@ -3,6 +3,7 @@ package supervisor
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"net"
 	"net/http"
 	"os"
@@ -58,6 +59,7 @@ func NewSuperSupervisor(adminPort AdminPortConfig, eventingDir, kvPort, restPort
 		uuid:                       uuid,
 		initEncryptDataMutex:       &sync.RWMutex{},
 		initLifecycleEncryptData:   false,
+		featureMatrix:              math.MaxUint32,
 	}
 	s.appRWMutex = &sync.RWMutex{}
 	s.appListRWMutex = &sync.RWMutex{}
@@ -358,6 +360,9 @@ func (s *SuperSupervisor) SettingsChangeCallback(kve metakv.KVEntry) error {
 						logging.Infof("%s [%d] Function: %s deleting from bootstrap list", logPrefix, s.runningFnsCount(), appName)
 						delete(s.bootstrappingApps, appName)
 						s.appListRWMutex.Unlock()
+
+						// Due to missed notification while spawning the app
+						eventingProducer.SetFeatureMatrix(atomic.LoadUint32(&s.featureMatrix))
 					}
 				} else {
 					s.supCmdCh <- msg
@@ -661,6 +666,8 @@ func (s *SuperSupervisor) GlobalConfigChangeCallback(kve metakv.KVEntry) error {
 func (s *SuperSupervisor) HandleGlobalConfigChange(config common.Config) error {
 	logPrefix := "SuperSupervisor::HandleGlobalConfigChange"
 
+	newDisabledFeatureList := uint32(0)
+
 	for key, value := range config {
 		logging.Infof("%s [%d] Config key: %s value: %v", logPrefix, s.runningFnsCount(), key, value)
 
@@ -692,9 +699,20 @@ func (s *SuperSupervisor) HandleGlobalConfigChange(config common.Config) error {
 			if breakpad, ok := value.(bool); ok {
 				util.SetBreakpad(breakpad)
 			}
+
+		case common.DisableCurl:
+			if disable, ok := value.(bool); ok && disable {
+				newDisabledFeatureList = newDisabledFeatureList | common.CurlFeature
+			}
 		}
 	}
 
+	newFeatureMatrix := math.MaxUint32 ^ newDisabledFeatureList
+	if newDisabledFeatureList != atomic.SwapUint32(&s.featureMatrix, newFeatureMatrix) {
+		for _, p := range s.runningFns() {
+			p.SetFeatureMatrix(newFeatureMatrix)
+		}
+	}
 	return nil
 }
 
@@ -752,7 +770,7 @@ func (s *SuperSupervisor) spawnApp(appName string) error {
 	metakvAppHostPortsPath := fmt.Sprintf("%s%s/", metakvProducerHostPortsPath, appName)
 
 	p := producer.NewProducer(appName, s.adminPort.DebuggerPort, s.adminPort.HTTPPort, s.adminPort.SslPort, s.eventingDir,
-		s.kvPort, metakvAppHostPortsPath, s.restPort, s.uuid, s.diagDir, s.memoryQuota, s.numVbuckets, s)
+		s.kvPort, metakvAppHostPortsPath, s.restPort, s.uuid, s.diagDir, s.memoryQuota, s.numVbuckets, atomic.LoadUint32(&s.featureMatrix), s)
 
 	err := s.watchBucket(p.FunctionManageBucket(), appName)
 	if err != nil {

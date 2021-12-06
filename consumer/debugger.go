@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"runtime/debug"
@@ -306,6 +307,7 @@ func (c *Consumer) startDebugger(e *cb.DcpEvent, instance common.DebuggerInstanc
 		false, c.timerContextSize, c.producer.UsingTimer(), c.producer.SrcMutation())
 
 	c.sendInitV8Worker(payload, true, pBuilder)
+	c.sendFeatureMatrix(atomic.LoadUint32(&c.featureMatrix))
 	c.sendDebuggerStart()
 	c.sendLoadV8Worker(c.app.ParsedAppCode, true)
 	c.sendDcpEvent(e, true)

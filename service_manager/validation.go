@@ -319,11 +319,25 @@ func (m *ServiceMgr) validateKeyspaceExists(bucketName, scopeName, collectionNam
 	return
 }
 
+func (m *ServiceMgr) validateFunctionFeatures(c map[string]interface{}) (info *runtimeInfo) {
+	info = &runtimeInfo{}
+
+	if info = m.validateBoolean(common.DisableCurl, true, c); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
+	return
+}
+
 func (m *ServiceMgr) validateConfig(c map[string]interface{}) (info *runtimeInfo) {
 	info = &runtimeInfo{}
 	info.Code = m.statusCodes.errInvalidConfig.Code
 
 	if info = m.validateBoolean("enable_debugger", true, c); info.Code != m.statusCodes.ok.Code {
+		return
+	}
+
+	if info = m.validateFunctionFeatures(c); info.Code != m.statusCodes.ok.Code {
 		return
 	}
 

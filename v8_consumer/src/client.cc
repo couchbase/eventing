@@ -576,12 +576,12 @@ void AppWorker::RouteMessageWithResponse(
       {
         std::lock_guard<std::mutex> lck(workers_map_mutex_);
         for (int16_t i = 0; i < thr_count_; i++) {
-          V8Worker *w =
-              new V8Worker(platform.release(), handler_config, server_settings,
-                           function_name_, function_id_, handler_instance_id,
-                           user_prefix_, &latency_stats_, &curl_latency_stats_,
-                           ns_server_port_, num_vbuckets_, vb_seq_.get(),
-                           processed_bucketops_.get(), vb_locks_.get(), i, user_, domain_);
+          V8Worker *w = new V8Worker(
+              platform.release(), handler_config, server_settings,
+              function_name_, function_id_, handler_instance_id, user_prefix_,
+              &latency_stats_, &curl_latency_stats_, ns_server_port_,
+              num_vbuckets_, vb_seq_.get(), processed_bucketops_.get(),
+              vb_locks_.get(), i, user_, domain_);
 
           LOG(logInfo) << "Init index: " << i << " V8Worker: " << w
                        << std::endl;
@@ -911,6 +911,22 @@ void AppWorker::RouteMessageWithResponse(
       LOG(logError) << "Opcode " << getDebuggerOpcode(worker_msg->header.opcode)
                     << "is not implemented for eDebugger" << std::endl;
       ++e_debugger_lost;
+      break;
+    }
+    break;
+  case eConfigChange:
+    switch (getConfigOpcode(worker_msg->header.opcode)) {
+    case oUpdateDisableFeatureList:
+      for (auto &v8_worker : workers_) {
+        std::unique_ptr<WorkerMessage> msg(new WorkerMessage);
+        msg->header.event = worker_msg->header.event;
+        msg->header.opcode = worker_msg->header.opcode;
+        msg->header.metadata = worker_msg->header.metadata;
+        v8_worker.second->PushFront(std::move(msg));
+      }
+      break;
+    default:
+      LOG(logError) << "Received invalid debugger opcode" << std::endl;
       break;
     }
     break;

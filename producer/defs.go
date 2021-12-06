@@ -185,6 +185,10 @@ type Producer struct {
 	// Will change it in the next patch
 	funcBucketUuid string
 	funcScopeId    uint32
+
+	// Maybe we can use it for other global config
+	featureChangeChan chan uint32
+	featureMatrix  uint32
 }
 
 type vbNodeWorkerMapping struct {

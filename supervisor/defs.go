@@ -115,11 +115,11 @@ type SuperSupervisor struct {
 	hostport    string
 	pool        string
 
-	bucketsRWMutex                     *sync.RWMutex
-	servicesNotifierRetryTm            uint
-	finch                              chan bool
-	buckets                            map[string]*bucketWatchStruct // Access controlled by bucketsRWMutex
-	isRebalanceOngoing                 int32
+	bucketsRWMutex          *sync.RWMutex
+	servicesNotifierRetryTm uint
+	finch                   chan bool
+	buckets                 map[string]*bucketWatchStruct // Access controlled by bucketsRWMutex
+	isRebalanceOngoing      int32
 
 	appRWMutex *sync.RWMutex
 
@@ -164,4 +164,6 @@ type SuperSupervisor struct {
 
 	initEncryptDataMutex     *sync.RWMutex
 	initLifecycleEncryptData bool
+
+	featureMatrix uint32
 }

@@ -1220,3 +1220,7 @@ func (p *Producer) FunctionManageBucket() string {
 func (p *Producer) FunctionManageScope() string {
 	return p.functionScope.ScopeName
 }
+
+func (p *Producer) SetFeatureMatrix(featureMatrix uint32) {
+	p.featureChangeChan <- featureMatrix
+}
