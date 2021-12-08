@@ -390,6 +390,8 @@ retryUpdateCheckpoint:
 	mutateIn = append(mutateIn, gocb.UpsertSpec("worker_requested_vb_stream", "", upsertOptions))
 	mutateIn = append(mutateIn, gocb.UpsertSpec("last_processed_seq_no", vbBlob.LastSeqNoProcessed, upsertOptions))
 	mutateIn = append(mutateIn, gocb.UpsertSpec("manifest_id", vbBlob.ManifestUID, upsertOptions))
+	mutateIn = append(mutateIn, gocb.UpsertSpec("failover_log", vbBlob.FailoverLog, upsertOptions))
+
 	c.gocbMetaHandleMutex.RLock()
 	defer c.gocbMetaHandleMutex.RUnlock()
 	_, err := c.gocbMetaHandle.MutateIn(vbKey.Raw(), mutateIn, nil)
@@ -671,6 +673,7 @@ retrySRSUpdate:
 	mutateIn = append(mutateIn, gocb.UpsertSpec("node_uuid_requested_vb_stream", "", upsertOptions))
 	mutateIn = append(mutateIn, gocb.UpsertSpec("vb_uuid", vbBlob.VBuuid, upsertOptions))
 	mutateIn = append(mutateIn, gocb.UpsertSpec("worker_requested_vb_stream", "", upsertOptions))
+	mutateIn = append(mutateIn, gocb.UpsertSpec("failover_log", vbBlob.FailoverLog, upsertOptions))
 	c.gocbMetaHandleMutex.RLock()
 	defer c.gocbMetaHandleMutex.RUnlock()
 	_, err := c.gocbMetaHandle.MutateIn(vbKey.Raw(), mutateIn, nil)

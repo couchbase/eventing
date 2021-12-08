@@ -185,6 +185,7 @@ func (c *Consumer) processDCPEvents() {
 					vbBlob.LastSeqNoProcessed = seqNo
 					vbBlob.NodeUUID = c.uuid
 					vbBlob.VBuuid = vbuuid
+					vbBlob.FailoverLog = *e.FailoverLog
 
 					var startSeqNo uint64
 					if seqNo, ok := c.vbProcessingStats.getVbStat(e.VBucket, "last_processed_seq_no").(uint64); ok {
@@ -232,6 +233,7 @@ func (c *Consumer) processDCPEvents() {
 					c.vbProcessingStats.updateVbStat(e.VBucket, "dcp_stream_requested_worker", c.ConsumerName())
 
 					c.vbProcessingStats.updateVbStat(e.VBucket, "vb_filter_ack_received", false)
+					c.vbProcessingStats.updateVbStat(e.VBucket, "failover_log", vbBlob.FailoverLog)
 
 					if !c.checkIfCurrentConsumerShouldOwnVb(e.VBucket) {
 						c.Lock()
@@ -399,7 +401,7 @@ func (c *Consumer) processFilterEvents() {
 	}
 }
 
-func (c *Consumer) startDcp(flogs couchbase.FailoverLog) error {
+func (c *Consumer) startDcp() error {
 	logPrefix := "Consumer::startDcp"
 
 	if atomic.LoadUint32(&c.isTerminateRunning) == 1 {
@@ -416,10 +418,15 @@ func (c *Consumer) startDcp(flogs couchbase.FailoverLog) error {
 	}
 
 	var vbSeqnos []uint64
-	err = util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), c.retryCount, util.GetSeqnos, c.producer.NsServerHostPort(), "default", c.sourceKeyspace.BucketName, c.srcCid, &vbSeqnos)
-	if err != nil && c.dcpStreamBoundary != common.DcpEverything {
-		logging.Errorf("%s [%s:%s:%d] Failed to fetch vb seqnos, err: %v", logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
-		return nil
+	// Fetch high seq number only if dcp stream boundary is from now
+	if c.dcpStreamBoundary == common.DcpFromNow {
+		err = util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), c.retryCount, util.GetSeqnos, c.producer.NsServerHostPort(), "default", c.sourceKeyspace.BucketName, c.srcCid, &vbSeqnos)
+		if err != nil && c.dcpStreamBoundary != common.DcpEverything {
+			logging.Errorf("%s [%s:%s:%d] Failed to fetch vb seqnos, err: %v", logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
+			return nil
+		}
+	} else {
+		vbSeqnos = make([]uint64, c.numVbuckets)
 	}
 
 	currentManifestUID := "0"
@@ -429,31 +436,10 @@ func (c *Consumer) startDcp(flogs couchbase.FailoverLog) error {
 
 	logging.Debugf("%s [%s:%s:%d] get_all_vb_seqnos: len => %d dump => %v",
 		logPrefix, c.workerName, c.tcpPort, c.Pid(), len(vbSeqnos), vbSeqnos)
-
-	flogVbs := make([]uint16, 0)
-	vbs := make([]uint16, 0)
-
-	for vb := range flogs {
-		flogVbs = append(flogVbs, vb)
-	}
-	sort.Sort(util.Uint16Slice(flogVbs))
+	vbs := make([]uint16, len(vbSeqnos))
 
 	var operr error
-	logging.Infof("%s [%s:%s:%d] flogVbs len: %d dump: %v flogs len: %d dump: %v",
-		logPrefix, c.workerName, c.tcpPort, c.Pid(), len(flogVbs), util.Condense(flogVbs), len(flogVbs), flogs)
-
-	for _, vb := range flogVbs {
-		flog := flogs[vb]
-		vbuuid, _, err := flog.Latest()
-		if err != nil {
-			logging.Errorf("%s [%s:%s:%d] vb: %d failed to grab latest failover log, err: %v",
-				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, err)
-			continue
-		}
-
-		logging.Infof("%s [%s:%s:%d] vb: %d vbuuid: %d flog: %v going to start dcp stream",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, vbuuid, flog)
-
+	for _, vb := range c.vbnos {
 		vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppName, vb)
 		var vbBlob vbucketKVBlob
 		var cas gocb.Cas
@@ -468,10 +454,22 @@ func (c *Consumer) startDcp(flogs couchbase.FailoverLog) error {
 			logging.Errorf("%s [%s:%s:%d] Encryption level changed while accessing metadata bucket", logPrefix, c.workerName, c.tcpPort, c.Pid())
 			return operr
 		}
-
 		logging.Infof("%s [%s:%s:%d] vb: %d isNoEnt: %t", logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, isNoEnt)
 
 		if isNoEnt {
+			failoverLog, err := c.getFailoverLog(nil, vb, false)
+			if err != nil {
+				logging.Errorf("%s [%s:%s:%d] vb: %d failed to grab failover log, err: %v",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, err)
+				continue
+			}
+
+			vbuuid, _, err := failoverLog.Latest()
+			if err != nil {
+				logging.Errorf("%s [%s:%s:%d] vb: %d failed to grab latest failover log, err: %v",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, err)
+				continue
+			}
 
 			c.vbProcessingStats.updateVbStat(vb, "bootstrap_stream_req_done", false)
 
@@ -503,6 +501,7 @@ func (c *Consumer) startDcp(flogs couchbase.FailoverLog) error {
 			vbBlob.CurrentProcessedDocIDTimer = time.Now().UTC().Format(time.RFC3339)
 			vbBlob.LastProcessedDocIDTimerEvent = time.Now().UTC().Format(time.RFC3339)
 			vbBlob.NextDocIDTimerToProcess = time.Now().UTC().Add(time.Second).Format(time.RFC3339)
+			vbBlob.FailoverLog = failoverLog
 
 			vbBlobVer := vbucketKVBlobVer{
 				vbBlob,
@@ -1011,7 +1010,6 @@ func (c *Consumer) handleFailoverLog() {
 			}
 
 			if vbFlog.streamReqRetry {
-
 				vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppName, vbFlog.vb)
 				var vbBlob vbucketKVBlob
 				var cas gocb.Cas
@@ -1032,47 +1030,40 @@ func (c *Consumer) handleFailoverLog() {
 					vbBlob.ManifestUID = "0"
 				}
 
-				err = util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), c.retryCount, getKvNodesFromVbMap, c)
-				if err == common.ErrRetryTimeout {
-					logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-					return
-				}
-
-				var flogs couchbase.FailoverLog
-				var startSeqNo uint64
-				var vbuuid uint64
-
-				err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getEFFailoverLogOpAllVbucketsCallback, c, &flogs, vbFlog.vb, &operr)
-				if err == common.ErrRetryTimeout {
-					logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-					return
-				} else if operr == common.ErrEncryptionLevelChanged {
-					logging.Errorf("%s [%s:%s:%d] Encryption due to change in encryption level during bootstrap", logPrefix, c.workerName, c.tcpPort, c.Pid())
-					continue
-				}
-
-				if flog, ok := flogs[vbFlog.vb]; ok {
-					vbuuid, startSeqNo, err = flog.FetchLogForSeqNo(vbBlob.LastSeqNoProcessed)
+				if vbFlog.statusCode == mcd.ROLLBACK {
+					failoverLog, err := c.getFailoverLog(&vbBlob, vbFlog.vb, true)
 					if err != nil {
-						c.Lock()
-						c.vbsRemainingToRestream = append(c.vbsRemainingToRestream, vbFlog.vb)
-						c.Unlock()
-						c.purgeVbStreamRequested(logPrefix, vbFlog.vb)
+						c.addVbForRestreaming(vbFlog.vb)
 						continue
 					}
-				}
 
-				if vbFlog.statusCode == mcd.ROLLBACK {
-					logging.Infof("%s [%s:%s:%d] vb: %d rollback requested by DCP. Retrying DCP stream start vbuuid: %d startSeq: %d flog startSeqNo: %d",
-						logPrefix, c.workerName, c.tcpPort, c.Pid(), vbFlog.vb, vbBlob.VBuuid, vbFlog.seqNo, startSeqNo)
+					// This will make sure failover log will be till last seq number processed
+					_, _, err = failoverLog.PopTillSeqNo(vbBlob.LastSeqNoProcessed)
+					if err != nil {
+						c.addVbForRestreaming(vbFlog.vb)
+						continue
+					}
+
+					// Pop the top most failover log and use its vbuuid and startseq number to avoid rolling back to 0
+					vbuuid, startSeqNo, err := failoverLog.PopAndGetLatest()
+					if err != nil {
+						c.addVbForRestreaming(vbFlog.vb)
+						continue
+					}
+
+					logging.Infof("%s [%s:%s:%d] vb: %d rollback requested by DCP. New vbuuid: %d startSeq: %d flog startSeqNo: %d",
+						logPrefix, c.workerName, c.tcpPort, c.Pid(), vbFlog.vb, vbuuid, vbFlog.seqNo, startSeqNo)
 
 					// update in-memory stats to reflect rollback seqno so that periodicCheckPoint picks up the latest data
 					c.vbProcessingStats.updateVbStat(vbFlog.vb, "last_processed_seq_no", vbFlog.seqNo)
 					c.vbProcessingStats.updateVbStat(vbFlog.vb, "vb_uuid", vbuuid)
+					c.vbProcessingStats.updateVbStat(vbFlog.vb, "failover log", failoverLog)
 
 					// update check point blob to let a racing doVbTakeover during rebalance try with correct <vbuuid, seqno> on next attempt
 					vbBlob.VBuuid = vbuuid
-					vbBlob.LastSeqNoProcessed = vbFlog.seqNo
+					vbBlob.LastSeqNoProcessed = startSeqNo
+					vbBlob.FailoverLog = failoverLog
+
 					err = c.updateCheckpoint(vbKey, vbFlog.vb, &vbBlob)
 					if err != nil {
 						logging.Errorf("%s [%s:%s:%d] updateCheckpoint failed, err: %v", logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
@@ -1098,7 +1089,7 @@ func (c *Consumer) handleFailoverLog() {
 					streamInfo := &streamRequestInfo{
 						vb:          vbFlog.vb,
 						vbBlob:      &vbBlob,
-						startSeqNo:  vbFlog.seqNo,
+						startSeqNo:  startSeqNo,
 						manifestUID: vbBlob.ManifestUID,
 					}
 
@@ -1107,7 +1098,7 @@ func (c *Consumer) handleFailoverLog() {
 					case <-c.stopConsumerCh:
 						return
 					}
-					c.vbProcessingStats.updateVbStat(vbFlog.vb, "start_seq_no", vbFlog.seqNo)
+					c.vbProcessingStats.updateVbStat(vbFlog.vb, "start_seq_no", startSeqNo)
 					c.vbProcessingStats.updateVbStat(vbFlog.vb, "timestamp", time.Now().Format(time.RFC3339))
 				} else {
 					// Issuing high seq nos call to ascertain all vbuckets are back online(i.e. not stuck warm-up, flush etc)
@@ -1487,4 +1478,38 @@ func (c *Consumer) filterMutations(e *cb.DcpEvent) bool {
 
 func (c *Consumer) isTransactionMutation(e *cb.DcpEvent) bool {
 	return bytes.HasPrefix(e.Key, cb.TransactionMutationPrefix)
+}
+
+// If fetchFresh is true then it will fetch the latest failover log if vbBlob doesn't contain failover log
+func (c *Consumer) getFailoverLog(vbBlob *vbucketKVBlob, vb uint16, fetchFresh bool) (cb.FailoverLog, error) {
+	logPrefix := "Consumer::getFailoverLog"
+
+	if vbBlob != nil && vbBlob.FailoverLog != nil {
+		return vbBlob.FailoverLog, nil
+	}
+
+	// If stream boundary is from now or failover log doesn't exist in vbblob then fetch fresh failover log
+	if fetchFresh || c.dcpStreamBoundary == common.DcpFromNow {
+		var flogs couchbase.FailoverLog
+		var operr error
+		err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getEFFailoverLogOpAllVbucketsCallback, c, &flogs, vb, &operr)
+		if err != nil {
+			logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+			return nil, err
+		} else if operr == common.ErrEncryptionLevelChanged {
+			logging.Errorf("%s [%s:%s:%d] Encryption due to change in encryption level during bootstrap", logPrefix, c.workerName, c.tcpPort, c.Pid())
+			return nil, operr
+		}
+		return flogs[vb], nil
+	}
+
+	return cb.InitFailoverLog(), nil
+}
+
+func (c *Consumer) addVbForRestreaming(vb uint16) {
+	logPrefix := "Consumer::addVbForRestreaming"
+	c.Lock()
+	c.vbsRemainingToRestream = append(c.vbsRemainingToRestream, vb)
+	c.Unlock()
+	c.purgeVbStreamRequested(logPrefix, vb)
 }
