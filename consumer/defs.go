@@ -440,6 +440,8 @@ type vbucketKVBlob struct {
 	CurrentProcessedCronTimer   string `json:"currently_processed_cron_timer"`
 	LastProcessedCronTimerEvent string `json:"last_processed_cron_timer_event"`
 	NextCronTimerToProcess      string `json:"next_cron_timer_to_process"`
+
+	FailoverLog cb.FailoverLog `json:"failover_log,omitempty"`
 }
 
 type vbucketKVBlobVer struct {

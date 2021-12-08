@@ -974,26 +974,83 @@ func (stats *DcpStats) String(feed *DcpFeed) string {
 // FailoverLog containing vvuid and sequnce number
 type FailoverLog [][2]uint64
 
+const (
+	MaxFailoverLogEntries = 20
+)
+
+// Kind of start of the vbucket
+func InitFailoverLog() FailoverLog {
+	return FailoverLog{[2]uint64{uint64(0), uint64(0)}}
+}
+
 // Latest will return the recent vbuuid and its high-seqno.
 func (flogp *FailoverLog) Latest() (vbuuid, seqno uint64, err error) {
 	if flogp != nil {
 		flog := *flogp
+		if len(flog) == 0 {
+			return vbuuid, seqno, nil
+		}
+
 		latest := flog[0]
 		return latest[0], latest[1], nil
 	}
 	return vbuuid, seqno, ErrorInvalidLog
 }
 
-func (flogp *FailoverLog) FetchLogForSeqNo(desiredSeqNo uint64) (vbuuid, seqno uint64, err error) {
-	if flogp != nil {
-		flog := *flogp
-		for _, entry := range flog {
-			if entry[1] <= desiredSeqNo {
-				return entry[0], entry[1], nil
-			}
-		}
+// Trim failover log to hold MaxFailoverLogEntries entries
+// Caller should make sure that flog is not nill
+func (flog *FailoverLog) trimFailoverLog() {
+	// This is to make sure flog always contain atleast one entry
+	if len(*flog) == 0 {
+		*flog = InitFailoverLog()
+		return
 	}
-	return vbuuid, seqno, ErrorInvalidLog
+
+	if len(*flog) <= MaxFailoverLogEntries {
+		return
+	}
+
+	tmpFlog := *flog
+	log := make(FailoverLog, MaxFailoverLogEntries)
+	for i := 0; i < MaxFailoverLogEntries-1; i++ {
+		log[i] = tmpFlog[i]
+	}
+	*flog = log
+}
+
+func (flogp *FailoverLog) PopAndGetLatest() (vbuuid, seqno uint64, err error) {
+	if flogp == nil {
+		return vbuuid, seqno, ErrorInvalidLog
+	}
+
+	if len(*flogp) == 0 {
+		*flogp = InitFailoverLog()
+	} else {
+		*flogp = (*flogp)[1:]
+	}
+
+	flogp.trimFailoverLog()
+	return flogp.Latest()
+}
+
+func (flogp *FailoverLog) PopTillSeqNo(desiredSeqNo uint64) (vbuuid, seqno uint64, err error) {
+	if flogp == nil {
+		return vbuuid, seqno, ErrorInvalidLog
+	}
+
+	tmpFlog := *flogp
+	entry := 0
+	for ; entry < len(tmpFlog) && tmpFlog[entry][1] > desiredSeqNo; entry++ {
+	}
+
+	log := make(FailoverLog, 0, len(tmpFlog)-entry)
+	for ; entry < len(tmpFlog); entry++ {
+		log = append(log, tmpFlog[entry])
+	}
+
+	*flogp = log
+	flogp.trimFailoverLog()
+	return flogp.Latest()
 }
 
 // failsafeOp can be used by gen-server implementors to avoid infinitely
@@ -1043,6 +1100,7 @@ func parseFailoverLog(body []byte) (*FailoverLog, error) {
 		log[j] = [2]uint64{vuuid, seqno}
 		j++
 	}
+	log.trimFailoverLog()
 	return &log, nil
 }
 

@@ -182,12 +182,7 @@ func (c *Consumer) Serve() {
 
 	c.cppWorkerThrPartitionMap()
 
-	err := util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), c.retryCount, getKvNodesFromVbMap, c)
-	if err == common.ErrRetryTimeout {
-		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-		return
-	}
-
+	var err error
 	c.cbBucket, err = c.superSup.GetBucket(c.bucket, c.app.AppName)
 	if err != nil {
 		return
@@ -196,15 +191,6 @@ func (c *Consumer) Serve() {
 	err = c.updategocbMetaHandle()
 	if err != nil {
 		logging.Errorf("%s [%s:%s:%d] Exiting due to err: %v", logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
-		return
-	}
-
-	var flogs couchbase.FailoverLog
-
-	var operr error
-	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getFailoverLogOpCallback, c, &flogs, &operr)
-	if err == common.ErrRetryTimeout {
-		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 		return
 	}
 
@@ -225,37 +211,6 @@ func (c *Consumer) Serve() {
 	logging.Infof("%s [%s:%s:%d] Spawning worker corresponding to producer, node addr: %rs",
 		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.HostPortAddr())
 
-	var feedName couchbase.DcpFeedName
-
-	err = util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), c.retryCount, getKvNodesFromVbMap, c)
-	if err == common.ErrRetryTimeout {
-		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-		return
-	}
-
-	for _, kvHostPort := range c.getKvNodes() {
-		if atomic.LoadUint32(&c.isTerminateRunning) == 1 {
-			continue
-		}
-
-		feedName = couchbase.NewDcpFeedName(c.HostPortAddr() + "_" + kvHostPort + "_" + c.workerName)
-
-		c.hostDcpFeedRWMutex.Lock()
-		err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, startDCPFeedOpCallback, c, feedName, kvHostPort, &operr)
-		if err == common.ErrRetryTimeout {
-			logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-			return
-		} else if operr == common.ErrEncryptionLevelChanged {
-			c.hostDcpFeedRWMutex.Unlock()
-			break
-		}
-
-		logging.Infof("%s [%s:%s:%d] vbKvAddr: %s Spawned aggChan routine",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), kvHostPort)
-
-		c.addToAggChan(c.kvHostDcpFeedMap[kvHostPort])
-		c.hostDcpFeedRWMutex.Unlock()
-	}
 
 	if atomic.LoadUint32(&c.isTerminateRunning) == 0 {
 		c.client = newClient(c, c.app.AppName, c.tcpPort, c.feedbackTCPPort, c.workerName, c.eventingAdminPort)
@@ -279,7 +234,7 @@ checkIfPlannerRunning:
 
 	go c.updateWorkerStats()
 
-	err = c.startDcp(flogs)
+	err = c.startDcp()
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 		return

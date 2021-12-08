@@ -379,6 +379,7 @@ retryUpdateCheckpoint:
 		UpsertEx("previous_vb_owner", vbBlob.PreviousVBOwner, gocb.SubdocFlagCreatePath).
 		UpsertEx("worker_requested_vb_stream", "", gocb.SubdocFlagCreatePath).
 		UpsertEx("last_processed_seq_no", vbBlob.LastSeqNoProcessed, gocb.SubdocFlagCreatePath).
+		UpsertEx("failover_log", vbBlob.FailoverLog, gocb.SubdocFlagCreatePath).
 		Execute()
 	if err != nil && c.encryptionChangedDuringLifecycle() {
 		*operr = common.ErrEncryptionLevelChanged
@@ -638,6 +639,7 @@ var addOwnershipHistorySRSCallback = func(args ...interface{}) error {
 	operr := args[4].(*error)
 
 retrySRSUpdate:
+
 	c.gocbMetaHandleMutex.RLock()
 	defer c.gocbMetaHandleMutex.RUnlock()
 	_, err := c.gocbMetaHandle.MutateIn(vbKey.Raw(), 0, uint32(0)).
@@ -653,6 +655,7 @@ retrySRSUpdate:
 		UpsertEx("node_uuid_requested_vb_stream", "", gocb.SubdocFlagCreatePath).
 		UpsertEx("vb_uuid", vbBlob.VBuuid, gocb.SubdocFlagCreatePath).
 		UpsertEx("worker_requested_vb_stream", "", gocb.SubdocFlagCreatePath).
+		UpsertEx("failover_log", vbBlob.FailoverLog, gocb.SubdocFlagCreatePath).
 		Execute()
 
 	if err != nil && c.encryptionChangedDuringLifecycle() {
