@@ -204,14 +204,6 @@ func (c *Consumer) Serve() {
 		return
 	}
 
-	var flogs couchbase.FailoverLog
-	var operr error
-	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getFailoverLogOpCallback, c, &flogs, &operr)
-	if err == common.ErrRetryTimeout {
-		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-		return
-	}
-
 	go c.handleFailoverLog()
 	go c.processReqStreamMessages()
 
@@ -251,7 +243,7 @@ checkIfPlannerRunning:
 
 	go c.updateWorkerStats()
 
-	err = c.startDcp(flogs)
+	err = c.startDcp()
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
 		return
