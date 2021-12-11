@@ -7,7 +7,7 @@ import { UIRouterUpgradeModule } from '@uirouter/angular-hybrid';
 
 angular
   .module(app)
-  .config(function(mnPluggableUiRegistryProvider, mnPermissionsProvider) {
+  .config(["mnPluggableUiRegistryProvider", "mnPermissionsProvider", function(mnPluggableUiRegistryProvider, mnPermissionsProvider) {
     mnPermissionsProvider.set(
       "cluster.collection[.:.:.].eventing.function!manage");
     mnPluggableUiRegistryProvider.registerConfig({
@@ -18,7 +18,7 @@ angular
       index: 4,
       responsiveHide: true
     });
-  });
+  }]);
 
 class EventingUI {
   static get annotations() {
