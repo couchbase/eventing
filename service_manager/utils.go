@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"net/url"
 	"runtime/debug"
-	"strconv"
 	"strings"
 	"time"
 
@@ -20,6 +19,8 @@ import (
 	"github.com/couchbase/eventing/gen/flatbuf/cfg"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/parser"
+	"github.com/couchbase/eventing/rbac"
+	"github.com/couchbase/eventing/service_manager/response"
 	"github.com/couchbase/eventing/util"
 )
 
@@ -34,9 +35,9 @@ func init() {
 	}
 }
 
-func (m *ServiceMgr) checkAppExists(appName string) (*application, *runtimeInfo) {
+func (m *ServiceMgr) checkAppExists(appName string) (*application, *response.RuntimeInfo) {
 	app, info := m.getAppFromTempStore(appName)
-	if info.Code != m.statusCodes.ok.Code {
+	if info.ErrCode != response.Ok {
 		return nil, info
 	}
 	return &app, info
@@ -87,7 +88,7 @@ func (m *ServiceMgr) checkIfDeployedAndRunning(appName string) bool {
 func (m *ServiceMgr) checkCompressHandler() bool {
 	mhVersion := common.CouchbaseVerMap["mad-hatter"]
 	config, info := m.getConfig()
-	if info.Code != m.statusCodes.ok.Code {
+	if info.ErrCode != response.Ok {
 		return m.compareEventingVersion(mhVersion)
 	}
 
@@ -181,88 +182,24 @@ func fillMissingDefault(app application, settings map[string]interface{}, field 
 	}
 }
 
-func (m *ServiceMgr) sendErrorInfo(w http.ResponseWriter, runtimeInfo *runtimeInfo) {
-	errInfo := m.errorCodes[runtimeInfo.Code]
-	errInfo.RuntimeInfo = *runtimeInfo
-	response, err := json.MarshalIndent(errInfo, "", " ")
-	if err != nil {
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
-		w.WriteHeader(m.getDisposition(m.statusCodes.errMarshalResp.Code))
-		fmt.Fprintf(w, `{"error":"Failed to marshal error info, err: %v"}`, err)
-		return
-	}
-
-	if runtimeInfo.Code != m.statusCodes.ok.Code {
-		w.WriteHeader(m.getDisposition(runtimeInfo.Code))
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Add(headerKey, strconv.Itoa(errInfo.Code))
-	fmt.Fprintf(w, string(response))
-}
-
-func (m *ServiceMgr) sendResponse(w http.ResponseWriter, runtimeInfo *runtimeInfo) {
-	if runtimeInfo.Code != m.statusCodes.ok.Code {
-		m.sendErrorInfo(w, runtimeInfo)
-		return
-	}
-
-	response, err := json.MarshalIndent(runtimeInfo, "", " ")
-	if err != nil {
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
-		w.WriteHeader(m.getDisposition(m.statusCodes.errMarshalResp.Code))
-		fmt.Fprintf(w, `{"error":"Failed to marshal error info, err: %v"}`, err)
-		return
-	}
-
-	fmt.Fprintf(w, string(response))
-}
-
-func (m *ServiceMgr) sendRuntimeInfoList(w http.ResponseWriter, runtimeInfoList []*runtimeInfo) {
-	response, err := json.MarshalIndent(runtimeInfoList, "", " ")
-	if err != nil {
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
-		w.WriteHeader(m.getDisposition(m.statusCodes.errMarshalResp.Code))
-		fmt.Fprintf(w, `{"error":"Failed to marshal error info, err: %v"}`, err)
-		return
-	}
-
-	allOK := true
-	allFail := true
-	for _, info := range runtimeInfoList {
-		allOK = allOK && (info.Code == m.statusCodes.ok.Code)
-		allFail = allFail && (info.Code != m.statusCodes.ok.Code)
-	}
-
-	if allOK {
-		w.WriteHeader(http.StatusOK)
-	} else if allFail {
-		w.WriteHeader(http.StatusBadRequest)
-	} else {
-		w.WriteHeader(http.StatusMultiStatus)
-	}
-
-	fmt.Fprintf(w, string(response))
-}
-
-func (m *ServiceMgr) unmarshalApp(r *http.Request) (app application, info *runtimeInfo) {
+func (m *ServiceMgr) unmarshalApp(r *http.Request) (app application, info *response.RuntimeInfo) {
 	logPrefix := "ServiceMgr::unmarshalApp"
-	info = &runtimeInfo{}
+	info = &response.RuntimeInfo{}
 
 	data, err := ioutil.ReadAll(r.Body)
 	if err != nil {
-		info.Code = m.statusCodes.errReadReq.Code
-		info.Info = fmt.Sprintf("Failed to read request body, err: %v", err)
-		logging.Errorf("%s %s", logPrefix, info.Info)
+		info.ErrCode = response.ErrReadReq
+		info.Description = fmt.Sprintf("Failed to read request body, err: %v", err)
+		logging.Errorf("%s %s", logPrefix, info.Description)
 		return
 	}
 
 	data = bytes.Trim(data, "[]\n ")
 	err = json.Unmarshal(data, &app)
 	if err != nil {
-		info.Code = m.statusCodes.errUnmarshalPld.Code
-		info.Info = fmt.Sprintf("Failed to unmarshal payload err: %v", err)
-		logging.Errorf("%s %s", logPrefix, info.Info)
+		info.ErrCode = response.ErrUnmarshalPld
+		info.Description = fmt.Sprintf("Failed to unmarshal payload err: %v", err)
+		logging.Errorf("%s %s", logPrefix, info.Description)
 		return
 	}
 
@@ -270,22 +207,20 @@ func (m *ServiceMgr) unmarshalApp(r *http.Request) (app application, info *runti
 		app.Settings = make(map[string]interface{}, 1)
 	}
 
-	info.Code = m.statusCodes.ok.Code
-	info.Info = "OK"
 	return
 }
 
 // Unmarshals list of application and returns application objects
-func (m *ServiceMgr) unmarshalAppList(w http.ResponseWriter, r *http.Request) (appList *[]application, info *runtimeInfo) {
+func (m *ServiceMgr) unmarshalAppList(r *http.Request) (appList *[]application, info *response.RuntimeInfo) {
 	logPrefix := "ServiceMgr::unmarshalAppList"
 	appList = &[]application{}
-	info = &runtimeInfo{}
+	info = &response.RuntimeInfo{}
 
 	data, err := ioutil.ReadAll(r.Body)
 	if err != nil {
-		info.Code = m.statusCodes.errReadReq.Code
-		info.Info = fmt.Sprintf("Failed to read request body, err: %v", err)
-		logging.Errorf("%s %s", logPrefix, info.Info)
+		info.ErrCode = response.ErrReadReq
+		info.Description = fmt.Sprintf("Failed to read request body, err: %v", err)
+		logging.Errorf("%s %s", logPrefix, info.Description)
 		return
 	}
 
@@ -296,9 +231,9 @@ func (m *ServiceMgr) unmarshalAppList(w http.ResponseWriter, r *http.Request) (a
 
 	err = json.Unmarshal(data, &appList)
 	if err != nil {
-		info.Code = m.statusCodes.errUnmarshalPld.Code
-		info.Info = fmt.Sprintf("Failed to unmarshal payload err: %v", err)
-		logging.Errorf("%s %s", logPrefix, info.Info)
+		info.ErrCode = response.ErrUnmarshalPld
+		info.Description = fmt.Sprintf("Failed to unmarshal payload err: %v", err)
+		logging.Errorf("%s %s", logPrefix, info.Description)
 		return
 	}
 
@@ -308,18 +243,17 @@ func (m *ServiceMgr) unmarshalAppList(w http.ResponseWriter, r *http.Request) (a
 		}
 	}
 
-	info.Code = m.statusCodes.ok.Code
 	return
 }
 
-func (m *ServiceMgr) checkLifeCycleOpsDuringRebalance() (info *runtimeInfo) {
+func (m *ServiceMgr) checkLifeCycleOpsDuringRebalance() (info *response.RuntimeInfo) {
 	logPrefix := "ServiceMgr:enableLifeCycleOpsDuringRebalance"
 
-	info = &runtimeInfo{}
+	info = &response.RuntimeInfo{}
 	var lifeCycleOpsDuringReb bool
 
 	config, configInfo := m.getConfig()
-	if configInfo.Code != m.statusCodes.ok.Code {
+	if configInfo.ErrCode != response.Ok {
 		lifeCycleOpsDuringReb = false
 	} else {
 		if enableVal, exists := config["enable_lifecycle_ops_during_rebalance"]; !exists {
@@ -334,14 +268,12 @@ func (m *ServiceMgr) checkLifeCycleOpsDuringRebalance() (info *runtimeInfo) {
 		}
 	}
 
-	if rebStatus := m.checkRebalanceStatus(); !lifeCycleOpsDuringReb && rebStatus.Code != m.statusCodes.ok.Code {
-		info.Code = rebStatus.Code
-		info.Info = rebStatus.Info
-		logging.Errorf("%s %s", logPrefix, info.Info)
+	if rebStatus := m.checkRebalanceStatus(); !lifeCycleOpsDuringReb && rebStatus.ErrCode != response.Ok {
+		*info = *rebStatus
+		logging.Errorf("%s %s", logPrefix, info.Description)
 		return
 	}
 
-	info.Code = m.statusCodes.ok.Code
 	return
 }
 
@@ -510,62 +442,59 @@ func (m *ServiceMgr) NotifySupervisorWaitCh() {
 	close(m.supWaitCh)
 }
 
-func (m *ServiceMgr) validateQueryKey(query url.Values) (info *runtimeInfo) {
-	info = &runtimeInfo{}
-	info.Code = m.statusCodes.ok.Code
+func (m *ServiceMgr) validateQueryKey(query url.Values) (info *response.RuntimeInfo) {
+	info = &response.RuntimeInfo{}
 
 	for key := range query {
 		if _, found := functionQueryKeys[key]; !found {
-			info.Info = "key mismatch error, supported keys in function list query are: source_bucket, function_type, deployed"
-			info.Code = m.statusCodes.errReadReq.Code
+			info.Description = "key mismatch error, supported keys in function list query are: source_bucket, function_type, deployed"
+			info.ErrCode = response.ErrReadReq
 			return
 		}
 	}
 	return
 }
 
-func (m *ServiceMgr) validateQueryKeyspace(query url.Values) (info *runtimeInfo) {
-	info = &runtimeInfo{}
-	info.Code = m.statusCodes.ok.Code
+func (m *ServiceMgr) validateQueryKeyspace(query url.Values) (info *response.RuntimeInfo) {
+	info = &response.RuntimeInfo{}
 	buckets, bktPresent := query["source_bucket"]
 
 	if bktPresent && len(buckets) > 1 {
-		info.Info = "more than one bucket name present in function list query"
-		info.Code = m.statusCodes.errReadReq.Code
+		info.Description = "more than one bucket name present in function list query"
+		info.ErrCode = response.ErrReadReq
 		return
 	}
 
 	scopes, scopePresent := query["source_scope"]
 	if !bktPresent && scopePresent {
-		info.Info = "filter on scope is given without filter on bucket"
-		info.Code = m.statusCodes.errReadReq.Code
+		info.Description = "filter on scope is given without filter on bucket"
+		info.ErrCode = response.ErrReadReq
 		return
 	}
 
 	if scopePresent && len(scopes) > 1 {
-		info.Info = "more than one scope name present in function list query"
-		info.Code = m.statusCodes.errReadReq.Code
+		info.Description = "more than one scope name present in function list query"
+		info.ErrCode = response.ErrReadReq
 		return
 	}
 
 	collections, collectionPresent := query["source_collection"]
 	if !(scopePresent && bktPresent) && collectionPresent {
-		info.Info = "filter on collection is given without filter on bucket or scope"
-		info.Code = m.statusCodes.errReadReq.Code
+		info.Description = "filter on collection is given without filter on bucket or scope"
+		info.ErrCode = response.ErrReadReq
 		return
 	}
 	if collectionPresent && len(collections) > 1 {
-		info.Info = "more than one collection name present in function list query"
-		info.Code = m.statusCodes.errReadReq.Code
+		info.Description = "more than one collection name present in function list query"
+		info.ErrCode = response.ErrReadReq
 		return
 	}
 
 	return
 }
 
-func (m *ServiceMgr) validateQueryFunctionType(query url.Values) (info *runtimeInfo) {
-	info = &runtimeInfo{}
-	info.Code = m.statusCodes.ok.Code
+func (m *ServiceMgr) validateQueryFunctionType(query url.Values) (info *response.RuntimeInfo) {
+	info = &response.RuntimeInfo{}
 
 	functionTypes, found := query["function_type"]
 	if !found {
@@ -575,24 +504,23 @@ func (m *ServiceMgr) validateQueryFunctionType(query url.Values) (info *runtimeI
 
 	if typeLen == 1 {
 		if _, ok := funtionTypes[functionTypes[0]]; !ok {
-			info.Info = "invalid function type, supported function types are: sbm, notsbm"
-			info.Code = m.statusCodes.errReadReq.Code
+			info.Description = "invalid function type, supported function types are: sbm, notsbm"
+			info.ErrCode = response.ErrReadReq
 			return
 		}
 
 	}
 
 	if typeLen > 1 {
-		info.Info = "more than one function type present in function list query"
-		info.Code = m.statusCodes.errReadReq.Code
+		info.Description = "more than one function type present in function list query"
+		info.ErrCode = response.ErrReadReq
 		return
 	}
 	return
 }
 
-func (m *ServiceMgr) validateQueryFunctionDeployment(query url.Values) (info *runtimeInfo) {
-	info = &runtimeInfo{}
-	info.Code = m.statusCodes.ok.Code
+func (m *ServiceMgr) validateQueryFunctionDeployment(query url.Values) (info *response.RuntimeInfo) {
+	info = &response.RuntimeInfo{}
 
 	deploymentStatus, found := query["deployed"]
 	if !found {
@@ -602,48 +530,48 @@ func (m *ServiceMgr) validateQueryFunctionDeployment(query url.Values) (info *ru
 
 	if deployedLen == 1 {
 		if deploymentStatus[0] != "true" && deploymentStatus[0] != "false" {
-			info.Info = "invalid deployment status, supported deployment status are: true, false"
-			info.Code = m.statusCodes.errReadReq.Code
+			info.Description = "invalid deployment status, supported deployment status are: true, false"
+			info.ErrCode = response.ErrReadReq
 			return
 		}
 	}
 
 	if deployedLen > 1 {
-		info.Info = "more than one deployment status present in function list query"
-		info.Code = m.statusCodes.errReadReq.Code
+		info.Description = "more than one deployment status present in function list query"
+		info.ErrCode = response.ErrReadReq
 	}
 	return
 }
 
-func (m *ServiceMgr) validateFunctionListQuery(query url.Values) (info *runtimeInfo) {
+func (m *ServiceMgr) validateFunctionListQuery(query url.Values) (info *response.RuntimeInfo) {
 	logPrefix := "ServiceMgr::getFunctionList"
 
-	if info = m.validateQueryKey(query); info.Code != m.statusCodes.ok.Code {
-		logging.Errorf("%s %s", logPrefix, info.Info)
+	if info = m.validateQueryKey(query); info.ErrCode != response.Ok {
+		logging.Errorf("%s %s", logPrefix, info.Description)
 		return
 	}
 
-	if info = m.validateQueryKeyspace(query); info.Code != m.statusCodes.ok.Code {
-		logging.Errorf("%s %s", logPrefix, info.Info)
+	if info = m.validateQueryKeyspace(query); info.ErrCode != response.Ok {
+		logging.Errorf("%s %s", logPrefix, info.Description)
 		return
 	}
 
-	if info = m.validateQueryFunctionType(query); info.Code != m.statusCodes.ok.Code {
-		logging.Errorf("%s %s", logPrefix, info.Info)
+	if info = m.validateQueryFunctionType(query); info.ErrCode != response.Ok {
+		logging.Errorf("%s %s", logPrefix, info.Description)
 		return
 	}
 
-	if info = m.validateQueryFunctionDeployment(query); info.Code != m.statusCodes.ok.Code {
-		logging.Errorf("%s %s", logPrefix, info.Info)
+	if info = m.validateQueryFunctionDeployment(query); info.ErrCode != response.Ok {
+		logging.Errorf("%s %s", logPrefix, info.Description)
 		return
 	}
 	return
 }
 
-func (m *ServiceMgr) getFunctionList(query url.Values) (fnlist functionList, info *runtimeInfo) {
+func (m *ServiceMgr) getFunctionList(query url.Values) (fnlist functionList, info *response.RuntimeInfo) {
 
 	info = m.validateFunctionListQuery(query)
-	if info.Code != m.statusCodes.ok.Code {
+	if info.ErrCode != response.Ok {
 		return
 	}
 
@@ -794,11 +722,10 @@ func (m *ServiceMgr) watchFailoverEvents() {
 			if m.failoverNotifTs != 0 {
 				now := time.Now().Unix()
 				if now-m.failoverNotifTs > 5 {
-					info := &runtimeInfo{}
-					info.Code = m.statusCodes.errInvalidConfig.Code
+					info := &response.RuntimeInfo{}
 					var config common.Config
 
-					if config, info = m.getConfig(); info.Code != m.statusCodes.ok.Code {
+					if config, info = m.getConfig(); info.ErrCode != response.Ok {
 						logging.Errorf("%s getConfig failed: %v", logPrefix, info)
 						continue
 					}
@@ -864,8 +791,8 @@ func (m *ServiceMgr) checkTopologyChangeReadiness(changeType service.TopologyCha
 			}
 		}
 		if changeType == service.TopologyChangeTypeRebalance { // For failover we do not want to wait
-			if rebStatus := m.checkRebalanceStatus(); rebStatus.Code != m.statusCodes.ok.Code {
-				return fmt.Errorf(rebStatus.Info.(string))
+			if rebStatus := m.checkRebalanceStatus(); rebStatus.ErrCode != response.Ok {
+				return fmt.Errorf("%v", rebStatus.Description)
 			}
 		}
 	}
@@ -880,39 +807,35 @@ func (m *ServiceMgr) checkTopologyChangeReadiness(changeType service.TopologyCha
 
 func (m *ServiceMgr) CheckLifeCycleOpsDuringRebalance() bool {
 	rebStatus := m.checkLifeCycleOpsDuringRebalance()
-	if rebStatus.Code != m.statusCodes.ok.Code {
+	if rebStatus.ErrCode != response.Ok {
 		return true
 	}
 	return false
 }
 
-func (m *ServiceMgr) MaybeEnforceFunctionSchema(app application) *runtimeInfo {
-	info := &runtimeInfo{}
+func (m *ServiceMgr) MaybeEnforceFunctionSchema(app application) *response.RuntimeInfo {
+	info := &response.RuntimeInfo{}
 	if appData, err := json.Marshal(app); err == nil && app.EnforceSchema == true {
 		schemaErr := parser.ValidateHandlerSchema(appData)
 		if schemaErr != nil {
-			info.Code = m.statusCodes.errInvalidConfig.Code
-			info.Info = fmt.Sprintf("Invalid function configuration, err: %v", schemaErr)
-			logging.Errorf("%s\n", info.Info)
+			info.ErrCode = response.ErrInvalidConfig
+			info.Description = fmt.Sprintf("Invalid function configuration, err: %v", schemaErr)
+			logging.Errorf("%s\n", info.Description)
 			return info
 		}
 	}
-	info.Code = m.statusCodes.ok.Code
-	info.Info = fmt.Sprint("Success")
 	return info
 }
 
-func (m *ServiceMgr) MaybeEnforceSettingsSchema(data []byte) *runtimeInfo {
-	info := &runtimeInfo{}
+func (m *ServiceMgr) MaybeEnforceSettingsSchema(data []byte) *response.RuntimeInfo {
+	info := &response.RuntimeInfo{}
 	schemaErr := parser.ValidateSettingsSchema(data)
 	if schemaErr != nil {
-		info.Code = m.statusCodes.errInvalidConfig.Code
-		info.Info = fmt.Sprintf("Invalid settings configuration, err: %v", schemaErr)
-		logging.Errorf("%s\n", info.Info)
+		info.ErrCode = response.ErrInvalidConfig
+		info.Description = fmt.Sprintf("Invalid settings configuration, err: %v", schemaErr)
+		logging.Errorf("%s\n", info.Description)
 		return info
 	}
-	info.Code = m.statusCodes.ok.Code
-	info.Info = fmt.Sprint("Success")
 	return info
 }
 
@@ -959,14 +882,14 @@ func (m *ServiceMgr) rbacSupport() bool {
 	return version >= 7 && minVer >= 1
 }
 
-func (m *ServiceMgr) fetchAppCompositeState(appName string) (int8, *runtimeInfo) {
+func (m *ServiceMgr) fetchAppCompositeState(appName string) (int8, *response.RuntimeInfo) {
 	app, info := m.getAppFromTempStore(appName)
-	if info.Code == m.statusCodes.errAppNotFoundTs.Code {
-		info.Code = m.statusCodes.ok.Code
-		return common.AppStateUndeployed, info
+	if info.ErrCode == response.ErrAppNotFoundTs {
+		resInfo := &response.RuntimeInfo{}
+		return common.AppStateUndeployed, resInfo
 	}
 
-	if info.Code != m.statusCodes.ok.Code {
+	if info.ErrCode != response.Ok {
 		return common.AppStateUndeployed, info
 	}
 
@@ -1232,16 +1155,39 @@ func isDynamicSetting(setting string) bool {
 	return ok
 }
 
-func CheckAndGetQueryParam(req *http.Request, key string) (string, *runtimeInfo) {
-	info := &runtimeInfo{}
+func CheckAndGetQueryParam(params map[string][]string, key string) (string, *response.RuntimeInfo) {
+	info := &response.RuntimeInfo{}
 
-	params := req.URL.Query()
 	appNameList := params[key]
 	if len(appNameList) == 0 {
-		info.Code = http.StatusBadRequest
-		info.Info = fmt.Sprintf("Parameter '%s' must be provided", key)
+		info.ErrCode = response.ErrInvalidRequest
+		info.Description = fmt.Sprintf("Parameter '%s' must be provided", key)
 		return "", info
 	}
 
-	return appNameList[0], nil
+	return appNameList[0], info
+}
+
+func getAuthErrorInfo(notAllowed []string, all bool, err error) (runtimeInfo response.RuntimeInfo) {
+	runtimeInfo = response.RuntimeInfo{}
+	switch err {
+	case rbac.ErrAuthentication:
+		runtimeInfo.ErrCode = response.ErrUnauthenticated
+		runtimeInfo.Description = fmt.Sprintf("%v", err)
+	case rbac.ErrAuthorisation:
+		runtimeInfo.ErrCode = response.ErrForbidden
+		permDescription := "Forbidden. User needs atleast one of the following permissions: %v"
+		if all {
+			permDescription = "Forbidden. User needs all of the following permissions: %v"
+		}
+		runtimeInfo.Description = fmt.Sprintf(permDescription, notAllowed)
+
+	case rbac.ErrUserDeleted:
+		runtimeInfo.ErrCode = response.ErrForbidden
+		runtimeInfo.Description = fmt.Sprintf("Owner of the function doesn't exist")
+	default:
+		runtimeInfo.ErrCode = response.ErrInternalServer
+
+	}
+	return
 }

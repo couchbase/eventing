@@ -348,7 +348,7 @@ type EventingSuperSup interface {
 	BootstrapStatus() bool
 	CheckAndSwitchgocbBucket(bucketName, appName string, setting *SecuritySetting) error
 	CheckpointBlobDump(appName string) (interface{}, error)
-	ClearEventStats()
+	ClearEventStats() []string
 	CleanupProducer(appName string, skipMetaCleanup bool, updateMetakv bool) error
 	DcpFeedBoundary(fnName string) (string, error)
 	DeployedAppList() []string

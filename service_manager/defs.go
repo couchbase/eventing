@@ -11,7 +11,6 @@ import (
 	"github.com/couchbase/cbauth/service"
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/util"
-	"github.com/couchbase/goutils/systemeventlog"
 )
 
 const (
@@ -125,8 +124,6 @@ type ServiceMgr struct {
 	errorCodes    map[int]errorPayload
 
 	consistencyValues []string
-
-	sel systemeventlog.SystemEventLogger
 }
 
 type functionInfo struct {

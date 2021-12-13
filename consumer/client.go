@@ -12,6 +12,7 @@ import (
 
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
+	"github.com/couchbase/goutils/systemeventlog"
 )
 
 func newClient(consumer *Consumer, appName, tcpPort, feedbackTCPPort, workerName, eventingAdminPort string) *client {
@@ -124,6 +125,9 @@ func (c *client) Serve() {
 			c.consumerHandle.producer.WriteAppLog(string(msg))
 		}
 	}(bufOut)
+
+	extraAttributes := map[string]interface{}{"workerName": c.workerName, "pid": c.osPid}
+	util.LogSystemEvent(util.EVENTID_CONSUMER_STARTUP, systemeventlog.SEInfo, extraAttributes)
 
 	err = c.cmd.Wait()
 	if err != nil {
