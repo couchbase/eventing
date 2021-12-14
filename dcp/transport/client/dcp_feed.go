@@ -139,12 +139,13 @@ func (feed *DcpFeed) DcpGetSeqnos() (map[uint16]uint64, error) {
 // DcpRequestStream for a single vbucket.
 func (feed *DcpFeed) DcpRequestStream(vbno, opaqueMSB uint16, flags uint32,
 	vuuid, startSequence, endSequence, snapStart, snapEnd uint64,
-	manifestUID string) error {
+	manifestUID, collectionId string) error {
 
 	respch := make(chan []interface{}, 1)
 	cmd := []interface{}{
 		dfCmdRequestStream, vbno, opaqueMSB, flags, vuuid,
-		startSequence, endSequence, snapStart, snapEnd, manifestUID,
+		startSequence, endSequence, snapStart, snapEnd,
+		manifestUID, collectionId,
 		respch}
 	resp, err := failsafeOp(feed.reqch, respch, cmd, feed.finch)
 	return opError(err, resp, 0)
@@ -263,10 +264,13 @@ func (feed *DcpFeed) handleControlRequest(
 		snapStart, snapEnd := msg[7].(uint64), msg[8].(uint64)
 
 		manifestUID := msg[9].(string)
-		respch := msg[10].(chan []interface{})
+		collectionId := msg[10].(string)
+
+		respch := msg[11].(chan []interface{})
 		err := feed.doDcpRequestStream(
 			vbno, opaqueMSB, flags, vuuid,
-			startSequence, endSequence, snapStart, snapEnd, manifestUID)
+			startSequence, endSequence, snapStart, snapEnd,
+			manifestUID, collectionId)
 		respch <- []interface{}{err}
 
 	case dfCmdCloseStream:
@@ -716,7 +720,7 @@ func (feed *DcpFeed) doControlRequest(opaque uint16, key string, value []byte, r
 func (feed *DcpFeed) doDcpRequestStream(
 	vbno, opaqueMSB uint16, flags uint32,
 	vuuid, startSequence, endSequence, snapStart, snapEnd uint64,
-	manifestUID string) error {
+	manifestUID, collectionId string) error {
 
 	rq := &transport.MCRequest{
 		Opcode:  transport.DCP_STREAMREQ,
@@ -737,6 +741,9 @@ func (feed *DcpFeed) doDcpRequestStream(
 	requestValue := &StreamRequestValue{}
 	if feed.collectionAware {
 		requestValue.ManifestUID = manifestUID
+		if collectionId != "" {
+			requestValue.CollectionIDs = []string{collectionId}
+		}
 		body, _ := json.Marshal(requestValue)
 		rq.Body = body
 	}
@@ -924,7 +931,8 @@ func vbOpaque(opq32 uint32) uint16 {
 }
 
 type StreamRequestValue struct {
-	ManifestUID string `json:"uid,omitempty"`
+	ManifestUID   string   `json:"uid,omitempty"`
+	CollectionIDs []string `json:"collections,omitempty"`
 }
 
 // DcpStream is per stream data structure over an DCP Connection.

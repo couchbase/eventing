@@ -139,7 +139,9 @@ func (p *Producer) Serve() {
 		}
 	}
 
-	_, srcCid, err := p.superSup.GetScopeAndCollectionID(p.handlerConfig.SourceKeyspace.BucketName, p.handlerConfig.SourceKeyspace.ScopeName, p.handlerConfig.SourceKeyspace.CollectionName)
+	_, srcCid, err := p.superSup.GetScopeAndCollectionID(p.handlerConfig.SourceKeyspace.BucketName,
+		p.handlerConfig.SourceKeyspace.ScopeName,
+		p.handlerConfig.SourceKeyspace.CollectionName)
 	if err == common.BucketNotWatched || err == collections.SCOPE_NOT_FOUND || err == collections.COLLECTION_NOT_FOUND {
 		p.undeployHandler <- false
 		logging.Errorf("%s [%s] source scope or collection not found %v", logPrefix, p.appName, err)

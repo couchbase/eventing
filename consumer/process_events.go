@@ -293,12 +293,12 @@ func (c *Consumer) processDCPEvents() {
 				}
 
 			case mcd.DCP_SYSTEM_EVENT:
-				c.checkAndSendNoOp(e.Seqno, e.VBucket)
+				c.SendNoOp(e.Seqno, e.VBucket)
 				c.vbProcessingStats.updateVbStat(e.VBucket, "last_read_seq_no", e.Seqno)
 				c.vbProcessingStats.updateVbStat(e.VBucket, "manifest_id", string(e.ManifestUID))
 
 			case mcd.DCP_SEQNO_ADVANCED:
-				c.checkAndSendNoOp(e.Seqno, e.VBucket)
+				c.SendNoOp(e.Seqno, e.VBucket)
 				c.vbProcessingStats.updateVbStat(e.VBucket, "last_read_seq_no", e.Seqno)
 
 			default:
@@ -405,7 +405,8 @@ func (c *Consumer) startDcp() error {
 	var vbSeqnos []uint64
 	// Fetch high seq number only if dcp stream boundary is from now
 	if c.dcpStreamBoundary == common.DcpFromNow {
-		err = util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), c.retryCount, util.GetSeqnos, c.producer.NsServerHostPort(), "default", c.sourceKeyspace.BucketName, c.srcCid, &vbSeqnos)
+		err = util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), c.retryCount, util.GetSeqnos, c.producer.NsServerHostPort(),
+			"default", c.sourceKeyspace.BucketName, c.srcCid, &vbSeqnos)
 		if err != nil && c.dcpStreamBoundary != common.DcpEverything {
 			logging.Errorf("%s [%s:%s:%d] Failed to fetch vb seqnos, err: %v", logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
 			return nil
@@ -878,7 +879,8 @@ func (c *Consumer) dcpRequestStreamHandle(vb uint16, vbBlob *vbucketKVBlob, star
 	}
 
 	c.dcpStreamReqCounter++
-	err = dcpFeed.DcpRequestStream(vb, opaque, flags, vbBlob.VBuuid, start, end, snapStart, snapEnd, mid)
+	hexColId := common.Uint32ToHex(c.srcCid)
+	err = dcpFeed.DcpRequestStream(vb, opaque, flags, vbBlob.VBuuid, start, end, snapStart, snapEnd, mid, hexColId)
 	if err != nil {
 		c.dcpStreamReqErrCounter++
 		logging.Errorf("%s [%s:%s:%d] vb: %d STREAMREQ call failed on dcpFeed: %v, err: %v",
@@ -1066,7 +1068,9 @@ func (c *Consumer) handleFailoverLog() {
 							return
 						default:
 							var vbSeqNos []uint64
-							err := util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), c.retryCount, util.GetSeqnos, c.producer.NsServerHostPort(), "default", c.sourceKeyspace.BucketName, c.srcCid, &vbSeqNos)
+							err := util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), c.retryCount,
+								util.GetSeqnos, c.producer.NsServerHostPort(), "default",
+								c.sourceKeyspace.BucketName, c.srcCid, &vbSeqNos)
 							if err == nil {
 								break vbLabel
 							}
@@ -1165,9 +1169,8 @@ func (c *Consumer) sendEvent(e *cb.DcpEvent) error {
 	return nil
 }
 
-func (c *Consumer) checkAndSendNoOp(seqNo uint64, partition uint16) {
-	lastSent := c.vbProcessingStats.getVbStat(partition, "last_sent_seq_no").(uint64)
-	if !c.producer.IsTrapEvent() && (seqNo-lastSent) >= noOpMsgSendThreshold {
+func (c *Consumer) SendNoOp(seqNo uint64, partition uint16) {
+	if !c.producer.IsTrapEvent() {
 		c.sendNoOpEvent(seqNo, partition)
 	}
 }
@@ -1413,11 +1416,6 @@ func (c *Consumer) filterMutations(e *cb.DcpEvent) bool {
 	c.filterVbEventsRWMutex.RUnlock()
 
 	c.vbProcessingStats.updateVbStat(e.VBucket, "last_read_seq_no", e.Seqno)
-	if c.srcCid != e.CollectionID {
-		c.checkAndSendNoOp(e.Seqno, e.VBucket)
-		return true
-	}
-
 	return false
 }
 
