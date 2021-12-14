@@ -117,6 +117,21 @@
                   </div>
                   <div
                     style="float:left;width:5em;margin-left:0px;text-align:right;">
+                    backlog
+                  </div>
+                  <div
+                    style="position:relative;top:2.4em;float:left;width:5em;margin-left:-5em;text-align:right;">
+                    <div style="display:inline-block;"
+                      ng-if="app.cluster_stats.backlog_gt_zero == false">
+                      {{app.cluster_stats.backlog}}
+                    </div>
+                    <div style="color:#CC0000;display:inline-block;"
+                      ng-if="app.cluster_stats.backlog_gt_zero == true ">
+                      {{app.cluster_stats.backlog}}
+                    </div>
+                  </div>
+                  <div
+                    style="float:left;width:5em;margin-left:0px;text-align:right;">
                     timeout
                   </div>
                   <div

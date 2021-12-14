@@ -172,7 +172,8 @@ angular.module('eventing', [
                   statsConfig.reqstats = statsConfig.reqstats +
                     '"eventing/' + app + '/processed_count",' +
                     '"eventing/' + app + '/failed_count",' +
-                    '"eventing/' + app + '/timeout_count"';
+                    '"eventing/' + app + '/timeout_count",' +
+                    '"eventing/' + app + '/dcp_backlog"';
 
                   // make sure we loaded the needed stats
                   if (self.deployedStats && self.deployedStats !== null) {
@@ -181,6 +182,7 @@ angular.module('eventing', [
                     formatDeployedStats(app, 'success', 'processed_count');
                     formatDeployedStats(app, 'failure', 'failed_count');
                     formatDeployedStats(app, 'timeout', 'timeout_count');
+                    formatDeployedStats(app, 'backlog', 'dcp_backlog');
                   }
                 } else {
                   self.appList[app].cluster_stats = {};
