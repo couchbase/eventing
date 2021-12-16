@@ -199,7 +199,7 @@ type application struct {
 	Settings           map[string]interface{} `json:"settings"`
 	Metainfo           map[string]interface{} `json:"metainfo,omitempty"`
 	FunctionScope      common.FunctionScope   `json:"function_scope"`
-	Owner              *common.Owner           `json:"owner,omitempty"` // Don't expose. Only used for unmarshaling
+	Owner              *common.Owner          `json:"owner,omitempty"` // Don't expose. Only used for unmarshaling
 	// Need internal struct to store all the uuids of the function Scope
 }
 

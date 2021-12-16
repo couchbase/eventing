@@ -10,7 +10,6 @@ import (
 	"net/url"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/couchbase/eventing/common"
@@ -62,7 +61,6 @@ type ClusterInfoCache struct {
 	pool         couchbase.Pool
 	nodes        []couchbase.Node
 	nodesvs      []couchbase.NodeServices
-	node2group   map[NodeId]string // node->group
 	failedNodes  []couchbase.Node
 	addNodes     []couchbase.Node
 	version      uint32
@@ -76,8 +74,7 @@ type ClusterInfoClient struct {
 	servicesNotifierRetryTm uint
 	finch                   chan bool
 
-	scn                                *ServicesChangeNotifier
-	fetchBucketInfoOnURIHashChangeOnly int32
+	scn *ServicesChangeNotifier
 }
 
 type NodeId int
@@ -89,17 +86,16 @@ func FetchNewClusterInfoCache(clusterUrl string) (*ClusterInfoCache, error) {
 	}
 
 	c := &ClusterInfoCache{
-		url:        url,
-		poolName:   "default",
-		retries:    CLUSTER_INFO_INIT_RETRIES,
-		node2group: make(map[NodeId]string),
+		url:      url,
+		poolName: "default",
+		retries:  CLUSTER_INFO_INIT_RETRIES,
 	}
 
 	if ServiceAddrMap != nil {
 		c.SetServicePorts(ServiceAddrMap)
 	}
 
-	if err := c.Fetch(false); err != nil {
+	if err := c.Fetch(nil); err != nil {
 		return nil, err
 	}
 
@@ -125,7 +121,7 @@ func (c *ClusterInfoCache) SetServicePorts(portMap map[string]string) {
 
 }
 
-func (c *ClusterInfoCache) Fetch(optimise bool) error {
+func (c *ClusterInfoCache) Fetch(np *couchbase.Pool) error {
 
 	fn := func(r int, err error) error {
 		if r > 0 {
@@ -135,22 +131,16 @@ func (c *ClusterInfoCache) Fetch(optimise bool) error {
 
 		vretry := 0
 	retry:
-		c.client, err = couchbase.Connect(c.url)
-		if err != nil {
-			return err
-		}
-
-		if optimise {
-			np, err := c.client.CallPoolURI(c.poolName)
-			if err != nil {
-				return err
-			}
-
-			err = c.updatePool(&np)
+		if np != nil {
+			err = c.updatePool(np)
 			if err != nil {
 				return err
 			}
 		} else {
+			c.client, err = couchbase.Connect(c.url)
+			if err != nil {
+				return err
+			}
 			c.pool, err = c.client.GetPool(c.poolName)
 			if err != nil {
 				return err
@@ -176,10 +166,6 @@ func (c *ClusterInfoCache) Fetch(optimise bool) error {
 		}
 		c.nodesvs = poolServs.NodesExt
 
-		if err := c.fetchServerGroups(); err != nil {
-			return err
-		}
-
 		if !c.validateCache() {
 			if vretry < CLUSTER_INFO_VALIDATION_RETRIES {
 				vretry++
@@ -200,40 +186,8 @@ func (c *ClusterInfoCache) Fetch(optimise bool) error {
 	return rh.Run()
 }
 
-func (c *ClusterInfoCache) fetchServerGroups() error {
-
-	groups, err := c.pool.GetServerGroups()
-	if err != nil {
-		return err
-	}
-
-	result := make(map[NodeId]string)
-	for nid, cached := range c.nodes {
-		found := false
-		for _, group := range groups.Groups {
-			for _, node := range group.Nodes {
-				if node.Hostname == cached.Hostname {
-					result[NodeId(nid)] = group.Name
-					found = true
-				}
-			}
-		}
-		if !found {
-			logging.Warnf("ClusterInfoCache Initialization: Unable to identify server group for node %rs.", cached.Hostname)
-		}
-	}
-
-	c.node2group = result
-	return nil
-}
-
 func (c *ClusterInfoCache) GetClusterVersion() (int, int) {
 	return int(c.version), int(c.minorVersion)
-}
-
-func (c *ClusterInfoCache) GetServerGroup(nid NodeId) string {
-
-	return c.node2group[nid]
 }
 
 func (c *ClusterInfoCache) GetNodesByServiceType(srvc string) (nids []NodeId) {
@@ -560,11 +514,6 @@ func (c *ClusterInfoCache) GetExternalIPOfThisNode(hostnames []string) (string, 
 	return "", errors.New("Nodes are empty in cluster info cache")
 }
 
-func (c *ClusterInfoCache) GetLocalServerGroup() (string, error) {
-	node := c.GetCurrentNode()
-	return c.GetServerGroup(node), nil
-}
-
 func (c *ClusterInfoCache) GetLocalHostAddress() (string, error) {
 
 	cUrl, err := url.Parse(c.url)
@@ -654,7 +603,12 @@ func (c *ClusterInfoCache) getStaticServicePort(srvc string) (string, error) {
 
 // updatePool will fetch bucket info if the verion hash in bucketURL changes
 // else it will copy it from existing pool avoiding REST Calls to ns-server.
-func (c *ClusterInfoCache) updatePool(np *couchbase.Pool) (err error) {
+func (c *ClusterInfoCache) updatePool(np *couchbase.Pool) error {
+	err := np.Connect(c.url)
+	if err != nil {
+		return err
+	}
+
 	ovh, err := c.pool.GetBucketURLVersionHash()
 	if err != nil {
 		return err
@@ -670,22 +624,19 @@ func (c *ClusterInfoCache) updatePool(np *couchbase.Pool) (err error) {
 		if err != nil {
 			return err
 		}
-		c.pool = *np
 	} else {
 		np.BucketMap = c.pool.BucketMap
 		np.Manifest = c.pool.Manifest
-		c.pool.BucketMap = nil
-		c.pool.Manifest = nil
-		c.pool = *np
 	}
 
+	c.pool = *np
 	return nil
 }
 
-func (c *ClusterInfoCache) FetchWithLock(optimise bool) error {
+func (c *ClusterInfoCache) FetchWithLock(np *couchbase.Pool) error {
 	c.Lock()
 	defer c.Unlock()
-	return c.Fetch(optimise)
+	return c.Fetch(np)
 }
 
 func (c *ClusterInfoCache) updateNodesData() {
@@ -730,10 +681,9 @@ func (c *ClusterInfoCache) updateNodesData() {
 func FetchClusterInfoClient(clusterURL string) (c *ClusterInfoClient, err error) {
 	once.Do(func() {
 		cicSingleton = &ClusterInfoClient{
-			clusterURL:                         clusterURL,
-			pool:                               "default",
-			finch:                              make(chan bool),
-			fetchBucketInfoOnURIHashChangeOnly: 1,
+			clusterURL: clusterURL,
+			pool:       "default",
+			finch:      make(chan bool),
 		}
 
 		config := getConfig()
@@ -789,7 +739,7 @@ func (c *ClusterInfoClient) watchClusterChanges() {
 		go c.watchClusterChanges()
 	}
 
-	if err := c.cinfo.FetchWithLock(false); err != nil {
+	if err := c.cinfo.FetchWithLock(nil); err != nil {
 		logging.Errorf("cic.cinfo.FetchWithLock(): %v\n", err)
 		selfRestart()
 		return
@@ -819,34 +769,24 @@ func (c *ClusterInfoClient) watchClusterChanges() {
 				return
 			}
 
-			if notif.Type == CollectionManifestChangeNotification {
-				// Read the bucket info from msg and fetch bucket information for that bucket
-				switch (notif.Msg).(type) {
-				case *couchbase.Bucket:
-					bucket := (notif.Msg).(*couchbase.Bucket)
-					if err := c.cinfo.FetchManifestInfo(bucket.Name); err != nil {
-						logging.Errorf("cic.cinfo.FetchManifestInfo(): %v\n", err)
-						selfRestart()
-						return
-					}
-				default:
-					// Fetch full cluster info cache
-					if err := c.cinfo.FetchWithLock(false); err != nil {
-						logging.Errorf("cic.cinfo.FetchWithLock(): %v\n", err)
-						selfRestart()
-						return
-					}
-				}
-			} else if notif.Type == PoolChangeNotification {
-				optimise := (atomic.LoadInt32(&c.fetchBucketInfoOnURIHashChangeOnly) == 1)
-				if err := c.cinfo.FetchWithLock(optimise); err != nil {
-					logging.Errorf("cic.cinfo.FetchWithLock(%v): %v\n", err, optimise)
+			switch notif.Type {
+			case CollectionManifestChangeNotification:
+				bucket := (notif.Msg).(*couchbase.Bucket)
+				if err := c.cinfo.FetchManifestInfo(bucket.Name); err != nil {
+					logging.Errorf("cic.cinfo.FetchManifestInfo(): %v\n", err)
 					selfRestart()
 					return
 				}
-			} else {
-				if err := c.cinfo.FetchWithLock(false); err != nil {
-					logging.Errorf("cic.cinfo.FetchWithLock(false): %v\n", err)
+			case PoolChangeNotification:
+				pool := (notif.Msg).(*couchbase.Pool)
+				if err := c.cinfo.FetchWithLock(pool); err != nil {
+					logging.Errorf("cic.cinfo.FetchWithLock(): %v\n", err, pool)
+					selfRestart()
+					return
+				}
+			default:
+				if err := c.cinfo.FetchWithLock(nil); err != nil {
+					logging.Errorf("cic.cinfo.FetchWithLock(nil): %v\n", err)
 					selfRestart()
 					return
 				}
@@ -855,8 +795,8 @@ func (c *ClusterInfoClient) watchClusterChanges() {
 			c.checkAndObserveManifestChanges()
 
 		case <-ticker.C:
-			if err := c.cinfo.FetchWithLock(false); err != nil {
-				logging.Errorf("cic.cinfo.FetchWithLock(false): %v\n", err)
+			if err := c.cinfo.FetchWithLock(nil); err != nil {
+				logging.Errorf("cic.cinfo.FetchWithLock(nil): %v\n", err)
 				selfRestart()
 				return
 			}
@@ -882,17 +822,6 @@ func (c *ClusterInfoClient) checkAndObserveManifestChanges() {
 		c.scn.RunObserveCollectionManifestChanges(bucketName)
 	}
 	c.scn.GarbageCollect(buckets)
-}
-
-func (c *ClusterInfoClient) OptimiseCICFetch(optimise bool) {
-	if optimise {
-		atomic.StoreInt32(&c.fetchBucketInfoOnURIHashChangeOnly, 1)
-		return
-	}
-	// It possible that watch cluster change missed the notification of poolchange
-	// when it reached here. Refresh it when optimisation is turned off
-	c.cinfo.FetchWithLock(false)
-	atomic.StoreInt32(&c.fetchBucketInfoOnURIHashChangeOnly, 0)
 }
 
 func (c *ClusterInfoCache) GetCollectionID(bucket, scope, collection string) (uint32, error) {

@@ -24,6 +24,7 @@ const (
 	filterEvent
 	reservedEvent
 	pauseConsumer
+	configChange
 )
 
 const (
@@ -75,6 +76,11 @@ const (
 	timerContextSize
 	vbMap
 	workerThreadMemQuota
+)
+
+const (
+	configOpcode int8 = iota
+	updateFeatureMatrix
 )
 
 // message and opcode types for interpreting messages from C++ To Go

@@ -829,3 +829,10 @@ func (c *Consumer) NotifyWorker() {
 func (c *Consumer) GetOwner() *common.Owner {
 	return c.producer.GetOwner()
 }
+
+func (c *Consumer) SetFeatureMatrix(featureMatrix uint32) {
+	// Send to c++ worker only if values are changed
+	if featureMatrix != atomic.SwapUint32(&c.featureMatrix, featureMatrix) {
+		c.sendFeatureMatrix(featureMatrix)
+	}
+}

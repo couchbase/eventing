@@ -25,6 +25,7 @@
 
 #include "comm.h"
 #include "info.h"
+#include "isolate_data.h"
 #include "log.h"
 
 #define TO(maybe, local)                                                       \
@@ -34,6 +35,13 @@
 #define IS_EMPTY(v8obj) (IsEmpty((v8obj), __FILE__, __FUNCTION__, __LINE__))
 #define CHECK_SUCCESS(maybe)                                                   \
   (CheckSuccess(maybe, __FILE__, __FUNCTION__, __LINE__))
+
+// This should match the feature list in common.go
+enum Features { Feature_Curl = 1 << 0 };
+
+inline bool run_feature(const IsolateData *isolate_data, Features feature) {
+  return (isolate_data->feature_matrix & feature) == 1;
+}
 
 struct CompilationInfo {
   CompilationInfo() : compile_success(false), index(0), line_no(0), col_no(0) {}

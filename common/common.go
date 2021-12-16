@@ -276,6 +276,7 @@ type EventingProducer interface {
 	GetFuncScopeDetails() (string, uint32)
 	FunctionManageBucket() string
 	FunctionManageScope() string
+	SetFeatureMatrix(featureMatrix uint32)
 }
 
 // EventingConsumer interface to export functions from eventing_consumer
@@ -335,6 +336,8 @@ type EventingConsumer interface {
 	GetAssignedVbs(workerName string) ([]uint16, error)
 	NotifyWorker()
 	GetOwner() *Owner
+
+	SetFeatureMatrix(featureMatrix uint32)
 }
 
 type EventingSuperSup interface {
@@ -396,7 +399,6 @@ type EventingSuperSup interface {
 	IncWorkerRespawnedCount()
 	WorkerRespawnedCount() uint32
 	CheckLifeCycleOpsDuringRebalance() bool
-	OptimiseBucketLoading(optimise bool)
 	GetBSCSnapshot() (map[string]map[string][]string, error)
 }
 
@@ -405,7 +407,6 @@ type EventingServiceMgr interface {
 	ResetFailoverStatus()
 	GetFailoverStatus() (failoverNotifTs int64, changeId string)
 	CheckLifeCycleOpsDuringRebalance() bool
-	OptimiseLoadingCIC(bool) error
 	NotifySupervisorWaitCh()
 }
 
@@ -614,3 +615,11 @@ func GetCompositeState(dStatus, pStatus bool) int8 {
 	}
 	return AppState
 }
+
+var (
+	DisableCurl = "disable_curl"
+)
+
+const (
+	CurlFeature uint32 = 1 << iota
+)

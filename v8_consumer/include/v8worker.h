@@ -268,6 +268,8 @@ public:
 
   void UpdateVbFilter(int vb_no, uint64_t seq_no);
 
+  void SetFeatureList(uint32_t disabled_events);
+
   uint64_t GetVbFilter(int vb_no);
 
   CodeInsight &GetInsight();

@@ -74,6 +74,8 @@ struct IsolateData {
   std::mutex termination_lock_;
   bool is_executing_{false};
   ExceptionInsight *exception_insight{nullptr};
+
+  uint32_t feature_matrix{0};
 };
 
 inline IsolateData *UnwrapData(v8::Isolate *isolate) {

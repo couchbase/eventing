@@ -11,7 +11,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"github.com/couchbase/eventing/common"
@@ -200,7 +199,7 @@ func (s *SuperSupervisor) getFuncDetails(appName string) (*common.DepCfg, *commo
 	owner := &common.Owner{}
 
 	if ownerEncrypted != nil {
-		owner.UUID =   string(ownerEncrypted.Uuid())
+		owner.UUID = string(ownerEncrypted.Uuid())
 		owner.User = string(ownerEncrypted.User())
 		owner.Domain = string(ownerEncrypted.Domain())
 	}
@@ -288,7 +287,7 @@ func (s *SuperSupervisor) watchBucketWithLock(bucketName, appName string) error 
 			return err
 		}
 		// forcefully update the manifest of the Bucket
-		bucketWatch.RefreshBucketManifestOnUIDChange("", s.restPort)
+		bucketWatch.refreshBucketManifestOnUIDChange("", s.restPort)
 		s.scn.RunObserveCollectionManifestChanges(bucketName)
 		bucketWatch.apps = make(map[string]int)
 		s.buckets[bucketName] = bucketWatch
@@ -298,17 +297,13 @@ func (s *SuperSupervisor) watchBucketWithLock(bucketName, appName string) error 
 	return nil
 }
 
-func (s *SuperSupervisor) bucketRefresh(np *couchbase.Pool) ([]string, error) {
+func (s *SuperSupervisor) refreshBuckets() ([]string, error) {
 	s.bucketsRWMutex.Lock()
 	defer s.bucketsRWMutex.Unlock()
 	deletedBuckets := make([]string, 0)
-	var nHash string
-	if np != nil && (atomic.LoadInt32(&s.fetchBucketInfoOnURIHashChangeOnly) == 1) {
-		nHash, _ = np.GetBucketURLVersionHash()
-	}
 
 	for bucketName := range s.buckets {
-		if err := s.buckets[bucketName].Refresh(s.retryCount, s.restPort, np, nHash); err != nil {
+		if err := s.buckets[bucketName].Refresh(s.retryCount, s.restPort); err != nil {
 			if err == NoBucket {
 				deletedBuckets = append(deletedBuckets, bucketName)
 			} else {
@@ -319,16 +314,35 @@ func (s *SuperSupervisor) bucketRefresh(np *couchbase.Pool) ([]string, error) {
 	return deletedBuckets, nil
 }
 
-func (s *SuperSupervisor) FetchBucketManifestInfo(bucketName string, muid string) (bool, error) {
+func (s *SuperSupervisor) getDeletedBucketFromPool(pool *couchbase.Pool) []string {
 	s.bucketsRWMutex.Lock()
 	defer s.bucketsRWMutex.Unlock()
 
+	deletedBuckets := make([]string, 0, len(s.buckets))
+	currentClusterBuckets := make(map[string]struct{})
+	for _, bucketInfo := range pool.BucketList {
+		currentClusterBuckets[bucketInfo.BucketName] = struct{}{}
+	}
+
+	for bucketName := range s.buckets {
+		if _, ok := currentClusterBuckets[bucketName]; !ok {
+			deletedBuckets = append(deletedBuckets, bucketName)
+		}
+	}
+	return deletedBuckets
+}
+
+func (s *SuperSupervisor) RefreshBucketAndManifestInfo(bucket *couchbase.Bucket) (bool, error) {
+	s.bucketsRWMutex.Lock()
+	defer s.bucketsRWMutex.Unlock()
+
+	bucketName := bucket.Name
 	bucketWatch, ok := s.buckets[bucketName]
 	if !ok {
 		return false, nil
 	}
 
-	return bucketWatch.RefreshBucketManifestOnUIDChange(muid, s.restPort)
+	return bucketWatch.RefreshBucketAndManifestOnUIDChange(bucket, s.restPort)
 }
 
 func (s *SuperSupervisor) undeployFunctionsOnDeletedBkts(deletedBuckets []string) {
@@ -438,7 +452,7 @@ func (s *SuperSupervisor) watchBucketChanges() {
 	}
 
 	hostPortAddr := net.JoinHostPort(util.Localhost(), s.restPort)
-	deletedBuckets, err := s.bucketRefresh(nil)
+	deletedBuckets, err := s.refreshBuckets()
 	if err != nil {
 		logging.Errorf("%s Error in bucket Refresh: %v", logPrefix, err)
 		selfRestart()
@@ -479,22 +493,23 @@ func (s *SuperSupervisor) watchBucketChanges() {
 				selfRestart()
 				return
 			}
-			if notif.Type == util.CollectionManifestChangeNotification {
+
+			switch notif.Type {
+			case util.CollectionManifestChangeNotification:
 				bucket := (notif.Msg).(*couchbase.Bucket)
-				changed, err := s.FetchBucketManifestInfo(bucket.Name, bucket.CollectionManifestUID)
+				changed, err := s.RefreshBucketAndManifestInfo(bucket)
 				if err != nil {
-					logging.Errorf("%s FetchBucketManifestInfo(): %v\n", logPrefix, err)
+					logging.Errorf("%s RefreshBucketAndManifestInfo(): %v\n", logPrefix, err)
 					selfRestart()
 					return
 				}
 				if changed {
 					s.checkDeletedCid(bucket.Name)
 				}
-			}
 
-			if notif.Type == util.EncryptionLevelChangeNotification {
+			case util.EncryptionLevelChangeNotification:
 				for {
-					_, refreshErr := s.bucketRefresh(nil)
+					_, refreshErr := s.refreshBuckets()
 					if refreshErr != nil && strings.Contains(strings.ToLower(refreshErr.Error()), "connection refused") {
 						logging.Errorf("%s Error in bucket refresh while processing encryption level change: %v. Retrying...", logPrefix, err)
 					} else if refreshErr != nil {
@@ -505,26 +520,17 @@ func (s *SuperSupervisor) watchBucketChanges() {
 					}
 					time.Sleep(time.Second)
 				}
-			}
-
-			if notif.Type != util.PoolChangeNotification {
-				continue
-			}
-
-			np := notif.Msg.(*couchbase.Pool)
-			deletedBuckets, err := s.bucketRefresh(np)
-			if err != nil {
-				logging.Errorf("%s Error in bucket Refresh: %v", logPrefix, err)
-				selfRestart()
-				return
-			}
-
-			if len(deletedBuckets) != 0 {
-				delChannel <- deletedBuckets
+			case util.PoolChangeNotification:
+				np := notif.Msg.(*couchbase.Pool)
+				deletedBuckets := s.getDeletedBucketFromPool(np)
+				if len(deletedBuckets) != 0 {
+					delChannel <- deletedBuckets
+				}
+			default:
 			}
 
 		case <-ticker.C:
-			deletedBuckets, err := s.bucketRefresh(nil)
+			deletedBuckets, err := s.refreshBuckets()
 			if err != nil {
 				logging.Errorf("%s Error in bucket Refresh: %v", logPrefix, err)
 				selfRestart()
@@ -540,16 +546,6 @@ func (s *SuperSupervisor) watchBucketChanges() {
 			return
 		}
 	}
-}
-
-func (s *SuperSupervisor) OptimiseBucketLoading(optimise bool) {
-	if optimise {
-		atomic.StoreInt32(&s.fetchBucketInfoOnURIHashChangeOnly, 1)
-		return
-	}
-	s.bucketRefresh(nil)
-	atomic.StoreInt32(&s.fetchBucketInfoOnURIHashChangeOnly, 0)
-	return
 }
 
 func (s *SuperSupervisor) getConfig() (c common.Config) {
@@ -636,18 +632,9 @@ func (s *SuperSupervisor) setinitLifecycleEncryptData() {
 	}
 }
 
-func (bw *bucketWatchStruct) Refresh(retryCount int64, restPort string, np *couchbase.Pool, nHash string) error {
-	logPrefix := "bucketWatchStruct:Refresh"
-	oHash, err := bw.b.GetBucketURLVersionHash()
-	if err != nil {
-		logging.Errorf("%s Get bucket version hash error: %v", logPrefix, err)
-		return nil
-	}
-	if nHash == oHash {
-		return nil
-	}
-
-	err = bw.b.RefreshWithTerseBucket()
+// Forceful refresh all the buckets
+func (bw *bucketWatchStruct) Refresh(retryCount int64, restPort string) error {
+	err := bw.b.RefreshWithTerseBucket()
 	if err != nil {
 		if strings.Contains(err.Error(), "HTTP error 404 Object Not Found") {
 			return NoBucket
@@ -657,15 +644,26 @@ func (bw *bucketWatchStruct) Refresh(retryCount int64, restPort string, np *couc
 		}
 	}
 
-	if np != nil {
-		bw.b.SetBucketUri(np.BucketURL["uri"])
-	}
-
-	bw.RefreshBucketManifestOnUIDChange("", restPort)
+	bw.refreshBucketManifestOnUIDChange("", restPort)
 	return err
 }
 
-func (bw *bucketWatchStruct) RefreshBucketManifestOnUIDChange(muid, restPort string) (bool, error) {
+// refresh both manifest and bucket
+func (bw *bucketWatchStruct) RefreshBucketAndManifestOnUIDChange(bucket *couchbase.Bucket, restPort string) (bool, error) {
+	bw.replaceBucket(bucket)
+	muid := bucket.CollectionManifestUID
+	return bw.refreshBucketManifestOnUIDChange(muid, restPort)
+}
+
+func (bw *bucketWatchStruct) replaceBucket(bucket *couchbase.Bucket) {
+	bw.b.RefreshFromBucket(bucket)
+}
+
+func (bw *bucketWatchStruct) refreshBucketManifestOnUIDChange(muid, restPort string) (bool, error) {
+	if muid != "" && bw.b.Manifest != nil && bw.b.Manifest.UID == muid {
+		return false, nil
+	}
+
 	hostAddress := net.JoinHostPort(util.Localhost(), restPort)
 	cic, err := util.FetchClusterInfoClient(hostAddress)
 	if err != nil {
@@ -680,9 +678,6 @@ func (bw *bucketWatchStruct) RefreshBucketManifestOnUIDChange(muid, restPort str
 		return false, nil
 	}
 
-	if muid != "" && bw.b.Manifest != nil && bw.b.Manifest.UID == muid {
-		return false, nil
-	}
 	return true, bw.b.RefreshBucketManifest()
 }
 

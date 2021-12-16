@@ -29,7 +29,7 @@ import (
 // NewProducer creates a new producer instance using parameters supplied by super_supervisor
 func NewProducer(appName, debuggerPort, eventingPort, eventingSSLPort, eventingDir, kvPort,
 	metakvAppHostPortsPath, nsServerPort, uuid, diagDir string, memoryQuota int64,
-	numVbuckets int, superSup common.EventingSuperSup) *Producer {
+	numVbuckets int, featureMatrix uint32, superSup common.EventingSuperSup) *Producer {
 	p := &Producer{
 		appName:                      appName,
 		bootstrapFinishCh:            make(chan struct{}, 1),
@@ -78,6 +78,8 @@ func NewProducer(appName, debuggerPort, eventingPort, eventingSSLPort, eventingD
 		rebalanceConfig:              &common.RebalanceConfig{},
 		latencyStats:                 util.NewStats(),
 		curlLatencyStats:             util.NewStats(),
+		featureChangeChan:            make(chan uint32, 5),
+		featureMatrix:                featureMatrix,
 	}
 
 	p.handlerConfig.SourceKeyspace = &common.Keyspace{}
@@ -376,6 +378,13 @@ func (p *Producer) Serve() {
 				}
 				logging.Infof("%s [%s:%d] Function Resumed", logPrefix, p.appName, p.LenRunningConsumers())
 			}
+
+		case msg := <-p.featureChangeChan:
+			for _, c := range p.getConsumers() {
+				c.SetFeatureMatrix(msg)
+			}
+			atomic.StoreUint32(&p.featureMatrix, msg)
+
 		case <-p.stopProducerCh:
 			logging.Infof("%s [%s:%d] Explicitly asked to shutdown producer routine", logPrefix, p.appName, p.LenRunningConsumers())
 
@@ -592,7 +601,7 @@ func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int
 
 	c := consumer.NewConsumer(p.handlerConfig, p.processConfig, p.rebalanceConfig, index, p.uuid, p.nsServerPort,
 		p.eventingNodeUUIDs, vbnos, p.app, p.dcpConfig, p, p.superSup, p.numVbuckets,
-		&p.retryCount, vbEventingNodeAssignMap, workerVbucketMap)
+		&p.retryCount, vbEventingNodeAssignMap, workerVbucketMap, atomic.LoadUint32(&p.featureMatrix))
 
 	if notifyRebalance {
 		logging.Infof("%s [%s:%d] Consumer: %s notifying about cluster state change",
@@ -615,6 +624,9 @@ func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int
 	p.runningConsumersRWMutex.Lock()
 	p.runningConsumers = append(p.runningConsumers, c)
 	p.runningConsumersRWMutex.Unlock()
+
+	// Possible miss due to delay in spawning and config changes
+	c.SetFeatureMatrix(atomic.LoadUint32(&p.featureMatrix))
 
 	go func(listener net.Listener, c *consumer.Consumer) {
 		for {

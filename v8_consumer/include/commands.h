@@ -24,6 +24,7 @@ enum event_type {
   eFilter,
   eInternal,
   ePauseConsumer,
+  eConfigChange,
   Event_Unknown
 };
 
@@ -70,6 +71,8 @@ enum timer_opcode { oTimer, oCronTimer, Timer_Opcode_Unknown };
 
 enum debugger_opcode { oDebuggerStart, oDebuggerStop, Debugger_Opcode_Unknown };
 
+enum config_opcode { oUpdateDisableFeatureList, Config_Opcode_Unknown };
+
 event_type getEvent(int8_t event);
 v8_worker_opcode getV8WorkerOpcode(int8_t opcode);
 dcp_opcode getDCPOpcode(int8_t opcode);
@@ -77,6 +80,7 @@ app_worker_setting_opcode getAppWorkerSettingOpcode(int8_t opcode);
 filter_opcode getFilterOpcode(int8_t opcode);
 timer_opcode getTimerOpcode(int8_t opcode);
 debugger_opcode getDebuggerOpcode(int8_t opcode);
+config_opcode getConfigOpcode(int8_t opcode);
 
 // Opcodes for outgoing messages from C++ to Go
 enum msg_type {

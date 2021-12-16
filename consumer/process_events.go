@@ -991,12 +991,6 @@ func (c *Consumer) handleFailoverLog() {
 					vbBlob.ManifestUID = "0"
 				}
 
-				err = util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), c.retryCount, getKvNodesFromVbMap, c)
-				if err == common.ErrRetryTimeout {
-					logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-					return
-				}
-
 				var flogs couchbase.FailoverLog
 				var startSeqNo uint64
 				var vbuuid uint64

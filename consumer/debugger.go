@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"runtime/debug"
@@ -295,12 +296,6 @@ func (c *Consumer) startDebugger(e *cb.DcpEvent, instance common.DebuggerInstanc
 		return
 	}
 
-	err = util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), c.retryCount, getKvNodesFromVbMap, c)
-	if err == common.ErrRetryTimeout {
-		logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-		return
-	}
-
 	ip := c.ResolveHostname(instance)
 	logging.Infof("%s [%s:%s:%d] Spawning debugger on host:port %rs:%rs",
 		logPrefix, c.workerName, c.tcpPort, c.Pid(), ip, c.debuggerPort)
@@ -312,6 +307,7 @@ func (c *Consumer) startDebugger(e *cb.DcpEvent, instance common.DebuggerInstanc
 		false, c.timerContextSize, c.producer.UsingTimer(), c.producer.SrcMutation())
 
 	c.sendInitV8Worker(payload, true, pBuilder)
+	c.sendFeatureMatrix(atomic.LoadUint32(&c.featureMatrix))
 	c.sendDebuggerStart()
 	c.sendLoadV8Worker(c.app.ParsedAppCode, true)
 	c.sendDcpEvent(e, true)
