@@ -21,6 +21,18 @@
       ng-show="ctrl.encryptionLevel == 'strict'">
       Eventing debugger is disabled as cluster encryption level is strict.
     </div>
+    <div>
+      <input type="checkbox" id="curl" ng-model="ctrl.enableCurl"
+        ng-click="$event.stopPropagation();">
+      <label for="curl" class="margin-right-0">Enable curl</label>
+      <span class="fa-stack icon-info"
+        uib-tooltip="Enable curl invocation from eventing functions.
+           Disabling it will fail all the curl calls in deployed functions during runtime."
+        tooltip-placement="auto right" tooltip-trigger="mouseenter">
+        <span class="icon fa-circle-thin fa-stack-2x"></span>
+        <span class="icon fa-info fa-stack-1x"></span>
+      </span>
+    </div>
   </div>
   <div class="panel-footer">
     <a ng-click="$dismiss('cancel')">
