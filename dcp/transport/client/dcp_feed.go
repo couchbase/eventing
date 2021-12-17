@@ -139,12 +139,13 @@ func (feed *DcpFeed) DcpGetSeqnos() (map[uint16]uint64, error) {
 // DcpRequestStream for a single vbucket.
 func (feed *DcpFeed) DcpRequestStream(vbno, opaqueMSB uint16, flags uint32,
 	vuuid, startSequence, endSequence, snapStart, snapEnd uint64,
-	manifestUID string) error {
+	manifestUID, collectionId string) error {
 
 	respch := make(chan []interface{}, 1)
 	cmd := []interface{}{
 		dfCmdRequestStream, vbno, opaqueMSB, flags, vuuid,
-		startSequence, endSequence, snapStart, snapEnd, manifestUID,
+		startSequence, endSequence, snapStart, snapEnd,
+		manifestUID, collectionId,
 		respch}
 	resp, err := failsafeOp(feed.reqch, respch, cmd, feed.finch)
 	return opError(err, resp, 0)
@@ -263,10 +264,13 @@ func (feed *DcpFeed) handleControlRequest(
 		snapStart, snapEnd := msg[7].(uint64), msg[8].(uint64)
 
 		manifestUID := msg[9].(string)
-		respch := msg[10].(chan []interface{})
+		collectionId := msg[10].(string)
+
+		respch := msg[11].(chan []interface{})
 		err := feed.doDcpRequestStream(
 			vbno, opaqueMSB, flags, vuuid,
-			startSequence, endSequence, snapStart, snapEnd, manifestUID)
+			startSequence, endSequence, snapStart, snapEnd,
+			manifestUID, collectionId)
 		respch <- []interface{}{err}
 
 	case dfCmdCloseStream:
@@ -716,7 +720,7 @@ func (feed *DcpFeed) doControlRequest(opaque uint16, key string, value []byte, r
 func (feed *DcpFeed) doDcpRequestStream(
 	vbno, opaqueMSB uint16, flags uint32,
 	vuuid, startSequence, endSequence, snapStart, snapEnd uint64,
-	manifestUID string) error {
+	manifestUID, collectionId string) error {
 
 	rq := &transport.MCRequest{
 		Opcode:  transport.DCP_STREAMREQ,
@@ -737,6 +741,9 @@ func (feed *DcpFeed) doDcpRequestStream(
 	requestValue := &StreamRequestValue{}
 	if feed.collectionAware {
 		requestValue.ManifestUID = manifestUID
+		if collectionId != "" {
+			requestValue.CollectionIDs = []string{collectionId}
+		}
 		body, _ := json.Marshal(requestValue)
 		rq.Body = body
 	}
@@ -924,7 +931,8 @@ func vbOpaque(opq32 uint32) uint16 {
 }
 
 type StreamRequestValue struct {
-	ManifestUID string `json:"uid,omitempty"`
+	ManifestUID   string   `json:"uid,omitempty"`
+	CollectionIDs []string `json:"collections,omitempty"`
 }
 
 // DcpStream is per stream data structure over an DCP Connection.
@@ -1065,26 +1073,83 @@ func (stats *DcpStats) String(feed *DcpFeed) string {
 // FailoverLog containing vvuid and sequnce number
 type FailoverLog [][2]uint64
 
+const (
+	MaxFailoverLogEntries = 20
+)
+
+// Kind of start of the vbucket
+func InitFailoverLog() FailoverLog {
+	return FailoverLog{[2]uint64{uint64(0), uint64(0)}}
+}
+
 // Latest will return the recent vbuuid and its high-seqno.
 func (flogp *FailoverLog) Latest() (vbuuid, seqno uint64, err error) {
 	if flogp != nil {
 		flog := *flogp
+		if len(flog) == 0 {
+			return vbuuid, seqno, nil
+		}
+
 		latest := flog[0]
 		return latest[0], latest[1], nil
 	}
 	return vbuuid, seqno, ErrorInvalidLog
 }
 
-func (flogp *FailoverLog) FetchLogForSeqNo(desiredSeqNo uint64) (vbuuid, seqno uint64, err error) {
-	if flogp != nil {
-		flog := *flogp
-		for _, entry := range flog {
-			if entry[1] <= desiredSeqNo {
-				return entry[0], entry[1], nil
-			}
-		}
+// Trim failover log to hold MaxFailoverLogEntries entries
+// Caller should make sure that flog is not nill
+func (flog *FailoverLog) trimFailoverLog() {
+	// This is to make sure flog always contain atleast one entry
+	if len(*flog) == 0 {
+		*flog = InitFailoverLog()
+		return
 	}
-	return vbuuid, seqno, ErrorInvalidLog
+
+	if len(*flog) <= MaxFailoverLogEntries {
+		return
+	}
+
+	tmpFlog := *flog
+	log := make(FailoverLog, MaxFailoverLogEntries)
+	for i := 0; i < MaxFailoverLogEntries-1; i++ {
+		log[i] = tmpFlog[i]
+	}
+	*flog = log
+}
+
+func (flogp *FailoverLog) PopAndGetLatest() (vbuuid, seqno uint64, err error) {
+	if flogp == nil {
+		return vbuuid, seqno, ErrorInvalidLog
+	}
+
+	if len(*flogp) == 0 {
+		*flogp = InitFailoverLog()
+	} else {
+		*flogp = (*flogp)[1:]
+	}
+
+	flogp.trimFailoverLog()
+	return flogp.Latest()
+}
+
+func (flogp *FailoverLog) PopTillSeqNo(desiredSeqNo uint64) (vbuuid, seqno uint64, err error) {
+	if flogp == nil {
+		return vbuuid, seqno, ErrorInvalidLog
+	}
+
+	tmpFlog := *flogp
+	entry := 0
+	for ; entry < len(tmpFlog) && tmpFlog[entry][1] > desiredSeqNo; entry++ {
+	}
+
+	log := make(FailoverLog, 0, len(tmpFlog)-entry)
+	for ; entry < len(tmpFlog); entry++ {
+		log = append(log, tmpFlog[entry])
+	}
+
+	*flogp = log
+	flogp.trimFailoverLog()
+	return flogp.Latest()
 }
 
 // failsafeOp can be used by gen-server implementors to avoid infinitely
@@ -1134,6 +1199,7 @@ func parseFailoverLog(body []byte) (*FailoverLog, error) {
 		log[j] = [2]uint64{vuuid, seqno}
 		j++
 	}
+	log.trimFailoverLog()
 	return &log, nil
 }
 

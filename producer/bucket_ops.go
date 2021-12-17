@@ -209,9 +209,11 @@ var openDcpStreamFromZero = func(args ...interface{}) error {
 	p := args[3].(*Producer)
 	id := args[4].(int)
 	keyspaceExist := args[5].(*bool)
+	metaCid := p.GetMetadataCid()
+	hexCid := common.Uint32ToHex(metaCid)
 
 	err := dcpFeed.DcpRequestStream(vb, uint16(vb), uint32(0), vbuuid, uint64(0),
-		uint64(0xFFFFFFFFFFFFFFFF), uint64(0), uint64(0xFFFFFFFFFFFFFFFF), "0")
+		uint64(0xFFFFFFFFFFFFFFFF), uint64(0), uint64(0xFFFFFFFFFFFFFFFF), "0", hexCid)
 	if err != nil {
 		logging.Errorf("%s [%s:%d:id_%d] vb: %d failed to request stream error: %v",
 			logPrefix, p.appName, p.LenRunningConsumers(), id, vb, err)

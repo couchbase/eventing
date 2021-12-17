@@ -3,6 +3,7 @@ package common
 import (
 	"crypto/x509"
 	"errors"
+	"fmt"
 	"net"
 
 	"github.com/couchbase/cbauth/metakv"
@@ -623,3 +624,7 @@ var (
 const (
 	CurlFeature uint32 = 1 << iota
 )
+
+func Uint32ToHex(uint32Val uint32) string {
+	return fmt.Sprintf("%x", uint32Val)
+}
