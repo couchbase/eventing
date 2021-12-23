@@ -70,8 +70,8 @@ CredsInfo Communicator::GetCreds(const std::string &endpoint) {
     return info;
   }
 
-  if (std::stoi(response.headers.data["Status"]) != 0) {
-    LOG(logError) << "Unable to get creds: non-zero status in header: "
+  if (std::stoi(response.headers.data["Status"]) != 200) {
+    LOG(logError) << "Unable to get creds: non 200 status in header: "
                   << response.msg << std::endl;
     return info;
   }

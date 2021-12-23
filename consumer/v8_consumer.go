@@ -17,6 +17,7 @@ import (
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/suptree"
 	"github.com/couchbase/eventing/util"
+	"github.com/couchbase/goutils/systemeventlog"
 	flatbuffers "github.com/google/flatbuffers/go"
 )
 
@@ -575,5 +576,8 @@ func (c *Consumer) killAndRespawn() {
 	if atomic.LoadUint32(&c.isTerminateRunning) == 1 || !atomic.CompareAndSwapUint32(&c.respawnInvoked, 0, 1) {
 		return
 	}
+
+	extraAttributes := map[string]interface{}{"workerName": c.workerName, "pid": c.Pid()}
+	util.LogSystemEvent(util.EVENTID_CONSUMER_CRASH, systemeventlog.SEError, extraAttributes)
 	c.producer.KillAndRespawnEventingConsumer(c)
 }

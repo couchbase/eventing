@@ -242,6 +242,20 @@ func (b *Bucket) VBServerMap() *VBucketServerMap {
 	return (*VBucketServerMap)(atomic.LoadPointer(&(b.vBucketServerMap)))
 }
 
+func (b *Bucket) GetMasterNodeForVb(vb uint16) (string, error) {
+	vbm := b.VBServerMap()
+	if l := len(vbm.VBucketMap); int(vb) >= l {
+		return "", ErrorInvalidVbucket
+	}
+
+	masterID := vbm.VBucketMap[vb][0]
+	if len(vbm.VBucketForwardMap) != 0 {
+		masterID = vbm.VBucketForwardMap[vb][0]
+	}
+	master := b.getMasterNode(masterID)
+	return master, nil
+}
+
 func (b *Bucket) GetVBmap(addrs []string) (map[string][]uint16, error) {
 	vbmap := b.VBServerMap()
 	servers := vbmap.ServerList

@@ -34,35 +34,45 @@ import (
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/parser"
 	"github.com/couchbase/eventing/rbac"
+	"github.com/couchbase/eventing/service_manager/response"
 	"github.com/couchbase/eventing/util"
 	"github.com/couchbase/goutils/systemeventlog"
 )
 
 func (m *ServiceMgr) startTracing(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "ServiceMgr::startTracing"
-	if !rbac.ValidateAuth(w, r, rbac.EventingPermissionManage, false) {
+
+	res := response.NewResponseWriter(w, r, response.EventStartTracing)
+	runtimeInfo := &response.RuntimeInfo{}
+	defer res.LogAndSend(runtimeInfo)
+
+	if notAllowed, err := rbac.IsAllowed(r, rbac.EventingPermissionManage, false); err != nil {
+		*runtimeInfo = getAuthErrorInfo(notAllowed, false, err)
 		return
 	}
 
+	audit.Log(auditevent.StartTracing, r, "Start tracing", nil, nil)
 	logging.Infof("%s REST Call: %v %v", logPrefix, r.URL.Path, r.Method)
-	audit.Log(auditevent.StartTracing, r, nil)
 
 	os.Remove(m.uuid + "_trace.out")
 
 	f, err := os.Create(m.uuid + "_trace.out")
 	if err != nil {
-		logging.Infof("%s Failed to open file to write trace output, err: %v", logPrefix, err)
+		runtimeInfo.ErrCode = response.ErrInternalServer
+		runtimeInfo.Description = fmt.Sprintf("Failed to open file to write trace output, err: %v", err)
+		logging.Errorf("%s %s", logPrefix, runtimeInfo.Description)
 		return
 	}
 	defer f.Close()
 
 	m.logSystemEvent(util.EVENTID_START_TRACING, systemeventlog.SEInfo, nil)
-
 	startTime := time.Now()
 
 	err = trace.Start(f)
 	if err != nil {
-		logging.Infof("%s Failed to start runtime.Trace, err: %v", logPrefix, err)
+		runtimeInfo.ErrCode = response.ErrInternalServer
+		runtimeInfo.Description = fmt.Sprintf("Failed to start runtime.Trace, err: %v", err)
+		logging.Errorf("%s %s", logPrefix, runtimeInfo.Description)
 		return
 	}
 
@@ -71,195 +81,256 @@ func (m *ServiceMgr) startTracing(w http.ResponseWriter, r *http.Request) {
 
 	stopTime := time.Now()
 
+	totalTime := stopTime.Sub(startTime).Seconds()
 	m.logSystemEvent(util.EVENTID_STOP_TRACING, systemeventlog.SEInfo,
-		map[string]interface{}{"tracingExecutionTimeSecs": stopTime.Sub(startTime).Seconds()})
+		map[string]interface{}{"tracingExecutionTimeSecs": totalTime})
+
+	runtimeInfo.Description = fmt.Sprintf("tracing execution time secs : %v", totalTime)
+	runtimeInfo.OnlyDescription = true
 }
 
 func (m *ServiceMgr) stopTracing(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "ServiceMgr::stopTracing"
-	if !rbac.ValidateAuth(w, r, rbac.EventingPermissionManage, false) {
+
+	res := response.NewResponseWriter(w, r, response.EventStopTracing)
+	runtimeInfo := &response.RuntimeInfo{}
+	defer res.LogAndSend(runtimeInfo)
+
+	if notAllowed, err := rbac.IsAllowed(r, rbac.EventingPermissionManage, false); err != nil {
+		*runtimeInfo = getAuthErrorInfo(notAllowed, false, err)
 		return
 	}
 
-	logging.Infof("%s REST Call: %v %v", logPrefix, r.URL.Path, r.Method)
-	audit.Log(auditevent.StopTracing, r, nil)
+	audit.Log(auditevent.StopTracing, r, "Tracing stopped", nil, nil)
 	logging.Infof("%s Got request to stop tracing", logPrefix)
 	m.stopTracerCh <- struct{}{}
+
+	runtimeInfo.Description = "Successfully stopped tracing"
 }
 
 func (m *ServiceMgr) getNodeUUID(w http.ResponseWriter, r *http.Request) {
-	if !rbac.ValidateAuth(w, r, rbac.EventingReadPermissions, false) {
+	res := response.NewResponseWriter(w, r, response.EventGetUUID)
+	runtimeInfo := &response.RuntimeInfo{}
+	defer res.LogAndSend(runtimeInfo)
+
+	if notAllowed, err := rbac.IsAllowed(r, rbac.EventingPermissionManage, false); err != nil {
+		*runtimeInfo = getAuthErrorInfo(notAllowed, false, err)
 		return
 	}
-	logging.Debugf("Got request to fetch UUID from host %s", r.Host)
-	fmt.Fprintf(w, "%v", m.uuid)
+
+	logging.Debugf("Received request from host %s to fetch UUID", r.Host)
+
+	runtimeInfo.SendRawDescription = true
+	runtimeInfo.OnlyDescription = true
+	runtimeInfo.Description = m.uuid
 }
 
 func (m *ServiceMgr) getNodeVersion(w http.ResponseWriter, r *http.Request) {
-	if !rbac.ValidateAuth(w, r, rbac.EventingReadPermissions, false) {
+	res := response.NewResponseWriter(w, r, response.EventGetVersion)
+	runtimeInfo := &response.RuntimeInfo{}
+	defer res.LogAndSend(runtimeInfo)
+
+	if notAllowed, err := rbac.IsAllowed(r, rbac.EventingPermissionManage, false); err != nil {
+		*runtimeInfo = getAuthErrorInfo(notAllowed, false, err)
 		return
 	}
-	logging.Debugf("Got request to fetch version from host %s", r.Host)
-	fmt.Fprintf(w, "%v", util.EventingVer())
+
+	logging.Debugf("Received request from host %s to fetch version", r.Host)
+
+	runtimeInfo.SendRawDescription = true
+	runtimeInfo.OnlyDescription = true
+	runtimeInfo.Description = util.EventingVer()
 }
 
 func (m *ServiceMgr) deletePrimaryStoreHandler(w http.ResponseWriter, r *http.Request) {
-	cred, err := rbac.AuthWebCreds(w, r)
+	res := response.NewResponseWriter(w, r, response.EventDeleteFunction)
+	runtimeInfo := &response.RuntimeInfo{}
+	defer res.LogAndSend(runtimeInfo)
+
+	cred, err := rbac.AuthWebCreds(r)
 	if err != nil {
+		*runtimeInfo = getAuthErrorInfo(nil, false, err)
 		return
 	}
-	appName, info := CheckAndGetQueryParam(r, "name")
-	if info != nil {
-		m.sendErrorInfo(w, info)
+
+	params := r.URL.Query()
+	res.AddRequestData("query", params)
+	appName, info := CheckAndGetQueryParam(params, "name")
+	if info.ErrCode != response.Ok {
+		*runtimeInfo = *info
 		return
 	}
-	info = m.deletePrimaryStore(cred, appName)
-	m.sendResponse(w, info)
+
+	if info = m.deletePrimaryStore(cred, appName); info.ErrCode != response.Ok {
+		*runtimeInfo = *info
+		return
+	}
+
+	runtimeInfo.Description = fmt.Sprintf("Function: %s deleting in the background", appName)
+	runtimeInfo.ExtraAttributes = map[string]interface{}{"appName": appName}
 }
 
 // Deletes application from primary store and returns the appropriate success/error code
-func (m *ServiceMgr) deletePrimaryStore(cred cbauth.Creds, appName string) (info *runtimeInfo) {
+func (m *ServiceMgr) deletePrimaryStore(cred cbauth.Creds, appName string) *response.RuntimeInfo {
 	logPrefix := "ServiceMgr::deletePrimaryStore"
 
-	info = &runtimeInfo{}
-	if info = m.checkPermissionFromCred(cred, appName, rbac.HandlerManagePermissions, false); info.Code != m.statusCodes.ok.Code {
-		return
+	info := &response.RuntimeInfo{}
+	if info = m.checkPermissionFromCred(cred, appName, rbac.HandlerManagePermissions, false); info.ErrCode != response.Ok {
+		return info
 	}
 
 	logging.Infof("%s Function: %s deleting from primary store", logPrefix, appName)
 
 	appStateCached, info := m.fetchAppCompositeState(appName)
-	if info.Code != m.statusCodes.ok.Code {
-		return
+	if info.ErrCode != response.Ok {
+		return info
 	}
 
 	if appStateCached != common.AppStateUndeployed {
-		info.Code = m.statusCodes.errAppNotUndeployed.Code
-		info.Info = fmt.Sprintf("Function: %s skipping delete request from primary store, as it hasn't been undeployed", appName)
-		logging.Errorf("%s %s", logPrefix, info.Info)
-		return
+		info.ErrCode = response.ErrAppNotUndeployed
+		info.Description = fmt.Sprintf("Function: %s skipping delete request as it hasn't been undeployed", appName)
+		logging.Errorf("%s %s", logPrefix, info.Description)
+		return info
 	}
 
 	settingPath := metakvAppSettingsPath + appName
 	err := util.MetaKvDelete(settingPath, nil)
 	if err != nil {
-		info.Code = m.statusCodes.errDelAppSettingsPs.Code
-		info.Info = fmt.Sprintf("Function: %s failed to delete settings, err: %v", appName, err)
-		logging.Errorf("%s %s", logPrefix, info.Info)
-		return
+		info.ErrCode = response.ErrDelAppSettingsPs
+		info.Description = fmt.Sprintf("Function: %s failed to delete settings, err: %v", appName, err)
+		logging.Errorf("%s %s", logPrefix, info.Description)
+		return info
 	}
 
 	err = util.DeleteAppContent(metakvAppsPath, metakvChecksumPath, appName)
 	if err != nil {
-		info.Code = m.statusCodes.errDelAppPs.Code
-		info.Info = fmt.Sprintf("Function: %s failed to delete, err: %v", appName, err)
-		logging.Errorf("%s %s", logPrefix, info.Info)
-		return
+		info.ErrCode = response.ErrDelAppPs
+		info.Description = fmt.Sprintf("Function: %s failed to delete, err: %v", appName, err)
+		logging.Errorf("%s %s", logPrefix, info.Description)
+		return info
 	}
 
-	info.Code = m.statusCodes.ok.Code
-	info.Info = fmt.Sprintf("Function: %s deleting in the background", appName)
-	logging.Infof("%s %s", logPrefix, info.Info)
+	logging.Infof("%s %s", logPrefix, info.Description)
 
-	// ::TODO::Need to log handleruuid.
-	m.logSystemEvent(util.EVENTID_DELETE_FUNCTION, systemeventlog.SEInfo,
-		map[string]interface{}{"appName": appName})
-
-	return
+	return info
 }
 
 func (m *ServiceMgr) deleteTempStoreHandler(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "ServiceMgr::deleteTempStoreHandler"
-	cred, err := rbac.AuthWebCreds(w, r)
+
+	res := response.NewResponseWriter(w, r, response.EventDeleteFunction)
+	runtimeInfo := &response.RuntimeInfo{}
+
+	defer res.LogAndSend(runtimeInfo)
+
+	cred, err := rbac.AuthWebCreds(r)
 	if err != nil {
+		*runtimeInfo = getAuthErrorInfo(nil, false, err)
 		return
 	}
 
-	appName, info := CheckAndGetQueryParam(r, "name")
-	if info != nil {
-		m.sendErrorInfo(w, info)
+	params := r.URL.Query()
+	res.AddRequestData("query", params)
+	appName, info := CheckAndGetQueryParam(params, "name")
+	if info.ErrCode != response.Ok {
+		*runtimeInfo = *info
 		return
 	}
 
 	logging.Infof("%s REST Call: %v %v", logPrefix, r.URL.Path, r.Method)
-	audit.Log(auditevent.DeleteDrafts, r, appName)
-
-	info = m.deleteTempStore(cred, appName)
-	m.sendResponse(w, info)
+	if info = m.deleteTempStore(cred, appName); info.ErrCode != response.Ok {
+		*runtimeInfo = *info
+		return
+	}
+	runtimeInfo.Description = fmt.Sprintf("Function: %s deleting in the background", appName)
+	runtimeInfo.ExtraAttributes = map[string]interface{}{"appName": appName}
 }
 
 // Deletes application from temporary store and returns the appropriate success/error code
-func (m *ServiceMgr) deleteTempStore(cred cbauth.Creds, appName string) (info *runtimeInfo) {
+func (m *ServiceMgr) deleteTempStore(cred cbauth.Creds, appName string) (info *response.RuntimeInfo) {
 	logPrefix := "ServiceMgr::deleteTempStore"
 
-	info = &runtimeInfo{}
+	info = &response.RuntimeInfo{}
 	logging.Infof("%s Function: %s deleting drafts from temporary store", logPrefix, appName)
 
 	info = m.checkPermissionFromCred(cred, appName, rbac.HandlerManagePermissions, false)
-	if info.Code != m.statusCodes.ok.Code {
+	if info.ErrCode != response.Ok {
 		return
 	}
 
 	appStateCached, info := m.fetchAppCompositeState(appName)
-	if info.Code != m.statusCodes.ok.Code {
+	if info.ErrCode != response.Ok {
 		return
 	}
 
 	if appStateCached != common.AppStateUndeployed {
-		info.Code = m.statusCodes.errAppNotUndeployed.Code
-		info.Info = fmt.Sprintf("Function: %s skipping delete request from temp store, as it hasn't been undeployed", appName)
-		logging.Errorf("%s %s", logPrefix, info.Info)
+		info.ErrCode = response.ErrAppNotUndeployed
+		info.Description = fmt.Sprintf("Function: %s skipping delete request from temp store, as it hasn't been undeployed", appName)
+		logging.Errorf("%s %s", logPrefix, info.Description)
 		return
 	}
 
 	if err := util.DeleteAppContent(metakvTempAppsPath, metakvTempChecksumPath, appName); err != nil {
-		info.Code = m.statusCodes.errDelAppTs.Code
-		info.Info = fmt.Sprintf("Function: %s failed to delete, err: %v", appName, err)
-		logging.Errorf("%s %s", logPrefix, info.Info)
+		info.ErrCode = response.ErrDelAppTs
+		info.Description = fmt.Sprintf("Function: %s failed to delete, err: %v", appName, err)
+		logging.Errorf("%s %s", logPrefix, info.Description)
 		return
 	}
 
-	info.Code = m.statusCodes.ok.Code
-	info.Info = fmt.Sprintf("Function: %s deleting in the background", appName)
-	logging.Infof("%s %s", logPrefix, info.Info)
+	logging.Infof("%s %s", logPrefix, info.Description)
 	return
 }
 
 func (m *ServiceMgr) die(w http.ResponseWriter, r *http.Request) {
-	if !rbac.ValidateAuth(w, r, rbac.EventingPermissionManage, false) {
+	res := response.NewResponseWriter(w, r, response.EventDie)
+	runtimeInfo := &response.RuntimeInfo{}
+
+	if notAllowed, err := rbac.IsAllowed(r, rbac.EventingPermissionManage, false); err != nil {
+		*runtimeInfo = getAuthErrorInfo(notAllowed, false, err)
+		res.LogAndSend(runtimeInfo)
 		return
 	}
 
 	logging.Errorf("Got request to die, killing all consumers")
 	m.superSup.KillAllConsumers()
 	logging.Errorf("Got request to die, killing producer")
+	runtimeInfo.Description = "Killing all eventing consumers and the eventing producer"
+	res.LogAndSend(runtimeInfo)
+	time.Sleep(5 * time.Second)
+
 	os.Exit(-1)
 }
 
 func (m *ServiceMgr) getAppLog(w http.ResponseWriter, r *http.Request) {
+	res := response.NewResponseWriter(w, r, response.EventGetAppLog)
+	runtimeInfo := &response.RuntimeInfo{}
+
+	defer res.LogAndSend(runtimeInfo)
+
 	if r.Method != "GET" {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		fmt.Fprintf(w, "Method not allowed")
+		runtimeInfo.ErrCode = response.ErrMethodNotAllowed
+		runtimeInfo.Description = "Method not allowed, Only Get request is allowed"
 		return
 	}
 
-	nv := r.URL.Query()["name"]
+	params := r.URL.Query()
+	res.AddRequestData("query", params)
+	nv := params["name"]
 	if len(nv) != 1 {
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintln(w, "Parameter 'name' must appear exactly once")
+		runtimeInfo.ErrCode = response.ErrInvalidRequest
+		runtimeInfo.Description = "Parameter 'name' must appear exactly once"
 		return
 	}
-
 	appName := nv[0]
 
-	if info := m.checkAuthAndPermissionWithApp(w, r, appName, rbac.HandlerGetPermissions, false); info.Code != m.statusCodes.ok.Code {
-		m.sendErrorInfo(w, info)
+	if info := m.checkAuthAndPermissionWithApp(w, r, appName, rbac.HandlerGetPermissions, false); info.ErrCode != response.Ok {
+		*runtimeInfo = *info
 		return
 	}
 
 	sz := int64(40960)
 
-	sv := r.URL.Query()["size"]
+	sv := params["size"]
 	if len(sv) == 1 {
 		psz, err := strconv.Atoi(sv[0])
 		if err == nil {
@@ -268,7 +339,7 @@ func (m *ServiceMgr) getAppLog(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var lines []string
-	if rv := r.URL.Query()["aggregate"]; len(rv) > 0 && rv[0] == "true" {
+	if rv := params["aggregate"]; len(rv) > 0 && rv[0] == "true" {
 		creds := r.Header
 		lines = getGlobalAppLog(m, appName, sz, creds)
 	} else {
@@ -277,25 +348,32 @@ func (m *ServiceMgr) getAppLog(w http.ResponseWriter, r *http.Request) {
 	sort.Sort(sort.Reverse(sort.StringSlice(lines)))
 
 	w.Header().Set("Content-Type", "text/plain")
-	for _, line := range lines {
-		fmt.Fprintln(w, line)
-	}
+	runtimeInfo.SendRawDescription = true
+	runtimeInfo.OnlyDescription = true
+	runtimeInfo.Description = strings.Join(lines, "\n")
 }
 
 func (m *ServiceMgr) getInsight(w http.ResponseWriter, r *http.Request) {
-	cred, err := rbac.AuthWebCreds(w, r)
+	res := response.NewResponseWriter(w, r, response.EventGetInsight)
+	runtimeInfo := &response.RuntimeInfo{}
+
+	cred, err := rbac.AuthWebCreds(r)
 	if err != nil {
+		*runtimeInfo = getAuthErrorInfo(nil, false, err)
 		return
 	}
 
 	if r.Method != "GET" {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		fmt.Fprintf(w, "Method not allowed")
+		runtimeInfo.ErrCode = response.ErrMethodNotAllowed
+		runtimeInfo.Description = "Method not allowed, Only Get request is allowed"
+		res.LogAndSend(runtimeInfo)
 		return
 	}
 
+	params := r.URL.Query()
+	res.AddRequestData("query", params)
 	apps := make([]string, 0)
-	apps = append(apps, r.URL.Query()["name"]...)
+	apps = append(apps, params["name"]...)
 	if len(apps) < 1 {
 		for app, _ := range m.superSup.GetDeployedApps() {
 			apps = append(apps, app)
@@ -305,20 +383,20 @@ func (m *ServiceMgr) getInsight(w http.ResponseWriter, r *http.Request) {
 	permApps := make([]string, 0, len(apps))
 	for _, appName := range apps {
 		info := m.checkPermissionFromCred(cred, appName, rbac.HandlerGetPermissions, false)
-		if info.Code == m.statusCodes.ok.Code {
+		if info.ErrCode == response.Ok {
 			permApps = append(permApps, appName)
 		}
 	}
 
 	var insights *common.Insights
-	if rv := r.URL.Query()["aggregate"]; len(rv) > 0 && rv[0] == "true" {
+	if rv := params["aggregate"]; len(rv) > 0 && rv[0] == "true" {
 		creds := r.Header
 		insights = getGlobalInsights(m, permApps, creds)
 	} else {
 		insights = getLocalInsights(m, permApps)
 	}
 
-	if rv := r.URL.Query()["udmark"]; len(rv) > 0 && rv[0] == "true" {
+	if rv := params["udmark"]; len(rv) > 0 && rv[0] == "true" {
 		pspec := logging.RedactFormat("%ru")
 		for name, insight := range *insights {
 			insight.Script = fmt.Sprintf(pspec, insight.Script)
@@ -335,7 +413,6 @@ func (m *ServiceMgr) getInsight(w http.ResponseWriter, r *http.Request) {
 	enc.SetEscapeHTML(false) // otherwise <ud> gets mangled
 	enc.SetIndent("", " ")
 	enc.Encode(insights)
-	// TODO: Check if this is sending response
 }
 
 func getLocalAppLog(m *ServiceMgr, appName string, sz int64) []string {
@@ -477,15 +554,21 @@ func getGlobalInsights(m *ServiceMgr, apps []string, creds http.Header) *common.
 
 func (m *ServiceMgr) getDebuggerURL(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "ServiceMgr::getDebuggerURL"
+	res := response.NewResponseWriter(w, r, response.EventGetDebuggerUrl)
+	runtimeInfo := &response.RuntimeInfo{}
 
-	appName, info := CheckAndGetQueryParam(r, "name")
-	if info != nil {
-		m.sendErrorInfo(w, info)
+	defer res.LogAndSend(runtimeInfo)
+
+	params := r.URL.Query()
+	res.AddRequestData("query", params)
+	appName, info := CheckAndGetQueryParam(params, "name")
+	if info.ErrCode != response.Ok {
+		*runtimeInfo = *info
 		return
 	}
 
-	if info := m.checkAuthAndPermissionWithApp(w, r, appName, rbac.HandlerGetPermissions, false); info.Code != m.statusCodes.ok.Code {
-		m.sendErrorInfo(w, info)
+	if info := m.checkAuthAndPermissionWithApp(w, r, appName, rbac.HandlerGetPermissions, false); info.ErrCode != response.Ok {
+		*runtimeInfo = *info
 		return
 	}
 
@@ -495,25 +578,38 @@ func (m *ServiceMgr) getDebuggerURL(w http.ResponseWriter, r *http.Request) {
 		debugURL, err := m.superSup.GetDebuggerURL(appName)
 		if err != nil {
 			logging.Errorf("Error in getting debugger url for %s err: %v", appName, err)
-			w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errRequestedOpFailed.Code))
-			fmt.Fprintf(w, "%v", err)
+			runtimeInfo.ErrCode = response.ErrInternalServer
 			return
 		}
 		debugURL = strings.Replace(debugURL, "[::1]", "127.0.0.1", -1)
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
-		fmt.Fprintf(w, "%s", debugURL)
+
+		runtimeInfo.SendRawDescription = true
+		runtimeInfo.Description = debugURL
+		runtimeInfo.OnlyDescription = true
 		return
 	}
 
-	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotDeployed.Code))
-	fmt.Fprintf(w, "Function: %s not deployed", appName)
+	runtimeInfo.ErrCode = response.ErrAppNotDeployed
+	runtimeInfo.Description = fmt.Sprintf("Function: %s not deployed", appName)
 }
 
 func (m *ServiceMgr) getLocalDebugURL(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "ServiceMgr::getLocalDebugURL"
-	appName, info := CheckAndGetQueryParam(r, "name")
-	if info != nil {
-		m.sendErrorInfo(w, info)
+	res := response.NewResponseWriter(w, r, response.EventGetDebuggerUrl)
+	runtimeInfo := &response.RuntimeInfo{}
+
+	defer res.LogAndSend(runtimeInfo)
+
+	params := r.URL.Query()
+	res.AddRequestData("query", params)
+	appName, info := CheckAndGetQueryParam(params, "name")
+	if info.ErrCode != response.Ok {
+		*runtimeInfo = *info
+		return
+	}
+
+	if info := m.checkAuthAndPermissionWithApp(w, r, appName, rbac.HandlerGetPermissions, false); info.ErrCode != response.Ok {
+		*runtimeInfo = *info
 		return
 	}
 
@@ -525,40 +621,48 @@ func (m *ServiceMgr) getLocalDebugURL(w http.ResponseWriter, r *http.Request) {
 	filePath := fmt.Sprintf("%s/%s_frontend.url", dir, appName)
 	u, err := ioutil.ReadFile(filePath)
 	if err != nil {
+		runtimeInfo.ErrCode = response.ErrInternalServer
 		logging.Errorf("%s Function: %s failed to read contents from debugger frontend url file, err: %v",
 			logPrefix, appName, err)
-		fmt.Fprintf(w, "")
 		return
 	}
 
-	fmt.Fprintf(w, "%v", string(u))
+	runtimeInfo.SendRawDescription = true
+	runtimeInfo.Description = string(u)
+	runtimeInfo.OnlyDescription = true
 }
 
 func (m *ServiceMgr) logFileLocation(w http.ResponseWriter, r *http.Request) {
-	if !rbac.ValidateAuth(w, r, rbac.EventingPermissionManage, false) {
+	res := response.NewResponseWriter(w, r, response.EventGetLogFileLocation)
+	runtimeInfo := &response.RuntimeInfo{}
+
+	defer res.LogAndSend(runtimeInfo)
+
+	if notAllowed, err := rbac.IsAllowed(r, rbac.EventingPermissionManage, false); err != nil {
+		*runtimeInfo = getAuthErrorInfo(notAllowed, false, err)
 		return
 	}
 
 	if r.Method != "GET" {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		fmt.Fprintf(w, "Method not allowed")
+		runtimeInfo.ErrCode = response.ErrMethodNotAllowed
+		runtimeInfo.Description = "Method not allowed, Only Get request is allowed"
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-
 	c := m.config.Load()
-	fmt.Fprintf(w, `{"log_dir":"%v"}`, c["eventing_dir"])
+
+	runtimeInfo.Description = fmt.Sprintf(`{"log_dir":"%v"}`, c["eventing_dir"])
+	runtimeInfo.OnlyDescription = true
 }
 
-func (m *ServiceMgr) notifyDebuggerStart(appName string, hostnames []string) (info *runtimeInfo) {
+func (m *ServiceMgr) notifyDebuggerStart(appName string, hostnames []string) (info *response.RuntimeInfo) {
 	logPrefix := "ServiceMgr::notifyDebuggerStart"
-	info = &runtimeInfo{}
+	info = &response.RuntimeInfo{}
 
 	uuidGen, err := util.NewUUID()
 	if err != nil {
-		info.Code = m.statusCodes.errUUIDGen.Code
-		info.Info = fmt.Sprintf("Unable to initialize UUID generator, err: %v", err)
+		info.ErrCode = response.ErrInternalServer
+		info.Description = fmt.Sprintf("Unable to initialize UUID generator, err: %v", err)
 		return
 	}
 
@@ -571,138 +675,143 @@ func (m *ServiceMgr) notifyDebuggerStart(appName string, hostnames []string) (in
 
 	if err != nil {
 		logging.Errorf("%s Function: %s Failed to write to metakv err: %v", logPrefix, appName, err)
-		info.Code = m.statusCodes.errMetakvWriteFailed.Code
-		info.Info = fmt.Sprintf("Failed to write to metakv debugger path for Function: %s, err: %v", appName, err)
+		info.ErrCode = response.ErrMetakvWriteFailed
+		info.Description = fmt.Sprintf("Failed to write to metakv debugger path for Function: %s, err: %v", appName, err)
 	}
 
-	info.Code = m.statusCodes.ok.Code
 	return
 }
 
 func (m *ServiceMgr) startDebugger(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "ServiceMgr::startDebugger"
 
-	appName, info := CheckAndGetQueryParam(r, "name")
-	if info != nil {
-		m.sendErrorInfo(w, info)
+	res := response.NewResponseWriter(w, r, response.EventStartDebugger)
+	runtimeInfo := &response.RuntimeInfo{}
+
+	defer res.LogAndSend(runtimeInfo)
+
+	params := r.URL.Query()
+	res.AddRequestData("query", params)
+	appName, info := CheckAndGetQueryParam(params, "name")
+	if info.ErrCode != response.Ok {
+		*runtimeInfo = *info
 		return
 	}
 
-	if info := m.checkAuthAndPermissionWithApp(w, r, appName, rbac.HandlerManagePermissions, false); info.Code != m.statusCodes.ok.Code {
-		m.sendErrorInfo(w, info)
+	if info := m.checkAuthAndPermissionWithApp(w, r, appName, rbac.HandlerManagePermissions, false); info.ErrCode != response.Ok {
+		*runtimeInfo = *info
 		return
 	}
-
-	info = &runtimeInfo{}
 
 	logging.Infof("%s REST Call: %v %v", logPrefix, r.URL.Path, r.Method)
-	// TODO: These log level don't have any status codes
-	audit.Log(auditevent.StartDebug, r, appName)
 
 	config, info := m.getConfig()
-	if info.Code != m.statusCodes.ok.Code {
-		m.sendErrorInfo(w, info)
+	if info.ErrCode != response.Ok {
+		*runtimeInfo = *info
 		return
 	}
 
 	enabled, exists := config["enable_debugger"]
 	if !exists || !enabled.(bool) {
-		info.Code = m.statusCodes.errDebuggerDisabled.Code
-		info.Info = "Debugger is not enabled"
-		m.sendErrorInfo(w, info)
+		runtimeInfo.ErrCode = response.ErrDebuggerDisabled
+		runtimeInfo.Description = "Debugger is not enabled"
 		return
 	}
 
 	if !m.checkIfDeployedAndRunning(appName) {
-		info.Code = m.statusCodes.errAppNotDeployed.Code
-		info.Info = fmt.Sprintf("Function: %s is not in deployed state, debugger cannot start", appName)
-		m.sendErrorInfo(w, info)
+		runtimeInfo.ErrCode = response.ErrAppNotDeployed
+		runtimeInfo.Description = fmt.Sprintf("Function: %s is not in deployed state, debugger cannot start", appName)
 		return
 	}
 
-	var isMixedMode bool
-	if isMixedMode, info = m.isMixedModeCluster(); info.Code != m.statusCodes.ok.Code {
-		m.sendErrorInfo(w, info)
+	isMixedMode, err := m.isMixedModeCluster()
+	if err != nil {
+		runtimeInfo.ErrCode = response.ErrInternalServer
+		runtimeInfo.Description = fmt.Sprintf("err: %v", err)
+		logging.Errorf("%s %s", logPrefix, info.Description)
 		return
 	}
 
 	if isMixedMode {
-		info.Code = m.statusCodes.errMixedMode.Code
-		info.Info = "Debugger can not be spawned in a mixed mode cluster"
-		m.sendErrorInfo(w, info)
+		runtimeInfo.ErrCode = response.ErrMixedMode
+		runtimeInfo.Description = "Debugger can not be spawned in a mixed mode cluster"
 		return
 	}
 
 	body, err := ioutil.ReadAll(r.Body)
 	if err != nil {
-		info.Code = m.statusCodes.errReadReq.Code
-		info.Info = fmt.Sprintf("Failed to read request, err : %v", err)
-		m.sendErrorInfo(w, info)
+		runtimeInfo.ErrCode = response.ErrReadReq
+		runtimeInfo.Description = fmt.Sprintf("Failed to read request, err : %v", err)
 		return
 	}
 
 	var data map[string]interface{}
 	err = json.Unmarshal(body, &data)
 	if err != nil {
-		info.Code = m.statusCodes.errUnmarshalPld.Code
-		info.Info = fmt.Sprintf("Failed to unmarshal request, err : %v", err)
-		m.sendErrorInfo(w, info)
+		runtimeInfo.ErrCode = response.ErrUnmarshalPld
+		runtimeInfo.Description = fmt.Sprintf("Failed to unmarshal request, err : %v", err)
 		return
 	}
 
-	if info = m.notifyDebuggerStart(appName, GetNodesHostname(data)); info.Code != m.statusCodes.ok.Code {
-		m.sendErrorInfo(w, info)
+	if info = m.notifyDebuggerStart(appName, GetNodesHostname(data)); info.ErrCode != response.Ok {
+		*runtimeInfo = *info
 		return
 	}
 
-	m.logSystemEvent(util.EVENTID_START_DEBUGGER, systemeventlog.SEInfo,
-		map[string]interface{}{"appName": appName})
-
-	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
-	fmt.Fprintf(w, "Function: %s Started Debugger", appName)
+	runtimeInfo.ExtraAttributes = params
+	runtimeInfo.Description = fmt.Sprintf("Function: %s Started Debugger", appName)
+	runtimeInfo.OnlyDescription = true
 }
 
 func (m *ServiceMgr) stopDebugger(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "ServiceMgr::stopDebugger"
 
-	appName, info := CheckAndGetQueryParam(r, "name")
-	if info != nil {
-		m.sendErrorInfo(w, info)
+	res := response.NewResponseWriter(w, r, response.EventStopDebugger)
+	runtimeInfo := &response.RuntimeInfo{}
+
+	defer res.LogAndSend(runtimeInfo)
+
+	params := r.URL.Query()
+	res.AddRequestData("query", params)
+	appName, info := CheckAndGetQueryParam(params, "name")
+	if info.ErrCode != response.Ok {
+		*runtimeInfo = *info
 		return
 	}
 
-	if info := m.checkAuthAndPermissionWithApp(w, r, appName, rbac.HandlerManagePermissions, false); info.Code != m.statusCodes.ok.Code {
-		m.sendErrorInfo(w, info)
+	if info := m.checkAuthAndPermissionWithApp(w, r, appName, rbac.HandlerManagePermissions, false); info.ErrCode != response.Ok {
+		*runtimeInfo = *info
 		return
 	}
 
 	logging.Infof("%s REST Call: %v %v", logPrefix, r.URL.Path, r.Method)
-	audit.Log(auditevent.StopDebug, r, appName)
 
 	if m.checkIfDeployed(appName) {
 		err := m.superSup.SignalStopDebugger(appName)
 		if err != nil {
+			runtimeInfo.ErrCode = response.ErrInternalServer
+			runtimeInfo.Description = fmt.Sprintf("%v", err)
 			logging.Errorf("Error in stopping debugger for %s err: %v", appName, err)
-			w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errRequestedOpFailed.Code))
-			fmt.Fprintf(w, "%v", err)
 			return
 		}
 
-		m.logSystemEvent(util.EVENTID_STOP_DEBUGGER, systemeventlog.SEInfo,
-			map[string]interface{}{"appName": appName})
-
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
-		fmt.Fprintf(w, "Function: %s stopped Debugger", appName)
+		runtimeInfo.ExtraAttributes = params
+		runtimeInfo.Description = fmt.Sprintf("Function: %s stopped Debugger", appName)
+		runtimeInfo.OnlyDescription = true
 		return
 	}
 
-	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotDeployed.Code))
-	respString := fmt.Sprintf("Function: %s not deployed", appName)
-	fmt.Fprintf(w, respString)
-	logging.Infof("%s %s", logPrefix, respString)
+	runtimeInfo.Description = fmt.Sprintf("Function: %s not deployed", appName)
+	runtimeInfo.ErrCode = response.ErrAppNotDeployed
+	logging.Debugf("%s %s", logPrefix, runtimeInfo.Description)
 }
 
 func (m *ServiceMgr) writeDebuggerURLHandler(w http.ResponseWriter, r *http.Request) {
+	res := response.NewResponseWriter(w, r, response.EventWriteDebuggerUrl)
+	runtimeInfo := &response.RuntimeInfo{}
+
+	defer res.LogAndSend(runtimeInfo)
+
 	if !m.validateLocalAuth(w, r) {
 		return
 	}
@@ -712,68 +821,65 @@ func (m *ServiceMgr) writeDebuggerURLHandler(w http.ResponseWriter, r *http.Requ
 	appName := path.Base(r.URL.Path)
 	data, err := ioutil.ReadAll(r.Body)
 	if err != nil {
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errReadReq.Code))
-		fmt.Fprintf(w, "%v", err)
+		runtimeInfo.ErrCode = response.ErrReadReq
+		runtimeInfo.Description = fmt.Sprintf("%v", err)
 		return
 	}
 
 	logging.Infof("Received Debugger URL: %s for Function: %s", string(data), appName)
 	m.superSup.WriteDebuggerURL(appName, string(data))
-	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
-	fmt.Fprintf(w, "")
+	runtimeInfo.Description = "Successfully written debugger url"
 }
 
 func (m *ServiceMgr) getEventProcessingStats(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "ServiceMgr::getEventProcessingStats"
 
-	appName, info := CheckAndGetQueryParam(r, "name")
-	if info != nil {
-		m.sendErrorInfo(w, info)
+	res := response.NewResponseWriter(w, r, response.EventFetchProcessingStats)
+	runtimeInfo := &response.RuntimeInfo{}
+
+	defer res.LogAndSend(runtimeInfo)
+
+	params := r.URL.Query()
+	res.AddRequestData("query", params)
+
+	appName, info := CheckAndGetQueryParam(params, "name")
+	if info.ErrCode != response.Ok {
+		*runtimeInfo = *info
 		return
 	}
 
-	if info := m.checkAuthAndPermissionWithApp(w, r, appName, rbac.HandlerGetPermissions, false); info.Code != m.statusCodes.ok.Code {
-		m.sendErrorInfo(w, info)
+	if info := m.checkAuthAndPermissionWithApp(w, r, appName, rbac.HandlerGetPermissions, false); info.ErrCode != response.Ok {
+		*runtimeInfo = *info
 		return
 	}
 
 	if m.checkIfDeployed(appName) {
 		stats := m.superSup.GetEventProcessingStats(appName)
-
-		data, err := json.MarshalIndent(&stats, "", " ")
-		if err != nil {
-			w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
-			fmt.Fprintf(w, "Failed to marshal response event processing stats, err: %v", err)
-			logging.Errorf("%s Failed to marshal response event processing stats, err: %v", logPrefix, err)
-			return
-		}
-
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
-		fmt.Fprintf(w, "%s", string(data))
+		runtimeInfo.Description = stats
+		runtimeInfo.OnlyDescription = true
 		return
 	}
 
-	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotDeployed.Code))
-	respString := fmt.Sprintf("Function: %s not deployed", appName)
-	fmt.Fprintf(w, respString)
-	logging.Infof("%s %s", logPrefix, respString)
+	runtimeInfo.Description = fmt.Sprintf("Function: %s not deployed", appName)
+	runtimeInfo.ErrCode = response.ErrAppNotDeployed
+	logging.Debugf("%s %s", logPrefix, runtimeInfo.Description)
 }
 
-func (m *ServiceMgr) getAppList() (map[string]int, map[string]int, map[string]int, int, bool, *runtimeInfo) {
+func (m *ServiceMgr) getAppList() (map[string]int, map[string]int, map[string]int, int, bool, *response.RuntimeInfo) {
 	logPrefix := "ServiceMgr::getAppList"
-	info := &runtimeInfo{}
+	info := &response.RuntimeInfo{}
 
 	nodeAddrs, err := m.getActiveNodeAddrs()
 	if err != nil {
 		logging.Warnf("%s failed to fetch active Eventing nodes, err: %v", logPrefix, err)
-		info.Code = m.statusCodes.errActiveEventingNodes.Code
-		info.Info = fmt.Sprintf("Unable to fetch active Eventing nodes, err: %v", err)
+		info.ErrCode = response.ErrInternalServer
+		info.Description = fmt.Sprintf("Unable to fetch active Eventing nodes, err: %v", err)
 		return nil, nil, nil, 0, false, info
 	}
 
 	numEventingNodes := len(nodeAddrs)
 	if numEventingNodes == 0 {
-		info.Code = m.statusCodes.errNoEventingNodes.Code
+		info.ErrCode = response.ErrInternalServer
 		return nil, nil, nil, 0, false, info
 	}
 
@@ -819,35 +925,34 @@ func (m *ServiceMgr) getAppList() (map[string]int, map[string]int, map[string]in
 			}
 		}
 
-		info.Code = m.statusCodes.ok.Code
 		return appDeployedNodesCounter, appBootstrappingNodesCounter, appPausingNodesCounter, numEventingNodes, true, info
 	}
-
-	info.Code = m.statusCodes.ok.Code
 	return appDeployedNodesCounter, appBootstrappingNodesCounter, nil, numEventingNodes, false, info
 }
 
 // Returns list of apps that are deployed i.e. finished dcp/timer/debugger related bootstrap
 func (m *ServiceMgr) getDeployedApps(w http.ResponseWriter, r *http.Request) {
-	logPrefix := "ServiceMgr::getDeployedApps"
+	res := response.NewResponseWriter(w, r, response.EventGetDeployedApps)
+	runtimeInfo := &response.RuntimeInfo{}
 
-	cred, err := rbac.AuthWebCreds(w, r)
+	defer res.LogAndSend(runtimeInfo)
+
+	cred, err := rbac.AuthWebCreds(r)
 	if err != nil {
+		*runtimeInfo = getAuthErrorInfo(nil, false, err)
 		return
 	}
 
-	audit.Log(auditevent.ListDeployed, r, nil)
-
 	appDeployedNodesCounter, _, appPausingNodesCounter, numEventingNodes, _, info := m.getAppList()
-	if info.Code != m.statusCodes.ok.Code {
-		m.sendErrorInfo(w, info)
+	if info.ErrCode != response.Ok {
+		*runtimeInfo = *info
 		return
 	}
 
 	deployedApps := make(map[string]string)
 	for appName, numNodesDeployed := range appDeployedNodesCounter {
 		info := m.checkPermissionFromCred(cred, appName, rbac.HandlerGetPermissions, false)
-		if info.Code != m.statusCodes.ok.Code {
+		if info.ErrCode != response.Ok {
 			continue
 		}
 		if appPausingNodesCounter != nil {
@@ -862,18 +967,8 @@ func (m *ServiceMgr) getDeployedApps(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	data, err := json.MarshalIndent(deployedApps, "", " ")
-	if err != nil {
-		logging.Errorf("%s failed to marshal list of deployed apps, err: %v", logPrefix, err)
-
-		info.Code = m.statusCodes.errMarshalResp.Code
-		info.Info = fmt.Sprintf("Unable to marshall response, err: %v", err)
-		m.sendErrorInfo(w, info)
-		return
-	}
-
-	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
-	fmt.Fprintf(w, "%s", string(data))
+	runtimeInfo.Description = deployedApps
+	runtimeInfo.OnlyDescription = true
 }
 
 // Returns list of apps that:
@@ -881,49 +976,44 @@ func (m *ServiceMgr) getDeployedApps(w http.ResponseWriter, r *http.Request) {
 // * maybe undergoing bootstrap on one or more nodes or
 // * are already deployed on all nodes
 func (m *ServiceMgr) getRunningApps(w http.ResponseWriter, r *http.Request) {
-	logPrefix := "ServiceMgr::getRunningApps"
+	res := response.NewResponseWriter(w, r, response.EventGetRunningApps)
+	runtimeInfo := &response.RuntimeInfo{}
 
-	cred, err := rbac.AuthWebCreds(w, r)
+	defer res.LogAndSend(runtimeInfo)
+
+	cred, err := rbac.AuthWebCreds(r)
 	if err != nil {
+		*runtimeInfo = getAuthErrorInfo(nil, false, err)
 		return
 	}
 
-	audit.Log(auditevent.ListRunning, r, nil)
-
 	appDeployedNodesCounter, _, _, _, _, info := m.getAppList()
-	if info.Code != m.statusCodes.ok.Code {
-		m.sendErrorInfo(w, info)
+	if info.ErrCode != response.Ok {
+		*runtimeInfo = *info
 		return
 	}
 
 	runningApps := make(map[string]string)
 	for appName, _ := range appDeployedNodesCounter {
 		info := m.checkPermissionFromCred(cred, appName, rbac.HandlerGetPermissions, false)
-		if info.Code != m.statusCodes.ok.Code {
+		if info.ErrCode != response.Ok {
 			continue
 		}
 		runningApps[appName] = ""
 	}
-
-	data, err := json.MarshalIndent(runningApps, "", " ")
-	if err != nil {
-		logging.Errorf("%s failed to marshal list of running apps, err: %v", logPrefix, err)
-
-		info.Code = m.statusCodes.errMarshalResp.Code
-		info.Info = fmt.Sprintf("Unable to marshal response, err: %v", err)
-		m.sendErrorInfo(w, info)
-		return
-	}
-
-	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
-	fmt.Fprintf(w, "%s", string(data))
+	runtimeInfo.Description = runningApps
+	runtimeInfo.OnlyDescription = true
 }
 
 func (m *ServiceMgr) getLocallyDeployedApps(w http.ResponseWriter, r *http.Request) {
-	logPrefix := "ServiceMgr::getLocallyDeployedApps"
+	res := response.NewResponseWriter(w, r, response.EventGetDeployedApps)
+	runtimeInfo := &response.RuntimeInfo{}
 
-	cred, err := rbac.AuthWebCreds(w, r)
+	defer res.LogAndSend(runtimeInfo)
+
+	cred, err := rbac.AuthWebCreds(r)
 	if err != nil {
+		*runtimeInfo = getAuthErrorInfo(nil, false, err)
 		return
 	}
 
@@ -932,21 +1022,14 @@ func (m *ServiceMgr) getLocallyDeployedApps(w http.ResponseWriter, r *http.Reque
 	permDeployedApps := make(map[string]string)
 	for appName, val := range deployedApps {
 		info := m.checkPermissionFromCred(cred, appName, rbac.HandlerGetPermissions, false)
-		if info.Code != m.statusCodes.ok.Code {
+		if info.ErrCode != response.Ok {
 			continue
 		}
 
 		permDeployedApps[appName] = val
 	}
-
-	buf, err := json.MarshalIndent(deployedApps, "", " ")
-	if err != nil {
-		logging.Errorf("%s failed to marshal list of deployed apps, err: %v", logPrefix, err)
-		fmt.Fprintf(w, "Unable to marshal response, err: %v", err)
-		return
-	}
-
-	fmt.Fprintf(w, "%s", string(buf))
+	runtimeInfo.Description = deployedApps
+	runtimeInfo.OnlyDescription = true
 }
 
 // Reports progress across all producers on current node
@@ -954,8 +1037,14 @@ func (m *ServiceMgr) getLocallyDeployedApps(w http.ResponseWriter, r *http.Reque
 func (m *ServiceMgr) getRebalanceProgress(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "ServiceMgr::getRebalanceProgress"
 
-	cred, err := rbac.AuthWebCreds(w, r)
+	res := response.NewResponseWriter(w, r, response.EventGetRebalanceProgress)
+	runtimeInfo := &response.RuntimeInfo{}
+
+	defer res.LogAndSend(runtimeInfo)
+
+	cred, err := rbac.AuthWebCreds(r)
 	if err != nil {
+		*runtimeInfo = getAuthErrorInfo(nil, false, err)
 		return
 	}
 
@@ -971,7 +1060,7 @@ func (m *ServiceMgr) getRebalanceProgress(w http.ResponseWriter, r *http.Request
 		// TODO: Leverage error returned from rebalance task progress and fail the rebalance
 		// if it occurs
 		info := m.checkPermissionFromCred(cred, appName, rbac.HandlerGetPermissions, false)
-		if info.Code != m.statusCodes.ok.Code {
+		if info.ErrCode != response.Ok {
 			continue
 		}
 
@@ -987,103 +1076,137 @@ func (m *ServiceMgr) getRebalanceProgress(w http.ResponseWriter, r *http.Request
 		}
 	}
 
-	buf, err := json.MarshalIndent(progress, "", " ")
-	if err != nil {
-		logging.Errorf("%s failed to unmarshal rebalance progress across all producers on current node, err: %v", logPrefix, err)
-		fmt.Fprintf(w, "Unable to marshal response, err: %v", err)
-		return
-	}
-
-	w.Write(buf)
+	runtimeInfo.Description = progress
+	runtimeInfo.OnlyDescription = true
 }
 
 // Report back state of rebalance on current node
 func (m *ServiceMgr) getRebalanceStatus(w http.ResponseWriter, r *http.Request) {
-	if !rbac.ValidateAuth(w, r, rbac.EventingReadPermissions, false) {
+	res := response.NewResponseWriter(w, r, response.EventGetRebalanceStatus)
+	runtimeInfo := &response.RuntimeInfo{}
+
+	defer res.LogAndSend(runtimeInfo)
+
+	if notAllowed, err := rbac.IsAllowed(r, rbac.EventingReadPermissions, false); err != nil {
+		*runtimeInfo = getAuthErrorInfo(notAllowed, false, err)
 		return
 	}
 
-	w.Write([]byte(strconv.FormatBool(m.superSup.RebalanceStatus())))
+	runtimeInfo.SendRawDescription = true
+	runtimeInfo.Description = strconv.FormatBool(m.superSup.RebalanceStatus())
+	runtimeInfo.OnlyDescription = true
 }
 
 // Report back state of bootstrap on current node
 func (m *ServiceMgr) getBootstrapStatus(w http.ResponseWriter, r *http.Request) {
-	if !rbac.ValidateAuth(w, r, rbac.EventingReadPermissions, false) {
+	res := response.NewResponseWriter(w, r, response.EventGetBootstrapStatus)
+	runtimeInfo := &response.RuntimeInfo{}
+
+	defer res.LogAndSend(runtimeInfo)
+
+	if notAllowed, err := rbac.IsAllowed(r, rbac.EventingReadPermissions, false); err != nil {
+		*runtimeInfo = getAuthErrorInfo(notAllowed, false, err)
 		return
 	}
 
 	bootstrapAppList := m.superSup.BootstrapAppList()
+	bootstrapping := false
 	if len(bootstrapAppList) > 0 {
-		w.Write([]byte(strconv.FormatBool(true)))
+		bootstrapping = true
 	} else {
-		w.Write([]byte(strconv.FormatBool(m.superSup.BootstrapStatus())))
+		bootstrapping = m.superSup.BootstrapStatus()
 	}
+
+	runtimeInfo.SendRawDescription = true
+	runtimeInfo.Description = strconv.FormatBool(bootstrapping)
+	runtimeInfo.OnlyDescription = true
 }
 
 // Report back state of an app bootstrap on current node
 func (m *ServiceMgr) getBootstrapAppStatus(w http.ResponseWriter, r *http.Request) {
 
-	appName, info := CheckAndGetQueryParam(r, "appName")
-	if info != nil {
-		m.sendErrorInfo(w, info)
+	res := response.NewResponseWriter(w, r, response.EventGetBootstrapStatus)
+	runtimeInfo := &response.RuntimeInfo{}
+
+	defer res.LogAndSend(runtimeInfo)
+
+	params := r.URL.Query()
+	res.AddRequestData("query", params)
+	appName, info := CheckAndGetQueryParam(params, "appName")
+	if info.ErrCode != response.Ok {
+		*runtimeInfo = *info
 		return
 	}
 
 	info = m.checkAuthAndPermissionWithApp(w, r, appName, rbac.HandlerGetPermissions, false)
-	if info.Code == m.statusCodes.errAppNotFound.Code {
-		w.Write([]byte(strconv.FormatBool(false)))
+	if info.ErrCode == response.ErrAppNotFound {
+		runtimeInfo.Description = false
+		runtimeInfo.OnlyDescription = true
+		return
 	}
 
-	if info.Code != m.statusCodes.ok.Code {
-		m.sendErrorInfo(w, info)
+	if info.ErrCode != response.Ok {
+		*runtimeInfo = *info
 		return
 	}
 
 	bootstrapAppList := m.superSup.BootstrapAppList()
 	_, isBootstrapping := bootstrapAppList[appName]
+	bootstrapping := false
 	if isBootstrapping {
-		w.Write([]byte(strconv.FormatBool(true)))
+		bootstrapping = true
 	} else {
-		w.Write([]byte(strconv.FormatBool(m.superSup.BootstrapAppStatus(appName))))
+		bootstrapping = m.superSup.BootstrapAppStatus(appName)
 	}
+
+	runtimeInfo.SendRawDescription = true
+	runtimeInfo.Description = strconv.FormatBool(bootstrapping)
+	runtimeInfo.OnlyDescription = true
 }
 
 // Reports aggregated event processing stats from all producers
 func (m *ServiceMgr) getAggEventProcessingStats(w http.ResponseWriter, r *http.Request) {
-	logPrefix := "ServiceMgr::getAggEventProcessingStats"
+	res := response.NewResponseWriter(w, r, response.EventFetchProcessingStats)
+	runtimeInfo := &response.RuntimeInfo{}
 
-	if !rbac.ValidateAuth(w, r, rbac.EventingReadPermissions, false) {
+	defer res.LogAndSend(runtimeInfo)
+
+	if notAllowed, err := rbac.IsAllowed(r, rbac.EventingReadPermissions, false); err != nil {
+		*runtimeInfo = getAuthErrorInfo(notAllowed, false, err)
 		return
 	}
 
-	appName, info := CheckAndGetQueryParam(r, "name")
-	if info != nil {
-		m.sendErrorInfo(w, info)
+	params := r.URL.Query()
+	res.AddRequestData("query", params)
+	appName, info := CheckAndGetQueryParam(params, "name")
+	if info.ErrCode != response.Ok {
+		*runtimeInfo = *info
 		return
 	}
 	util.Retry(util.NewFixedBackoff(time.Second), nil, getEventingNodesAddressesOpCallback, m)
 
 	pStats, err := util.GetEventProcessingStats("/getEventProcessingStats?name="+appName, m.eventingNodeAddrs)
 	if err != nil {
-		fmt.Fprintf(w, "Failed to get event processing stats, err: %v", err)
+		runtimeInfo.ErrCode = response.ErrInternalServer
+		runtimeInfo.Description = fmt.Sprintf("Failed to get event processing stats, err: %v", err)
 		return
 	}
 
-	buf, err := json.MarshalIndent(pStats, "", " ")
-	if err != nil {
-		logging.Errorf("%s Failed to unmarshal event processing stats from all producers, err: %v", logPrefix, err)
-		fmt.Fprintf(w, "Unable to marshal response, err: %v", err)
-		return
-	}
-
-	fmt.Fprintf(w, "%s", string(buf))
+	runtimeInfo.Description = pStats
+	runtimeInfo.OnlyDescription = true
 }
 
 // Reports aggregated rebalance progress from all Eventing nodes in the cluster
 func (m *ServiceMgr) getAggRebalanceProgress(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "ServiceMgr::getAggRebalanceProgress"
 
-	if !rbac.ValidateAuth(w, r, rbac.EventingReadPermissions, false) {
+	res := response.NewResponseWriter(w, r, response.EventGetRebalanceProgress)
+	runtimeInfo := &response.RuntimeInfo{}
+
+	defer res.LogAndSend(runtimeInfo)
+
+	if notAllowed, err := rbac.IsAllowed(r, rbac.EventingReadPermissions, false); err != nil {
+		*runtimeInfo = getAuthErrorInfo(notAllowed, false, err)
 		return
 	}
 
@@ -1096,27 +1219,28 @@ func (m *ServiceMgr) getAggRebalanceProgress(w http.ResponseWriter, r *http.Requ
 	if len(errMap) > 0 {
 		logging.Warnf("%s failed to get progress from some/all eventing nodes: %rs err: %rs",
 			logPrefix, m.eventingNodeAddrs, errMap)
-		fmt.Fprintf(w, "Failed to get progress, err: %v", errMap)
+		runtimeInfo.ErrCode = response.ErrInternalServer
+		runtimeInfo.Description = fmt.Sprintf("Failed to get progress")
 		return
 	}
 
 	aggProgress.NodeLevelStats = progressMap
 
-	buf, err := json.MarshalIndent(aggProgress, "", " ")
-	if err != nil {
-		logging.Errorf("%s failed to unmarshal rebalance progress across all producers, err: %v", logPrefix, err)
-		fmt.Fprintf(w, "Unable to marshal response, err: %v", err)
-		return
-	}
-
-	w.Write(buf)
+	runtimeInfo.Description = aggProgress
+	runtimeInfo.OnlyDescription = true
 }
 
 // Report aggregated rebalance status from all Eventing nodes in the cluster
 func (m *ServiceMgr) getAggRebalanceStatus(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "ServiceMgr::getAggRebalanceStatus"
 
-	if !rbac.ValidateAuth(w, r, rbac.EventingReadPermissions, false) {
+	res := response.NewResponseWriter(w, r, response.EventGetRebalanceStatus)
+	runtimeInfo := &response.RuntimeInfo{}
+
+	defer res.LogAndSend(runtimeInfo)
+
+	if notAllowed, err := rbac.IsAllowed(r, rbac.EventingReadPermissions, false); err != nil {
+		*runtimeInfo = getAuthErrorInfo(notAllowed, false, err)
 		return
 	}
 
@@ -1125,17 +1249,25 @@ func (m *ServiceMgr) getAggRebalanceStatus(w http.ResponseWriter, r *http.Reques
 	status, err := util.CheckIfRebalanceOngoing("/getRebalanceStatus", m.eventingNodeAddrs)
 	if err != nil {
 		logging.Errorf("%s failed to grab correct rebalance status from some/all nodes, err: %v", logPrefix, err)
-		fmt.Fprintf(w, "Failed to get progress, err: %v", err)
+		runtimeInfo.ErrCode = response.ErrInternalServer
+		runtimeInfo.Description = fmt.Sprintf("Failed to get progress err: %v", err)
 		return
 	}
 
-	w.Write([]byte(strconv.FormatBool(status)))
+	runtimeInfo.Description = status
+	runtimeInfo.OnlyDescription = true
 }
 
 // Report aggregated bootstrap status from all Eventing nodes in the cluster
 func (m *ServiceMgr) getAggBootstrapStatus(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "ServiceMgr::getAggBootstrapStatus"
-	if !rbac.ValidateAuth(w, r, rbac.EventingReadPermissions, false) {
+	res := response.NewResponseWriter(w, r, response.EventGetBootstrapStatus)
+	runtimeInfo := &response.RuntimeInfo{}
+
+	defer res.LogAndSend(runtimeInfo)
+
+	if notAllowed, err := rbac.IsAllowed(r, rbac.EventingReadPermissions, false); err != nil {
+		*runtimeInfo = getAuthErrorInfo(notAllowed, false, err)
 		return
 	}
 
@@ -1144,24 +1276,34 @@ func (m *ServiceMgr) getAggBootstrapStatus(w http.ResponseWriter, r *http.Reques
 	status, err := util.CheckIfBootstrapOngoing("/getBootstrapStatus", m.eventingNodeAddrs)
 	if err != nil {
 		logging.Errorf("%s failed to grab correct bootstrap status from some/all nodes, err: %v", logPrefix, err)
-		fmt.Fprintf(w, "Failed to get progress, err: %v", err)
+		runtimeInfo.ErrCode = response.ErrInternalServer
+		runtimeInfo.Description = fmt.Sprintf("Failed to get progress err: %v", err)
 		return
 	}
 
-	w.Write([]byte(strconv.FormatBool(status)))
+	runtimeInfo.Description = status
+	runtimeInfo.OnlyDescription = true
 }
 
 // Report aggregated bootstrap status of an app from all Eventing nodes in the cluster
 func (m *ServiceMgr) getAggBootstrapAppStatus(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "ServiceMgr::getAggBootstrapAppStatus"
-	appName, info := CheckAndGetQueryParam(r, "appName")
-	if info != nil {
-		m.sendErrorInfo(w, info)
+	res := response.NewResponseWriter(w, r, response.EventGetBootstrapStatus)
+	runtimeInfo := &response.RuntimeInfo{}
+
+	defer res.LogAndSend(runtimeInfo)
+
+	params := r.URL.Query()
+	res.AddRequestData("query", params)
+
+	appName, info := CheckAndGetQueryParam(params, "appName")
+	if info.ErrCode != response.Ok {
+		*runtimeInfo = *info
 		return
 	}
 
-	if info := m.checkAuthAndPermissionWithApp(w, r, appName, rbac.HandlerGetPermissions, false); info.Code != m.statusCodes.ok.Code {
-		m.sendErrorInfo(w, info)
+	if info := m.checkAuthAndPermissionWithApp(w, r, appName, rbac.HandlerGetPermissions, false); info.ErrCode != response.Ok {
+		*runtimeInfo = *info
 		return
 	}
 
@@ -1170,180 +1312,172 @@ func (m *ServiceMgr) getAggBootstrapAppStatus(w http.ResponseWriter, r *http.Req
 	status, err := util.CheckIfAppBootstrapOngoing("/getBootstrapAppStatus", m.eventingNodeAddrs, appName)
 	if err != nil {
 		logging.Errorf("%s failed to grab correct bootstrap status of app from some/all nodes, err: %v", logPrefix, err)
-		fmt.Fprintf(w, "Failed to get progress, err: %v", err)
+		runtimeInfo.ErrCode = response.ErrInternalServer
+		runtimeInfo.Description = fmt.Sprintf("Failed to get progress err: %v", err)
 		return
 	}
 
-	w.Write([]byte(strconv.FormatBool(status)))
+	runtimeInfo.Description = status
+	runtimeInfo.OnlyDescription = true
 }
 
 func (m *ServiceMgr) getLatencyStats(w http.ResponseWriter, r *http.Request) {
-	logPrefix := "ServiceMgr::getLatencyStats"
+	res := response.NewResponseWriter(w, r, response.EventFetchLatencyStats)
+	runtimeInfo := &response.RuntimeInfo{}
 
-	appName, info := CheckAndGetQueryParam(r, "name")
-	if info != nil {
-		m.sendErrorInfo(w, info)
+	defer res.LogAndSend(runtimeInfo)
+
+	params := r.URL.Query()
+	res.AddRequestData("query", params)
+
+	appName, info := CheckAndGetQueryParam(params, "name")
+	if info.ErrCode != response.Ok {
+		*runtimeInfo = *info
 		return
 	}
 
-	if info := m.checkAuthAndPermissionWithApp(w, r, appName, rbac.HandlerGetPermissions, false); info.Code != m.statusCodes.ok.Code {
-		m.sendErrorInfo(w, info)
+	if info := m.checkAuthAndPermissionWithApp(w, r, appName, rbac.HandlerGetPermissions, false); info.ErrCode != response.Ok {
+		*runtimeInfo = *info
 		return
 	}
 
 	if m.checkIfDeployed(appName) {
 		lStats := m.superSup.GetLatencyStats(appName)
-
-		data, err := json.MarshalIndent(lStats, "", " ")
-		if err != nil {
-			w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
-			fmt.Fprintf(w, "Failed to unmarshal latency stats, err: %v\n", err)
-			logging.Errorf("%s Function: %s failed to unmarshal latency stats, err: %v", logPrefix, appName, err)
-			return
-		}
-
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
-		fmt.Fprintf(w, "%s", string(data))
+		runtimeInfo.Description = lStats
+		runtimeInfo.OnlyDescription = true
 		return
 	}
 
-	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotDeployed.Code))
-	fmt.Fprintf(w, "Function: %s not deployed", appName)
+	runtimeInfo.ErrCode = response.ErrAppNotDeployed
+	runtimeInfo.Description = fmt.Sprintf("Function: %s not deployed", appName)
 }
 
 func (m *ServiceMgr) getExecutionStats(w http.ResponseWriter, r *http.Request) {
-	logPrefix := "ServiceMgr::getExecutionStats"
-	appName, info := CheckAndGetQueryParam(r, "name")
-	if info != nil {
-		m.sendErrorInfo(w, info)
+	res := response.NewResponseWriter(w, r, response.EventFetchExecutionStats)
+	runtimeInfo := &response.RuntimeInfo{}
+
+	defer res.LogAndSend(runtimeInfo)
+
+	params := r.URL.Query()
+	res.AddRequestData("query", params)
+
+	appName, info := CheckAndGetQueryParam(params, "name")
+	if info.ErrCode != response.Ok {
+		*runtimeInfo = *info
 		return
 	}
 
-	if info := m.checkAuthAndPermissionWithApp(w, r, appName, rbac.HandlerGetPermissions, false); info.Code != m.statusCodes.ok.Code {
-		m.sendErrorInfo(w, info)
+	if info := m.checkAuthAndPermissionWithApp(w, r, appName, rbac.HandlerGetPermissions, false); info.ErrCode != response.Ok {
+		*runtimeInfo = *info
 		return
 	}
 
 	if m.checkIfDeployed(appName) {
 		eStats := m.superSup.GetExecutionStats(appName)
-
-		data, err := json.MarshalIndent(eStats, "", " ")
-		if err != nil {
-			w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
-			fmt.Fprintf(w, "Failed to unmarshal execution stats, err: %v\n", err)
-			logging.Errorf("%s Function: %s failed to unmarshal execution stats, err: %v", logPrefix, appName, err)
-			return
-		}
-
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
-		fmt.Fprintf(w, "%s", string(data))
+		runtimeInfo.Description = eStats
+		runtimeInfo.OnlyDescription = true
 		return
 	}
 
-	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotDeployed.Code))
-	fmt.Fprintf(w, "Function: %s not deployed", appName)
+	runtimeInfo.ErrCode = response.ErrAppNotDeployed
+	runtimeInfo.Description = fmt.Sprintf("Function: %s not deployed", appName)
 }
 
 func (m *ServiceMgr) getFailureStats(w http.ResponseWriter, r *http.Request) {
-	logPrefix := "ServiceMgr::getFailureStats"
-	appName, info := CheckAndGetQueryParam(r, "name")
-	if info != nil {
-		m.sendErrorInfo(w, info)
+	res := response.NewResponseWriter(w, r, response.EventFetchFailureStats)
+	runtimeInfo := &response.RuntimeInfo{}
+
+	defer res.LogAndSend(runtimeInfo)
+
+	params := r.URL.Query()
+	res.AddRequestData("query", params)
+
+	appName, info := CheckAndGetQueryParam(params, "name")
+	if info.ErrCode != response.Ok {
+		*runtimeInfo = *info
 		return
 	}
 
-	if info := m.checkAuthAndPermissionWithApp(w, r, appName, rbac.HandlerGetPermissions, false); info.Code != m.statusCodes.ok.Code {
-		m.sendErrorInfo(w, info)
+	if info := m.checkAuthAndPermissionWithApp(w, r, appName, rbac.HandlerGetPermissions, false); info.ErrCode != response.Ok {
+		*runtimeInfo = *info
 		return
 	}
 
 	if m.checkIfDeployed(appName) {
 		fStats := m.superSup.GetFailureStats(appName)
-
-		data, err := json.MarshalIndent(fStats, "", " ")
-		if err != nil {
-			w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
-			fmt.Fprintf(w, "Failed to unmarshal failure stats, err: %v\n", err)
-			logging.Errorf("%s Function: %s failed to unmarshal failure stats, err: %v", logPrefix, appName, err)
-			return
-		}
-
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
-		fmt.Fprintf(w, "%s", string(data))
+		runtimeInfo.Description = fStats
+		runtimeInfo.OnlyDescription = true
 		return
 	}
 
-	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotDeployed.Code))
-	fmt.Fprintf(w, "Function: %s not deployed", appName)
+	runtimeInfo.ErrCode = response.ErrAppNotDeployed
+	runtimeInfo.Description = fmt.Sprintf("Function: %s not deployed", appName)
 }
 
 func (m *ServiceMgr) getSeqsProcessed(w http.ResponseWriter, r *http.Request) {
-	logPrefix := "ServiceMgr::getSeqsProcessed"
+	res := response.NewResponseWriter(w, r, response.EventGetSeqProcessed)
+	runtimeInfo := &response.RuntimeInfo{}
 
-	appName, info := CheckAndGetQueryParam(r, "name")
-	if info != nil {
-		m.sendErrorInfo(w, info)
+	defer res.LogAndSend(runtimeInfo)
+
+	params := r.URL.Query()
+	res.AddRequestData("query", params)
+
+	appName, info := CheckAndGetQueryParam(params, "name")
+	if info.ErrCode != response.Ok {
+		*runtimeInfo = *info
 		return
 	}
 
-	if info := m.checkAuthAndPermissionWithApp(w, r, appName, rbac.HandlerGetPermissions, false); info.Code != m.statusCodes.ok.Code {
-		m.sendErrorInfo(w, info)
+	if info := m.checkAuthAndPermissionWithApp(w, r, appName, rbac.HandlerGetPermissions, false); info.ErrCode != response.Ok {
+		*runtimeInfo = *info
 		return
 	}
 
 	if m.checkIfDeployed(appName) {
 		seqNoProcessed := m.superSup.GetSeqsProcessed(appName)
-
-		data, err := json.MarshalIndent(seqNoProcessed, "", " ")
-		if err != nil {
-			logging.Errorf("%s Function: %s failed to fetch vb sequences processed so far, err: %v", logPrefix, appName, err)
-			w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errGetVbSeqs.Code))
-			fmt.Fprintf(w, "failed to fetch vb sequences processed so far, err: %v")
-			return
-		}
-
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
-		fmt.Fprintf(w, "%s", string(data))
+		runtimeInfo.Description = seqNoProcessed
+		runtimeInfo.OnlyDescription = true
 		return
 	}
-	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotDeployed.Code))
-	fmt.Fprintf(w, "Function: %s not deployed", appName)
-
+	runtimeInfo.ErrCode = response.ErrAppNotDeployed
+	runtimeInfo.Description = fmt.Sprintf("Function: %s not deployed", appName)
 }
 
 func (m *ServiceMgr) setSettingsHandler(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "ServiceMgr::setSettingsHandler"
 
-	info := &runtimeInfo{}
+	res := response.NewResponseWriter(w, r, response.EventUpdateFunction)
+	runtimeInfo := &response.RuntimeInfo{}
+
+	defer res.LogAndSend(runtimeInfo)
+
 	params := r.URL.Query()
-	appNameList := params["name"]
-	if len(appNameList) == 0 {
-		info.Code = m.statusCodes.errReadReq.Code
-		info.Info = fmt.Sprintf("Parameter 'name'  must be provided")
-		m.sendErrorInfo(w, info)
+	res.AddRequestData("query", params)
+
+	appName, info := CheckAndGetQueryParam(params, "name")
+	if info.ErrCode != response.Ok {
+		*runtimeInfo = *info
 		return
 	}
 
-	appName := appNameList[0]
-
-	var force bool
-	if f, ok := params["force"]; ok && f[0] == "true" {
+	force := false
+	forceVal, tmpInfo := CheckAndGetQueryParam(params, "force")
+	if tmpInfo.ErrCode == response.Ok && forceVal == "true" {
 		force = true
 	}
 
-	if info = m.checkAuthAndPermissionWithApp(w, r, appName, rbac.HandlerManagePermissions, false); info.Code != m.statusCodes.ok.Code {
-		m.sendErrorInfo(w, info)
+	if info := m.checkAuthAndPermissionWithApp(w, r, appName, rbac.HandlerManagePermissions, false); info.ErrCode != response.Ok {
+		*runtimeInfo = *info
 		return
 	}
 
 	logging.Infof("%s REST Call: %v %v", logPrefix, r.URL.Path, r.Method)
-	audit.Log(auditevent.SetSettings, r, appName)
 	data, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		logging.Errorf("%s Function: %s failed to read request body, err: %v", logPrefix, appName, err)
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errReadReq.Code))
-		w.WriteHeader(m.getDisposition(m.statusCodes.errReadReq.Code))
-		fmt.Fprintf(w, "Failed to read request body, err: %v", err)
+		runtimeInfo.ErrCode = response.ErrReadReq
+		runtimeInfo.Description = fmt.Sprintf("Failed to read request body, err: %v", err)
 		return
 	}
 
@@ -1351,50 +1485,48 @@ func (m *ServiceMgr) setSettingsHandler(w http.ResponseWriter, r *http.Request) 
 	err = json.Unmarshal(data, &settings)
 	if err != nil {
 		logging.Errorf("%s Function: %s failed to unmarshal setting supplied, err: %v", logPrefix, appName, err)
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errUnmarshalPld.Code))
-		w.WriteHeader(m.getDisposition(m.statusCodes.errUnmarshalPld.Code))
-		fmt.Fprintf(w, "Failed to unmarshal setting supplied, err: %v", err)
+		runtimeInfo.ErrCode = response.ErrUnmarshalPld
+		runtimeInfo.Description = fmt.Sprintf("Failed to unmarshal setting supplied, err: %v", err)
 		return
 	}
 
-	if info = m.setSettings(appName, data, force); info.Code != m.statusCodes.ok.Code {
-		m.sendErrorInfo(w, info)
+	if info := m.setSettings(appName, data, force); info.ErrCode != response.Ok {
+		*runtimeInfo = *info
 		return
 	}
 
-	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
-	fmt.Fprintf(w, "Settings saved")
+	runtimeInfo.Description = "Settings saved"
+	runtimeInfo.OnlyDescription = true
 }
 
-func (m *ServiceMgr) getSettings(appName string) (*map[string]interface{}, *runtimeInfo) {
+func (m *ServiceMgr) getSettings(appName string) (*map[string]interface{}, *response.RuntimeInfo) {
 	logPrefix := "ServiceMgr::getSettings"
 
 	logging.Infof("%s Function: %s fetching settings", logPrefix, appName)
 	app, status := m.getTempStore(appName)
-	if status.Code != m.statusCodes.ok.Code {
+	if status.ErrCode != response.Ok {
 		return nil, status
 	}
 
-	info := runtimeInfo{}
+	info := &response.RuntimeInfo{}
 
-	info.Code = m.statusCodes.ok.Code
-	info.Info = fmt.Sprintf("Function: %s fetched settings", appName)
-	logging.Infof("%s %s", logPrefix, info.Info)
-	return &app.Settings, &info
+	info.Description = fmt.Sprintf("Function: %s fetched settings", appName)
+	logging.Infof("%s %s", logPrefix, info.Description)
+	return &app.Settings, info
 }
 
-func (m *ServiceMgr) setSettings(appName string, data []byte, force bool) (info *runtimeInfo) {
+func (m *ServiceMgr) setSettings(appName string, data []byte, force bool) (info *response.RuntimeInfo) {
 	logPrefix := "ServiceMgr::setSettings"
 
-	info = &runtimeInfo{}
+	info = &response.RuntimeInfo{}
 	logging.Infof("%s Function: %s save settings", logPrefix, appName)
 
 	var settings map[string]interface{}
 	err := json.Unmarshal(data, &settings)
 	if err != nil {
-		info.Code = m.statusCodes.errMarshalResp.Code
-		info.Info = fmt.Sprintf("Function: %s failed to unmarshal setting supplied, err: %v", appName, err)
-		logging.Errorf("%s %s", logPrefix, info.Info)
+		info.ErrCode = response.ErrUnmarshalPld
+		info.Description = fmt.Sprintf("Function: %s failed to unmarshal setting supplied, err: %v", appName, err)
+		logging.Errorf("%s %s", logPrefix, info.Description)
 		return
 	}
 
@@ -1404,8 +1536,8 @@ func (m *ServiceMgr) setSettings(appName string, data []byte, force bool) (info 
 			settings["num_timer_partitions"], err = strconv.ParseFloat(value.(string), 64)
 			if err != nil {
 				logging.Errorf("%s Function: num_timer_partitions is in invalid format.", logPrefix)
-				info.Code = m.statusCodes.errInvalidConfig.Code
-				info.Info = fmt.Sprintf("num_timer_partitions format is invalid.")
+				info.ErrCode = response.ErrInvalidConfig
+				info.Description = "num_timer_partitions format is invalid"
 				return
 			}
 		case int:
@@ -1421,8 +1553,8 @@ func (m *ServiceMgr) setSettings(appName string, data []byte, force bool) (info 
 		settings["dcp_stream_boundary"] = "everything"
 	}
 
-	if info = m.validateSettings(appName, util.DeepCopy(settings)); info.Code != m.statusCodes.ok.Code {
-		logging.Errorf("%s %s", logPrefix, info.Info)
+	if info = m.validateSettings(appName, util.DeepCopy(settings)); info.ErrCode != response.Ok {
+		logging.Errorf("%s %s", logPrefix, info.Description)
 		return
 	}
 
@@ -1439,31 +1571,30 @@ func (m *ServiceMgr) setSettings(appName string, data []byte, force bool) (info 
 				status, err := util.GetAggBootstrapAppStatus(net.JoinHostPort(util.Localhost(), m.adminHTTPPort), appName, true)
 				if err != nil {
 					logging.Errorf("%s %s", logPrefix, err)
-					info.Code = m.statusCodes.errStatusesNotFound.Code
-					info.Info = "Failed to find app status"
+					info.ErrCode = response.ErrStatusesNotFound
+					info.Description = "Failed to find app status"
 					return
 				}
 
 				if status {
-					info.Code = m.statusCodes.errAppNotInit.Code
-					info.Info = "Function is undergoing bootstrap"
+					info.ErrCode = response.ErrAppNotInit
+					info.Description = "Function is undergoing bootstrap"
 					return
 				}
 			}
 		}
 
 		if !force {
-			if lifeCycleOpsInfo := m.checkLifeCycleOpsDuringRebalance(); lifeCycleOpsInfo.Code != m.statusCodes.ok.Code {
-				info.Code = lifeCycleOpsInfo.Code
-				info.Info = lifeCycleOpsInfo.Info
+			if info = m.checkLifeCycleOpsDuringRebalance(); info.ErrCode != response.Ok {
 				return
 			}
 		}
 	}
 
 	// Get the app from temp store and update its settings with those provided
-	app, info := m.getTempStore(appName)
-	if info.Code != m.statusCodes.ok.Code {
+	var app application
+	app, info = m.getTempStore(appName)
+	if info.ErrCode != response.Ok {
 		return
 	}
 	m.addDefaultDeploymentConfig(&app)
@@ -1475,9 +1606,9 @@ func (m *ServiceMgr) setSettings(appName string, data []byte, force bool) (info 
 
 	for setting := range settings {
 		if deployed && !isDynamicSetting(setting) && app.Settings[setting] != settings[setting] {
-			info.Code = m.statusCodes.errInvalidConfig.Code
-			info.Info = fmt.Sprintf("Function: %s setting: %s can only be altered when the function is paused or undeployed.", appName, setting)
-			logging.Errorf("%s %s", logPrefix, info.Info)
+			info.ErrCode = response.ErrInvalidConfig
+			info.Description = fmt.Sprintf("Function: %s setting: %s can only be altered when the function is paused or undeployed.", appName, setting)
+			logging.Errorf("%s %s", logPrefix, info.Description)
 			return
 		}
 		app.Settings[setting] = settings[setting]
@@ -1491,16 +1622,18 @@ func (m *ServiceMgr) setSettings(appName string, data []byte, force bool) (info 
 
 	deployedApps := m.superSup.GetDeployedApps()
 	if pOk && dOk {
-		var isMixedMode bool
-		if isMixedMode, info = m.isMixedModeCluster(); info.Code != m.statusCodes.ok.Code {
-			logging.Errorf("%s %s", logPrefix, info.Info)
+		isMixedMode, err := m.isMixedModeCluster()
+		if err != nil {
+			info.ErrCode = response.ErrInternalServer
+			info.Description = fmt.Sprintf("err: %v", err)
+			logging.Errorf("%s %s", logPrefix, info.Description)
 			return
 		}
 
 		if isMixedMode && !m.isUndeployOperation(app.Settings) {
-			info.Code = m.statusCodes.errMixedMode.Code
-			info.Info = "Life-cycle operations except delete and undeploy are not allowed in a mixed mode cluster"
-			logging.Errorf("%s %s", logPrefix, info.Info)
+			info.ErrCode = response.ErrMixedMode
+			info.Description = "Life-cycle operations except delete and undeploy are not allowed in a mixed mode cluster"
+			logging.Errorf("%s %s", logPrefix, info.Description)
 			return
 		}
 
@@ -1510,42 +1643,42 @@ func (m *ServiceMgr) setSettings(appName string, data []byte, force bool) (info 
 		// Check for pause processing
 		if deploymentStatus && !processingStatus {
 			if !m.compareEventingVersion(mhVersion) {
-				info.Code = m.statusCodes.errClusterVersion.Code
-				info.Info = fmt.Sprintf("All eventing nodes in the cluster must be on version %s or higher for pausing function execution",
+				info.ErrCode = response.ErrClusterVersion
+				info.Description = fmt.Sprintf("All eventing nodes in the cluster must be on version %s or higher for pausing function execution",
 					mhVersion)
-				logging.Warnf("%s Version compat check failed: %s", logPrefix, info.Info)
+				logging.Warnf("%s Version compat check failed: %s", logPrefix, info.Description)
 				return
 			}
 
 			if _, ok := deployedApps[appName]; !ok {
-				info.Code = m.statusCodes.errAppNotInit.Code
-				info.Info = fmt.Sprintf("Function: %s not processing mutations. Operation is not permitted. Edit function instead", appName)
-				logging.Errorf("%s %s", logPrefix, info.Info)
+				info.ErrCode = response.ErrAppNotInit
+				info.Description = fmt.Sprintf("Function: %s not processing mutations. Operation is not permitted. Edit function instead", appName)
+				logging.Errorf("%s %s", logPrefix, info.Description)
 				return
 			}
 
 			if oldTimerPartitionsPresent {
 				if timerPartitionsPresent && oldTPValue != newTPValue {
-					info.Code = m.statusCodes.errInvalidConfig.Code
-					info.Info = fmt.Sprintf("Function: %s num_timer_partitions cannot be altered when trying to pause the function.", appName)
-					logging.Errorf("%s %s", logPrefix, info.Info)
+					info.ErrCode = response.ErrInvalidConfig
+					info.Description = fmt.Sprintf("Function: %s num_timer_partitions cannot be altered when trying to pause the function.", appName)
+					logging.Errorf("%s %s", logPrefix, info.Description)
 					return
 				}
 			} else {
 				if timerPartitionsPresent {
-					info.Code = m.statusCodes.errInvalidConfig.Code
-					info.Info = fmt.Sprintf("Function: %s num_timer_partitions cannot be set when trying to pause the function.", appName)
-					logging.Errorf("%s %s", logPrefix, info.Info)
+					info.ErrCode = response.ErrInvalidConfig
+					info.Description = fmt.Sprintf("Function: %s num_timer_partitions cannot be set when trying to pause the function.", appName)
+					logging.Errorf("%s %s", logPrefix, info.Description)
 					return
 				}
 			}
 		}
 
 		if deploymentStatus && processingStatus && m.superSup.GetAppCompositeState(appName) == common.AppStatePaused && !m.compareEventingVersion(mhVersion) {
-			info.Code = m.statusCodes.errClusterVersion.Code
-			info.Info = fmt.Sprintf("All eventing nodes in cluster must be on version %s or higher for resuming function execution",
+			info.ErrCode = response.ErrClusterVersion
+			info.Description = fmt.Sprintf("All eventing nodes in cluster must be on version %s or higher for resuming function execution",
 				mhVersion)
-			logging.Warnf("%s Version compat check failed: %s", logPrefix, info.Info)
+			logging.Warnf("%s Version compat check failed: %s", logPrefix, info.Description)
 			return
 		}
 
@@ -1554,16 +1687,16 @@ func (m *ServiceMgr) setSettings(appName string, data []byte, force bool) (info 
 			if m.superSup.GetAppCompositeState(appName) == common.AppStatePaused {
 				if oldTimerPartitionsPresent {
 					if timerPartitionsPresent && oldTPValue != newTPValue {
-						info.Code = m.statusCodes.errInvalidConfig.Code
-						info.Info = fmt.Sprintf("Function: %s num_timer_partitions cannot be changed when trying to resume the function.", appName)
-						logging.Errorf("%s %s", logPrefix, info.Info)
+						info.ErrCode = response.ErrInvalidConfig
+						info.Description = fmt.Sprintf("Function: %s num_timer_partitions cannot be changed when trying to resume the function.", appName)
+						logging.Errorf("%s %s", logPrefix, info.Description)
 						return
 					}
 				} else {
 					if timerPartitionsPresent {
-						info.Code = m.statusCodes.errInvalidConfig.Code
-						info.Info = fmt.Sprintf("Function: %s num_timer_partitions cannot be set when trying to resume the function.", appName)
-						logging.Errorf("%s %s", logPrefix, info.Info)
+						info.ErrCode = response.ErrInvalidConfig
+						info.Description = fmt.Sprintf("Function: %s num_timer_partitions cannot be set when trying to resume the function.", appName)
+						logging.Errorf("%s %s", logPrefix, info.Description)
 						return
 					}
 				}
@@ -1571,16 +1704,16 @@ func (m *ServiceMgr) setSettings(appName string, data []byte, force bool) (info 
 
 			if oldTimerPartitionsPresent {
 				if timerPartitionsPresent && m.checkIfDeployed(appName) && oldTPValue != newTPValue {
-					info.Code = m.statusCodes.errInvalidConfig.Code
-					info.Info = fmt.Sprintf("Function: %s num_timer_partitions cannot be changed when the function is in deployed state.", appName)
-					logging.Errorf("%s %s", logPrefix, info.Info)
+					info.ErrCode = response.ErrInvalidConfig
+					info.Description = fmt.Sprintf("Function: %s num_timer_partitions cannot be changed when the function is in deployed state.", appName)
+					logging.Errorf("%s %s", logPrefix, info.Description)
 					return
 				}
 			} else {
 				if timerPartitionsPresent && m.checkIfDeployed(appName) {
-					info.Code = m.statusCodes.errInvalidConfig.Code
-					info.Info = fmt.Sprintf("Function: %s num_timer_partitions cannot be changed when the function is in deployed state.", appName)
-					logging.Errorf("%s %s", logPrefix, info.Info)
+					info.ErrCode = response.ErrInvalidConfig
+					info.Description = fmt.Sprintf("Function: %s num_timer_partitions cannot be changed when the function is in deployed state.", appName)
+					logging.Errorf("%s %s", logPrefix, info.Description)
 					return
 				}
 				if !m.checkIfDeployed(appName) {
@@ -1588,54 +1721,53 @@ func (m *ServiceMgr) setSettings(appName string, data []byte, force bool) (info 
 				}
 			}
 
-			if info = m.validateApplication(&app); info.Code != m.statusCodes.ok.Code {
-				logging.Errorf("%s Function: %s recursion error %d: %s", logPrefix, app.Name, info.Code, info.Info)
+			if info = m.validateApplication(&app); info.ErrCode != response.Ok {
+				logging.Errorf("%s Function: %s recursion error %d: %s", logPrefix, app.Name, info.ErrCode, info.Description)
 				return
 			}
 
 			// Write to primary store in case of deployment
 			if !m.checkIfDeployedAndRunning(appName) {
 				info = m.savePrimaryStore(&app)
-				if info.Code != m.statusCodes.ok.Code {
-					logging.Errorf("%s %s", logPrefix, info.Info)
+				if info.ErrCode != response.Ok {
+					logging.Errorf("%s %s", logPrefix, info.Description)
 					return
 				}
 			}
 		}
 	} else {
-		info.Code = m.statusCodes.errStatusesNotFound.Code
-		info.Info = fmt.Sprintf("Function: %s missing processing or deployment statuses or both", appName)
-		logging.Errorf("%s %s", logPrefix, info.Info)
+		info.ErrCode = response.ErrStatusesNotFound
+		info.Description = fmt.Sprintf("Function: %s missing processing or deployment statuses or both", appName)
+		logging.Errorf("%s %s", logPrefix, info.Description)
 		return
 	}
 
 	data, err = json.MarshalIndent(app.Settings, "", " ")
 	if err != nil {
-		info.Code = m.statusCodes.errMarshalResp.Code
-		info.Info = fmt.Sprintf("Function: %s failed to marshal settings, err: %v", appName, err)
-		logging.Errorf("%s %s", logPrefix, info.Info)
+		info.ErrCode = response.ErrMarshalResp
+		info.Description = fmt.Sprintf("Function: %s failed to marshal settings, err: %v", appName, err)
+		logging.Errorf("%s %s", logPrefix, info.Description)
 		return
 	}
 
 	metakvPath := metakvAppSettingsPath + appName
 	err = util.MetakvSet(metakvPath, data, nil)
 	if err != nil {
-		info.Code = m.statusCodes.errSetSettingsPs.Code
-		info.Info = fmt.Sprintf("Function: %s failed to store setting, err: %v", appName, err)
-		logging.Errorf("%s %s", logPrefix, info.Info)
-
+		info.ErrCode = response.ErrSetSettingsPs
+		info.Description = fmt.Sprintf("Function: %s failed to store setting, err: %v", appName, err)
+		logging.Errorf("%s %s", logPrefix, info.Description)
 		return
 	}
 
 	// Here function scope and owner won't be changed so no need to check for permissions
 	// Write the updated app along with its settings back to temp store
-	if info = m.saveTempStore(app); info.Code != m.statusCodes.ok.Code {
+	if info = m.saveTempStore(app); info.ErrCode != response.Ok {
 		return
 	}
 
-	info.Code = m.statusCodes.ok.Code
-	info.Info = fmt.Sprintf("Function: %s stored settings", appName)
-	logging.Infof("%s %s", logPrefix, info.Info)
+	info.ErrCode = response.Ok
+	info.Description = fmt.Sprintf("Function: %s stored settings", appName)
+	logging.Infof("%s %s", logPrefix, info.Description)
 	return
 }
 
@@ -1729,27 +1861,30 @@ func (m *ServiceMgr) parseFunctionPayload(data []byte, fnName string) applicatio
 func (m *ServiceMgr) getPrimaryStoreHandler(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "ServiceMgr::getPrimaryStoreHandler"
 
-	cred, err := rbac.AuthWebCreds(w, r)
+	res := response.NewResponseWriter(w, r, response.EventGetFunctionDraft)
+	runtimeInfo := &response.RuntimeInfo{}
+
+	defer res.LogAndSend(runtimeInfo)
+
+	cred, err := rbac.AuthWebCreds(r)
 	if err != nil {
+		*runtimeInfo = getAuthErrorInfo(nil, false, err)
 		return
 	}
 
 	logging.Infof("%s getting all functions from primary store", logPrefix)
-	audit.Log(auditevent.FetchFunctions, r, nil)
 
 	appList, err := util.ListChildren(metakvAppsPath)
 	if err != nil {
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errReadReq.Code))
-		msg := fmt.Sprintf("Skipping read request from primary store, err: %s", err)
-		logging.Errorf("%s %s", logPrefix, msg)
-		fmt.Fprintf(w, "%s\n", msg)
+		runtimeInfo.ErrCode = response.ErrInternalServer
+		runtimeInfo.Description = fmt.Sprintf("Error in reading app path: err", err)
 		return
 	}
 	respData := make([]application, 0, len(appList))
 
 	for _, fnName := range appList {
 		info := m.checkPermissionFromCred(cred, fnName, rbac.HandlerGetPermissions, false)
-		if info.Code != m.statusCodes.ok.Code {
+		if info.ErrCode != response.Ok {
 			continue
 		}
 
@@ -1759,23 +1894,19 @@ func (m *ServiceMgr) getPrimaryStoreHandler(w http.ResponseWriter, r *http.Reque
 		}
 	}
 
-	data, err := json.MarshalIndent(respData, "", " ")
-	if err != nil {
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
-		fmt.Fprintf(w, "Failed to marshal response for all functions, err: %v", err)
-		logging.Errorf("%s failed to marshal response for all functions, err: %v", logPrefix, err)
-		return
-	}
-
-	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
-	fmt.Fprintf(w, "%s\n", data)
+	runtimeInfo.OnlyDescription = true
+	runtimeInfo.Description = respData
 }
 
 func (m *ServiceMgr) getAnnotations(w http.ResponseWriter, r *http.Request) {
-	logPrefix := "ServiceMgr::getAnnotations"
+	res := response.NewResponseWriter(w, r, response.EventGetAnnotations)
+	runtimeInfo := &response.RuntimeInfo{}
 
-	cred, err := rbac.AuthWebCreds(w, r)
+	defer res.LogAndSend(runtimeInfo)
+
+	cred, err := rbac.AuthWebCreds(r)
 	if err != nil {
+		*runtimeInfo = getAuthErrorInfo(nil, false, err)
 		return
 	}
 
@@ -1784,7 +1915,7 @@ func (m *ServiceMgr) getAnnotations(w http.ResponseWriter, r *http.Request) {
 	for _, app := range applications {
 
 		info := m.checkPermissionFromCred(cred, app.Name, rbac.HandlerGetPermissions, false)
-		if info.Code != m.statusCodes.ok.Code {
+		if info.ErrCode != response.Ok {
 			continue
 		}
 		respObj := annotation{}
@@ -1793,36 +1924,19 @@ func (m *ServiceMgr) getAnnotations(w http.ResponseWriter, r *http.Request) {
 		respObj.OverloadedNames = parser.ListOverloadedFunctions(app.AppHandlers)
 		respData = append(respData, respObj)
 	}
-	data, err := json.Marshal(respData)
-	if err != nil {
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
-		fmt.Fprintf(w, "Failed to marshal response for annotations, err: %v", err)
-		logging.Errorf("%s Failed to marshal response for annotations, err: %v", logPrefix, err)
-	}
-	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
-	fmt.Fprintf(w, "%s\n", data)
+
+	runtimeInfo.OnlyDescription = true
+	runtimeInfo.Description = respData
 }
 
-func (m *ServiceMgr) getTempStoreHandler(w http.ResponseWriter, r *http.Request) {
-	logPrefix := "ServiceMgr::getTempStoreHandler"
-
-	cred, err := rbac.AuthWebCreds(w, r)
-	if err != nil {
-		return
-	}
-
-	// Moving just this case to trace log level as ns_server keeps polling
-	// eventing every 5s to see if new functions have been created. So on an idle
-	// cluster it will log lot of this message.
-	logging.Tracef("%s fetching function draft definitions", logPrefix)
-	audit.Log(auditevent.FetchDrafts, r, nil)
+func (m *ServiceMgr) getTempStoreHandlerHelper(cred cbauth.Creds) []application {
 	applications := m.getTempStoreAll()
 	tempApps := make([]application, 0, len(applications))
 
 	// Remove curl creds and "num_timer_partitions" before sending it to the UI
 	for _, app := range applications {
 		info := m.checkPermissionFromCred(cred, app.Name, rbac.HandlerGetPermissions, false)
-		if info.Code != m.statusCodes.ok.Code {
+		if info.ErrCode != response.Ok {
 			continue
 		}
 		if _, ok := app.Settings["num_timer_partitions"]; ok {
@@ -1831,33 +1945,39 @@ func (m *ServiceMgr) getTempStoreHandler(w http.ResponseWriter, r *http.Request)
 		redactPasswords(&app)
 		tempApps = append(tempApps, app)
 	}
+	return tempApps
+}
 
-	data, err := json.MarshalIndent(tempApps, "", " ")
+func (m *ServiceMgr) getTempStoreHandler(w http.ResponseWriter, r *http.Request) {
+	res := response.NewResponseWriter(w, r, response.EventGetFunctionDraft)
+	runtimeInfo := &response.RuntimeInfo{}
+
+	defer res.LogAndSend(runtimeInfo)
+
+	cred, err := rbac.AuthWebCreds(r)
 	if err != nil {
-		logging.Errorf("%s failed to marshal response, err: %v", logPrefix, err)
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
-		w.WriteHeader(m.getDisposition(m.statusCodes.errMarshalResp.Code))
-		fmt.Fprintf(w, `{"error":"Failed to marshal response, err: %v"}`, err)
+		*runtimeInfo = getAuthErrorInfo(nil, false, err)
 		return
 	}
 
-	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
-	fmt.Fprintf(w, "%s\n", data)
+	tempApps := m.getTempStoreHandlerHelper(cred)
+
+	runtimeInfo.Description = tempApps
+	runtimeInfo.OnlyDescription = true
 }
 
-func (m *ServiceMgr) getTempStore(appName string) (application, *runtimeInfo) {
+func (m *ServiceMgr) getTempStore(appName string) (application, *response.RuntimeInfo) {
 	logPrefix := "ServiceMgr::getTempStore"
 	logging.Infof("%s Function: %s fetching function draft definitions", logPrefix, appName)
 
 	app, info := m.getAppFromTempStore(appName)
-	if info.Code != m.statusCodes.ok.Code {
-		logging.Errorf("%s %s", logPrefix, info.Info)
+	if info.ErrCode != response.Ok {
+		logging.Errorf("%s %s", logPrefix, info.Description)
 		return app, info
 	}
 
 	m.addDefaultDeploymentConfig(&app)
 	m.maybeReplaceFromPrior(&app)
-	info.Code = m.statusCodes.ok.Code
 	delete(app.Settings, "handler_uuid")
 	return app, info
 }
@@ -1880,9 +2000,8 @@ func (m *ServiceMgr) getTempStoreAll() []application {
 	return applications
 }
 
-func (m *ServiceMgr) getAppFromTempStore(appName string) (application, *runtimeInfo) {
-	info := &runtimeInfo{}
-	info.Code = m.statusCodes.ok.Code
+func (m *ServiceMgr) getAppFromTempStore(appName string) (application, *response.RuntimeInfo) {
+	info := &response.RuntimeInfo{}
 
 	m.fnMu.Lock()
 	defer m.fnMu.Unlock()
@@ -1897,28 +2016,27 @@ func (m *ServiceMgr) getAppFromTempStore(appName string) (application, *runtimeI
 	return m.getAppFromMetakvTempStore(appName)
 }
 
-func (m *ServiceMgr) getAppFromMetakvTempStore(appName string) (application, *runtimeInfo) {
-	info := &runtimeInfo{}
-	info.Code = m.statusCodes.ok.Code
+func (m *ServiceMgr) getAppFromMetakvTempStore(appName string) (application, *response.RuntimeInfo) {
+	info := &response.RuntimeInfo{}
 
 	app := application{}
 
 	data, err := util.ReadAppContent(metakvTempAppsPath, metakvTempChecksumPath, appName)
 	if err == util.AppNotExist {
-		info.Code = m.statusCodes.errAppNotFoundTs.Code
-		info.Info = fmt.Sprintf("Function: %s not found", appName)
+		info.ErrCode = response.ErrAppNotFoundTs
+		info.Description = fmt.Sprintf("Function: %s not found", appName)
 		return app, info
 	}
 
 	if err != nil || data == nil {
-		info.Code = m.statusCodes.errInternalServer.Code
+		info.ErrCode = response.ErrInternalServer
 		return app, info
 	}
 
 	uErr := json.Unmarshal(data, &app)
 	if uErr != nil {
-		info.Code = m.statusCodes.errReadReq.Code
-		info.Info = fmt.Sprintf("Unmarshalling from metakv failed for Function: %s", appName)
+		info.ErrCode = response.ErrReadReq
+		info.Description = fmt.Sprintf("Unmarshalling from metakv failed for Function: %s", appName)
 		return application{}, info
 	}
 
@@ -1927,122 +2045,141 @@ func (m *ServiceMgr) getAppFromMetakvTempStore(appName string) (application, *ru
 
 func (m *ServiceMgr) saveTempStoreHandler(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "ServiceMgr::saveTempStoreHandler"
-	appName, info := CheckAndGetQueryParam(r, "name")
-	if info != nil {
-		m.sendErrorInfo(w, info)
+	res := response.NewResponseWriter(w, r, response.EventUpdateFunction)
+	runtimeInfo := &response.RuntimeInfo{}
+
+	defer res.LogAndSend(runtimeInfo)
+
+	params := r.URL.Query()
+	res.AddRequestData("query", params)
+
+	appName, info := CheckAndGetQueryParam(params, "name")
+	if info.ErrCode != response.Ok {
+		*runtimeInfo = *info
 		return
 	}
 
-	if info := m.checkAuthAndPermissionWithApp(w, r, appName, rbac.HandlerManagePermissions, false); info.Code != m.statusCodes.ok.Code {
-		m.sendErrorInfo(w, info)
+	if info := m.checkAuthAndPermissionWithApp(w, r, appName, rbac.HandlerManagePermissions, false); info.ErrCode != response.Ok {
+		*runtimeInfo = *info
 		return
 	}
 
 	logging.Infof("%s REST Call: %v %v", logPrefix, r.URL.Path, r.Method)
-	audit.Log(auditevent.SaveDraft, r, appName)
 
 	data, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		logging.Errorf("%s Function: %s failed to read request body, err: %v", logPrefix, appName, err)
-
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errReadReq.Code))
-		w.WriteHeader(m.getDisposition(m.statusCodes.errReadReq.Code))
-		fmt.Fprintf(w, "Failed to read request body, err: %v", err)
+		runtimeInfo.ErrCode = response.ErrReadReq
+		runtimeInfo.Description = fmt.Sprintf("Failed to read request body, err: %v", err)
 		return
 	}
 
 	var app application
 	err = json.Unmarshal(data, &app)
 	if err != nil {
-		errString := fmt.Sprintf("Function: %s failed to unmarshal payload", appName)
-		logging.Errorf("%s %s, err: %v", logPrefix, errString, err)
-
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errUnmarshalPld.Code))
-		w.WriteHeader(m.getDisposition(m.statusCodes.errUnmarshalPld.Code))
-
-		logging.Errorf("%s %s, err: %v", logPrefix, errString, err)
-		fmt.Fprintf(w, "%s\n", errString)
+		errString := fmt.Sprintf("Function: %s failed to unmarshal payload err: %v", appName, err)
+		logging.Errorf("%s %s, err: %v", logPrefix, errString)
+		runtimeInfo.ErrCode = response.ErrUnmarshalPld
+		runtimeInfo.Description = errString
 		return
 	}
+	res.AddRequestData("body", app)
+
 	m.addDefaultTimerPartitionsIfMissing(&app)
 
 	m.addDefaultDeploymentConfig(&app)
-	if info := m.validateApplication(&app); info.Code != m.statusCodes.ok.Code {
-		m.sendErrorInfo(w, info)
+	if info := m.validateApplication(&app); info.ErrCode != response.Ok {
+		*runtimeInfo = *info
 		return
 	}
 
 	oldApp, oldInfo := m.getTempStore(appName)
-	if oldInfo.Code == m.statusCodes.ok.Code {
+	if oldInfo.ErrCode == response.Ok {
 		copyPasswords(&app, &oldApp)
-	} else if oldInfo.Code != m.statusCodes.errAppNotFoundTs.Code {
-		m.sendErrorInfo(w, oldInfo)
+	} else if oldInfo.ErrCode != response.ErrAppNotFoundTs {
+		*runtimeInfo = *oldInfo
 		return
 	}
 
 	info = m.saveTempStore(app)
+	if info.ErrCode != response.Ok {
+		*runtimeInfo = *info
+		return
+	}
+
 	deprecatedFnsList := parser.ListDeprecatedFunctions(app.AppHandlers)
 	overloadedFnsList := parser.ListOverloadedFunctions(app.AppHandlers)
+	warningList := make([]string, 0, 2)
 	if len(deprecatedFnsList) > 0 {
 		jsonList, _ := json.Marshal(deprecatedFnsList)
-		info.Info = fmt.Sprintf("%s; Deprecated: %s", info.Info, jsonList)
+		warningList = append(warningList, fmt.Sprintf("%s; Deprecated: %s", info.Description, jsonList))
 	}
 	if len(overloadedFnsList) > 0 {
 		jsonList, _ := json.Marshal(overloadedFnsList)
-		info.Info = fmt.Sprintf("%s; Overloaded: %s", info.Info, jsonList)
+		warningList = append(warningList, fmt.Sprintf("%s; Overloaded: %s", info.Description, jsonList))
 	}
-	m.sendResponse(w, info)
+
+	if len(warningList) > 0 {
+		info.WarningInfo = warningList
+	}
+	*runtimeInfo = *info
 }
 
 // Saves application to temp store
-func (m *ServiceMgr) saveTempStore(app application) (info *runtimeInfo) {
+func (m *ServiceMgr) saveTempStore(app application) (info *response.RuntimeInfo) {
 	logPrefix := "ServiceMgr::saveTempStore"
 	appName := app.Name
 
 	currApp, info := m.checkAppExists(app.Name)
-	if info.Code == m.statusCodes.ok.Code {
+	if info.ErrCode == response.Ok {
 		ok := currApp.functionScopeEquals(app)
 		if !ok {
-			info.Code = m.statusCodes.errSaveConfig.Code
-			info.Info = fmt.Sprintf("Function scope cannot be changed")
+			info.ErrCode = response.ErrInvalidRequest
+			info.Description = fmt.Sprintf("Function scope cannot be changed")
 			return
 		}
 
 		app.Owner = currApp.Owner
+	} else if info.ErrCode == response.ErrAppNotFoundTs {
+		// Its a new app so its not defined yet
+		info.ErrCode = response.Ok
+		info.Description = ""
+	} else {
+		return
 	}
 
 	depConfig, dOk := app.Settings["deployment_status"].(bool)
 	processConfig, pOk := app.Settings["deployment_status"].(bool)
 	if dOk && depConfig && pOk && processConfig {
 		info = m.checkPermissionWithOwner(app)
-		if info.Code != m.statusCodes.ok.Code {
+		if info.ErrCode != response.Ok {
 			return
 		}
 	}
 
 	data, err := json.MarshalIndent(app, "", " ")
 	if err != nil {
-		info.Code = m.statusCodes.errMarshalResp.Code
-		info.Info = fmt.Sprintf("Function: %s failed to marshal data, err : %v", appName, err)
-		logging.Errorf("%s %s", logPrefix, info.Info)
+		info.ErrCode = response.ErrMarshalResp
+		info.Description = fmt.Sprintf("Function: %s failed to marshal data, err : %v", appName, err)
+		logging.Errorf("%s %s", logPrefix, info.Description)
 		return
 	}
 
 	//Delete stale entry
 	err = util.DeleteStaleAppContent(metakvTempAppsPath, appName)
 	if err != nil {
-		info.Code = m.statusCodes.errSaveAppTs.Code
-		info.Info = fmt.Sprintf("Function: %s failed to clean up stale entry from temp store, err: %v", appName, err)
-		logging.Errorf("%s %s", logPrefix, info.Info)
+		info.ErrCode = response.ErrSaveAppTs
+		info.Description = fmt.Sprintf("Function: %s failed to clean up stale entry from temp store, err: %v", appName, err)
+		logging.Errorf("%s %s", logPrefix, info.Description)
 		return
 	}
 
 	compressPayload := m.checkCompressHandler()
 	err = util.WriteAppContent(metakvTempAppsPath, metakvTempChecksumPath, appName, data, compressPayload)
 	if err != nil {
-		info.Code = m.statusCodes.errSaveAppTs.Code
-		info.Info = fmt.Sprintf("Function: %s failed to store in temp store, err: %v", appName, err)
-		logging.Errorf("%s %s", logPrefix, info.Info)
+		info.ErrCode = response.ErrSaveAppTs
+		info.Description = fmt.Sprintf("Function: %s failed to store in temp store, err: %v", appName, err)
+		logging.Errorf("%s %s", logPrefix, info.Description)
 		return
 	}
 
@@ -2051,71 +2188,79 @@ func (m *ServiceMgr) saveTempStore(app application) (info *runtimeInfo) {
 	// Cache the app in temp store for faster access on this node
 	m.fnsInTempStore[app.Name] = &app
 
-	info.Code = m.statusCodes.ok.Code
-	info.Info = fmt.Sprintf("Function: %s stored in temp store", appName)
-	logging.Infof("%s %s", logPrefix, info.Info)
+	info.ErrCode = response.Ok
+	info.Description = fmt.Sprintf("Function: %s stored in temp store", appName)
+	logging.Infof("%s %s", logPrefix, info.Description)
 	return
 }
 
 func (m *ServiceMgr) savePrimaryStoreHandler(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "ServiceMgr::savePrimaryStoreHandler"
 
-	appName, info := CheckAndGetQueryParam(r, "name")
-	if info != nil {
-		m.sendErrorInfo(w, info)
+	res := response.NewResponseWriter(w, r, response.EventUpdateFunction)
+	runtimeInfo := &response.RuntimeInfo{}
+
+	defer res.LogAndSend(runtimeInfo)
+
+	params := r.URL.Query()
+	res.AddRequestData("query", params)
+
+	appName, info := CheckAndGetQueryParam(params, "name")
+	if info.ErrCode != response.Ok {
+		*runtimeInfo = *info
 		return
 	}
 
-	if info := m.checkAuthAndPermissionWithApp(w, r, appName, rbac.HandlerManagePermissions, false); info.Code != m.statusCodes.ok.Code {
-		m.sendErrorInfo(w, info)
+	if info := m.checkAuthAndPermissionWithApp(w, r, appName, rbac.HandlerManagePermissions, false); info.ErrCode != response.Ok {
+		*runtimeInfo = *info
 		return
 	}
 
 	logging.Infof("%s REST Call: %v %v", logPrefix, r.URL.Path, r.Method)
-	audit.Log(auditevent.CreateFunction, r, appName)
 
 	data, err := ioutil.ReadAll(r.Body)
 	if err != nil {
-		errString := fmt.Sprintf("Function: %s failed to read content from http request body", appName)
-		logging.Errorf("%s %s err: %v", logPrefix, errString, err)
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errReadReq.Code))
-		fmt.Fprintf(w, "%s\n", errString)
+		errString := fmt.Sprintf("Function: %s failed to read content from http request body, err: %v", appName, err)
+		logging.Errorf("%s %s", logPrefix, errString)
+		info.ErrCode = response.ErrReadReq
+		info.Description = errString
 		return
 	}
 
 	var app application
 	err = json.Unmarshal(data, &app)
 	if err != nil {
-		errString := fmt.Sprintf("Function: %s failed to unmarshal payload", appName)
-		logging.Errorf("%s %s, err: %v", logPrefix, errString, err)
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errUnmarshalPld.Code))
-		fmt.Fprintf(w, "%s\n", errString)
+		errString := fmt.Sprintf("Function: %s failed to unmarshal payload err: %v", appName, err)
+		logging.Errorf("%s %s", logPrefix, errString)
+		info.ErrCode = response.ErrReadReq
+		info.Description = errString
 		return
 	}
+	res.AddRequestData("body", app)
 
 	m.addDefaultDeploymentConfig(&app)
 	m.addDefaultTimerPartitionsIfMissing(&app)
 
-	if info := m.validateApplication(&app); info.Code != m.statusCodes.ok.Code {
-		m.sendErrorInfo(w, info)
+	if info := m.validateApplication(&app); info.ErrCode != response.Ok {
+		*runtimeInfo = *info
 		return
 	}
 
 	info = m.savePrimaryStore(&app)
-	m.sendResponse(w, info)
+	*runtimeInfo = *info
 }
 
-func (m *ServiceMgr) checkRebalanceStatus() (info *runtimeInfo) {
+func (m *ServiceMgr) checkRebalanceStatus() (info *response.RuntimeInfo) {
 	logPrefix := "ServiceMgr::checkRebalanceStatus"
-	info = &runtimeInfo{}
+	info = &response.RuntimeInfo{}
 
 	util.Retry(util.NewFixedBackoff(time.Second), nil, getEventingNodesAddressesOpCallback, m)
 
 	rebStatus, err := util.CheckIfRebalanceOngoing("/getRebalanceStatus", m.eventingNodeAddrs)
 	if err != nil {
 		logging.Errorf("%s Failed to grab correct rebalance or failover status from some/all Eventing nodes, err: %v", logPrefix, err)
-		info.Code = m.statusCodes.errGetRebStatus.Code
-		info.Info = "Failed to get rebalance or failover status from eventing nodes"
+		info.ErrCode = response.ErrGetRebStatus
+		info.Description = "Failed to get rebalance or failover status from eventing nodes"
 		return
 	}
 
@@ -2123,12 +2268,11 @@ func (m *ServiceMgr) checkRebalanceStatus() (info *runtimeInfo) {
 
 	if rebStatus {
 		logging.Warnf("%s Rebalance or Failover ongoing on some/all Eventing nodes", logPrefix)
-		info.Code = m.statusCodes.errRebOrFailoverOngoing.Code
-		info.Info = "Rebalance or Failover processing ongoing on some/all Eventing nodes, creating new functions, deployment or undeployment of existing functions is not allowed"
+		info.ErrCode = response.ErrRebOrFailoverOngoing
+		info.Description = "Rebalance or Failover processing ongoing on some/all Eventing nodes, creating new functions, deployment or undeployment of existing functions is not allowed"
 		return
 	}
 
-	info.Code = m.statusCodes.ok.Code
 	return
 }
 
@@ -2143,42 +2287,46 @@ func filterFeedBoundary(settings map[string]interface{}) common.DcpStreamBoundar
 }
 
 // Saves application to metakv and returns appropriate success/error code
-func (m *ServiceMgr) savePrimaryStore(app *application) (info *runtimeInfo) {
+func (m *ServiceMgr) savePrimaryStore(app *application) (info *response.RuntimeInfo) {
 	logPrefix := "ServiceMgr::savePrimaryStore"
 
 	logging.Infof("%s Function: %s saving to primary store", logPrefix, app.Name)
 
 	currApp, info := m.checkAppExists(app.Name)
-	if info.Code == m.statusCodes.ok.Code {
+	if info.ErrCode == response.Ok {
 		ok := currApp.functionScopeEquals(*app)
 		if !ok {
-			info.Code = m.statusCodes.errSaveConfig.Code
-			info.Info = fmt.Sprintf("Function scope cannot be changed")
+			info.ErrCode = response.ErrInvalidRequest
+			info.Description = fmt.Sprintf("Function scope cannot be changed")
 			return
 		}
 
 		app.Owner = currApp.Owner
+	} else if info.ErrCode == response.ErrAppNotFoundTs {
+		// Its a new app so its not defined yet
+		info.ErrCode = response.Ok
+		info.Description = ""
+	} else {
+		return
 	}
 
 	depConfig, dOk := app.Settings["deployment_status"].(bool)
 	processConfig, pOk := app.Settings["deployment_status"].(bool)
 	if dOk && depConfig && pOk && processConfig {
 		info = m.checkPermissionWithOwner(*app)
-		if info.Code != m.statusCodes.ok.Code {
+		if info.ErrCode != response.Ok {
 			return
 		}
 	}
 
-	if lifeCycleOpsInfo := m.checkLifeCycleOpsDuringRebalance(); lifeCycleOpsInfo.Code != m.statusCodes.ok.Code {
-		info.Code = lifeCycleOpsInfo.Code
-		info.Info = lifeCycleOpsInfo.Info
+	if info = m.checkLifeCycleOpsDuringRebalance(); info.ErrCode != response.Ok {
 		return
 	}
 
 	if m.checkIfDeployed(app.Name) && m.superSup.GetAppCompositeState(app.Name) != common.AppStatePaused {
-		info.Code = m.statusCodes.errAppDeployed.Code
-		info.Info = fmt.Sprintf("Function: %s another function with same name is already deployed, skipping save request", app.Name)
-		logging.Errorf("%s %s", logPrefix, info.Info)
+		info.ErrCode = response.ErrAppDeployed
+		info.Description = fmt.Sprintf("Function: %s another function with same name is already deployed, skipping save request", app.Name)
+		logging.Errorf("%s %s", logPrefix, info.Description)
 		return
 	}
 
@@ -2191,28 +2339,28 @@ func (m *ServiceMgr) savePrimaryStore(app *application) (info *runtimeInfo) {
 		CollectionName: app.DeploymentConfig.MetadataCollection}
 
 	if sourceKeyspace == metadataKeyspace {
-		info.Code = m.statusCodes.errSrcMbSame.Code
-		info.Info = fmt.Sprintf("Function: %s source keyspace same as metadata keyspace. source : %s metadata : %s",
+		info.ErrCode = response.ErrSrcMbSame
+		info.Description = fmt.Sprintf("Function: %s source keyspace same as metadata keyspace. source : %s metadata : %s",
 			app.Name, sourceKeyspace, metadataKeyspace)
-		logging.Errorf("%s %s", logPrefix, info.Info)
+		logging.Errorf("%s %s", logPrefix, info.Description)
 		return
 	}
 
 	mhVersion := common.CouchbaseVerMap["mad-hatter"]
 	if dOk && depConfig && pOk && processConfig && m.superSup.GetAppCompositeState(app.Name) == common.AppStatePaused && !m.compareEventingVersion(mhVersion) {
-		info.Code = m.statusCodes.errClusterVersion.Code
-		info.Info = fmt.Sprintf("All eventing nodes in the cluster must be on version %s or higher for using the pause functionality",
+		info.ErrCode = response.ErrClusterVersion
+		info.Description = fmt.Sprintf("All eventing nodes in the cluster must be on version %s or higher for using the pause functionality",
 			mhVersion)
-		logging.Warnf("%s Version compat check failed: %s", logPrefix, info.Info)
+		logging.Warnf("%s Version compat check failed: %s", logPrefix, info.Description)
 		return
 	}
 
 	srcMutationEnabled := m.isSrcMutationEnabled(&app.DeploymentConfig)
 	if srcMutationEnabled && !m.compareEventingVersion(mhVersion) {
-		info.Code = m.statusCodes.errClusterVersion.Code
-		info.Info = fmt.Sprintf("All eventing nodes in the cluster must be on version %s or higher for allowing mutations against source bucket",
+		info.ErrCode = response.ErrClusterVersion
+		info.Description = fmt.Sprintf("All eventing nodes in the cluster must be on version %s or higher for allowing mutations against source bucket",
 			mhVersion)
-		logging.Warnf("%s Version compat check failed: %s", logPrefix, info.Info)
+		logging.Warnf("%s Version compat check failed: %s", logPrefix, info.Description)
 		return
 	}
 
@@ -2222,8 +2370,8 @@ func (m *ServiceMgr) savePrimaryStore(app *application) (info *runtimeInfo) {
 			CollectionName: app.DeploymentConfig.SourceCollection,
 		}
 		if enabled, err := util.IsSyncGatewayEnabled(logPrefix, keySpace, m.restPort, m.superSup); err == nil && enabled {
-			info.Code = m.statusCodes.errSyncGatewayEnabled.Code
-			info.Info = fmt.Sprintf("SyncGateway is enabled on: %s, deployement of source bucket mutating handler will cause Intra Bucket Recursion", app.DeploymentConfig.SourceBucket)
+			info.ErrCode = response.ErrSyncGatewayEnabled
+			info.Description = fmt.Sprintf("SyncGateway is enabled on: %s, deployement of source bucket mutating handler will cause Intra Bucket Recursion", app.DeploymentConfig.SourceBucket)
 			return
 		}
 	}
@@ -2236,15 +2384,15 @@ func (m *ServiceMgr) savePrimaryStore(app *application) (info *runtimeInfo) {
 	compressPayload := m.checkCompressHandler()
 	payload, err := util.MaybeCompress(appContent, compressPayload)
 	if err != nil {
-		info.Code = m.statusCodes.errSaveAppPs.Code
-		info.Info = fmt.Sprintf("Function: %s Error in compressing: %v", app.Name, err)
-		logging.Errorf("%s %s", logPrefix, info.Info)
+		info.ErrCode = response.ErrSaveAppPs
+		info.Description = fmt.Sprintf("Function: %s Error in compressing: %v", app.Name, err)
+		logging.Errorf("%s %s", logPrefix, info.Description)
 		return
 	}
 	if len(payload) > util.MaxFunctionSize() {
-		info.Code = m.statusCodes.errAppCodeSize.Code
-		info.Info = fmt.Sprintf("Function: %s handler Code size is more than %d. Code Size: %d", app.Name, util.MaxFunctionSize(), len(payload))
-		logging.Errorf("%s %s", logPrefix, info.Info)
+		info.ErrCode = response.ErrAppCodeSize
+		info.Description = fmt.Sprintf("Function: %s handler Code size is more than %d. Code Size: %d", app.Name, util.MaxFunctionSize(), len(payload))
+		logging.Errorf("%s %s", logPrefix, info.Description)
 		return
 	}
 
@@ -2266,8 +2414,8 @@ func (m *ServiceMgr) savePrimaryStore(app *application) (info *runtimeInfo) {
 	compilationInfo, err := c.SpawnCompilationWorker(parsedCode, string(appContent), app.Name, m.adminHTTPPort,
 		handlerHeaders, handlerFooters)
 	if err != nil || !compilationInfo.CompileSuccess {
-		info.Code = m.statusCodes.errHandlerCompile.Code
-		info.Info = compilationInfo
+		info.ErrCode = response.ErrHandlerCompile
+		info.Description = compilationInfo
 		return
 	}
 
@@ -2278,50 +2426,44 @@ func (m *ServiceMgr) savePrimaryStore(app *application) (info *runtimeInfo) {
 
 	mData, mErr := json.MarshalIndent(&settings, "", " ")
 	if mErr != nil {
-		info.Code = m.statusCodes.errMarshalResp.Code
-		info.Info = fmt.Sprintf("Function: %s failed to marshal settings, err: %v", app.Name, mErr)
-		logging.Errorf("%s %s", logPrefix, info.Info)
+		info.ErrCode = response.ErrMarshalResp
+		info.Description = fmt.Sprintf("Function: %s failed to marshal settings, err: %v", app.Name, mErr)
+		logging.Errorf("%s %s", logPrefix, info.Description)
 		return
 	}
 
 	//Delete stale entry
 	err = util.DeleteStaleAppContent(metakvAppsPath, app.Name)
 	if err != nil {
-		info.Code = m.statusCodes.errSaveAppPs.Code
-		info.Info = fmt.Sprintf("Function: %s failed to clean up stale entry, err: %v", app.Name, err)
-		logging.Errorf("%s %s", logPrefix, info.Info)
+		info.ErrCode = response.ErrSaveAppPs
+		info.Description = fmt.Sprintf("Function: %s failed to clean up stale entry, err: %v", app.Name, err)
+		logging.Errorf("%s %s", logPrefix, info.Description)
 		return
 	}
 
 	err = util.WriteAppContent(metakvAppsPath, metakvChecksumPath, app.Name, appContent, compressPayload)
 	if err != nil {
-		info.Code = m.statusCodes.errSaveAppPs.Code
-		logging.Errorf("%s Function: %s unable to save to primary store, err: %v", logPrefix, app.Name, err)
+		info.ErrCode = response.ErrSaveAppPs
+		info.Description = fmt.Sprintf("Function: %s unable to save to primary store, err: %v", app.Name, err)
+		logging.Errorf("%s %s", logPrefix, info.Description)
 		return
 	}
 
 	mkvErr := util.MetakvSet(settingsPath, mData, nil)
 	if mkvErr != nil {
-		info.Code = m.statusCodes.errSetSettingsPs.Code
-		info.Info = fmt.Sprintf("Function: %s failed to store updated settings in metakv, err: %v", app.Name, mkvErr)
-		logging.Errorf("%s %s", logPrefix, info.Info)
+		info.ErrCode = response.ErrSetSettingsPs
+		info.Description = fmt.Sprintf("Function: %s failed to store updated settings in metakv, err: %v", app.Name, mkvErr)
+		logging.Errorf("%s %s", logPrefix, info.Description)
 		return
 	}
 
-	wInfo, err := m.determineWarnings(app, compilationInfo)
-	if err != nil {
-		info.Code = m.statusCodes.errGetConfig.Code
-		info.Info = fmt.Sprintf("Function: %s failed to determine warnings, err : %v", app.Name, err)
-		return
-	}
-
-	info.Code = m.statusCodes.ok.Code
-	info.Info = *wInfo
+	wInfo := m.determineWarnings(app, compilationInfo)
+	info.WarningInfo = *wInfo
 	return
 }
 
-func (m *ServiceMgr) determineWarnings(app *application, compilationInfo *common.CompileStatus) (*warningsInfo, error) {
-	wInfo := &warningsInfo{}
+func (m *ServiceMgr) determineWarnings(app *application, compilationInfo *common.CompileStatus) *response.WarningsInfo {
+	wInfo := &response.WarningsInfo{}
 	wInfo.Status = fmt.Sprintf("Stored function: '%s' in metakv", app.Name)
 
 	curlWarning, err := m.determineCurlWarning(app)
@@ -2335,7 +2477,7 @@ func (m *ServiceMgr) determineWarnings(app *application, compilationInfo *common
 	if numWarnings > 0 {
 		wInfo.Warnings[numWarnings-1] += " Do not use in production environments"
 	}
-	return wInfo, nil
+	return wInfo
 }
 
 func (m *ServiceMgr) determineCurlWarning(app *application) (string, error) {
@@ -2375,74 +2517,91 @@ func (m *ServiceMgr) determineCurlWarning(app *application) (string, error) {
 }
 
 func (m *ServiceMgr) getErrCodes(w http.ResponseWriter, r *http.Request) {
-	_, err := rbac.AuthWebCreds(w, r)
+	res := response.NewResponseWriter(w, r, response.EventGetErrCodes)
+	runtimeInfo := &response.RuntimeInfo{}
+
+	defer res.LogAndSend(runtimeInfo)
+
+	_, err := rbac.AuthWebCreds(r)
 	if err != nil {
+		*runtimeInfo = getAuthErrorInfo(nil, false, err)
 		return
 	}
 
-	w.Write(m.statusPayload)
+	runtimeInfo.SendRawDescription = true
+	runtimeInfo.Description = string(m.statusPayload)
+	runtimeInfo.OnlyDescription = true
 }
 
 func (m *ServiceMgr) getDcpEventsRemaining(w http.ResponseWriter, r *http.Request) {
-	appName, info := CheckAndGetQueryParam(r, "name")
-	if info != nil {
-		m.sendErrorInfo(w, info)
+	res := response.NewResponseWriter(w, r, response.EventGetDcpEventsRemaining)
+	runtimeInfo := &response.RuntimeInfo{}
+
+	defer res.LogAndSend(runtimeInfo)
+
+	params := r.URL.Query()
+	res.AddRequestData("query", params)
+
+	appName, info := CheckAndGetQueryParam(params, "name")
+	if info.ErrCode != response.Ok {
+		*runtimeInfo = *info
 		return
 	}
 
-	if info := m.checkAuthAndPermissionWithApp(w, r, appName, rbac.HandlerGetPermissions, false); info.Code != m.statusCodes.ok.Code {
-		m.sendErrorInfo(w, info)
+	if info := m.checkAuthAndPermissionWithApp(w, r, appName, rbac.HandlerGetPermissions, false); info.ErrCode != response.Ok {
+		*runtimeInfo = *info
 		return
 	}
 
 	if m.checkIfDeployed(appName) {
 		eventsRemaining := m.superSup.GetDcpEventsRemainingToProcess(appName)
 		resp := backlogStat{DcpBacklog: eventsRemaining}
-		data, _ := json.MarshalIndent(&resp, "", " ")
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
-		fmt.Fprintf(w, "%v", string(data))
+		runtimeInfo.Description = resp
+		runtimeInfo.OnlyDescription = true
 		return
 	}
 
-	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotDeployed.Code))
-	fmt.Fprintf(w, "Function: %s not deployed", appName)
+	runtimeInfo.ErrCode = response.ErrAppNotDeployed
+	runtimeInfo.Description = fmt.Sprintf("Function: %s not deployed", appName)
 }
 
 func (m *ServiceMgr) getAggPausingApps(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "ServiceMgr::getAggPausingApps"
 
-	if !rbac.ValidateAuth(w, r, rbac.EventingReadPermissions, false) {
+	res := response.NewResponseWriter(w, r, response.EventGetPausingApps)
+	runtimeInfo := &response.RuntimeInfo{}
+
+	defer res.LogAndSend(runtimeInfo)
+
+	if notAllowed, err := rbac.IsAllowed(r, rbac.EventingReadPermissions, false); err != nil {
+		*runtimeInfo = getAuthErrorInfo(notAllowed, false, err)
 		return
 	}
 
 	util.Retry(util.NewFixedBackoff(time.Second), nil, getEventingNodesAddressesOpCallback, m)
 
 	appsPausing, err := util.GetAggPausingApps("/getPausingApps", m.eventingNodeAddrs)
-	if appsPausing {
-		w.Write([]byte(strconv.FormatBool(appsPausing)))
-		return
-	} else if !appsPausing && err != nil {
-		logging.Errorf("%s Failed to grab pausing function list from all eventing nodes or some functions being paused."+
-			"Node list: %v", logPrefix, m.eventingNodeAddrs)
-		fmt.Fprintf(w, "Failed to grab pausing function list err: %v", err)
-		return
-	}
-
 	if err != nil {
-		logging.Errorf("%s Failed to grab pausing function list from all eventing nodes."+
-			"Node list: %v", logPrefix, m.eventingNodeAddrs)
-		fmt.Fprintf(w, "Failed to grab pausing function list err: %v", err)
+		runtimeInfo.ErrCode = response.ErrInternalServer
+		runtimeInfo.Description = fmt.Sprintf("Failed to grab pausing function list err: %v", err)
+		logging.Errorf("%s %s", logPrefix, runtimeInfo.Description)
 		return
 	}
 
-	w.Write([]byte(strconv.FormatBool(appsPausing)))
-
+	runtimeInfo.Description = strconv.FormatBool(appsPausing)
+	runtimeInfo.OnlyDescription = true
 }
 
 func (m *ServiceMgr) getAggBootstrappingApps(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "ServiceMgr::getAggBootstrappingApps"
 
-	if !rbac.ValidateAuth(w, r, rbac.EventingReadPermissions, false) {
+	res := response.NewResponseWriter(w, r, response.EventGetBootstrappingApps)
+	runtimeInfo := &response.RuntimeInfo{}
+
+	defer res.LogAndSend(runtimeInfo)
+
+	if notAllowed, err := rbac.IsAllowed(r, rbac.EventingReadPermissions, false); err != nil {
+		*runtimeInfo = getAuthErrorInfo(notAllowed, false, err)
 		return
 	}
 
@@ -2450,28 +2609,33 @@ func (m *ServiceMgr) getAggBootstrappingApps(w http.ResponseWriter, r *http.Requ
 
 	appsBootstrapping, err := util.GetAggBootstrappingApps("/getBootstrappingApps", m.eventingNodeAddrs)
 	if appsBootstrapping {
-		w.Write([]byte(strconv.FormatBool(appsBootstrapping)))
-		return
-	} else if !appsBootstrapping && err != nil {
-		logging.Errorf("%s Failed to grab bootstrapping function list from all eventing nodes or some functions are undergoing bootstrap."+
-			"Node list: %v", logPrefix, m.eventingNodeAddrs)
-		fmt.Fprintf(w, "Failed to grab bootstrapping function list err: %v", err)
+		runtimeInfo.SendRawDescription = true
+		runtimeInfo.Description = strconv.FormatBool(appsBootstrapping)
+		runtimeInfo.OnlyDescription = true
 		return
 	}
 
 	if err != nil {
-		logging.Errorf("%s Failed to grab bootstrapping function list from all eventing nodes or some functions."+
-			"Node list: %v", logPrefix, m.eventingNodeAddrs)
-		fmt.Fprintf(w, "Failed to grab bootstrapping function list err: %v", err)
+		runtimeInfo.ErrCode = response.ErrInternalServer
+		runtimeInfo.Description = fmt.Sprintf("Failed to grab bootstrapping function list err: %v", err)
+		logging.Errorf("%s %s", logPrefix, runtimeInfo.Description)
 		return
 	}
 
-	w.Write([]byte(strconv.FormatBool(appsBootstrapping)))
+	runtimeInfo.SendRawDescription = true
+	runtimeInfo.Description = strconv.FormatBool(appsBootstrapping)
+	runtimeInfo.OnlyDescription = true
 }
 
 func (m *ServiceMgr) getPausingApps(w http.ResponseWriter, r *http.Request) {
-	cred, err := rbac.AuthWebCreds(w, r)
+	res := response.NewResponseWriter(w, r, response.EventGetPausingApps)
+	runtimeInfo := &response.RuntimeInfo{}
+
+	defer res.LogAndSend(runtimeInfo)
+
+	cred, err := rbac.AuthWebCreds(r)
 	if err != nil {
+		*runtimeInfo = getAuthErrorInfo(nil, false, err)
 		return
 	}
 
@@ -2479,24 +2643,25 @@ func (m *ServiceMgr) getPausingApps(w http.ResponseWriter, r *http.Request) {
 	permPausing := make(map[string]string)
 	for appName, val := range pausingApps {
 		info := m.checkPermissionFromCred(cred, appName, rbac.HandlerGetPermissions, false)
-		if info.Code != m.statusCodes.ok.Code {
+		if info.ErrCode != response.Ok {
 			continue
 		}
 		permPausing[appName] = val
 	}
 
-	data, err := json.MarshalIndent(permPausing, "", " ")
-	if err != nil {
-		fmt.Fprintf(w, "Failed to marshal function list which are being paused, err: %v", err)
-		return
-	}
-
-	w.Write(data)
+	runtimeInfo.Description = permPausing
+	runtimeInfo.OnlyDescription = true
 }
 
 func (m *ServiceMgr) getBootstrappingApps(w http.ResponseWriter, r *http.Request) {
-	cred, err := rbac.AuthWebCreds(w, r)
+	res := response.NewResponseWriter(w, r, response.EventGetBootstrappingApps)
+	runtimeInfo := &response.RuntimeInfo{}
+
+	defer res.LogAndSend(runtimeInfo)
+
+	cred, err := rbac.AuthWebCreds(r)
 	if err != nil {
+		*runtimeInfo = getAuthErrorInfo(nil, false, err)
 		return
 	}
 
@@ -2504,54 +2669,51 @@ func (m *ServiceMgr) getBootstrappingApps(w http.ResponseWriter, r *http.Request
 	permBootstrapping := make(map[string]string)
 	for appName, val := range bootstrappingApps {
 		info := m.checkPermissionFromCred(cred, appName, rbac.HandlerGetPermissions, false)
-		if info.Code != m.statusCodes.ok.Code {
+		if info.ErrCode != response.Ok {
 			continue
 		}
 		permBootstrapping[appName] = val
 	}
 
-	data, err := json.MarshalIndent(permBootstrapping, "", " ")
-	if err != nil {
-		fmt.Fprintf(w, "Failed to marshal bootstrapping function list, err: %v", err)
-		return
-	}
-
-	w.Write(data)
+	runtimeInfo.Description = permBootstrapping
+	runtimeInfo.OnlyDescription = true
 }
 
 func (m *ServiceMgr) getEventingConsumerPids(w http.ResponseWriter, r *http.Request) {
-	appName, info := CheckAndGetQueryParam(r, "name")
-	if info != nil {
-		m.sendErrorInfo(w, info)
+	res := response.NewResponseWriter(w, r, response.EventGetConsumerPids)
+	runtimeInfo := &response.RuntimeInfo{}
+
+	defer res.LogAndSend(runtimeInfo)
+
+	params := r.URL.Query()
+	res.AddRequestData("query", params)
+
+	appName, info := CheckAndGetQueryParam(params, "name")
+	if info.ErrCode != response.Ok {
+		*runtimeInfo = *info
 		return
 	}
 
-	if info := m.checkAuthAndPermissionWithApp(w, r, appName, rbac.HandlerGetPermissions, false); info.Code != m.statusCodes.ok.Code {
-		m.sendErrorInfo(w, info)
+	if info := m.checkAuthAndPermissionWithApp(w, r, appName, rbac.HandlerGetPermissions, false); info.ErrCode != response.Ok {
+		*runtimeInfo = *info
 		return
 	}
 
 	if m.checkIfDeployed(appName) {
 		workerPidMapping := m.superSup.GetEventingConsumerPids(appName)
-
-		data, err := json.MarshalIndent(&workerPidMapping, "", " ")
-		if err != nil {
-			w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
-			fmt.Fprintf(w, "Failed to marshal consumer pids, err: %v", err)
-			return
-		}
-
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
-		fmt.Fprintf(w, "%v", string(data))
+		runtimeInfo.Description = workerPidMapping
+		runtimeInfo.OnlyDescription = true
 		return
 	}
 
-	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errAppNotDeployed.Code))
-	fmt.Fprintf(w, "Function: %v not deployed", appName)
+	runtimeInfo.ErrCode = response.ErrAppNotDeployed
+	runtimeInfo.Description = fmt.Sprintf("Function: %s not deployed", appName)
+	runtimeInfo.OnlyDescription = true
 }
 
 func (m *ServiceMgr) getCreds(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "ServiceMgr::getCreds"
+
 	if !m.validateLocalAuth(w, r) {
 		return
 	}
@@ -2562,7 +2724,7 @@ func (m *ServiceMgr) getCreds(w http.ResponseWriter, r *http.Request) {
 
 	data, err := ioutil.ReadAll(r.Body)
 	if err != nil {
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errReadReq.Code))
+		w.Header().Add(headerKey, strconv.Itoa(http.StatusBadRequest))
 		fmt.Fprintf(w, "Failed to read request body, err: %v", err)
 		return
 	}
@@ -2571,7 +2733,7 @@ func (m *ServiceMgr) getCreds(w http.ResponseWriter, r *http.Request) {
 	username, password, err := cbauth.GetMemcachedServiceAuth(strippedEndpoint)
 	if err != nil {
 		logging.Errorf("%s Failed to get credentials for endpoint: %rs, err: %v", logPrefix, strippedEndpoint, err)
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errRbacCreds.Code))
+		w.Header().Add(headerKey, strconv.Itoa(http.StatusInternalServerError))
 		fmt.Fprintf(w, "Failed to get credentials for endpoint: %rs, err: %v", strippedEndpoint, err)
 		return
 	}
@@ -2579,7 +2741,7 @@ func (m *ServiceMgr) getCreds(w http.ResponseWriter, r *http.Request) {
 	response.Add("username", username)
 	response.Add("password", password)
 
-	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
+	w.Header().Add(headerKey, strconv.Itoa(http.StatusOK))
 	fmt.Fprintf(w, "%s", response.Encode())
 }
 
@@ -2621,60 +2783,64 @@ func (m *ServiceMgr) getKVNodesAddresses(w http.ResponseWriter, r *http.Request)
 // This clears all the stats so only admin can do it
 func (m *ServiceMgr) clearEventStats(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "ServiceMgr::clearEventStats"
-	if !rbac.ValidateAuth(w, r, rbac.EventingPermissionManage, false) {
+	res := response.NewResponseWriter(w, r, response.EventClearStats)
+	runtimeInfo := &response.RuntimeInfo{}
+
+	defer res.LogAndSend(runtimeInfo)
+
+	if notAllowed, err := rbac.IsAllowed(r, rbac.EventingPermissionManage, false); err != nil {
+		*runtimeInfo = getAuthErrorInfo(notAllowed, false, err)
 		return
 	}
 
 	logging.Infof("%s Got request to clear event stats from host: %rs", logPrefix, r.Host)
-	m.superSup.ClearEventStats()
-	info := &runtimeInfo{}
-	info.Code = m.statusCodes.ok.Code
-	info.Info = "Stats cleared"
-	m.sendResponse(w, info)
+	appNames := m.superSup.ClearEventStats()
+
+	runtimeInfo.ExtraAttributes = map[string]interface{}{"appNames": appNames}
+	runtimeInfo.Description = "Stats cleared"
 }
 
-func (m *ServiceMgr) getConfig() (c common.Config, info *runtimeInfo) {
+func (m *ServiceMgr) getConfig() (common.Config, *response.RuntimeInfo) {
 	logPrefix := "ServiceMgr::getConfig"
 
-	info = &runtimeInfo{}
+	var c common.Config
+	info := &response.RuntimeInfo{}
 	data, err := util.MetakvGet(metakvConfigPath)
 	if err != nil {
-		info.Code = m.statusCodes.errGetConfig.Code
-		info.Info = fmt.Sprintf("failed to get config, err: %v", err)
-		logging.Errorf("%s %s", logPrefix, info.Info)
-		return
+		info.ErrCode = response.ErrGetConfig
+		info.Description = fmt.Sprintf("failed to get config, err: %v", err)
+		logging.Errorf("%s %s", logPrefix, info.Description)
+		return c, info
 	}
 
 	if !bytes.Equal(data, nil) {
 		err = json.Unmarshal(data, &c)
 		if err != nil {
-			info.Code = m.statusCodes.errUnmarshalPld.Code
-			info.Info = fmt.Sprintf("failed to unmarshal payload from metakv, err: %v", err)
-			logging.Errorf("%s %s", logPrefix, info.Info)
-			return
+			info.ErrCode = response.ErrUnmarshalPld
+			info.Description = fmt.Sprintf("failed to unmarshal payload from metakv, err: %v", err)
+			logging.Errorf("%s %s", logPrefix, info.Description)
+			return c, info
 		}
 	}
 
 	logging.Infof("%s Retrieving config from metakv: %+v", logPrefix, c)
-	info.Code = m.statusCodes.ok.Code
-	return
+	return c, info
 }
 
-func (m *ServiceMgr) saveConfig(c common.Config) (info *runtimeInfo) {
+func (m *ServiceMgr) saveConfig(c common.Config) *response.RuntimeInfo {
 	logPrefix := "ServiceMgr::saveConfig"
 
-	info = &runtimeInfo{}
 	storedConfig, info := m.getConfig()
-	if info.Code != m.statusCodes.ok.Code {
-		return
+	if info.ErrCode != response.Ok {
+		return info
 	}
 
 	data, err := json.MarshalIndent(util.SuperImpose(c, storedConfig), "", " ")
 	if err != nil {
-		info.Code = m.statusCodes.errMarshalResp.Code
-		info.Info = fmt.Sprintf("failed to marshal config, err: %v", err)
-		logging.Errorf("%s %s", logPrefix, info.Info)
-		return
+		info.ErrCode = response.ErrMarshalResp
+		info.Description = fmt.Sprintf("failed to marshal config, err: %v", err)
+		logging.Errorf("%s %s", logPrefix, info.Description)
+		return info
 	}
 
 	logging.Infof("%s Saving config into metakv: %v", logPrefix, c)
@@ -2682,71 +2848,63 @@ func (m *ServiceMgr) saveConfig(c common.Config) (info *runtimeInfo) {
 	err = util.MetakvSet(metakvConfigPath, data, nil)
 	if err != nil {
 		logging.Errorf("%s Failed to write to metakv err: %v", logPrefix, err)
-		info.Code = m.statusCodes.errMetakvWriteFailed.Code
-		info.Info = fmt.Sprintf("Failed to write to metakv, err: %v", err)
+		info.ErrCode = response.ErrMetakvWriteFailed
+		info.Description = fmt.Sprintf("Failed to write to metakv, err: %v", err)
+		return info
 	}
 
-	info.Code = m.statusCodes.ok.Code
-	return
+	return info
 }
 
 func (m *ServiceMgr) configHandler(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "ServiceMgr::configHandler"
+	res := response.NewResponseWriter(w, r, response.EventGetConfig)
+	runtimeInfo := &response.RuntimeInfo{}
+
+	defer res.LogAndSend(runtimeInfo)
 
 	w.Header().Set("Content-Type", "application/json")
-	if !rbac.ValidateAuthForOp(w, r, rbac.EventingAnyManageReadPermissions, rbac.EventingPermissionManage, false) {
+	if notAllowed, err := rbac.ValidateAuthForOp(r, rbac.EventingAnyManageReadPermissions, rbac.EventingPermissionManage, false); err != nil {
+		*runtimeInfo = getAuthErrorInfo(notAllowed, false, err)
 		return
 	}
 
 	logging.Infof("%s REST Call: %v %v", logPrefix, r.URL.Path, r.Method)
 
-	info := &runtimeInfo{}
-
 	switch r.Method {
 	case "GET":
-		audit.Log(auditevent.FetchConfig, r, nil)
-
 		c, info := m.getConfig()
-		if info.Code != m.statusCodes.ok.Code {
-			m.sendErrorInfo(w, info)
+		if info.ErrCode != response.Ok {
+			*runtimeInfo = *info
 			return
 		}
 
-		response, err := json.MarshalIndent(c, "", " ")
-		if err != nil {
-			info.Code = m.statusCodes.errMarshalResp.Code
-			info.Info = fmt.Sprintf("failed to marshal config, err : %v", err)
-			logging.Errorf("%s %s", logPrefix, info.Info)
-			m.sendErrorInfo(w, info)
-			return
-		}
-
-		fmt.Fprintf(w, "%s", string(response))
+		runtimeInfo.Description = c
+		runtimeInfo.OnlyDescription = true
 
 	case "POST":
-		audit.Log(auditevent.SaveConfig, r, nil)
+		res.SetRequestEvent(response.EventSaveConfig)
 
 		data, err := ioutil.ReadAll(r.Body)
 		if err != nil {
-			info.Code = m.statusCodes.errReadReq.Code
-			info.Info = fmt.Sprintf("failed to read request body, err: %v", err)
-			logging.Errorf("%s %s", logPrefix, info.Info)
-			m.sendErrorInfo(w, info)
+			runtimeInfo.ErrCode = response.ErrReadReq
+			runtimeInfo.Description = fmt.Sprintf("failed to read request body, err: %v", err)
+			logging.Errorf("%s %s", logPrefix, runtimeInfo.Description)
 			return
 		}
 
 		var c common.Config
 		err = json.Unmarshal(data, &c)
 		if err != nil {
-			info.Code = m.statusCodes.errUnmarshalPld.Code
-			info.Info = fmt.Sprintf("failed to unmarshal config from metakv, err: %v", err)
-			logging.Errorf("%s %s", logPrefix, info.Info)
-			m.sendErrorInfo(w, info)
+			runtimeInfo.ErrCode = response.ErrUnmarshalPld
+			runtimeInfo.Description = fmt.Sprintf("failed to unmarshal config from metakv, err: %v", err)
+			logging.Errorf("%s %s", logPrefix, runtimeInfo.Description)
 			return
 		}
+		res.AddRequestData("body", c)
 
-		if info := m.validateConfig(c); info.Code != m.statusCodes.ok.Code {
-			m.sendErrorInfo(w, info)
+		if info := m.validateConfig(c); info.ErrCode != response.Ok {
+			*runtimeInfo = *info
 			return
 		}
 
@@ -2757,92 +2915,70 @@ func (m *ServiceMgr) configHandler(w http.ResponseWriter, r *http.Request) {
 				DisableNonSSLPorts = securitySetting.DisableNonSSLPorts
 			}
 			if value == true && DisableNonSSLPorts == true {
-				info.Code = m.statusCodes.errDebuggerDisabled.Code
-				info.Info = "Debugger cannot be enabled as encryption level is strict"
-				logging.Errorf("%s %s", logPrefix, info.Info)
-				m.sendErrorInfo(w, info)
+				runtimeInfo.ErrCode = response.ErrDebuggerDisabled
+				runtimeInfo.Description = "Debugger cannot be enabled as encryption level is strict"
+				logging.Errorf("%s %s", logPrefix, runtimeInfo.Description)
 				return
 			}
 		}
 
-		if info = m.saveConfig(c); info.Code != m.statusCodes.ok.Code {
-			m.sendErrorInfo(w, info)
+		if info := m.saveConfig(c); info.ErrCode != response.Ok {
+			*runtimeInfo = *info
 			return
 		}
 
 		response := configResponse{false}
-		data, err = json.MarshalIndent(response, "", " ")
-		if err != nil {
-			info.Code = m.statusCodes.errMarshalResp.Code
-			info.Info = fmt.Sprintf("failed to marshal response, err: %v", err)
-			logging.Errorf("%s %s", logPrefix, info.Info)
-			m.sendErrorInfo(w, info)
-			return
-		}
-
-		fmt.Fprintf(w, "%s", string(data))
+		runtimeInfo.Description = response
+		runtimeInfo.OnlyDescription = true
+		runtimeInfo.ExtraAttributes = map[string]interface{}{"body": c}
 
 	default:
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		fmt.Fprintf(w, "Method not allowed")
+		runtimeInfo.ErrCode = response.ErrMethodNotAllowed
+		runtimeInfo.Description = "Method not allowed. Only GET and POST are allowed"
 		return
 	}
 }
 
-func (m *ServiceMgr) assignFunctionID(fnName string, app *application, info *runtimeInfo) error {
+func (m *ServiceMgr) assignFunctionID(fnName string, app *application) error {
 	logPrefix := "ServiceMgr::assignFunctionID"
 
 	data, err := util.ReadAppContent(metakvAppsPath, metakvChecksumPath, fnName)
-	if err != nil && data != nil {
-		info.Code = m.statusCodes.errGetAppPs.Code
-		info.Info = fmt.Sprintf("Function: %s failed to read definitions from metakv", fnName)
-
-		logging.Errorf("%s %s, err: %v", logPrefix, info.Info, err)
-		return fmt.Errorf("%s", info.Info)
-	}
-
-	if err == nil && data != nil {
-		tApp := m.parseFunctionPayload(data, fnName)
-		app.FunctionID = tApp.FunctionID
-		logging.Infof("%s Function: %s assigned previous function ID: %d", logPrefix, app.Name, app.FunctionID)
-	} else {
+	if err == util.AppNotExist {
 		var uErr error
 		app.FunctionID, uErr = util.GenerateFunctionID()
 		if uErr != nil {
-			info.Code = m.statusCodes.errFunctionIDGen.Code
-			info.Info = fmt.Sprintf("Function: %s FunctionID generation failed", fnName)
-
-			logging.Errorf("%s %s", logPrefix, info.Info)
-			return uErr
+			return fmt.Errorf("Function: %s FunctionID generation failed err: %v", fnName, uErr)
 		}
 		logging.Infof("%s Function: %s FunctionID: %d generated", logPrefix, app.Name, app.FunctionID)
+		return nil
 	}
 
+	if err != nil {
+		logging.Errorf("%s err: %v", logPrefix, err)
+		return fmt.Errorf("Function: %s failed to read definitions from metakv", fnName)
+	}
+
+	tApp := m.parseFunctionPayload(data, fnName)
+	app.FunctionID = tApp.FunctionID
+	logging.Infof("%s Function: %s assigned previous function ID: %d", logPrefix, app.Name, app.FunctionID)
 	return nil
 }
 
-func (m *ServiceMgr) assignFunctionInstanceID(functionName string, app *application, info *runtimeInfo) error {
+func (m *ServiceMgr) assignFunctionInstanceID(functionName string, app *application) error {
 	logPrefix := "ServiceMgr:assignFunctionInstanceID"
 
 	if m.superSup.GetAppCompositeState(functionName) != common.AppStatePaused {
 		fiid, err := util.GenerateFunctionInstanceID()
 		if err != nil {
-			info.Code = m.statusCodes.errFunctionInstanceIDGen.Code
-			info.Info = fmt.Sprintf("FunctionInstanceID generation failed")
-
-			logging.Errorf("%s %s", logPrefix, info.Info)
-			return err
+			logging.Errorf("%s err: %v", logPrefix, err)
+			return fmt.Errorf("FunctionInstanceID generation failed. err: %v", err)
 		}
 		app.FunctionInstanceID = fiid
 		logging.Infof("%s Function: %s FunctionInstanceID: %s generated", logPrefix, app.Name, app.FunctionInstanceID)
 	} else {
 		data, err := util.ReadAppContent(metakvAppsPath, metakvChecksumPath, functionName)
 		if err != nil || data == nil {
-			info.Code = m.statusCodes.errGetAppPs.Code
-			info.Info = fmt.Sprintf("Function: %s failed to read definitions from metakv", functionName)
-
-			logging.Errorf("%s %s, err: %v", logPrefix, info.Info, err)
-			return fmt.Errorf("%s err: %v", info.Info, err)
+			return fmt.Errorf("Function: %s failed to read definitions from metakv. err: %v", functionName, err)
 		}
 		prevApp := m.parseFunctionPayload(data, functionName)
 		app.FunctionInstanceID = prevApp.FunctionInstanceID
@@ -2932,102 +3068,97 @@ func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 // It will authenticate and sends back the result to http request
 func (m *ServiceMgr) functionNameRetry(w http.ResponseWriter, r *http.Request, appName string) {
 	logPrefix := "service::functionNameRetry"
-	info := &runtimeInfo{}
+	res := response.NewResponseWriter(w, r, response.EventUpdateFunction)
+	runtimeInfo := &response.RuntimeInfo{}
+
+	defer res.LogAndSend(runtimeInfo)
 
 	if r.Method != "POST" {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		fmt.Fprintf(w, "Method not allowed")
+		runtimeInfo.ErrCode = response.ErrMethodNotAllowed
+		runtimeInfo.Description = "Method not allowed. Only POST is allowed"
 		return
 	}
 
-	if info := m.checkAuthAndPermissionWithApp(w, r, appName, rbac.HandlerManagePermissions, false); info.Code != m.statusCodes.ok.Code {
-		m.sendErrorInfo(w, info)
+	if info := m.checkAuthAndPermissionWithApp(w, r, appName, rbac.HandlerManagePermissions, false); info.ErrCode != response.Ok {
+		*runtimeInfo = *info
 		return
 	}
 
 	data, err := ioutil.ReadAll(r.Body)
 	if err != nil {
-		info.Code = m.statusCodes.errReadReq.Code
-		info.Info = fmt.Sprintf("failed to read request body, err : %v", err)
-		logging.Errorf("%s %s", logPrefix, info.Info)
-		m.sendErrorInfo(w, info)
+		runtimeInfo.ErrCode = response.ErrReadReq
+		runtimeInfo.Description = fmt.Sprintf("failed to read request body, err : %v", err)
+		logging.Errorf("%s %s", logPrefix, runtimeInfo.Description)
 		return
 	}
 
 	var retryBody retry
 	err = json.Unmarshal(data, &retryBody)
 	if err != nil {
-		info.Code = m.statusCodes.errMarshalResp.Code
-		info.Info = fmt.Sprintf("failed to unmarshal retry, err: %v", err)
-		logging.Errorf("%s %s", logPrefix, info.Info)
-		m.sendErrorInfo(w, info)
+		runtimeInfo.ErrCode = response.ErrMarshalResp
+		runtimeInfo.Description = fmt.Sprintf("failed to unmarshal retry, err: %v", err)
+		logging.Errorf("%s %s", logPrefix, runtimeInfo.Description)
 		return
 	}
+	res.AddRequestData("body", retryBody)
 
-	if info = m.notifyRetryToAllProducers(appName, &retryBody); info.Code != m.statusCodes.ok.Code {
-		m.sendErrorInfo(w, info)
+	if info := m.notifyRetryToAllProducers(appName, &retryBody); info.ErrCode != response.Ok {
+		*runtimeInfo = *info
 		return
 	}
 }
 
 func (m *ServiceMgr) functionNameSettings(w http.ResponseWriter, r *http.Request, appName string) {
 	logPrefix := "serviceMgr::functionNameSettings"
-	info := &runtimeInfo{}
+	res := response.NewResponseWriter(w, r, response.EventUpdateFunction)
+	runtimeInfo := &response.RuntimeInfo{}
 
-	rPerm, wPerm, err := m.getReadAndWritePermission(appName)
-	if err != nil {
-		// TODO: send error here
+	defer res.LogAndSend(runtimeInfo)
+
+	rPerm, wPerm, info := m.getReadAndWritePermission(appName)
+	if info.ErrCode != response.Ok {
+		*runtimeInfo = *info
 		return
 	}
 
-	if !rbac.ValidateAuthForOp(w, r, rPerm, wPerm, false) {
+	if notAllowed, err := rbac.ValidateAuthForOp(r, rPerm, wPerm, false); err != nil {
+		*runtimeInfo = getAuthErrorInfo(notAllowed, false, err)
 		return
 	}
 
 	switch r.Method {
 	case "GET":
-		audit.Log(auditevent.GetSettings, r, nil)
+		res.SetRequestEvent(response.EventGetFunctionDraft)
 		settings, info := m.getSettings(appName)
-		if info.Code != m.statusCodes.ok.Code {
-			w.WriteHeader(http.StatusNotFound)
-			m.sendErrorInfo(w, info)
+		if info.ErrCode != response.Ok {
+			*runtimeInfo = *info
 			return
 		}
 
-		response, err := json.MarshalIndent(settings, "", " ")
-		if err != nil {
-			info.Code = m.statusCodes.errMarshalResp.Code
-			info.Info = fmt.Sprintf("failed to marshal function, err : %v", err)
-			logging.Errorf("%s %s", logPrefix, info.Info)
-			m.sendErrorInfo(w, info)
-			return
-		}
-
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
-		fmt.Fprintf(w, "%s", string(response))
+		runtimeInfo.Description = settings
+		runtimeInfo.OnlyDescription = true
 
 	case "POST":
-		audit.Log(auditevent.SetSettings, r, appName)
+		res.SetRequestEvent(response.EventUpdateFunction)
 
 		data, err := ioutil.ReadAll(r.Body)
 		if err != nil {
-			info.Code = m.statusCodes.errReadReq.Code
-			info.Info = fmt.Sprintf("failed to read request body, err: %v", err)
-			logging.Errorf("%s %s", logPrefix, info.Info)
-			m.sendErrorInfo(w, info)
+			runtimeInfo.ErrCode = response.ErrReadReq
+			runtimeInfo.Description = fmt.Sprintf("failed to read request body, err : %v", err)
+			logging.Errorf("%s %s", logPrefix, runtimeInfo.Description)
 			return
 		}
 
 		app, info := m.getTempStore(appName)
-		if info.Code != m.statusCodes.ok.Code {
-			m.sendErrorInfo(w, info)
+		if info.ErrCode != response.Ok {
+			*runtimeInfo = *info
 			return
 		}
 
 		if app.EnforceSchema == true {
-			m.MaybeEnforceSettingsSchema(data)
-			if info.Code != m.statusCodes.ok.Code {
-				m.sendErrorInfo(w, info)
+			info = m.MaybeEnforceSettingsSchema(data)
+			if info.ErrCode != response.Ok {
+				*runtimeInfo = *info
 				return
 			}
 		}
@@ -3035,20 +3166,20 @@ func (m *ServiceMgr) functionNameSettings(w http.ResponseWriter, r *http.Request
 		var settings map[string]interface{}
 		err = json.Unmarshal(data, &settings)
 		if err != nil {
-			info.Code = m.statusCodes.errMarshalResp.Code
-			info.Info = fmt.Sprintf("failed to unmarshal setting supplied, err: %v", err)
-			logging.Errorf("%s %s", logPrefix, info.Info)
-			m.sendErrorInfo(w, info)
+			runtimeInfo.ErrCode = response.ErrUnmarshalPld
+			runtimeInfo.Description = fmt.Sprintf("failed to unmarshal retry, err: %v", err)
+			logging.Errorf("%s %s", logPrefix, runtimeInfo.Description)
 			return
 		}
+		res.AddRequestData("body", settings)
 
-		if info = m.setSettings(appName, data, false); info.Code != m.statusCodes.ok.Code {
-			m.sendErrorInfo(w, info)
+		if info = m.setSettings(appName, data, false); info.ErrCode != response.Ok {
+			*runtimeInfo = *info
 			return
 		}
 	default:
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		fmt.Fprintf(w, "Method not allowed")
+		runtimeInfo.ErrCode = response.ErrMethodNotAllowed
+		runtimeInfo.Description = "Method not allowed. Only GET and POST are allowed"
 		return
 	}
 }
@@ -3056,117 +3187,128 @@ func (m *ServiceMgr) functionNameSettings(w http.ResponseWriter, r *http.Request
 func (m *ServiceMgr) functionName(w http.ResponseWriter, r *http.Request, appName string) {
 	logPrefix := "serviceMgr::functionName"
 
-	cred, err := rbac.AuthWebCreds(w, r)
+	res := response.NewResponseWriter(w, r, response.EventGetFunctionDraft)
+	runtimeInfo := &response.RuntimeInfo{}
+
+	defer res.LogAndSend(runtimeInfo)
+
+	cred, err := rbac.AuthWebCreds(r)
 	if err != nil {
+		*runtimeInfo = getAuthErrorInfo(nil, false, err)
 		return
 	}
 
 	switch r.Method {
 	case "GET":
-		if info := m.checkAuthAndPermissionWithApp(w, r, appName, rbac.HandlerGetPermissions, false); info.Code != m.statusCodes.ok.Code {
-			m.sendErrorInfo(w, info)
+		if info := m.checkAuthAndPermissionWithApp(w, r, appName, rbac.HandlerGetPermissions, false); info.ErrCode != response.Ok {
+			*runtimeInfo = *info
 			return
 		}
-		audit.Log(auditevent.FetchDrafts, r, appName)
 
 		app, info := m.getTempStore(appName)
-		m.maybeDeleteLifeCycleState(&app)
-		if info.Code != m.statusCodes.ok.Code {
-			m.sendErrorInfo(w, info)
+		if info.ErrCode != response.Ok {
+			*runtimeInfo = *info
 			return
 		}
+
+		m.maybeDeleteLifeCycleState(&app)
 		redactPasswords(&app)
 
-		response, err := json.MarshalIndent(app, "", " ")
-		if err != nil {
-			info.Code = m.statusCodes.errMarshalResp.Code
-			info.Info = fmt.Sprintf("failed to marshal function, err : %v", err)
-			logging.Errorf("%s %s", logPrefix, info.Info)
-			m.sendErrorInfo(w, info)
+		runtimeInfo.Description = app
+		runtimeInfo.OnlyDescription = true
+
+	case "POST":
+		res.SetRequestEvent(response.EventUpdateFunction)
+		createFunction := false
+
+		appInStore, info := m.checkAppExists(appName)
+		if info.ErrCode == response.ErrAppNotFoundTs {
+			info.ErrCode = response.Ok
+			info.Description = ""
+			res.SetRequestEvent(response.EventCreateFunction)
+			createFunction = true
+		} else if info.ErrCode != response.Ok {
+			*runtimeInfo = *info
 			return
 		}
 
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
-		fmt.Fprintf(w, "%s", string(response))
-	case "POST":
 		app, info := m.unmarshalApp(r)
-		if info.Code != m.statusCodes.ok.Code {
-			m.sendErrorInfo(w, info)
+		if info.ErrCode != response.Ok {
+			*runtimeInfo = *info
 			return
 		}
+		res.AddRequestData("body", app)
 
 		m.addDefaultVersionIfMissing(&app)
 		m.addDefaultDeploymentConfig(&app)
 		m.addDefaultTimerPartitionsIfMissing(&app)
 		m.addLifeCycleStateByFunctionState(&app)
 
-		var isMixedMode bool
-		if isMixedMode, info = m.isMixedModeCluster(); info.Code != m.statusCodes.ok.Code {
-			m.sendErrorInfo(w, info)
+		isMixedMode, err := m.isMixedModeCluster()
+		if err != nil {
+			runtimeInfo.ErrCode = response.ErrInternalServer
+			runtimeInfo.Description = fmt.Sprintf("err: %v", err)
+			logging.Errorf("%s %s", logPrefix, runtimeInfo.Description)
 			return
 		}
 
 		if isMixedMode {
-			info.Code = m.statusCodes.errMixedMode.Code
-			info.Info = "Life-cycle operations except delete and undeploy are not allowed in a mixed mode cluster"
-			m.sendErrorInfo(w, info)
+			runtimeInfo.ErrCode = response.ErrMixedMode
+			runtimeInfo.Description = "Life-cycle operations except delete and undeploy are not allowed in a mixed mode cluster"
 			return
 		}
 
 		info = m.MaybeEnforceFunctionSchema(app)
-		if info.Code != m.statusCodes.ok.Code {
-			m.sendErrorInfo(w, info)
+		if info.ErrCode != response.Ok {
+			*runtimeInfo = *info
 			return
 		}
 
-		appInStore, info := m.checkAppExists(appName)
-		if info.Code != m.statusCodes.ok.Code {
+		if createFunction {
 			info = m.verifyAndCreateApp(cred, &app)
-			if info.Code != m.statusCodes.ok.Code {
-				m.sendErrorInfo(w, info)
+			if info.ErrCode != response.Ok {
+				*runtimeInfo = *info
 				return
 			}
 		} else {
-			if info := m.checkAuthAndPermissionWithApp(w, r, appName, rbac.HandlerManagePermissions, false); info.Code != m.statusCodes.ok.Code {
-				m.sendErrorInfo(w, info)
+			if info := m.checkAuthAndPermissionWithApp(w, r, appName, rbac.HandlerManagePermissions, false); info.ErrCode != response.Ok {
+				*runtimeInfo = *info
 				return
 			}
 		}
 
-		audit.Log(auditevent.CreateFunction, r, appName)
-
-		if info = m.validateApplication(&app); info.Code != m.statusCodes.ok.Code {
-			m.sendErrorInfo(w, info)
+		if info = m.validateApplication(&app); info.ErrCode != response.Ok {
+			*runtimeInfo = *info
 			return
 		}
 
 		if m.superSup.GetAppCompositeState(appName) != common.AppStateUndeployed {
 			if !CheckIfAppKeyspacesAreSame(*appInStore, app) {
-				info.Code = m.statusCodes.errInvalidConfig.Code
-				info.Info = "Source and Meta Keyspaces can only be changed when the function is in undeployed state."
-				m.sendErrorInfo(w, info)
+				runtimeInfo.ErrCode = response.ErrInvalidConfig
+				runtimeInfo.Description = "Source and Meta Keyspaces can only be changed when the function is in undeployed state."
 				return
 			}
 		}
 
 		// Reject the request if there is a mismatch of app name in URL and body
 		if app.Name != appName {
-			info.Code = m.statusCodes.errAppNameMismatch.Code
-			info.Info = fmt.Sprintf("function name in the URL (%s) and body (%s) must be same", appName, app.Name)
-			logging.Errorf("%s %s", logPrefix, info.Info)
-			m.sendErrorInfo(w, info)
+			runtimeInfo.ErrCode = response.ErrAppNameMismatch
+			runtimeInfo.Description = fmt.Sprintf("function name in the URL (%s) and body (%s) must be same", appName, app.Name)
+			logging.Errorf("%s %s", logPrefix, runtimeInfo.Description)
 			return
 		}
 
-		err := m.assignFunctionID(appName, &app, info)
+		err = m.assignFunctionID(appName, &app)
 		if err != nil {
-			m.sendErrorInfo(w, info)
+			runtimeInfo.ErrCode = response.ErrInternalServer
+			runtimeInfo.Description = err
 			return
 		}
 
-		err = m.assignFunctionInstanceID(appName, &app, info)
+		err = m.assignFunctionInstanceID(appName, &app)
 		if err != nil {
-			m.sendErrorInfo(w, info)
+			runtimeInfo.ErrCode = response.ErrInternalServer
+			runtimeInfo.Description = err
 			return
 		}
 
@@ -3174,64 +3316,66 @@ func (m *ServiceMgr) functionName(w http.ResponseWriter, r *http.Request, appNam
 			app.Settings["language_compatibility"] = common.LanguageCompatibility[0]
 		}
 
-		runtimeInfo := m.savePrimaryStore(&app)
-		if runtimeInfo.Code == m.statusCodes.ok.Code {
-			audit.Log(auditevent.SaveDraft, r, appName)
-			// Save to temp store only if saving to primary store succeeds
-			if tempInfo := m.saveTempStore(app); tempInfo.Code != m.statusCodes.ok.Code {
-				m.sendErrorInfo(w, tempInfo)
-				return
-			}
-		}
-		m.sendResponse(w, runtimeInfo)
-
-	case "DELETE":
-		if info := m.checkAuthAndPermissionWithApp(w, r, appName, rbac.HandlerManagePermissions, false); info.Code != m.statusCodes.ok.Code {
-			m.sendErrorInfo(w, info)
+		info = m.savePrimaryStore(&app)
+		if info.ErrCode != response.Ok {
+			*runtimeInfo = *info
 			return
 		}
-		audit.Log(auditevent.DeleteFunction, r, appName)
+		// Save to temp store only if saving to primary store succeeds
+		if info = m.saveTempStore(app); info.ErrCode != response.Ok {
+			*runtimeInfo = *info
+			return
+		}
+		*runtimeInfo = *info
+		runtimeInfo.ExtraAttributes = map[string]interface{}{"appName": appName}
+
+	case "DELETE":
+		res.SetRequestEvent(response.EventDeleteFunction)
+		if info := m.checkAuthAndPermissionWithApp(w, r, appName, rbac.HandlerManagePermissions, false); info.ErrCode != response.Ok {
+			*runtimeInfo = *info
+			return
+		}
+
 		info := m.deletePrimaryStore(cred, appName)
 		// Delete the application from temp store only if app does not exist in primary store
 		// or if the deletion succeeds on primary store
-		if info.Code == m.statusCodes.errAppNotDeployed.Code || info.Code == m.statusCodes.ok.Code {
-			audit.Log(auditevent.DeleteDrafts, r, appName)
+		if info.ErrCode == response.ErrAppNotFoundTs || info.ErrCode == response.Ok {
 			info = m.deleteTempStore(cred, appName)
 		}
-		m.sendResponse(w, info)
+
+		if info.ErrCode != response.Ok {
+			*runtimeInfo = *info
+			return
+		}
+
+		runtimeInfo.Description = fmt.Sprintf("Function: %s deleting in background", appName)
+		runtimeInfo.ExtraAttributes = map[string]interface{}{"appName": appName}
 
 	default:
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		fmt.Fprintf(w, "Method not allowed")
-		return
+		runtimeInfo.ErrCode = response.ErrMethodNotAllowed
+		runtimeInfo.Description = "Method not allowed. Only GET, POST and DELETE are allowed"
 	}
 }
 
 // Checks for permission and add the intial fields
-func (m *ServiceMgr) verifyAndCreateApp(cred cbauth.Creds, app *application) (info *runtimeInfo) {
-	info = &runtimeInfo{}
-	info.Code = m.statusCodes.ok.Code
+func (m *ServiceMgr) verifyAndCreateApp(cred cbauth.Creds, app *application) *response.RuntimeInfo {
+	info := &response.RuntimeInfo{}
 
 	rbacSupport := m.rbacSupport()
 	if rbacSupport {
 		fS := app.FunctionScope
 		_, _, info = m.getBSId(&fS)
-		if info != nil && info.Code != m.statusCodes.ok.Code {
-			return
+		if info.ErrCode != response.Ok {
+			return info
 		}
 	} else {
 		app.FunctionScope = common.FunctionScope{}
 	}
 
 	notAllowed, err := checkPermissions(app, cred)
-	if err == rbac.ErrAuthorisation {
-		info.Code = m.statusCodes.errForbidden.Code
-		info.Info = fmt.Sprintf("Forbidden. User needs one of the following permission: %v", notAllowed)
-		return
-	}
 	if err != nil {
-		info.Code = m.statusCodes.errInternalServer.Code
-		return
+		*info = getAuthErrorInfo(notAllowed, false, err)
+		return info
 	}
 
 	if rbacSupport {
@@ -3242,8 +3386,8 @@ func (m *ServiceMgr) verifyAndCreateApp(cred cbauth.Creds, app *application) (in
 		if domain == "local" {
 			uuid, err = cbauth.GetUserUuid(name, domain)
 			if err != nil {
-				info.Code = m.statusCodes.errInternalServer.Code
-				return
+				info.ErrCode = response.ErrInternalServer
+				return info
 			}
 		}
 		app.Owner = &common.Owner{
@@ -3265,7 +3409,7 @@ func (m *ServiceMgr) verifyAndCreateApp(cred cbauth.Creds, app *application) (in
 		app.Settings["dcp_stream_boundary"] = "everything"
 	}
 
-	return
+	return info
 }
 
 func checkPermissions(app *application, creds cbauth.Creds) ([]string, error) {
@@ -3289,97 +3433,114 @@ func checkPermissions(app *application, creds cbauth.Creds) ([]string, error) {
 }
 
 func (m *ServiceMgr) functions(w http.ResponseWriter, r *http.Request) {
-	cred, err := rbac.AuthWebCreds(w, r)
+	res := response.NewResponseWriter(w, r, response.EventListAllfunction)
+	runtimeInfo := &response.RuntimeInfo{}
+
+	defer res.LogAndSend(runtimeInfo)
+
+	cred, err := rbac.AuthWebCreds(r)
 	if err != nil {
+		*runtimeInfo = getAuthErrorInfo(nil, false, err)
 		return
 	}
 
 	switch r.Method {
 	case "GET":
-		m.getTempStoreHandler(w, r)
+		tempApps := m.getTempStoreHandlerHelper(cred)
+		runtimeInfo.Description = tempApps
+		runtimeInfo.OnlyDescription = true
 
 	case "POST":
-		appList, info := m.unmarshalAppList(w, r)
-		if info.Code != m.statusCodes.ok.Code {
-			m.sendErrorInfo(w, info)
+		res.SetRequestEvent(response.EventImportFunctions)
+		appList, info := m.unmarshalAppList(r)
+		if info.ErrCode != response.Ok {
+			*runtimeInfo = *info
 			return
 		}
+		res.AddRequestData("body", appList)
 
-		var isMixedMode bool
-		if isMixedMode, info = m.isMixedModeCluster(); info.Code != m.statusCodes.ok.Code {
-			m.sendErrorInfo(w, info)
+		isMixedMode, err := m.isMixedModeCluster()
+		if err != nil {
+			runtimeInfo.ErrCode = response.ErrInternalServer
+			runtimeInfo.Description = fmt.Sprintf("err: %v", err)
 			return
 		}
 
 		if isMixedMode {
-			info.Code = m.statusCodes.errMixedMode.Code
-			info.Info = "Life-cycle operations except delete and undeploy are not allowed in a mixed mode cluster"
-			m.sendErrorInfo(w, info)
+			runtimeInfo.ErrCode = response.ErrMixedMode
+			runtimeInfo.Description = "Life-cycle operations except delete and undeploy are not allowed in a mixed mode cluster"
 			return
 		}
 
 		for _, app := range *appList {
 			info = m.MaybeEnforceFunctionSchema(app)
-			if info.Code != m.statusCodes.ok.Code {
-				m.sendErrorInfo(w, info)
+			if info.ErrCode != response.Ok {
+				*runtimeInfo = *info
 				return
 			}
 		}
 
-		infoList, _ := m.createApplications(cred, r, appList, false)
-		m.sendRuntimeInfoList(w, infoList)
+		infoList, importedFns := m.createApplications(cred, appList, false)
+		runtimeInfo.ExtraAttributes = map[string]interface{}{"appNames": importedFns}
+		runtimeInfo.Description = infoList
+		runtimeInfo.OnlyDescription = true
 
 	case "DELETE":
-		infoList := []*runtimeInfo{}
+		res.SetRequestEvent(response.EventDeleteFunction)
 		appsNames := m.getTempStoreAppNames()
+		infoList := make([]*response.RuntimeInfo, 0, len(appsNames))
 
 		for _, app := range appsNames {
-			audit.Log(auditevent.DeleteFunction, r, app)
+
 			info := m.deletePrimaryStore(cred, app)
 			// Delete the application from temp store only if app does not exist in primary store
 			// or if the deletion succeeds on primary store
-			if info.Code == m.statusCodes.errAppNotDeployed.Code || info.Code == m.statusCodes.ok.Code {
-				audit.Log(auditevent.DeleteDrafts, r, app)
-				info = m.deleteTempStore(cred, app)
+			if info.ErrCode != response.Ok && info.ErrCode != response.ErrAppNotFoundTs {
+				infoList = append(infoList, info)
+				continue
+			}
+
+			info = m.deleteTempStore(cred, app)
+			if info.ErrCode == response.Ok {
+				info.Description = fmt.Sprintf("Function: %s deleting in background", app)
 			}
 			infoList = append(infoList, info)
 		}
-		m.sendRuntimeInfoList(w, infoList)
+		runtimeInfo.Description = infoList
+		runtimeInfo.OnlyDescription = true
 
 	default:
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		fmt.Fprintf(w, "Method not allowed")
-		return
+		runtimeInfo.ErrCode = response.ErrMethodNotAllowed
+		runtimeInfo.Description = "Method not allowed. Only GET, POST and DELETE are allowed"
 	}
 }
 
 func (m *ServiceMgr) functionUndeploy(w http.ResponseWriter, r *http.Request, appName string) {
 	logPrefix := "serviceMgr::functionUndeploy"
+	res := response.NewResponseWriter(w, r, response.EventUndeployFunction)
+	runtimeInfo := &response.RuntimeInfo{}
 
-	info := &runtimeInfo{}
+	defer res.LogAndSend(runtimeInfo)
+
 	if r.Method != "POST" {
-		info.Code = m.statusCodes.errInvalidConfig.Code
-		info.Info = fmt.Sprintf("Only POST call allowed to this endpoint")
-		m.sendErrorInfo(w, info)
+		runtimeInfo.ErrCode = response.ErrMethodNotAllowed
+		runtimeInfo.Description = "Method not allowed. Only POST is allowed"
 		return
 	}
 
-	if info := m.checkAuthAndPermissionWithApp(w, r, appName, rbac.HandlerManagePermissions, false); info.Code != m.statusCodes.ok.Code {
-		m.sendErrorInfo(w, info)
+	if info := m.checkAuthAndPermissionWithApp(w, r, appName, rbac.HandlerManagePermissions, false); info.ErrCode != response.Ok {
+		*runtimeInfo = *info
 		return
 	}
 
 	appState := m.superSup.GetAppCompositeState(appName)
 
 	if appState == common.AppStateUndeployed {
-		info.Code = m.statusCodes.errAppNotDeployed.Code
-		info.Info = fmt.Sprintf("Invalid operation. Function: %v already in undeployed state.", appName)
-		logging.Errorf("%s %s", logPrefix, info.Info)
-		m.sendErrorInfo(w, info)
+		runtimeInfo.ErrCode = response.ErrAppNotDeployed
+		runtimeInfo.Description = fmt.Sprintf("Invalid operation. Function: %v already in undeployed state.", appName)
+		logging.Errorf("%s %s", logPrefix, runtimeInfo.Description)
 		return
 	}
-
-	audit.Log(auditevent.SetSettings, r, appName)
 
 	var settings = make(map[string]interface{})
 	settings["deployment_status"] = false
@@ -3387,61 +3548,59 @@ func (m *ServiceMgr) functionUndeploy(w http.ResponseWriter, r *http.Request, ap
 
 	data, err := json.MarshalIndent(settings, "", " ")
 	if err != nil {
-		info.Code = m.statusCodes.errMarshalResp.Code
-		info.Info = fmt.Sprintf("failed to marshal function settings, err : %v", err)
-		logging.Errorf("%s %s", logPrefix, info.Info)
-		m.sendErrorInfo(w, info)
+		runtimeInfo.ErrCode = response.ErrMarshalResp
+		runtimeInfo.Description = fmt.Sprintf("failed to marshal function settings, err : %v", err)
+		logging.Errorf("%s %s", logPrefix, runtimeInfo.Description)
 		return
 	}
 
-	if info = m.setSettings(appName, data, false); info.Code != m.statusCodes.ok.Code {
-		m.sendErrorInfo(w, info)
+	if info := m.setSettings(appName, data, false); info.ErrCode != response.Ok {
+		*runtimeInfo = *info
 		return
 	}
+	runtimeInfo.Description = fmt.Sprintf("Function: %s is undeploying", appName)
+
 }
 
 func (m *ServiceMgr) functionDeploy(w http.ResponseWriter, r *http.Request, appName string) {
 	logPrefix := "ServiceMgr::functionDeploy"
+	res := response.NewResponseWriter(w, r, response.EventDeployFunction)
+	runtimeInfo := &response.RuntimeInfo{}
 
-	info := &runtimeInfo{}
+	defer res.LogAndSend(runtimeInfo)
+
 	if r.Method != "POST" {
-		info.Code = m.statusCodes.errInvalidConfig.Code
-		info.Info = fmt.Sprintf("Only POST call allowed to this endpoint")
-		m.sendErrorInfo(w, info)
+		runtimeInfo.ErrCode = response.ErrMethodNotAllowed
+		runtimeInfo.Description = "Method not allowed. Only POST is allowed"
 		return
 	}
 
-	if info := m.checkAuthAndPermissionWithApp(w, r, appName, rbac.HandlerManagePermissions, false); info.Code != m.statusCodes.ok.Code {
-		m.sendErrorInfo(w, info)
+	if info := m.checkAuthAndPermissionWithApp(w, r, appName, rbac.HandlerManagePermissions, false); info.ErrCode != response.Ok {
+		*runtimeInfo = *info
 		return
 	}
 
 	appState := m.superSup.GetAppCompositeState(appName)
 
 	if appState == common.AppStateEnabled {
-		info.Code = m.statusCodes.errAppDeployed.Code
-		info.Info = fmt.Sprintf("Invalid operation. Function: %v already in deployed state.", appName)
-		logging.Errorf("%s %s", logPrefix, info.Info)
-		m.sendErrorInfo(w, info)
+		runtimeInfo.ErrCode = response.ErrAppDeployed
+		runtimeInfo.Description = fmt.Sprintf("Invalid operation. Function: %v already in deployed state.", appName)
+		logging.Errorf("%s %s", logPrefix, runtimeInfo.Description)
 		return
 	}
 
-	audit.Log(auditevent.SetSettings, r, appName)
-
 	if appState == common.AppStatePaused {
-		info.Code = m.statusCodes.errAppNotUndeployed.Code
-		info.Info = fmt.Sprintf("Function: %v is in paused state, Please use /resume API to deploy the function.", appName)
-		logging.Errorf("%s %s", logPrefix, info.Info)
-		m.sendErrorInfo(w, info)
+		runtimeInfo.ErrCode = response.ErrAppPaused
+		runtimeInfo.Description = fmt.Sprintf("Invalid operation. Function: %v already in paused state.", appName)
+		logging.Errorf("%s %s", logPrefix, runtimeInfo.Description)
 		return
 	}
 
 	data, err := ioutil.ReadAll(r.Body)
 	if err != nil {
-		info.Code = m.statusCodes.errReadReq.Code
-		info.Info = fmt.Sprintf("failed to read request body, err: %v", err)
-		logging.Errorf("%s %s", logPrefix, info.Info)
-		m.sendErrorInfo(w, info)
+		runtimeInfo.ErrCode = response.ErrReadReq
+		runtimeInfo.Description = fmt.Sprintf("failed to read request body, err: %v", err)
+		logging.Errorf("%s %s", logPrefix, runtimeInfo.Description)
 		return
 	}
 
@@ -3449,31 +3608,29 @@ func (m *ServiceMgr) functionDeploy(w http.ResponseWriter, r *http.Request, appN
 	if len(data) != 0 {
 		err = json.Unmarshal(data, &settings)
 		if err != nil {
-			info.Code = m.statusCodes.errMarshalResp.Code
-			info.Info = fmt.Sprintf("%v failed to unmarshal setting supplied, err: %v", len(data), err)
-			logging.Errorf("%s %s", logPrefix, info.Info)
-			m.sendErrorInfo(w, info)
+			runtimeInfo.ErrCode = response.ErrMarshalResp
+			runtimeInfo.Description = fmt.Sprintf("%v failed to unmarshal setting supplied, err: %v", len(data), err)
+			logging.Errorf("%s %s", logPrefix, runtimeInfo.Description)
 			return
 		}
 		if settings == nil {
-			info.Code = m.statusCodes.errMarshalResp.Code
-			info.Info = fmt.Sprintf("%v failed to unmarshal setting supplied, data sent in the request body is invalid.", len(data))
-			logging.Errorf("%s %s", logPrefix, info.Info)
-			m.sendErrorInfo(w, info)
+			runtimeInfo.ErrCode = response.ErrMarshalResp
+			runtimeInfo.Description = fmt.Sprintf("%v failed to unmarshal setting supplied, data sent in the request body is invalid.", len(data))
+			logging.Errorf("%s %s", logPrefix, runtimeInfo.Description)
 			return
 		}
 	}
 
 	app, info := m.getTempStore(appName)
-	if info.Code != m.statusCodes.ok.Code {
-		m.sendErrorInfo(w, info)
+	if info.ErrCode != response.Ok {
+		*runtimeInfo = *info
 		return
 	}
 
 	if app.EnforceSchema == true {
-		m.MaybeEnforceSettingsSchema(data)
-		if info.Code != m.statusCodes.ok.Code {
-			m.sendErrorInfo(w, info)
+		info = m.MaybeEnforceSettingsSchema(data)
+		if info.ErrCode != response.Ok {
+			*runtimeInfo = *info
 			return
 		}
 	}
@@ -3483,46 +3640,45 @@ func (m *ServiceMgr) functionDeploy(w http.ResponseWriter, r *http.Request, appN
 
 	data, err = json.MarshalIndent(settings, "", " ")
 	if err != nil {
-		info.Code = m.statusCodes.errMarshalResp.Code
-		info.Info = fmt.Sprintf("failed to marshal function settings, err : %v", err)
-		logging.Errorf("%s %s", logPrefix, info.Info)
-		m.sendErrorInfo(w, info)
+		runtimeInfo.ErrCode = response.ErrMarshalResp
+		runtimeInfo.Description = fmt.Sprintf("failed to marshal function settings, err : %v", err)
+		logging.Errorf("%s %s", logPrefix, runtimeInfo.Description)
 		return
 	}
 
-	if info = m.setSettings(appName, data, false); info.Code != m.statusCodes.ok.Code {
-		m.sendErrorInfo(w, info)
+	if info = m.setSettings(appName, data, false); info.ErrCode != response.Ok {
+		*runtimeInfo = *info
 		return
 	}
+	runtimeInfo.Description = fmt.Sprintf("Function: %s is deploying", appName)
 }
 
 func (m *ServiceMgr) functionPause(w http.ResponseWriter, r *http.Request, appName string) {
 	logPrefix := "serviceMgr::functionPause"
+	res := response.NewResponseWriter(w, r, response.EventPauseFunction)
+	runtimeInfo := &response.RuntimeInfo{}
 
-	info := &runtimeInfo{}
+	defer res.LogAndSend(runtimeInfo)
+
 	if r.Method != "POST" {
-		info.Code = m.statusCodes.errInvalidConfig.Code
-		info.Info = fmt.Sprintf("Only POST call allowed to this endpoint")
-		m.sendErrorInfo(w, info)
+		runtimeInfo.ErrCode = response.ErrMethodNotAllowed
+		runtimeInfo.Description = "Method not allowed. Only POST is allowed"
 		return
 	}
 
-	if info := m.checkAuthAndPermissionWithApp(w, r, appName, rbac.HandlerManagePermissions, false); info.Code != m.statusCodes.ok.Code {
-		m.sendErrorInfo(w, info)
+	if info := m.checkAuthAndPermissionWithApp(w, r, appName, rbac.HandlerManagePermissions, false); info.ErrCode != response.Ok {
+		*runtimeInfo = *info
 		return
 	}
 
 	appState := m.superSup.GetAppCompositeState(appName)
 
 	if appState == common.AppStatePaused {
-		info.Code = m.statusCodes.errAppNotDeployed.Code
-		info.Info = fmt.Sprintf("Invalid operation. Function: %v already in paused state.", appName)
-		logging.Errorf("%s %s", logPrefix, info.Info)
-		m.sendErrorInfo(w, info)
+		runtimeInfo.ErrCode = response.ErrAppPaused
+		runtimeInfo.Description = fmt.Sprintf("Invalid operation. Function: %v already in paused state.", appName)
+		logging.Errorf("%s %s", logPrefix, runtimeInfo.Description)
 		return
 	}
-
-	audit.Log(auditevent.SetSettings, r, appName)
 
 	var settings = make(map[string]interface{})
 	settings["deployment_status"] = true
@@ -3530,54 +3686,52 @@ func (m *ServiceMgr) functionPause(w http.ResponseWriter, r *http.Request, appNa
 
 	data, err := json.MarshalIndent(settings, "", " ")
 	if err != nil {
-		info.Code = m.statusCodes.errMarshalResp.Code
-		info.Info = fmt.Sprintf("failed to marshal function settings, err : %v", err)
-		logging.Errorf("%s %s", logPrefix, info.Info)
-		m.sendErrorInfo(w, info)
+		runtimeInfo.ErrCode = response.ErrMarshalResp
+		runtimeInfo.Description = fmt.Sprintf("failed to marshal function settings, err : %v", err)
+		logging.Errorf("%s %s", logPrefix, runtimeInfo.Description)
 		return
 	}
 
-	if info = m.setSettings(appName, data, false); info.Code != m.statusCodes.ok.Code {
-		m.sendErrorInfo(w, info)
+	if info := m.setSettings(appName, data, false); info.ErrCode != response.Ok {
+		*runtimeInfo = *info
 		return
 	}
+	runtimeInfo.Description = fmt.Sprintf("Function: %s is Pausing", appName)
 }
 
 func (m *ServiceMgr) functionResume(w http.ResponseWriter, r *http.Request, appName string) {
 	logPrefix := "serviceMgr::functionResume"
+	res := response.NewResponseWriter(w, r, response.EventResumeFunction)
+	runtimeInfo := &response.RuntimeInfo{}
 
-	info := &runtimeInfo{}
+	defer res.LogAndSend(runtimeInfo)
+
 	if r.Method != "POST" {
-		info.Code = m.statusCodes.errInvalidConfig.Code
-		info.Info = fmt.Sprintf("Only POST call allowed to this endpoint")
-		m.sendErrorInfo(w, info)
+		runtimeInfo.ErrCode = response.ErrMethodNotAllowed
+		runtimeInfo.Description = "Method not allowed. Only POST is allowed"
 		return
 	}
 
-	if info := m.checkAuthAndPermissionWithApp(w, r, appName, rbac.HandlerManagePermissions, false); info.Code != m.statusCodes.ok.Code {
-		m.sendErrorInfo(w, info)
+	if info := m.checkAuthAndPermissionWithApp(w, r, appName, rbac.HandlerManagePermissions, false); info.ErrCode != response.Ok {
+		*runtimeInfo = *info
 		return
 	}
 
 	appState := m.superSup.GetAppCompositeState(appName)
 
 	if appState == common.AppStateEnabled {
-		info.Code = m.statusCodes.errAppDeployed.Code
-		info.Info = fmt.Sprintf("Invalid operation. Function: %v already in deployed state.", appName)
-		logging.Errorf("%s %s", logPrefix, info.Info)
-		m.sendErrorInfo(w, info)
+		runtimeInfo.ErrCode = response.ErrAppDeployed
+		runtimeInfo.Description = fmt.Sprintf("Invalid operation. Function: %v already in Deployed state.", appName)
+		logging.Errorf("%s %s", logPrefix, runtimeInfo.Description)
 		return
 	}
 
 	if appState == common.AppStateUndeployed {
-		info.Code = m.statusCodes.errAppNotDeployed.Code
-		info.Info = fmt.Sprintf("Invalid operation. Function: %v already in undeployed state.", appName)
-		logging.Errorf("%s %s", logPrefix, info.Info)
-		m.sendErrorInfo(w, info)
+		runtimeInfo.ErrCode = response.ErrAppNotDeployed
+		runtimeInfo.Description = fmt.Sprintf("Invalid operation. Function: %v already in undeployed state.", appName)
+		logging.Errorf("%s %s", logPrefix, runtimeInfo.Description)
 		return
 	}
-
-	audit.Log(auditevent.SetSettings, r, appName)
 
 	var settings = make(map[string]interface{})
 	settings["deployment_status"] = true
@@ -3585,32 +3739,36 @@ func (m *ServiceMgr) functionResume(w http.ResponseWriter, r *http.Request, appN
 
 	data, err := json.MarshalIndent(settings, "", " ")
 	if err != nil {
-		info.Code = m.statusCodes.errMarshalResp.Code
-		info.Info = fmt.Sprintf("failed to marshal function settings, err : %v", err)
-		logging.Errorf("%s %s", logPrefix, info.Info)
-		m.sendErrorInfo(w, info)
+		runtimeInfo.ErrCode = response.ErrMarshalResp
+		runtimeInfo.Description = fmt.Sprintf("failed to marshal function settings, err : %v", err)
+		logging.Errorf("%s %s", logPrefix, runtimeInfo.Description)
 		return
 	}
 
-	if info = m.setSettings(appName, data, false); info.Code != m.statusCodes.ok.Code {
-		m.sendErrorInfo(w, info)
+	if info := m.setSettings(appName, data, false); info.ErrCode != response.Ok {
+		*runtimeInfo = *info
 		return
 	}
+	runtimeInfo.Description = fmt.Sprintf("Function: %s is Resuming", appName)
 }
 
 func (m *ServiceMgr) functionAppcode(w http.ResponseWriter, r *http.Request, appName string, wantChecksum string) {
 	logPrefix := "serviceMgr::functionAppcode"
+	res := response.NewResponseWriter(w, r, response.EventGetFunctionDraft)
+	runtimeInfo := &response.RuntimeInfo{}
+
+	defer res.LogAndSend(runtimeInfo)
 
 	switch r.Method {
 	case "GET":
-		if info := m.checkAuthAndPermissionWithApp(w, r, appName, rbac.HandlerManagePermissions, false); info.Code != m.statusCodes.ok.Code {
-			m.sendErrorInfo(w, info)
+		if info := m.checkAuthAndPermissionWithApp(w, r, appName, rbac.HandlerManagePermissions, false); info.ErrCode != response.Ok {
+			*runtimeInfo = *info
 			return
 		}
 
 		app, info := m.getTempStore(appName)
-		if info.Code != m.statusCodes.ok.Code {
-			m.sendErrorInfo(w, info)
+		if info.ErrCode != response.Ok {
+			*runtimeInfo = *info
 			return
 		}
 		response := []byte(app.AppHandlers)
@@ -3618,179 +3776,178 @@ func (m *ServiceMgr) functionAppcode(w http.ResponseWriter, r *http.Request, app
 			response = []byte(fmt.Sprintf("%x", sha256.Sum256(response)))
 		}
 
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
-		fmt.Fprintf(w, "%s", string(response))
+		runtimeInfo.SendRawDescription = true
+		runtimeInfo.Description = response
+		runtimeInfo.OnlyDescription = true
 
 	case "POST":
-		info := &runtimeInfo{}
-		if info := m.checkAuthAndPermissionWithApp(w, r, appName, rbac.HandlerManagePermissions, false); info.Code != m.statusCodes.ok.Code {
-			m.sendErrorInfo(w, info)
+		res.SetRequestEvent(response.EventUpdateFunction)
+		if info := m.checkAuthAndPermissionWithApp(w, r, appName, rbac.HandlerManagePermissions, false); info.ErrCode != response.Ok {
+			*runtimeInfo = *info
 			return
 		}
 
 		appState := m.superSup.GetAppCompositeState(appName)
 		if appState == common.AppStateEnabled {
-			info.Code = m.statusCodes.errAppDeployed.Code
-			info.Info = fmt.Sprintf("Function: %s is in deployed state, appcode can only be updated when a function is either undeployed or paused", appName)
-			logging.Errorf("%s %s", logPrefix, info.Info)
-			m.sendErrorInfo(w, info)
+			runtimeInfo.ErrCode = response.ErrAppDeployed
+			runtimeInfo.Description = fmt.Sprintf("Function: %s is in deployed state, appcode can only be updated when a function is either undeployed or paused", appName)
+			logging.Errorf("%s %s", logPrefix, runtimeInfo.Description)
 			return
 		}
 
 		data, err := ioutil.ReadAll(r.Body)
 		if err != nil {
-			info.Code = m.statusCodes.errReadReq.Code
-			info.Info = fmt.Sprintf("Failed to read request body, err: %v", err)
-			logging.Errorf("%s %s", logPrefix, info.Info)
-			m.sendErrorInfo(w, info)
+			runtimeInfo.ErrCode = response.ErrReadReq
+			runtimeInfo.Description = fmt.Sprintf("Failed to read request body, err: %v", err)
+			logging.Errorf("%s %s", logPrefix, runtimeInfo.Description)
 			return
 		}
+		handler := string(data)
+		res.AddRequestData("body", handler)
 
 		if wantChecksum == "/checksum" {
-			w.WriteHeader(http.StatusMethodNotAllowed)
-			fmt.Fprintf(w, "Method not allowed")
+			runtimeInfo.ErrCode = response.ErrMethodNotAllowed
+			runtimeInfo.Description = "Method not allowed"
 			return
 		}
 
 		app, info := m.getTempStore(appName)
-		if info.Code != m.statusCodes.ok.Code {
-			m.sendErrorInfo(w, info)
+		if info.ErrCode != response.Ok {
+			*runtimeInfo = *info
+			return
+		}
+		app.AppHandlers = handler
+
+		info = m.savePrimaryStore(&app)
+		if info.ErrCode != response.Ok {
+			*runtimeInfo = *info
 			return
 		}
 
-		app.AppHandlers = string(data)
-
-		runtimeInfo := m.savePrimaryStore(&app)
-		if runtimeInfo.Code == m.statusCodes.ok.Code {
-			audit.Log(auditevent.SaveDraft, r, appName)
-			if tempInfo := m.saveTempStore(app); tempInfo.Code != m.statusCodes.ok.Code {
-				m.sendErrorInfo(w, tempInfo)
-				return
-			}
-		} else {
-			m.sendErrorInfo(w, runtimeInfo)
+		if info := m.saveTempStore(app); info.ErrCode != response.Ok {
+			*runtimeInfo = *info
 			return
 		}
-		runtimeInfo.Info = fmt.Sprintf("Function: %s appcode stored in the metakv.", appName)
+
 		deprecatedFnsList := parser.ListDeprecatedFunctions(app.AppHandlers)
 		overloadedFnsList := parser.ListOverloadedFunctions(app.AppHandlers)
+		warningList := make([]string, 0, 2)
 		if len(deprecatedFnsList) > 0 {
 			jsonList, _ := json.Marshal(deprecatedFnsList)
-			runtimeInfo.Info = fmt.Sprintf("%s; It uses the following APIs that are Deprecated: %s", runtimeInfo.Info, jsonList)
+			warningList = append(warningList, fmt.Sprintf("It uses the following APIs that are Deprecated: %s", jsonList))
 		}
 		if len(overloadedFnsList) > 0 {
 			jsonList, _ := json.Marshal(overloadedFnsList)
-			runtimeInfo.Info = fmt.Sprintf("%s; The following built-in APIs are Overloaded: %s", runtimeInfo.Info, jsonList)
+			warningList = append(warningList, fmt.Sprintf("The following built-in APIs are Overloaded: %s", jsonList))
 		}
-		m.sendResponse(w, runtimeInfo)
+		if len(warningList) > 0 {
+			runtimeInfo.WarningInfo = warningList
+		}
+		runtimeInfo.Description = fmt.Sprintf("Function: %s appcode stored in the metakv.", appName)
 
 	default:
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		fmt.Fprintf(w, "Method not allowed")
+		runtimeInfo.ErrCode = response.ErrMethodNotAllowed
+		runtimeInfo.Description = "Method not allowed. Only GET and POST are allowed"
 		return
 	}
 }
 
 func (m *ServiceMgr) functionConfig(w http.ResponseWriter, r *http.Request, appName string) {
 	logPrefix := "serviceMgr::functionConfig"
+	res := response.NewResponseWriter(w, r, response.EventGetFunctionDraft)
+	runtimeInfo := &response.RuntimeInfo{}
+
+	defer res.LogAndSend(runtimeInfo)
 
 	switch r.Method {
 	case "GET":
-		if info := m.checkAuthAndPermissionWithApp(w, r, appName, rbac.HandlerManagePermissions, false); info.Code != m.statusCodes.ok.Code {
-			m.sendErrorInfo(w, info)
+		if info := m.checkAuthAndPermissionWithApp(w, r, appName, rbac.HandlerManagePermissions, false); info.ErrCode != response.Ok {
+			*runtimeInfo = *info
 			return
 		}
 
 		app, info := m.getTempStore(appName)
-		if info.Code != m.statusCodes.ok.Code {
-			m.sendErrorInfo(w, info)
+		if info.ErrCode != response.Ok {
+			*runtimeInfo = *info
 			return
 		}
 		redactPasswords(&app)
-		response, err := json.MarshalIndent(app.DeploymentConfig, "", " ")
-		if err != nil {
-			info.Code = m.statusCodes.errMarshalResp.Code
-			info.Info = fmt.Sprintf("Failed to marshal config, err : %v", err)
-			logging.Errorf("%s %s", logPrefix, info.Info)
-			m.sendErrorInfo(w, info)
-			return
-		}
 
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
-		fmt.Fprintf(w, "%s", string(response))
+		runtimeInfo.Description = app.DeploymentConfig
+		runtimeInfo.OnlyDescription = true
 
 	case "POST":
-		info := &runtimeInfo{}
-		if info := m.checkAuthAndPermissionWithApp(w, r, appName, rbac.HandlerManagePermissions, false); info.Code != m.statusCodes.ok.Code {
-			m.sendErrorInfo(w, info)
+		res.SetRequestEvent(response.EventUpdateFunction)
+		if info := m.checkAuthAndPermissionWithApp(w, r, appName, rbac.HandlerManagePermissions, false); info.ErrCode != response.Ok {
+			*runtimeInfo = *info
 			return
 		}
 		appState := m.superSup.GetAppCompositeState(appName)
 		if appState == common.AppStateEnabled {
-			info.Code = m.statusCodes.errAppDeployed.Code
-			info.Info = fmt.Sprintf("Function: %s is in deployed state, config can only be updated when a function is either undeployed or paused", appName)
-			logging.Errorf("%s %s", logPrefix, info.Info)
-			m.sendErrorInfo(w, info)
+			runtimeInfo.ErrCode = response.ErrAppDeployed
+			runtimeInfo.Description = fmt.Sprintf("Function: %s is in deployed state, config can only be updated when a function is either undeployed or paused", appName)
+			logging.Errorf("%s %s", logPrefix, runtimeInfo.Description)
 			return
 		}
 
 		data, err := ioutil.ReadAll(r.Body)
 		if err != nil {
-			info.Code = m.statusCodes.errReadReq.Code
-			info.Info = fmt.Sprintf("Failed to read request body, err: %v", err)
-			logging.Errorf("%s %s", logPrefix, info.Info)
-			m.sendErrorInfo(w, info)
+			runtimeInfo.ErrCode = response.ErrReadReq
+			runtimeInfo.Description = fmt.Sprintf("Failed to read request body, err: %v", err)
+			logging.Errorf("%s %s", logPrefix, runtimeInfo.Description)
 			return
 		}
 
 		app, info := m.getTempStore(appName)
-		appCopy := app
-		if info.Code != m.statusCodes.ok.Code {
-			m.sendErrorInfo(w, info)
+		if info.ErrCode != response.Ok {
+			*runtimeInfo = *info
 			return
 		}
+		appCopy := app
 
 		config := depCfg{}
 		unmarshalErr := json.Unmarshal(data, &config)
 		if unmarshalErr != nil {
-			info.Code = m.statusCodes.errReadReq.Code
-			info.Info = fmt.Sprintf("Failed to Unmarshal request body, err: %v", err)
-			logging.Errorf("%s %s", logPrefix, info.Info)
-			m.sendErrorInfo(w, info)
+			runtimeInfo.ErrCode = response.ErrUnmarshalPld
+			runtimeInfo.Description = fmt.Sprintf("Failed to Unmarshal request body, err: %v", err)
+			logging.Errorf("%s %s", logPrefix, runtimeInfo.Description)
 			return
 		}
+		res.AddRequestData("body", config)
+
 		app.DeploymentConfig = config
 		copyPasswords(&app, &appCopy)
 
 		// Validate Recursion Checks and deployment configurations
-		if info = m.validateApplication(&app); info.Code != m.statusCodes.ok.Code {
-			m.sendErrorInfo(w, info)
+		if info = m.validateApplication(&app); info.ErrCode != response.Ok {
+			*runtimeInfo = *info
 			return
 		}
 		// Don't allow the user to change the meta and source keyspaces
 		if appState == common.AppStatePaused {
 			if !CheckIfAppKeyspacesAreSame(appCopy, app) {
-				info.Code = m.statusCodes.errInvalidConfig.Code
-				info.Info = "Source and Meta Keyspaces can only be changed when the function is in undeployed state."
-				m.sendErrorInfo(w, info)
+				runtimeInfo.ErrCode = response.ErrInvalidConfig
+				runtimeInfo.Description = "Source and Meta Keyspaces can only be changed when the function is in undeployed state."
 				return
 			}
 		}
 
-		runtimeInfo := m.savePrimaryStore(&app)
-		if runtimeInfo.Code == m.statusCodes.ok.Code {
-			audit.Log(auditevent.SaveDraft, r, appName)
-			if tempInfo := m.saveTempStore(app); tempInfo.Code != m.statusCodes.ok.Code {
-				m.sendErrorInfo(w, tempInfo)
-				return
-			}
+		info = m.savePrimaryStore(&app)
+		if info.ErrCode != response.Ok {
+			*runtimeInfo = *info
+			return
 		}
-		runtimeInfo.Info = fmt.Sprintf("Function: %s config stored in the metakv.", appName)
-		m.sendResponse(w, runtimeInfo)
+
+		if info := m.saveTempStore(app); info.ErrCode != response.Ok {
+			*runtimeInfo = *info
+			return
+		}
+
+		runtimeInfo.Description = fmt.Sprintf("Function: %s config stored in the metakv.", appName)
 
 	default:
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		fmt.Fprintf(w, "Method not allowed")
+		runtimeInfo.ErrCode = response.ErrMethodNotAllowed
+		runtimeInfo.Description = "Method not allowed. Only GET and POST are allowed"
 		return
 	}
 }
@@ -3850,42 +4007,44 @@ func (m *ServiceMgr) maybeReplaceFromPrior(app *application) {
 	}
 }
 
-func (m *ServiceMgr) notifyRetryToAllProducers(appName string, r *retry) (info *runtimeInfo) {
+func (m *ServiceMgr) notifyRetryToAllProducers(appName string, r *retry) (info *response.RuntimeInfo) {
 	logPrefix := "ServiceMgr::notifyRetryToAllProducers"
 
-	info = &runtimeInfo{}
+	info = &response.RuntimeInfo{}
 
 	retryPath := metakvAppsRetryPath + appName
 	retryCount := []byte(strconv.Itoa(int(r.Count)))
 
 	err := util.MetakvSet(retryPath, retryCount, nil)
 	if err != nil {
-		info.Code = m.statusCodes.errAppRetry.Code
-		info.Info = fmt.Sprintf("unable to set metakv path for retry, err : %v", err)
-		logging.Errorf("%s %s", logPrefix, info.Info)
+		info.ErrCode = response.ErrInternalServer
+		info.Description = fmt.Sprintf("unable to set metakv path for retry, err : %v", err)
+		logging.Errorf("%s %s", logPrefix, info.Description)
 		return
 	}
 
-	info.Code = m.statusCodes.ok.Code
 	return
 }
 
 var singleFuncStatusPattern = regexp.MustCompile("^/api/v1/status/(.*[^/])/?$") // Match is agnostic of trailing '/'
 
 func (m *ServiceMgr) statusHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	cred, err := rbac.AuthWebCreds(w, r)
+	res := response.NewResponseWriter(w, r, response.EventGetFunctionStatus)
+	runtimeInfo := &response.RuntimeInfo{}
+
+	defer res.LogAndSend(runtimeInfo)
+
+	cred, err := rbac.AuthWebCreds(r)
 	if err != nil {
+		*runtimeInfo = getAuthErrorInfo(nil, false, err)
 		return
 	}
 
 	if r.Method != "GET" {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		fmt.Fprintf(w, "Method not allowed")
+		runtimeInfo.ErrCode = response.ErrMethodNotAllowed
+		runtimeInfo.Description = "Method not allowed. Only GET is allowed"
 		return
 	}
-
-	audit.Log(auditevent.ListDeployed, r, nil)
 
 	var appNameFromURI string
 
@@ -3893,29 +4052,21 @@ func (m *ServiceMgr) statusHandler(w http.ResponseWriter, r *http.Request) {
 		appNameFromURI = match[1]
 	}
 
-	response, info := m.statusHandlerImpl(cred, appNameFromURI)
+	status, info := m.statusHandlerImpl(cred, appNameFromURI)
 
-	if info.Code != m.statusCodes.ok.Code {
-		m.sendErrorInfo(w, info)
+	if info.ErrCode != response.Ok {
+		*runtimeInfo = *info
 		return
 	}
 
-	data, err := json.MarshalIndent(response, "", " ")
-	if err != nil {
-		info.Code = m.statusCodes.errMarshalResp.Code
-		info.Info = fmt.Sprintf("Unable to marshal response, err: %v", err)
-		m.sendErrorInfo(w, info)
-		return
-	}
-
-	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
-	fmt.Fprintf(w, "%s", string(data))
+	runtimeInfo.Description = status
+	runtimeInfo.OnlyDescription = true
 }
 
-func (m *ServiceMgr) statusHandlerImpl(cred cbauth.Creds, appName string) (response interface{}, info *runtimeInfo) {
+func (m *ServiceMgr) statusHandlerImpl(cred cbauth.Creds, appName string) (funcStatus interface{}, info *response.RuntimeInfo) {
 
 	appDeployedNodesCounter, appBootstrappingNodesCounter, appPausingNodesCounter, numEventingNodes, mhCompat, info := m.getAppList()
-	if info.Code != m.statusCodes.ok.Code {
+	if info.ErrCode != response.Ok {
 		return
 	}
 
@@ -3939,13 +4090,14 @@ func (m *ServiceMgr) statusHandlerImpl(cred cbauth.Creds, appName string) (respo
 			continue
 		}
 
-		if info := m.checkPermissionFromCred(cred, fnName, rbac.HandlerGetPermissions, false); info.Code != m.statusCodes.ok.Code {
+		if info := m.checkPermissionFromCred(cred, fnName, rbac.HandlerGetPermissions, false); info.ErrCode != response.Ok {
 			continue
 		}
 
 		deploymentStatus, processingStatus, err := m.getStatuses(fnName)
 		if err != nil {
-			info.Code = m.statusCodes.errInvalidConfig.Code
+			info.ErrCode = response.ErrInvalidConfig
+			info.Description = err.Error()
 			return
 		}
 
@@ -3970,7 +4122,7 @@ func (m *ServiceMgr) statusHandlerImpl(cred cbauth.Creds, appName string) (respo
 				// By the time this code path hits, eventing Nodes are updated in eventingNodeAddrs variable
 				bootstrapStatus, err = util.CheckIfAppBootstrapOngoing("/getBootstrapAppStatus", eventingNodeAddrs, fnName)
 				if err != nil {
-					info.Code = m.statusCodes.errInvalidConfig.Code
+					info.ErrCode = response.ErrInternalServer
 					return
 				}
 			}
@@ -3993,16 +4145,16 @@ func (m *ServiceMgr) statusHandlerImpl(cred cbauth.Creds, appName string) (respo
 
 	if appName != "" {
 		if len(statusHandlerResponse.Apps) == 0 {
-			info.Code = m.statusCodes.errAppNotFoundTs.Code
-			info.Info = fmt.Sprintf("Function: %s not found", appName)
+			info.ErrCode = response.ErrAppNotFoundTs
+			info.Description = fmt.Sprintf("Function: %s not found", appName)
 		} else {
-			response = &singleAppStatusResponse{statusHandlerResponse.Apps[0], statusHandlerResponse.NumEventingNodes}
+			funcStatus = &singleAppStatusResponse{statusHandlerResponse.Apps[0], statusHandlerResponse.NumEventingNodes}
 
 			return
 		}
 	}
 
-	response = statusHandlerResponse
+	funcStatus = statusHandlerResponse
 
 	return
 }
@@ -4054,35 +4206,36 @@ func (m *ServiceMgr) determineStatus(status appStatus, pausingAppsList map[strin
 }
 
 func (m *ServiceMgr) statsHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	cred, err := rbac.AuthWebCreds(w, r)
+	res := response.NewResponseWriter(w, r, response.EventFetchStats)
+	runtimeInfo := &response.RuntimeInfo{}
+
+	defer res.LogAndSend(runtimeInfo)
+
+	cred, err := rbac.AuthWebCreds(r)
 	if err != nil {
+		*runtimeInfo = getAuthErrorInfo(nil, false, err)
 		return
 	}
 
 	if r.Method != "GET" {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-
-		fmt.Fprintf(w, "Method not allowed")
+		runtimeInfo.ErrCode = response.ErrMethodNotAllowed
+		runtimeInfo.Description = "Method not allowed. Only GET is allowed"
 		return
 	}
+
+	params := r.URL.Query()
+	res.AddRequestData("query", params)
+
 	// Check whether type=full is present in query
 	fullStats := false
-	if typeParam := r.URL.Query().Get("type"); typeParam != "" {
-		fullStats = typeParam == "full"
+	if typeParam, info := CheckAndGetQueryParam(params, "type"); info.ErrCode == response.Ok && typeParam == "full" {
+		fullStats = true
 	}
 
 	// populate stats will validate the permissions
 	statsList := m.populateStats(cred, fullStats)
-
-	response, err := json.MarshalIndent(statsList, "", " ")
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintf(w, `{"error":"Failed to marshal response for stats, err: %v"}`, err)
-		return
-	}
-
-	fmt.Fprintf(w, "%s", string(response))
+	runtimeInfo.Description = statsList
+	runtimeInfo.OnlyDescription = true
 	return
 }
 
@@ -4121,7 +4274,7 @@ func (m *ServiceMgr) populateStats(cred cbauth.Creds, fullStats bool) []stats {
 	for _, app := range m.getTempStoreAll() {
 		if m.checkIfDeployed(app.Name) {
 			info := m.checkPermissionFromCred(cred, app.Name, rbac.HandlerGetPermissions, false)
-			if info.Code != m.statusCodes.ok.Code {
+			if info.ErrCode != response.Ok {
 				continue
 			}
 
@@ -4207,37 +4360,50 @@ func (m *ServiceMgr) populateStats(cred cbauth.Creds, fullStats bool) []stats {
 // Only admin can do this
 func (m *ServiceMgr) cleanupEventing(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "ServiceMgr::cleanupEventing"
-	if !rbac.ValidateAuth(w, r, rbac.EventingPermissionManage, false) {
+
+	res := response.NewResponseWriter(w, r, response.EventCleanupEventing)
+	runtimeInfo := &response.RuntimeInfo{}
+
+	defer res.LogAndSend(runtimeInfo)
+
+	if notAllowed, err := rbac.IsAllowed(r, rbac.EventingPermissionManage, false); err != nil {
+		*runtimeInfo = getAuthErrorInfo(notAllowed, false, err)
 		return
 	}
 
 	logging.Infof("%s REST Call: %v %v", logPrefix, r.URL.Path, r.Method)
-	audit.Log(auditevent.CleanupEventing, r, nil)
 
 	util.Retry(util.NewFixedBackoff(time.Second), nil, cleanupEventingMetaKvPath, metakvChecksumPath)
 	util.Retry(util.NewFixedBackoff(time.Second), nil, cleanupEventingMetaKvPath, metakvTempChecksumPath)
 	util.Retry(util.NewFixedBackoff(time.Second), nil, cleanupEventingMetaKvPath, metakvAppsPath)
 	util.Retry(util.NewFixedBackoff(time.Second), nil, cleanupEventingMetaKvPath, metakvTempAppsPath)
 	util.Retry(util.NewFixedBackoff(time.Second), nil, cleanupEventingMetaKvPath, metakvAppSettingsPath)
+
+	runtimeInfo.Description = "Successfully cleaned up eventing"
 }
 
 func (m *ServiceMgr) exportHandler(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "ServiceMgr::exportHandler"
 
+	res := response.NewResponseWriter(w, r, response.EventExportFunctions)
+	runtimeInfo := &response.RuntimeInfo{}
+
+	defer res.LogAndSend(runtimeInfo)
+
 	w.Header().Set("Content-Type", "application/json")
 	if r.Method != "GET" {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		fmt.Fprintf(w, "Method not allowed")
+		runtimeInfo.ErrCode = response.ErrMethodNotAllowed
+		runtimeInfo.Description = "Method not allowed. Only GET is allowed"
 		return
 	}
 
-	cred, err := rbac.AuthWebCreds(w, r)
+	cred, err := rbac.AuthWebCreds(r)
 	if err != nil {
+		*runtimeInfo = getAuthErrorInfo(nil, false, err)
 		return
 	}
 
 	logging.Infof("%s REST Call: %v %v", logPrefix, r.URL.Path, r.Method)
-	audit.Log(auditevent.ExportFunctions, r, nil)
 
 	apps := m.getTempStoreAll()
 	exportedFns := make([]string, 0, len(apps))
@@ -4245,7 +4411,7 @@ func (m *ServiceMgr) exportHandler(w http.ResponseWriter, r *http.Request) {
 
 	for _, app := range apps {
 		info := m.checkPermissionFromCred(cred, app.Name, rbac.HandlerGetPermissions, false)
-		if info.Code != m.statusCodes.ok.Code {
+		if info.ErrCode != response.Ok {
 			continue
 		}
 
@@ -4263,99 +4429,101 @@ func (m *ServiceMgr) exportHandler(w http.ResponseWriter, r *http.Request) {
 
 	logging.Infof("%s Exported function list: %+v", logPrefix, exportedFns)
 
-	data, err := json.MarshalIndent(exportedFuncs, "", " ")
-	if err != nil {
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
-		w.WriteHeader(m.getDisposition(m.statusCodes.errMarshalResp.Code))
-		fmt.Fprintf(w, `{"error":"Failed to marshal response, err: %v"}`, err)
-		return
-	}
-
-	m.logSystemEvent(util.EVENTID_EXPORT_FUNCTIONS, systemeventlog.SEInfo, nil)
-
-	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
-	fmt.Fprintf(w, "%s\n", data)
+	runtimeInfo.ExtraAttributes = map[string]interface{}{"appNames": exportedFns}
+	runtimeInfo.Description = exportedFuncs
+	runtimeInfo.OnlyDescription = true
 }
 
 func (m *ServiceMgr) importHandler(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "ServiceMgr::importHandler"
 
-	cred, err := rbac.AuthWebCreds(w, r)
-	if err != nil {
-		return
-	}
+	res := response.NewResponseWriter(w, r, response.EventImportFunctions)
+	runtimeInfo := &response.RuntimeInfo{}
+
+	defer res.LogAndSend(runtimeInfo)
 
 	w.Header().Set("Content-Type", "application/json")
 	if r.Method != "POST" {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		fmt.Fprintf(w, "Method not allowed")
+		runtimeInfo.ErrCode = response.ErrMethodNotAllowed
+		runtimeInfo.Description = "Method not allowed. Only POST is allowed"
+		return
+	}
+
+	cred, err := rbac.AuthWebCreds(r)
+	if err != nil {
+		*runtimeInfo = getAuthErrorInfo(nil, false, err)
 		return
 	}
 
 	logging.Infof("%s REST Call: %v %v", logPrefix, r.URL.Path, r.Method)
-	audit.Log(auditevent.ImportFunctions, r, nil)
 
-	appList, info := m.unmarshalAppList(w, r)
-	if info.Code != m.statusCodes.ok.Code {
-		m.sendErrorInfo(w, info)
+	appList, info := m.unmarshalAppList(r)
+	if info.ErrCode != response.Ok {
+		*runtimeInfo = *info
 		return
 	}
+	res.AddRequestData("body", appList)
 
 	for _, app := range *appList {
 		info = m.MaybeEnforceFunctionSchema(app)
-		if info.Code != m.statusCodes.ok.Code {
-			m.sendErrorInfo(w, info)
+		if info.ErrCode != response.Ok {
+			*runtimeInfo = *info
 			return
 		}
 	}
-
-	var isMixedMode bool
-	if isMixedMode, info = m.isMixedModeCluster(); info.Code != m.statusCodes.ok.Code {
-		m.sendErrorInfo(w, info)
+	isMixedMode, err := m.isMixedModeCluster()
+	if err != nil {
+		runtimeInfo.ErrCode = response.ErrInternalServer
+		runtimeInfo.Description = fmt.Sprintf("err: %v", err)
+		logging.Errorf("%s %s", logPrefix, info.Description)
 		return
 	}
 
 	if isMixedMode {
-		info.Code = m.statusCodes.errMixedMode.Code
-		info.Info = "Life-cycle operations except delete and undeploy are not allowed in a mixed mode cluster"
-		m.sendErrorInfo(w, info)
+		runtimeInfo.ErrCode = response.ErrMixedMode
+		runtimeInfo.Description = "Life-cycle operations except delete and undeploy are not allowed in a mixed mode cluster"
 		return
 	}
 
-	infoList, importedFns := m.createApplications(cred, r, appList, true)
+	infoList, importedFns := m.createApplications(cred, appList, true)
 
-	m.logSystemEvent(util.EVENTID_IMPORT_FUNCTIONS, systemeventlog.SEInfo, nil)
-
+	runtimeInfo.ExtraAttributes = map[string]interface{}{"appNames": importedFns}
+	runtimeInfo.Description = infoList
+	runtimeInfo.OnlyDescription = true
 	logging.Infof("%s Imported functions: %+v", logPrefix, importedFns)
-	m.sendRuntimeInfoList(w, infoList)
 }
 
 func (m *ServiceMgr) backupHandler(w http.ResponseWriter, r *http.Request) {
 	url := filepath.Clean(r.URL.Path)
-	info := &runtimeInfo{}
 
-	cred, err := rbac.AuthWebCreds(w, r)
+	res := response.NewResponseWriter(w, r, response.EventBackupFunctions)
+	runtimeInfo := &response.RuntimeInfo{}
+
+	defer res.LogAndSend(runtimeInfo)
+
+	cred, err := rbac.AuthWebCreds(r)
 	if err != nil {
+		*runtimeInfo = getAuthErrorInfo(nil, false, err)
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
 
 	req := strings.Split(url, "/")
 	// eventing only allows cluster level backup/restore
 	if len(req) > 4 {
-		info.Code = m.statusCodes.errRequestedOpFailed.Code
-		info.Info = fmt.Sprintf("Only cluster level backup is allowed: request Url %s", url)
-		m.sendErrorInfo(w, info)
+		runtimeInfo.ErrCode = response.ErrInvalidRequest
+		runtimeInfo.Description = fmt.Sprintf("Only cluster level backup is allowed: request Url %s", url)
 		return
 	}
+
+	params := r.URL.Query()
+	res.AddRequestData("query", params)
 
 	include := r.FormValue("include")
 	exclude := r.FormValue("exclude")
 
 	if len(include) != 0 && len(exclude) != 0 {
-		info.Code = m.statusCodes.errRequestedOpFailed.Code
-		info.Info = fmt.Sprintf("Only one include or exclude filter should be present")
-		m.sendErrorInfo(w, info)
+		runtimeInfo.ErrCode = response.ErrInvalidRequest
+		runtimeInfo.Description = "Only one include or exclude filter should be present"
 		return
 	}
 
@@ -4371,71 +4539,66 @@ func (m *ServiceMgr) backupHandler(w http.ResponseWriter, r *http.Request) {
 		filterMap, err = filterQueryMap(exclude, false)
 	}
 
-	if err != nil {
-		info.Code = m.statusCodes.errRequestedOpFailed.Code
-		info.Info = fmt.Sprintf("%s", err)
-		m.sendErrorInfo(w, info)
-		return
-	}
-
 	switch r.Method {
 	case "GET":
 		// call for backup
 		exportedFun := m.backupApps(cred, filterMap, filterType)
-		data, err := json.MarshalIndent(exportedFun, "", " ")
-		if err != nil {
-			w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.errMarshalResp.Code))
-			w.WriteHeader(m.getDisposition(m.statusCodes.errMarshalResp.Code))
-			fmt.Fprintf(w, `{"error":"Failed to marshal response, err: %v"}`, err)
-			return
+		appNames := make([]string, 0, len(exportedFun))
+		for _, app := range exportedFun {
+			appNames = append(appNames, app.Name)
 		}
-
-		w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
-		fmt.Fprintf(w, "%s\n", data)
+		runtimeInfo.ExtraAttributes = map[string]interface{}{"appNames": appNames}
+		runtimeInfo.Description = exportedFun
+		runtimeInfo.OnlyDescription = true
 
 	case "POST":
 		// call restore handler
-		var isMixedMode bool
-		if isMixedMode, info = m.isMixedModeCluster(); info.Code != m.statusCodes.ok.Code {
-			m.sendErrorInfo(w, info)
+		res.SetRequestEvent(response.EventRestoreFunctions)
+		isMixedMode, err := m.isMixedModeCluster()
+		if err != nil {
+			runtimeInfo.ErrCode = response.ErrInternalServer
+			runtimeInfo.Description = fmt.Sprintf("err: %v", err)
 			return
 		}
 
 		if isMixedMode {
-			info.Code = m.statusCodes.errMixedMode.Code
-			info.Info = "Life-cycle operations except delete and undeploy are not allowed in a mixed mode cluster"
-			m.sendErrorInfo(w, info)
+			runtimeInfo.ErrCode = response.ErrMixedMode
+			runtimeInfo.Description = "Life-cycle operations except delete and undeploy are not allowed in a mixed mode cluster"
 			return
 		}
 
-		appList, info := m.unmarshalAppList(w, r)
-		if info.Code != m.statusCodes.ok.Code {
-			m.sendErrorInfo(w, info)
+		appList, info := m.unmarshalAppList(r)
+		if info.ErrCode != response.Ok {
+			*runtimeInfo = *info
 			return
 		}
+		res.AddRequestData("body", appList)
 
 		for _, app := range *appList {
 			info = m.MaybeEnforceFunctionSchema(app)
-			if info.Code != m.statusCodes.ok.Code {
-				m.sendErrorInfo(w, info)
+			if info.ErrCode != response.Ok {
+				*runtimeInfo = *info
 				return
 			}
 		}
 
 		remap, err := getRestoreMap(r)
 		if err != nil {
-			info.Code = m.statusCodes.errRequestedOpFailed.Code
-			info.Info = fmt.Sprintf("%s", err)
-			m.sendErrorInfo(w, info)
+			runtimeInfo.ErrCode = response.ErrInvalidRequest
+			runtimeInfo.Description = fmt.Sprintf("%s", err)
 			return
 		}
 
 		apps := m.restoreAppList(appList, filterMap, remap, filterType)
-		infoList, _ := m.createApplications(cred, r, apps, true)
-		m.sendRuntimeInfoList(w, infoList)
+		infoList, importedList := m.createApplications(cred, apps, true)
+
+		runtimeInfo.ExtraAttributes = map[string]interface{}{"appNames": importedList}
+		runtimeInfo.Description = infoList
+		runtimeInfo.OnlyDescription = true
 
 	default:
-		w.WriteHeader(http.StatusMethodNotAllowed)
+		runtimeInfo.ErrCode = response.ErrMethodNotAllowed
+		runtimeInfo.Description = "Method not allowed. Only GET and POST are allowed"
 		return
 	}
 }
@@ -4445,7 +4608,7 @@ func (m *ServiceMgr) backupApps(cred cbauth.Creds, filterMap map[string]bool, fi
 	appList := make([]application, 0, len(apps))
 	for _, app := range apps {
 		info := m.checkPermissionFromCred(cred, app.Name, rbac.HandlerManagePermissions, false)
-		if info.Code != m.statusCodes.ok.Code {
+		if info.ErrCode != response.Ok {
 			continue
 		}
 		appList = append(appList, app)
@@ -4529,15 +4692,13 @@ func (m *ServiceMgr) filterAppList(apps []application, filterMap map[string]bool
 	return filteredFns
 }
 
-func (m *ServiceMgr) createApplications(cred cbauth.Creds, r *http.Request, appList *[]application, isImport bool) (infoList []*runtimeInfo, importedFns []string) {
+func (m *ServiceMgr) createApplications(cred cbauth.Creds, appList *[]application, isImport bool) (infoList []*response.RuntimeInfo, importedFns []string) {
 	logPrefix := "ServiceMgr::createApplications"
 
-	infoList = []*runtimeInfo{}
+	infoList = []*response.RuntimeInfo{}
 	importedFns = make([]string, 0, len(*appList))
 
 	for _, app := range *appList {
-
-		audit.Log(auditevent.CreateFunction, r, app.Name)
 
 		if isImport {
 			app.Settings["deployment_status"] = false
@@ -4552,67 +4713,70 @@ func (m *ServiceMgr) createApplications(cred cbauth.Creds, r *http.Request, appL
 		}
 
 		m.addDefaultDeploymentConfig(&app)
-		if infoVal := m.validateApplication(&app); infoVal.Code != m.statusCodes.ok.Code {
+		if infoVal := m.validateApplication(&app); infoVal.ErrCode != response.Ok {
 			logging.Warnf("%s Validating %ru failed: %v", logPrefix, app, infoVal)
 			infoList = append(infoList, infoVal)
 			continue
 		}
 
-		info := &runtimeInfo{}
-		err := m.assignFunctionID(app.Name, &app, info)
+		info := &response.RuntimeInfo{}
+		err := m.assignFunctionID(app.Name, &app)
 		if err != nil {
+			info.ErrCode = response.ErrInternalServer
+			info.Description = "Unable to assign Function id"
 			infoList = append(infoList, info)
 			continue
 		}
 
-		err = m.assignFunctionInstanceID(app.Name, &app, info)
+		err = m.assignFunctionInstanceID(app.Name, &app)
 		if err != nil {
+			info.ErrCode = response.ErrInternalServer
+			info.Description = "Unable to assign Function instance id"
 			infoList = append(infoList, info)
 			continue
 		}
 
 		_, info = m.checkAppExists(app.Name)
-		if info.Code != m.statusCodes.ok.Code {
+		if info.ErrCode == response.ErrAppNotFoundTs {
 			info = m.verifyAndCreateApp(cred, &app)
-			if info.Code != m.statusCodes.ok.Code {
+			if info.ErrCode != response.Ok {
 				infoList = append(infoList, info)
 				continue
 			}
-		} else {
+		} else if info.ErrCode == response.Ok {
 			info = m.checkPermissionFromCred(cred, app.Name, rbac.HandlerManagePermissions, false)
-			if info.Code != m.statusCodes.ok.Code {
+			if info.ErrCode != response.Ok {
 				infoList = append(infoList, info)
 				continue
 			}
 
 			if m.checkIfDeployed(app.Name) && isImport {
-				info.Code = m.statusCodes.errAppDeployed.Code
-				info.Info = fmt.Sprintf("Function: %s another function with same name is already present, skipping import request", app.Name)
-				logging.Errorf("%s %s", logPrefix, info.Info)
+				info.ErrCode = response.ErrAppDeployed
+				info.Description = fmt.Sprintf("Function: %s another function with same name is already present, skipping import request", app.Name)
+				logging.Errorf("%s %s", logPrefix, info.Description)
 				infoList = append(infoList, info)
 				continue
 			}
+		} else {
+			infoList = append(infoList, info)
+			continue
 		}
 
 		infoPri := m.savePrimaryStore(&app)
-		if infoPri.Code != m.statusCodes.ok.Code {
+		if infoPri.ErrCode != response.Ok {
 			logging.Errorf("%s Function: %s saving %ru to primary store failed: %v", logPrefix, app.Name, infoPri)
 			infoList = append(infoList, infoPri)
 			continue
 		}
 
 		// Save to temp store only if saving to primary store succeeds
-		audit.Log(auditevent.SaveDraft, r, app.Name)
+		// audit.Log(auditevent.SaveDraft, r, app.Name)
 		infoTmp := m.saveTempStore(app)
-		if infoTmp.Code != m.statusCodes.ok.Code {
+		if infoTmp.ErrCode != response.Ok {
 			logging.Errorf("%s Function: %s saving to temporary store failed: %v", logPrefix, app.Name, infoTmp)
 			infoList = append(infoList, infoTmp)
 			continue
 		}
-
-		m.logSystemEvent(util.EVENTID_CREATE_FUNCTION, systemeventlog.SEInfo,
-			map[string]interface{}{"handleruuid": app.FunctionID,
-				"appName": app.Name})
 
 		// If everything succeeded, use infoPri as that has warnings, if any
 		infoList = append(infoList, infoPri)
@@ -4623,32 +4787,41 @@ func (m *ServiceMgr) createApplications(cred cbauth.Creds, r *http.Request, appL
 }
 
 func (m *ServiceMgr) getCPUCount(w http.ResponseWriter, r *http.Request) {
+	res := response.NewResponseWriter(w, r, response.EventGetCpuCount)
+	runtimeInfo := &response.RuntimeInfo{}
+
+	defer res.LogAndSend(runtimeInfo)
+
 	w.Header().Set("Content-Type", "application/json")
 	if r.Method != "GET" {
-		w.WriteHeader(http.StatusMethodNotAllowed)
+		runtimeInfo.ErrCode = response.ErrMethodNotAllowed
+		runtimeInfo.Description = "Method not allowed. Only GET is allowed"
+		return
+	}
+	if notAllowed, err := rbac.IsAllowed(r, rbac.EventingAnyManageReadPermissions, false); err != nil {
+		*runtimeInfo = getAuthErrorInfo(notAllowed, false, err)
 		return
 	}
 
-	_, err := rbac.AuthWebCreds(w, r)
-	if err != nil {
-		return
-	}
-
-	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
-	fmt.Fprintf(w, "%v\n", util.CPUCount(false))
+	runtimeInfo.Description = util.CPUCount(false)
+	runtimeInfo.OnlyDescription = true
 }
 
 func (m *ServiceMgr) getWorkerCount(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
+	res := response.NewResponseWriter(w, r, response.EventGetWorkerCount)
+	runtimeInfo := &response.RuntimeInfo{}
+
+	defer res.LogAndSend(runtimeInfo)
 
 	if r.Method != "GET" {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		fmt.Fprintf(w, "Method not allowed")
+		runtimeInfo.ErrCode = response.ErrMethodNotAllowed
+		runtimeInfo.Description = "Method not allowed. Only GET is allowed"
 		return
 	}
 
-	_, err := rbac.AuthWebCreds(w, r)
+	cred, err := rbac.AuthWebCreds(r)
 	if err != nil {
+		*runtimeInfo = getAuthErrorInfo(nil, false, err)
 		return
 	}
 
@@ -4656,6 +4829,11 @@ func (m *ServiceMgr) getWorkerCount(w http.ResponseWriter, r *http.Request) {
 
 	apps := m.getTempStoreAll()
 	for _, app := range apps {
+		info := m.checkPermissionFromCred(cred, app.Name, rbac.HandlerGetPermissions, false)
+		if info.ErrCode != response.Ok {
+			continue
+		}
+
 		deployed, ok := app.Settings["deployment_status"].(bool)
 		if !ok || !deployed {
 			continue
@@ -4668,48 +4846,42 @@ func (m *ServiceMgr) getWorkerCount(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
-	fmt.Fprintf(w, "%v\n", count)
+	runtimeInfo.SendRawDescription = true
+	runtimeInfo.Description = fmt.Sprintf("%v\n", count)
+	runtimeInfo.OnlyDescription = true
 }
 
-func (m *ServiceMgr) isMixedModeCluster() (bool, *runtimeInfo) {
-	info := &runtimeInfo{}
-
+func (m *ServiceMgr) isMixedModeCluster() (bool, error) {
 	nsServerEndpoint := net.JoinHostPort(util.Localhost(), m.restPort)
 	cic, err := util.FetchClusterInfoClient(nsServerEndpoint)
 	if err != nil {
-		info.Code = m.statusCodes.errConnectNsServer.Code
-		info.Info = fmt.Sprintf("Failed to get cluster info cache, err: %v", err)
-		return false, info
+		return false, fmt.Errorf("Failed to get cluster info cache, err: %v", err)
 	}
 	clusterInfo := cic.GetClusterInfoCache()
 	clusterInfo.RLock()
 	defer clusterInfo.RUnlock()
 
-	info.Code = m.statusCodes.ok.Code
 	nodes := clusterInfo.GetActiveEventingNodes()
 	if len(nodes) == 0 {
-		return false, info
+		return false, nil
 	}
 
 	ver, err := common.FrameCouchbaseVerFromNsServerStreamingRestApi(nodes[0].Version)
 	if err != nil {
-		info.Code = m.statusCodes.errInternalServer.Code
-		return true, info
+		return true, fmt.Errorf("Failed to frame couchbase version")
 	}
 
 	for _, node := range nodes {
 		nVer, err := common.FrameCouchbaseVerFromNsServerStreamingRestApi(node.Version)
 		if err != nil {
-			info.Code = m.statusCodes.errInternalServer.Code
-			return true, info
+			return true, fmt.Errorf("Failed to frame couchbase version")
 		}
 		if !ver.Equals(nVer) {
-			return true, info
+			return true, nil
 		}
 	}
 
-	return false, info
+	return false, nil
 }
 
 type version struct {
@@ -4733,15 +4905,16 @@ func (r version) String() string {
 	return fmt.Sprintf("%v.%v", r.major, r.minor)
 }
 
-func (m *ServiceMgr) checkVersionCompat(required string, info *runtimeInfo) {
+func (m *ServiceMgr) checkVersionCompat(required string, info *response.RuntimeInfo) {
 	logPrefix := "ServiceMgr::checkVersionCompat"
+	info = &response.RuntimeInfo{}
 
 	nsServerEndpoint := net.JoinHostPort(util.Localhost(), m.restPort)
 	cic, err := util.FetchClusterInfoClient(nsServerEndpoint)
 	if err != nil {
-		info.Code = m.statusCodes.errConnectNsServer.Code
-		info.Info = fmt.Sprintf("Failed to get cluster info cache, err: %v", err)
-		logging.Errorf("%s %s", logPrefix, info.Info)
+		info.ErrCode = response.ErrInternalServer
+		info.Description = fmt.Sprintf("Failed to get cluster info cache, err: %v", err)
+		logging.Errorf("%s %s", logPrefix, info.Description)
 		return
 	}
 	clusterInfo := cic.GetClusterInfoCache()
@@ -4753,49 +4926,66 @@ func (m *ServiceMgr) checkVersionCompat(required string, info *runtimeInfo) {
 	need, ok := verMap[required]
 
 	if !ok || !have.satisfies(need) {
-		info.Code = m.statusCodes.errClusterVersion.Code
-		info.Info = fmt.Sprintf("Function requires %v but cluster is at %v", need, have)
-		logging.Warnf("%s Version compat check failed: %s", logPrefix, info.Info)
+		info.ErrCode = response.ErrClusterVersion
+		info.Description = fmt.Sprintf("Function requires %v but cluster is at %v", need, have)
+		logging.Warnf("%s Version compat check failed: %s", logPrefix, info.Description)
 		return
 	}
 
-	logging.Infof("%s Function need %v satisfied by cluster %v", logPrefix, need, have)
-	info.Code = m.statusCodes.ok.Code
+	logging.Debugf("%s Function need %v satisfied by cluster %v", logPrefix, need, have)
 }
 
 func (m *ServiceMgr) triggerGC(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "ServiceMgr::triggerGC"
+	res := response.NewResponseWriter(w, r, response.EventTriggerGC)
+	runtimeInfo := &response.RuntimeInfo{}
+
+	defer res.LogAndSend(runtimeInfo)
 
 	w.Header().Set("Content-Type", "application/json")
-	if !rbac.ValidateAuth(w, r, rbac.EventingPermissionManage, false) {
+	if notAllowed, err := rbac.IsAllowed(r, rbac.EventingPermissionManage, false); err != nil {
+		*runtimeInfo = getAuthErrorInfo(notAllowed, false, err)
 		return
 	}
-
 	logging.Infof("%s Triggering GC", logPrefix)
 	runtime.GC()
 	logging.Infof("%s Finished GC run", logPrefix)
+	runtimeInfo.Description = "Finished GC run"
 }
 
 func (m *ServiceMgr) freeOSMemory(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "ServiceMgr::freeOSMemory"
 
+	res := response.NewResponseWriter(w, r, response.EventFreeOSMemory)
+	runtimeInfo := &response.RuntimeInfo{}
+
+	defer res.LogAndSend(runtimeInfo)
+
 	w.Header().Set("Content-Type", "application/json")
-	if !rbac.ValidateAuth(w, r, rbac.EventingPermissionManage, false) {
+	if notAllowed, err := rbac.IsAllowed(r, rbac.EventingPermissionManage, false); err != nil {
+		*runtimeInfo = getAuthErrorInfo(notAllowed, false, err)
 		return
 	}
 
 	logging.Infof("%s Freeing up memory to OS", logPrefix)
 	debug.FreeOSMemory()
 	logging.Infof("%s Freed up memory to OS", logPrefix)
+	runtimeInfo.Description = "Freed up memory to OS"
 }
 
 //expvar handler
 func (m *ServiceMgr) expvarHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	if !rbac.ValidateAuth(w, r, rbac.EventingPermissionManage, false) {
+	res := response.NewResponseWriter(w, r, response.EventGetRuntimeProfiling)
+	runtimeInfo := &response.RuntimeInfo{}
+
+	if notAllowed, err := rbac.IsAllowed(r, rbac.EventingPermissionManage, false); err != nil {
+		*runtimeInfo = getAuthErrorInfo(notAllowed, false, err)
+		res.LogAndSend(runtimeInfo)
 		return
 	}
 
+	res.Log(runtimeInfo)
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	fmt.Fprintf(w, "{\n")
 	first := true
 	expvar.Do(func(kv expvar.KeyValue) {
@@ -4810,70 +5000,111 @@ func (m *ServiceMgr) expvarHandler(w http.ResponseWriter, r *http.Request) {
 
 //pprof index handler
 func (m *ServiceMgr) indexHandler(w http.ResponseWriter, r *http.Request) {
-	if !rbac.ValidateAuth(w, r, rbac.EventingPermissionManage, false) {
+	res := response.NewResponseWriter(w, r, response.EventGetRuntimeProfiling)
+	runtimeInfo := &response.RuntimeInfo{}
+	if notAllowed, err := rbac.IsAllowed(r, rbac.EventingPermissionManage, false); err != nil {
+		*runtimeInfo = getAuthErrorInfo(notAllowed, false, err)
+		res.LogAndSend(runtimeInfo)
 		return
 	}
+
+	res.Log(runtimeInfo)
 	pprof.Index(w, r)
 }
 
 //pprof cmdline handler
 func (m *ServiceMgr) cmdlineHandler(w http.ResponseWriter, r *http.Request) {
-	if !rbac.ValidateAuth(w, r, rbac.EventingPermissionManage, false) {
+	res := response.NewResponseWriter(w, r, response.EventGetRuntimeProfiling)
+
+	runtimeInfo := &response.RuntimeInfo{}
+	if notAllowed, err := rbac.IsAllowed(r, rbac.EventingPermissionManage, false); err != nil {
+		*runtimeInfo = getAuthErrorInfo(notAllowed, false, err)
+		res.LogAndSend(runtimeInfo)
 		return
 	}
+
+	res.Log(runtimeInfo)
 	pprof.Cmdline(w, r)
 }
 
 //pprof profile handler
 func (m *ServiceMgr) profileHandler(w http.ResponseWriter, r *http.Request) {
-	if !rbac.ValidateAuth(w, r, rbac.EventingPermissionManage, false) {
+	res := response.NewResponseWriter(w, r, response.EventGetRuntimeProfiling)
+
+	runtimeInfo := &response.RuntimeInfo{}
+	if notAllowed, err := rbac.IsAllowed(r, rbac.EventingPermissionManage, false); err != nil {
+		*runtimeInfo = getAuthErrorInfo(notAllowed, false, err)
+		res.LogAndSend(runtimeInfo)
 		return
 	}
+
+	res.Log(runtimeInfo)
 	pprof.Profile(w, r)
 }
 
 //pprof symbol handler
 func (m *ServiceMgr) symbolHandler(w http.ResponseWriter, r *http.Request) {
-	if !rbac.ValidateAuth(w, r, rbac.EventingPermissionManage, false) {
+	res := response.NewResponseWriter(w, r, response.EventGetRuntimeProfiling)
+
+	runtimeInfo := &response.RuntimeInfo{}
+	if notAllowed, err := rbac.IsAllowed(r, rbac.EventingPermissionManage, false); err != nil {
+		*runtimeInfo = getAuthErrorInfo(notAllowed, false, err)
+		res.LogAndSend(runtimeInfo)
 		return
 	}
+
+	res.Log(runtimeInfo)
 	pprof.Symbol(w, r)
 }
 
 //pprof trace handler
 func (m *ServiceMgr) traceHandler(w http.ResponseWriter, r *http.Request) {
-	if !rbac.ValidateAuth(w, r, rbac.EventingPermissionManage, false) {
+	res := response.NewResponseWriter(w, r, response.EventGetRuntimeProfiling)
+	runtimeInfo := &response.RuntimeInfo{}
+
+	if notAllowed, err := rbac.IsAllowed(r, rbac.EventingPermissionManage, false); err != nil {
+		*runtimeInfo = getAuthErrorInfo(notAllowed, false, err)
+		res.LogAndSend(runtimeInfo)
 		return
 	}
+
+	res.Log(runtimeInfo)
 	pprof.Trace(w, r)
 }
 
 func (m *ServiceMgr) listFunctions(w http.ResponseWriter, r *http.Request) {
-	logPrefix := "ServiceMgr::listFunctions"
+	res := response.NewResponseWriter(w, r, response.EventListAllfunction)
+	runtimeInfo := &response.RuntimeInfo{}
+
+	defer res.LogAndSend(runtimeInfo)
+
 	w.Header().Set("Content-Type", "application/json")
 
-	cred, err := rbac.AuthWebCreds(w, r)
-	if err != nil {
-		return
-	}
-
 	if r.Method != "GET" {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		fmt.Fprintf(w, "Method not allowed")
+		runtimeInfo.ErrCode = response.ErrMethodNotAllowed
+		runtimeInfo.Description = "Method not allowed. Only GET is allowed"
 		return
 	}
 
-	q := r.URL.Query()
-	fnlist, info := m.getFunctionList(q)
-	if info.Code != m.statusCodes.ok.Code {
-		m.sendErrorInfo(w, info)
+	cred, err := rbac.AuthWebCreds(r)
+	if err != nil {
+		*runtimeInfo = getAuthErrorInfo(nil, false, err)
+		return
+	}
+
+	params := r.URL.Query()
+	res.AddRequestData("query", params)
+
+	fnlist, info := m.getFunctionList(params)
+	if info.ErrCode != response.Ok {
+		*runtimeInfo = *info
 		return
 	}
 
 	functions := make([]string, 0, len(fnlist.Functions))
 	for _, appName := range fnlist.Functions {
 		info := m.checkPermissionFromCred(cred, appName, rbac.HandlerGetPermissions, false)
-		if info.Code != m.statusCodes.ok.Code {
+		if info.ErrCode != response.Ok {
 			continue
 		}
 		functions = append(functions, appName)
@@ -4883,53 +5114,53 @@ func (m *ServiceMgr) listFunctions(w http.ResponseWriter, r *http.Request) {
 		Functions: functions,
 	}
 
-	response, err := json.MarshalIndent(functionList, "", " ")
-	if err != nil {
-		info.Code = m.statusCodes.errMarshalResp.Code
-		info.Info = fmt.Sprintf("failed to marshal function list, err : %v", err)
-		logging.Errorf("%s %s", logPrefix, info.Info)
-		m.sendErrorInfo(w, info)
-		return
-	}
-	w.Header().Add(headerKey, strconv.Itoa(m.statusCodes.ok.Code))
-	fmt.Fprintf(w, "%s", string(response))
+	runtimeInfo.Description = functionList
+	runtimeInfo.OnlyDescription = true
 }
 
 func (m *ServiceMgr) triggerInternalRebalance(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "ServiceMgr::triggerInternalRebalance"
 
+	res := response.NewResponseWriter(w, r, response.EventResdistributeWorkload)
+	runtimeInfo := &response.RuntimeInfo{}
+
+	defer res.LogAndSend(runtimeInfo)
+
 	w.Header().Set("Content-Type", "application/json")
-	if !rbac.ValidateAuth(w, r, rbac.EventingPermissionManage, false) {
-		return
-	}
 
 	if r.Method != "POST" {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		fmt.Fprintf(w, "Method not allowed")
+		runtimeInfo.ErrCode = response.ErrMethodNotAllowed
+		runtimeInfo.Description = "Method not allowed. Only POST is allowed"
 		return
 	}
 
-	info := &runtimeInfo{}
-	info.Code = m.statusCodes.ok.Code
+	if notAllowed, err := rbac.IsAllowed(r, rbac.EventingPermissionManage, false); err != nil {
+		*runtimeInfo = getAuthErrorInfo(notAllowed, false, err)
+		return
+	}
 
 	err := m.checkTopologyChangeReadiness(service.TopologyChangeTypeRebalance)
-	if err == nil {
-		path := "rebalance_request_from_rest"
-		value := []byte(startRebalance)
-		logging.Infof("%s triggering rebalance processing from rest path: %v, value:%v", logPrefix, path, value)
-		m.superSup.TopologyChangeNotifCallback(metakv.KVEntry{Path: path, Value: value, Rev: m.state.rev})
-	} else {
-		info.Code = m.statusCodes.errRequestedOpFailed.Code
-		info.Info = fmt.Sprintf("%v", err)
-		m.sendErrorInfo(w, info)
+	if err != nil {
+		runtimeInfo.ErrCode = response.ErrInternalServer
+		runtimeInfo.Description = err
 		return
 	}
-	info.Code = m.statusCodes.ok.Code
-	m.sendResponse(w, info)
+	path := "rebalance_request_from_rest"
+	value := []byte(startRebalance)
+	logging.Infof("%s triggering rebalance processing from rest path: %v, value:%v", logPrefix, path, value)
+	m.superSup.TopologyChangeNotifCallback(metakv.KVEntry{Path: path, Value: value, Rev: m.state.rev})
+
+	runtimeInfo.Description = "Successfully triggered internal rebalance"
 }
 
 func (m *ServiceMgr) prometheusLow(w http.ResponseWriter, r *http.Request) {
-	if !rbac.ValidateAuth(w, r, rbac.EventingStatsPermission, false) {
+	res := response.NewResponseWriter(w, r, response.EventFetchStats)
+	runtimeInfo := &response.RuntimeInfo{}
+
+	defer res.LogAndSend(runtimeInfo)
+
+	if notAllowed, err := rbac.IsAllowed(r, rbac.EventingStatsPermission, false); err != nil {
+		*runtimeInfo = getAuthErrorInfo(notAllowed, false, err)
 		return
 	}
 
@@ -4937,18 +5168,27 @@ func (m *ServiceMgr) prometheusLow(w http.ResponseWriter, r *http.Request) {
 	out := make([]byte, 0)
 	out = append(out, []byte(fmt.Sprintf("%vworker_restart_count %v\n", METRICS_PREFIX, m.superSup.WorkerRespawnedCount()))...)
 
-	w.WriteHeader(200)
-	w.Write([]byte(out))
+	runtimeInfo.SendRawDescription = true
+	runtimeInfo.Description = out
+	runtimeInfo.OnlyDescription = true
 }
 
 func (m *ServiceMgr) prometheusHigh(w http.ResponseWriter, r *http.Request) {
-	if !rbac.ValidateAuth(w, r, rbac.EventingStatsPermission, false) {
+	res := response.NewResponseWriter(w, r, response.EventFetchStats)
+	runtimeInfo := &response.RuntimeInfo{}
+
+	defer res.LogAndSend(runtimeInfo)
+
+	if notAllowed, err := rbac.IsAllowed(r, rbac.EventingStatsPermission, false); err != nil {
+		*runtimeInfo = getAuthErrorInfo(notAllowed, false, err)
 		return
 	}
 
 	list := m.highCardStats()
-	w.WriteHeader(200)
-	w.Write(list)
+
+	runtimeInfo.SendRawDescription = true
+	runtimeInfo.Description = list
+	runtimeInfo.OnlyDescription = true
 }
 
 func (m *ServiceMgr) highCardStats() []byte {
@@ -5010,118 +5250,122 @@ func (m *ServiceMgr) highCardStats() []byte {
 }
 
 func (m *ServiceMgr) resetStatsCounters(w http.ResponseWriter, r *http.Request) {
+	res := response.NewResponseWriter(w, r, response.EventClearStats)
+	runtimeInfo := &response.RuntimeInfo{}
+
+	defer res.LogAndSend(runtimeInfo)
+
 	w.Header().Set("Content-Type", "application/json")
-	info := &runtimeInfo{}
-	appNames := r.URL.Query()["appName"]
+
+	params := r.URL.Query()
+	res.AddRequestData("query", params)
+
+	appNames := params["appName"]
 	if len(appNames) == 0 || len(appNames) > 1 {
-		info.Code = m.statusCodes.errInvalidConfig.Code
-		info.Info = fmt.Sprintf("Either 0 or more than 1 appnames passed")
-		m.sendErrorInfo(w, info)
+		runtimeInfo.ErrCode = response.ErrInvalidRequest
+		runtimeInfo.Description = fmt.Sprintf("Either 0 or more than 1 appnames passed")
 		return
 	}
 
-	info.Code = m.statusCodes.ok.Code
 	appName := appNames[0]
-	if info := m.checkAuthAndPermissionWithApp(w, r, appName, rbac.HandlerManagePermissions, false); info.Code != m.statusCodes.ok.Code {
-		m.sendErrorInfo(w, info)
+	if info := m.checkAuthAndPermissionWithApp(w, r, appName, rbac.HandlerManagePermissions, false); info.ErrCode != response.Ok {
+		*runtimeInfo = *info
 		return
 	}
 	util.Retry(util.NewFixedBackoff(time.Second), nil, getEventingNodesAddressesOpCallback, m)
 	httpresp, err := util.ResetStatsCounters("/resetNodeStatsCounters?appName="+appName, m.eventingNodeAddrs)
 	if err != nil && httpresp != nil {
-		status, statuserr := strconv.Atoi(err.Error())
-		if statuserr == nil && http.StatusText(status) != "" {
-			w.WriteHeader(status)
-		} else {
-			w.WriteHeader(http.StatusInternalServerError)
-		}
-		fmt.Fprintf(w, "%v", string(httpresp))
+		runtimeInfo.ErrCode = response.ErrInternalServer
+		runtimeInfo.Description = fmt.Sprintf("%s", httpresp)
 		return
 	} else if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintf(w, `{"error":"Failed to reset counters error: %v}"`, err)
+		runtimeInfo.ErrCode = response.ErrInternalServer
+		runtimeInfo.Description = fmt.Sprintf(`{"error":"Failed to reset counters error: %v"}`, err)
 		return
 	}
 
-	info.Code = m.statusCodes.ok.Code
-	m.sendResponse(w, info)
+	runtimeInfo.ExtraAttributes = map[string]interface{}{"appNames": []string{appName}}
+	runtimeInfo.Description = "Done resetting counters"
 }
 
 func (m *ServiceMgr) resetNodeStatsCounters(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
+	res := response.NewResponseWriter(w, r, response.EventClearStats)
+	runtimeInfo := &response.RuntimeInfo{}
 
-	info := &runtimeInfo{}
-	appNames := r.URL.Query()["appName"]
+	defer res.LogAndSend(runtimeInfo)
+
+	params := r.URL.Query()
+	res.AddRequestData("query", params)
+
+	appNames := params["appName"]
 	if len(appNames) == 0 || len(appNames) > 1 {
-		info.Code = m.statusCodes.errInvalidConfig.Code
-		info.Info = fmt.Sprintf("Either 0 or more than 1 appnames passed")
-		m.sendErrorInfo(w, info)
+		runtimeInfo.ErrCode = response.ErrInvalidRequest
+		runtimeInfo.Description = fmt.Sprintf("Either 0 or more than 1 appnames passed")
 		return
 	}
 
-	info.Code = m.statusCodes.ok.Code
 	appName := appNames[0]
-	if info := m.checkAuthAndPermissionWithApp(w, r, appName, rbac.HandlerManagePermissions, false); info.Code != m.statusCodes.ok.Code {
-		m.sendErrorInfo(w, info)
+	if info := m.checkAuthAndPermissionWithApp(w, r, appName, rbac.HandlerManagePermissions, false); info.ErrCode != response.Ok {
+		*runtimeInfo = *info
 		return
 	}
 	appState := m.superSup.GetAppCompositeState(appName)
 	if appState != common.AppStateEnabled {
-		info.Code = m.statusCodes.errAppNotDeployed.Code
-		info.Info = fmt.Sprintf("Function: %v should be in deployed state", appName)
-		m.sendErrorInfo(w, info)
+		runtimeInfo.ErrCode = response.ErrAppNotDeployed
+		runtimeInfo.Description = fmt.Sprintf("Function: %v should be in deployed state", appName)
 		return
 	}
 
 	if err := m.superSup.ResetCounters(appName); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		fmt.Fprintf(w, `{"error":"Failed to reset counters error: %v"}`, err)
+		runtimeInfo.ErrCode = response.ErrInternalServer
+		runtimeInfo.Description = fmt.Sprintf(`{"error":"Failed to reset counters error: %v"}`, err)
 		return
 	}
 
-	info.Code = m.statusCodes.ok.Code
-	m.sendResponse(w, info)
+	runtimeInfo.ExtraAttributes = map[string]interface{}{"appNames": []string{appName}}
+	runtimeInfo.Description = "Done resetting counters"
 }
 
 func (m *ServiceMgr) checkAuthAndPermissionWithApp(w http.ResponseWriter, r *http.Request,
-	appName string, permFunction func(*common.Keyspace) []string, all bool) *runtimeInfo {
-	info := &runtimeInfo{}
-	cred, err := rbac.AuthWebCredsWithoutAudit(w, r)
+	appName string, permFunction func(*common.Keyspace) []string, all bool) *response.RuntimeInfo {
+	info := &response.RuntimeInfo{}
+
+	cred, err := rbac.AuthWebCreds(r)
 	if err != nil {
-		info.Code = m.statusCodes.errUnauthenticated.Code
-		info.Info = fmt.Sprintf("Unauthenticated User")
+		*info = getAuthErrorInfo(nil, false, err)
 		return info
 	}
+
 	return m.checkPermissionFromCred(cred, appName, permFunction, all)
 }
 
 func (m *ServiceMgr) checkPermissionFromCred(cred cbauth.Creds, appName string,
-	permFunction func(*common.Keyspace) []string, all bool) *runtimeInfo {
+	permFunction func(*common.Keyspace) []string, all bool) *response.RuntimeInfo {
 
 	app, info := m.checkAppExists(appName)
-	if info.Code != m.statusCodes.ok.Code {
+	if info.ErrCode != response.Ok {
 		return info
 	}
+
 	perm := permFunction(app.FunctionScope.ToKeyspace())
-	if _, err := rbac.IsAllowedCreds(cred, perm, all); err != nil {
-		info.Code = m.statusCodes.errForbidden.Code
-		info.Info = fmt.Sprintf("Forbidden. User needs at least or all the following permissions: %v", perm)
+	if notAllowed, err := rbac.IsAllowedCreds(cred, perm, all); err != nil {
+		*info = getAuthErrorInfo(notAllowed, all, err)
 		return info
 	}
 
 	return info
 }
 
-func (m *ServiceMgr) getReadAndWritePermission(appName string) ([]string, []string, error) {
+func (m *ServiceMgr) getReadAndWritePermission(appName string) ([]string, []string, *response.RuntimeInfo) {
 	app, info := m.checkAppExists(appName)
-	if info.Code != m.statusCodes.ok.Code {
-		return nil, nil, fmt.Errorf("%s", info.Info)
+	if info.ErrCode != response.Ok {
+		return nil, nil, info
 	}
 
 	keyspace := app.FunctionScope.ToKeyspace()
 	rPriv := rbac.HandlerGetPermissions(keyspace)
 	wPriv := rbac.HandlerManagePermissions(keyspace)
-	return rPriv, wPriv, nil
+	return rPriv, wPriv, info
 }
 
 type UserPermissions struct {
@@ -5133,17 +5377,22 @@ type UserPermissions struct {
 }
 
 func (m *ServiceMgr) getUserInfo(w http.ResponseWriter, r *http.Request) {
-	info := &runtimeInfo{}
-	cred, err := rbac.AuthWebCreds(w, r)
+	res := response.NewResponseWriter(w, r, response.EventGetUserInfo)
+	runtimeInfo := &response.RuntimeInfo{}
+
+	defer res.LogAndSend(runtimeInfo)
+
+	cred, err := rbac.AuthWebCreds(r)
 	if err != nil {
+		*runtimeInfo = getAuthErrorInfo(nil, false, err)
 		return
 	}
 
 	// map[bucketName]map[scopeName][]collection
 	snapShot, err := m.superSup.GetBSCSnapshot()
 	if err != nil {
-		info.Code = m.statusCodes.errInternalServer.Code
-		m.sendErrorInfo(w, info)
+		runtimeInfo.ErrCode = response.ErrInternalServer
+		runtimeInfo.Description = fmt.Sprintf("Failed to get collection snapshot")
 		return
 	}
 	u := &UserPermissions{
@@ -5199,13 +5448,6 @@ func (m *ServiceMgr) getUserInfo(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	response, err := json.MarshalIndent(u, "", " ")
-	if err != nil {
-		info.Code = m.statusCodes.errMarshalResp.Code
-		info.Info = fmt.Sprintf("failed to marshal function list, err : %v", err)
-		m.sendErrorInfo(w, info)
-		return
-	}
-
-	fmt.Fprintf(w, "%s", string(response))
+	runtimeInfo.Description = u
+	runtimeInfo.OnlyDescription = true
 }

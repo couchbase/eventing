@@ -14,10 +14,13 @@ import (
 )
 
 // ClearEventStats flushes event processing stats
-func (s *SuperSupervisor) ClearEventStats() {
-	for _, p := range s.runningFns() {
+func (s *SuperSupervisor) ClearEventStats() []string {
+	appNames := make([]string, 0)
+	for appName, p := range s.runningFns() {
+		appNames = append(appNames, appName)
 		p.ClearEventStats()
 	}
+	return appNames
 }
 
 // DeployedAppList returns list of deployed lambdas running under super_supervisor

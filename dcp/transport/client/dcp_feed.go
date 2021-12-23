@@ -1282,7 +1282,7 @@ loop:
 		// NOOPs are not accounted for buffer-ack.
 		if pkt.Opcode == transport.DCP_NOOP {
 			fmsg := "%v Opaque: %d received NOOP from producer ...\n"
-			logging.Infof(fmsg, prefix, pkt.Opaque)
+			logging.Tracef(fmsg, prefix, pkt.Opaque)
 
 			noop := &transport.MCResponse{
 				Opcode: transport.DCP_NOOP, Opaque: pkt.Opaque,

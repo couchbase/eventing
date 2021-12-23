@@ -14,7 +14,7 @@ import (
 func (m *ServiceMgr) logSystemEvent(eventId systemeventlog.EventId,
 	severity systemeventlog.EventSeverity, extraAttributes interface{}) {
 
-	util.LogSystemEvent(m.sel, eventId, severity, extraAttributes)
+	util.LogSystemEvent(eventId, severity, extraAttributes)
 }
 
 // GetNodeInfo callback for cbauth service.Manager

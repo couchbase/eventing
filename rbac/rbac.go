@@ -2,22 +2,20 @@ package rbac
 
 import (
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
 	"net/http"
 
 	"github.com/couchbase/cbauth"
-	"github.com/couchbase/eventing/audit"
 	"github.com/couchbase/eventing/common"
-	"github.com/couchbase/eventing/gen/auditevent"
 	"github.com/couchbase/eventing/util"
 )
 
 var (
-	ErrAuthorisation = errors.New("One or more requested permissions missing")
-	ErrUserDeleted   = errors.New("User deleted")
+	ErrAuthorisation  = errors.New("One or more requested permissions missing")
+	ErrUserDeleted    = errors.New("User deleted")
+	ErrAuthentication = errors.New("Unauthenticated User")
 )
 
 type Permission uint8
@@ -77,112 +75,6 @@ func replaceDefault(s string) string {
 	return s
 }
 
-func IsAllowed(req *http.Request, permissions []string, union bool) ([]string, error) {
-	return authenticateAndCheck(req, permissions, union)
-}
-
-// Return true if all the permissions are satisfied for this user or not
-// Error maybe the cbauth http server problem
-// TODO: If cbauth supports IsAllowed(user, permission we don't have to
-// recreate all the request and all
-// If union is true then all permission to should be satisfied
-func HasPermissions(owner *common.Owner, permissions []string, union bool) ([]string, error) {
-        if owner.UUID != "" {
-                uuid, err := cbauth.GetUserUuid(owner.User, owner.Domain)
-                if err != nil {
-                        return nil, err
-                }
-                if uuid != owner.UUID {
-                        return nil, ErrUserDeleted
-                }
-        }
-
-	req, err := http.NewRequest(http.MethodGet, "", nil)
-	if err != nil {
-		return nil, err
-	}
-
-	clusterURL := net.JoinHostPort(util.Localhost(), util.GetRestPort())
-	user, password, err := cbauth.GetHTTPServiceAuth(clusterURL)
-	if err != nil {
-		return nil, err
-	}
-	req.SetBasicAuth(user, password)
-
-	onBehalfUser := encodeCbOnBehalfOfHeader(owner)
-	req.Header.Set("cb-on-behalf-of", onBehalfUser)
-
-	return authenticateAndCheck(req, permissions, union)
-}
-
-func AuthWebCreds(w http.ResponseWriter, req *http.Request) (cbauth.Creds, error) {
-	return authCreds(w, req, true)
-}
-
-// Maybe we can merge both
-func AuthWebCredsWithoutAudit(w http.ResponseWriter, req *http.Request) (cbauth.Creds, error) {
-	return authCreds(w, req, false)
-}
-
-func authCreds(w http.ResponseWriter, req *http.Request, auditAndSend bool) (cbauth.Creds, error) {
-	cred, err := cbauth.AuthWebCreds(req)
-	if err == cbauth.ErrNoAuth {
-		if auditAndSend {
-			audit.Log(auditevent.AuthenticationFailure, req, nil)
-			sendUnauthenticated(w)
-		}
-		return nil, err
-	}
-
-	if err != nil {
-		sendInternalError(w)
-		return nil, err
-	}
-
-	return cred, nil
-}
-
-func IsAllowedCreds(cred cbauth.Creds, permissions []string, union bool) ([]string, error) {
-	return authorizeFromCreds(cred, permissions, union)
-}
-
-func authenticateAndCheck(req *http.Request, permissions []string, union bool) ([]string, error) {
-	creds, err := cbauth.AuthWebCreds(req)
-	if err != nil {
-		return nil, err
-	}
-
-	return authorizeFromCreds(creds, permissions, union)
-}
-
-// Returns permission which is not allowed
-// all: all the permission should be satisfied
-func authorizeFromCreds(cred cbauth.Creds, permissions []string, all bool) ([]string, error) {
-	notAllowed := make([]string, 0, len(permissions))
-	for _, perm := range permissions {
-		allowed, err := cred.IsAllowed(perm)
-		if err != nil {
-			return nil, err
-		}
-		if allowed && !all {
-			return nil, nil
-		}
-		if !allowed {
-			notAllowed = append(notAllowed, perm)
-		}
-	}
-
-	if len(notAllowed) == 0 {
-		return nil, nil
-	}
-	return notAllowed, ErrAuthorisation
-}
-
-func encodeCbOnBehalfOfHeader(owner *common.Owner) (header string) {
-	header = base64.StdEncoding.EncodeToString([]byte(owner.User + ":" + owner.Domain))
-	return
-}
-
 // For eventing different permissions
 func HandlerGetPermissions(keySpace *common.Keyspace) []string {
 	perms := GetPermissions(keySpace, EventingManage)
@@ -204,90 +96,114 @@ func HandlerBucketPermissions(srcKeyspace, metaKeyspace *common.Keyspace) []stri
 	return perms
 }
 
-// ::TODO::Move to ForbiddenJSONMultiple and SendForbiddenMultiple to cbauth:convenience.go
-// ForbiddenJSON returns json 403 response for given permissions
-func forbiddenJSONMultiple(permissions []string) ([]byte, error) {
-	jsonStruct := map[string]interface{}{
-		"message":     "Forbidden. User needs one of the following permissions",
-		"permissions": permissions,
+// Check for user credentials
+func authCreds(req *http.Request) (cbauth.Creds, error) {
+	cred, err := cbauth.AuthWebCreds(req)
+	if err == cbauth.ErrNoAuth {
+		return nil, ErrAuthentication
 	}
-	return json.Marshal(jsonStruct)
-}
 
-// SendForbidden sends 403 Forbidden with json payload that contains list
-// of required permissions to response on given response writer.
-func sendForbiddenMultiple(w http.ResponseWriter, permissions []string) error {
-	b, err := forbiddenJSONMultiple(permissions)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusForbidden)
-	w.Write(b)
-	return nil
+
+	return cred, nil
 }
 
-func unauthenticatedJSON() ([]byte, error) {
-	jsonStruct := map[string]interface{}{
-		"message": "Unauthenticated User",
+// Returns some or all permissions that are required for performing an action may be missing
+// all: all the permission should be satisfied
+func authorizeFromCreds(cred cbauth.Creds, permissions []string, all bool) ([]string, error) {
+	missingPerms := make([]string, 0, len(permissions))
+	for _, perm := range permissions {
+		allowed, err := cred.IsAllowed(perm)
+		if err != nil {
+			return nil, err
+		}
+		if allowed && !all {
+			return nil, nil
+		}
+		if !allowed {
+			missingPerms = append(missingPerms, perm)
+		}
 	}
-	return json.Marshal(jsonStruct)
+
+	if len(missingPerms) == 0 {
+		return nil, nil
+	}
+	return missingPerms, ErrAuthorisation
 }
 
-func sendUnauthenticated(w http.ResponseWriter) error {
-	b, err := unauthenticatedJSON()
+// Authenticate and check for permission
+func isAllowed(req *http.Request, permissions []string, all bool) ([]string, error) {
+	cred, err := authCreds(req)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusUnauthorized)
-	w.Write(b)
-	return nil
+
+	return authorizeFromCreds(cred, permissions, all)
 }
 
-func sendInternalError(w http.ResponseWriter) {
-	http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+func encodeCbOnBehalfOfHeader(owner *common.Owner) (header string) {
+	header = base64.StdEncoding.EncodeToString([]byte(owner.User + ":" + owner.Domain))
 	return
 }
 
-// Send the response back to caller
-// Also audit the request
-func ValidateAuth(w http.ResponseWriter, r *http.Request, perms []string, all bool) bool {
-	creds, err := cbauth.AuthWebCreds(r)
-	if err != nil || creds == nil {
-		audit.Log(auditevent.AuthenticationFailure, r, nil)
-		sendUnauthenticated(w)
-		return false
-	}
-
-	notAllowed, err := IsAllowedCreds(creds, perms, all)
-	if err != nil {
-		audit.Log(auditevent.AuthorizationFailure, r, nil)
-		sendForbiddenMultiple(w, notAllowed)
-		return false
-	}
-	return true
+// Exported functions
+func IsAllowed(req *http.Request, permissions []string, all bool) ([]string, error) {
+	return isAllowed(req, permissions, all)
 }
 
-func ValidateAuthForOp(w http.ResponseWriter, r *http.Request, rPerms []string, mPerms []string, all bool) bool {
-	cred, err := cbauth.AuthWebCreds(r)
-	if err != nil {
-		audit.Log(auditevent.AuthenticationFailure, r, nil)
-		sendUnauthenticated(w)
-		return false
+func IsAllowedCreds(cred cbauth.Creds, permissions []string, all bool) ([]string, error) {
+	return authorizeFromCreds(cred, permissions, all)
+}
+
+// Return true if all the permissions are satisfied for this user or not
+// Error maybe the cbauth http server problem
+// TODO: If cbauth supports IsAllowed(user, permission) we don't have to
+// recreate all the request and all
+// If all is true then all permission to should be satisfied
+func HasPermissions(owner *common.Owner, permissions []string, all bool) ([]string, error) {
+	if owner.UUID != "" {
+		uuid, err := cbauth.GetUserUuid(owner.User, owner.Domain)
+		if err != nil {
+			return nil, err
+		}
+		if uuid != owner.UUID {
+			return nil, ErrUserDeleted
+		}
 	}
 
+	req, err := http.NewRequest(http.MethodGet, "", nil)
+	if err != nil {
+		return nil, err
+	}
+
+	clusterURL := net.JoinHostPort(util.Localhost(), util.GetRestPort())
+	user, password, err := cbauth.GetHTTPServiceAuth(clusterURL)
+	if err != nil {
+		return nil, err
+	}
+	req.SetBasicAuth(user, password)
+
+	onBehalfUser := encodeCbOnBehalfOfHeader(owner)
+	req.Header.Set("cb-on-behalf-of", onBehalfUser)
+	return isAllowed(req, permissions, all)
+}
+
+func AuthWebCreds(req *http.Request) (cbauth.Creds, error) {
+	return authCreds(req)
+}
+
+func ValidateAuthForOp(r *http.Request, rPerms []string, mPerms []string, all bool) ([]string, error) {
 	perms := rPerms
 	if r.Method != "GET" {
 		perms = mPerms
 	}
 
-	notAllowed, err := IsAllowedCreds(cred, perms, all)
+	missingPerms, err := isAllowed(r, perms, all)
 	if err != nil {
-		audit.Log(auditevent.AuthorizationFailure, r, nil)
-		sendForbiddenMultiple(w, notAllowed)
-		return false
+		return missingPerms, err
 	}
 
-	return true
+	return nil, nil
 }

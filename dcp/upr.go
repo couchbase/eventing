@@ -84,16 +84,13 @@ func (b *Bucket) GetFailoverLogs(
 	vBuckets []uint16, config map[string]interface{}) (FailoverLog, error) {
 	// map vbids to their corresponding hosts
 	vbHostList := make(map[string][]uint16)
-	vbm := b.VBServerMap()
 	for _, vb := range vBuckets {
-		if l := len(vbm.VBucketMap); int(vb) >= l {
-			fmsg := "DCPF[] ##%x invalid vbucket id %d >= %d"
-			logging.Errorf(fmsg, opaque, vb, l)
-			return nil, ErrorInvalidVbucket
+		master, err := b.GetMasterNodeForVb(vb)
+		if err != nil {
+			fmsg := "DCP[] ##%x invalid vbucket id %d: err: %v"
+			logging.Errorf(fmsg, opaque, vb, err)
+			return nil, err
 		}
-
-		masterID := vbm.VBucketMap[vb][0]
-		master := b.getMasterNode(masterID)
 		if master == "" {
 			fmsg := "DCP[] ##%x master node not found for vbucket %d"
 			logging.Errorf(fmsg, opaque, vb)
@@ -453,15 +450,13 @@ func (feed *DcpFeed) dcpRequestStream(
 	manifestUID, collectionId string) error {
 
 	prefix := feed.logPrefix
-	vbm := feed.bucket.VBServerMap()
-	if l := len(vbm.VBucketMap); int(vb) >= l {
-		fmsg := "%v ##%x invalid vbucket id %d >= %d\n"
-		logging.Errorf(fmsg, prefix, opaque, vb, l)
-		return ErrorInvalidVbucket
+	master, err := feed.bucket.GetMasterNodeForVb(vb)
+	if err != nil {
+		fmsg := "%v ##%x invalid vbucket id %d err: %v"
+		logging.Errorf(fmsg, prefix, opaque, vb, err)
+		return err
 	}
 
-	masterID := vbm.VBucketMap[vb][0]
-	master := feed.bucket.getMasterNode(masterID)
 	if master == "" {
 		fmsg := "%v ##%x notFound master node for vbucket %d\n"
 		logging.Errorf(fmsg, prefix, opaque, vb)
@@ -477,8 +472,6 @@ func (feed *DcpFeed) dcpRequestStream(
 	}
 
 	feed.reConnectToNodes(feed.opaque, feed.flags, feed.config)
-
-	var err error
 
 	for i := 0; i < len(feed.nodeFeeds[master]); i++ {
 		singleFeed, ok := addtofeed(feed.nodeFeeds[master])
@@ -504,17 +497,14 @@ func (feed *DcpFeed) dcpRequestStream(
 
 func (feed *DcpFeed) dcpCloseStream(vb, opaqueMSB uint16) error {
 	prefix := feed.logPrefix
-	vbm := feed.bucket.VBServerMap()
-	if l := len(vbm.VBucketMap); int(vb) >= l {
-		fmsg := "%v ##%x invalid vbucket id %d >= %d\n"
-		logging.Errorf(fmsg, prefix, opaqueMSB, vb, l)
-		return ErrorInvalidVbucket
+	master, err := feed.bucket.GetMasterNodeForVb(vb)
+	if err != nil {
+		fmsg := "%v invalid vbucket id %d, err: %v"
+		logging.Errorf(fmsg, prefix, vb, err)
+		return err
 	}
-
-	masterID := vbm.VBucketMap[vb][0]
-	master := feed.bucket.getMasterNode(masterID)
 	if master == "" {
-		fmsg := "%v ##%x notFound master node for vbucket %d\n"
+		fmsg := "%v ##%x notFound master node for vbucket %d"
 		logging.Errorf(fmsg, prefix, opaqueMSB, vb)
 		return ErrorInvalidVbucket
 	}

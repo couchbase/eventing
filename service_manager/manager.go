@@ -22,8 +22,8 @@ import (
 	"github.com/couchbase/eventing/common"
 	couchbase "github.com/couchbase/eventing/dcp"
 	"github.com/couchbase/eventing/logging"
+	"github.com/couchbase/eventing/service_manager/response"
 	"github.com/couchbase/eventing/util"
-	"github.com/couchbase/goutils/systemeventlog"
 )
 
 func NewState() state {
@@ -38,7 +38,7 @@ func NewState() state {
 
 //NewServiceMgr creates handle for ServiceMgr, which implements cbauth service.Manager
 func NewServiceMgr(config util.Config, rebalanceRunning bool,
-	superSup common.EventingSuperSup, sel systemeventlog.SystemEventLogger) *ServiceMgr {
+	superSup common.EventingSuperSup) *ServiceMgr {
 
 	logging.Infof("ServiceMgr::newServiceMgr config: %rm rebalanceRunning: %v", fmt.Sprintf("%#v", config), rebalanceRunning)
 
@@ -67,7 +67,6 @@ func NewServiceMgr(config util.Config, rebalanceRunning bool,
 		superSup:                superSup,
 		supWaitCh:               make(chan bool, 2),
 		finch:                   make(chan bool),
-		sel:                     sel,
 	}
 
 	mgr.config.Store(config)
@@ -651,7 +650,7 @@ func (m *ServiceMgr) disableDebugger() {
 	logPrefix := "ServiceMgr::enableDebugger"
 
 	config, info := m.getConfig()
-	if info.Code != m.statusCodes.ok.Code {
+	if info.ErrCode != response.Ok {
 		return
 	}
 
@@ -665,8 +664,8 @@ func (m *ServiceMgr) disableDebugger() {
 	logging.Tracef("%s enable_debugger field does not exist or is enabled, disabling it", logPrefix)
 
 	config["enable_debugger"] = false
-	if info := m.saveConfig(config); info.Code != m.statusCodes.ok.Code {
-		logging.Errorf("Unable to enable debugger by default, err: %v", info.Info)
+	if info := m.saveConfig(config); info.ErrCode != response.Ok {
+		logging.Errorf("Unable to enable debugger by default, err: %v", info.Description)
 	}
 }
 

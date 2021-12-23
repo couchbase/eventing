@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
-	"net"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -79,17 +77,10 @@ func NewSuperSupervisor(adminPort AdminPortConfig, eventingDir, kvPort, restPort
 	config.Set("eventing_dir", s.eventingDir)
 	config.Set("rest_port", s.restPort)
 
-	baseNsserverURL := "http://" + net.JoinHostPort(util.Localhost(), s.restPort)
+	util.InitialiseSystemEventLogger(s.restPort)
+	s.serviceMgr = servicemanager.NewServiceMgr(config, false, s)
 
-	sel := systemeventlog.NewSystemEventLogger(systemeventlog.SystemEventLoggerConfig{}, baseNsserverURL,
-		util.SYSTEM_EVENT_COMPONENT, http.Client{Timeout: util.DEFAULT_TIMEOUT_SECS * time.Second},
-		func(message string) {
-			logging.Errorf(message)
-		})
-
-	s.serviceMgr = servicemanager.NewServiceMgr(config, false, s, sel)
-
-	util.LogSystemEvent(sel, util.EVENTID_PRODUCER_STARTUP, systemeventlog.SEInfo, nil)
+	util.LogSystemEvent(util.EVENTID_PRODUCER_STARTUP, systemeventlog.SEInfo, nil)
 
 	s.keepNodes = append(s.keepNodes, uuid)
 
@@ -370,6 +361,13 @@ func (s *SuperSupervisor) SettingsChangeCallback(kve metakv.KVEntry) error {
 
 				logging.Infof("%s [%d] Function: %s deployment done", logPrefix, s.runningFnsCount(), appName)
 
+				extraAttributes := map[string]interface{}{"appName": appName}
+				sysEventId := util.EVENTID_DEPLOY_FUNCTION
+				if state == common.AppStatePaused {
+					sysEventId = util.EVENTID_RESUME_FUNCTION
+				}
+				util.LogSystemEvent(sysEventId, systemeventlog.SEInfo, extraAttributes)
+
 			case false:
 
 				state := s.GetAppCompositeState(appName)
@@ -409,6 +407,8 @@ func (s *SuperSupervisor) SettingsChangeCallback(kve metakv.KVEntry) error {
 					s.addToDeployedApps(appName)
 					s.addToLocallyDeployedApps(appName)
 				}
+				extraAttributes := map[string]interface{}{"appName": appName}
+				util.LogSystemEvent(util.EVENTID_PAUSE_FUNCTION, systemeventlog.SEInfo, extraAttributes)
 			}
 
 		case false:
@@ -446,6 +446,9 @@ func (s *SuperSupervisor) SettingsChangeCallback(kve metakv.KVEntry) error {
 
 				s.updateQuotaForRunningFns()
 				logging.Infof("%s [%d] Function: %s undeployment done", logPrefix, s.runningFnsCount(), appName)
+
+				extraAttributes := map[string]interface{}{"appName": appName}
+				util.LogSystemEvent(util.EVENTID_UNDEPLOY_FUNCTION, systemeventlog.SEInfo, extraAttributes)
 			}
 		}
 
@@ -618,6 +621,9 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(kve metakv.KVEntry) error 
 					delete(s.bootstrappingApps, appName)
 					s.appListRWMutex.Unlock()
 					logging.Infof("%s [%d] Function: %s deployment done", logPrefix, s.runningFnsCount(), appName)
+
+					extraAttributes := map[string]interface{}{"appName": appName}
+					util.LogSystemEvent(util.EVENTID_DEPLOY_FUNCTION, systemeventlog.SEInfo, extraAttributes)
 				} else {
 					s.appRWMutex.Lock()
 					s.appDeploymentStatus[appName] = deploymentStatus
@@ -627,6 +633,9 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(kve metakv.KVEntry) error 
 					if deploymentStatus && !processingStatus {
 						s.addToDeployedApps(appName)
 						s.addToLocallyDeployedApps(appName)
+
+						extraAttributes := map[string]interface{}{"appName": appName}
+						util.LogSystemEvent(util.EVENTID_PAUSE_FUNCTION, systemeventlog.SEInfo, extraAttributes)
 					}
 				}
 			}
