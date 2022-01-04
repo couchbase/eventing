@@ -131,7 +131,7 @@ func (c *ClusterInfoCache) Fetch(np *couchbase.Pool) error {
 
 		vretry := 0
 	retry:
-		if np != nil {
+		if np != nil && vretry == 0 {
 			err = c.updatePool(np)
 			if err != nil {
 				return err
