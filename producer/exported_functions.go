@@ -671,11 +671,17 @@ func (p *Producer) cleanupMetadataImpl(id int, vbsToCleanup []uint16, undeployWG
 	logging.Infof("%s [%s:%d:id_%d] Started up dcpfeed to cleanup artifacts from metadata bucket: %s",
 		logPrefix, p.appName, p.LenRunningConsumers(), id, p.metadataKeyspace.BucketName)
 
-	var vbSeqNos map[uint16]uint64
-	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, dcpGetSeqNosCallback, p, &dcpFeed, &vbSeqNos)
+	var vbSeqnos []uint64
+	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, util.GetSeqnos, p.nsServerHostPort,
+		"default", p.metadataKeyspace.BucketName, p.metaCid, &vbSeqnos)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%d:id_%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers(), id)
 		return err
+	}
+
+	vbSeqNos := make(map[uint16]uint64)
+	for vb, seqNo := range vbSeqnos {
+		vbSeqNos[uint16(vb)] = seqNo
 	}
 
 	cleanupVbs := make(map[uint16]bool)
@@ -787,7 +793,7 @@ func (p *Producer) cleanupMetadataImpl(id int, vbsToCleanup []uint16, undeployWG
 		logging.Debugf("%s [%s:%d:id_%d] vb: %d starting DCP feed",
 			logPrefix, p.appName, p.LenRunningConsumers(), id, vb)
 
-		util.Retry(util.NewFixedBackoff(time.Second), &p.retryCount, openDcpStreamFromZero, dcpFeed, vb, vbuuid, p, id, &keyspaceExist)
+		util.Retry(util.NewFixedBackoff(time.Second), &p.retryCount, openDcpStreamFromZero, dcpFeed, vb, vbuuid, p, id, vbSeqNos[vb], &keyspaceExist)
 		if !keyspaceExist {
 			// No need to update receivedVbSeqNos since metadata keyspace is already deleted.
 			logging.Infof("%s [%s:%d:id_%d] vb: %d Exiting cleanup routind due to keyspace delete",
