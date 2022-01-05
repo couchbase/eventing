@@ -1,7 +1,7 @@
 function OnUpdate(doc, meta) {
     var request = {
         headers: {
-        'Accept': 'gzip'
+        'Accept-Encoding': 'gzip'
         }
     };
 
