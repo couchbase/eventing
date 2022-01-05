@@ -25,7 +25,7 @@ func (c *curlTester) test() {
 
 	eventCount := verifyBucketOps(ops.count, statsLookupRetryCounter)
 	if ops.count != eventCount {
-		failAndCollectLogsf(c.testHandle, "Count mismatch: %v, expected %v", ops.count, eventCount)
+		failAndCollectLogsf(c.testHandle, "Count mismatch expected: %v, got: %v", ops.count, eventCount)
 	}
 	flushFunctionAndBucket(c.handler)
 }
