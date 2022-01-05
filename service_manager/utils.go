@@ -919,7 +919,37 @@ func (app *application) copy() application {
 		metaInfo[k] = v
 	}
 	copyApp.Metainfo = metaInfo
+
+	copyApp.DeploymentConfig = app.DeploymentConfig.copy()
 	return copyApp
+}
+
+func (deploymentCfg depCfg) copy() depCfg {
+	copyDepCfg := deploymentCfg
+	if len(deploymentCfg.Buckets) > 0 {
+		buckets := make([]bucket, 0, len(deploymentCfg.Buckets))
+		for _, b := range deploymentCfg.Buckets {
+			buckets = append(buckets, b)
+		}
+		copyDepCfg.Buckets = buckets
+	}
+
+	if len(deploymentCfg.Curl) > 0 {
+		curl := make([]common.Curl, 0, len(deploymentCfg.Curl))
+		for _, c := range deploymentCfg.Curl {
+			curl = append(curl, c)
+		}
+		copyDepCfg.Curl = curl
+	}
+
+	if len(deploymentCfg.Constants) > 0 {
+		constants := make([]common.Constant, 0, len(deploymentCfg.Constants))
+		for _, c := range deploymentCfg.Constants {
+			constants = append(constants, c)
+		}
+		copyDepCfg.Constants = constants
+	}
+	return copyDepCfg
 }
 
 func ConstructKeyspace(keyspace string) common.Keyspace {

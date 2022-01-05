@@ -2139,6 +2139,7 @@ func (m *ServiceMgr) saveTempStore(app application) (info *response.RuntimeInfo)
 			return
 		}
 
+		copyPasswords(&app, currApp)
 		app.Owner = currApp.Owner
 	} else if info.ErrCode == response.ErrAppNotFoundTs {
 		// Its a new app so its not defined yet
