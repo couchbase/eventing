@@ -1,7 +1,7 @@
 function OnUpdate(doc, meta) {
     var request = {
         headers: {
-        'Accept-Encoding': 'deflate'
+        'Accept': 'deflate'
         }
     };
 
