@@ -52,6 +52,8 @@ type RuntimeInfo struct {
 
 	// If true then sender will only send the description
 	OnlyDescription bool `json:"-"`
+	// Defaults to "application/json"
+	ContentType string `json:"-"`
 }
 
 type ErrorInfo struct {
