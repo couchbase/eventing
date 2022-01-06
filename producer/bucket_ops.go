@@ -59,23 +59,6 @@ var cleanupMetadataCallback = func(args ...interface{}) error {
 	return err
 }
 
-var dcpGetSeqNosCallback = func(args ...interface{}) error {
-	logPrefix := "Producer::dcpGetSeqNosCallback"
-
-	p := args[0].(*Producer)
-	dcpFeed := args[1].(**couchbase.DcpFeed)
-	vbSeqNos := args[2].(*map[uint16]uint64)
-
-	var err error
-	*vbSeqNos, err = (*dcpFeed).DcpGetSeqnos()
-	if err != nil {
-		logging.Errorf("%s [%s:%d] Failed to get dcp seqnos for metadata bucket: %s, err: %v",
-			logPrefix, p.appName, p.LenRunningConsumers(), p.metadataKeyspace.BucketName, err)
-	}
-
-	return err
-}
-
 var clearDebuggerInstanceCallback = func(args ...interface{}) error {
 	logPrefix := "Producer::clearDebuggerInstanceCallback"
 
@@ -208,12 +191,13 @@ var openDcpStreamFromZero = func(args ...interface{}) error {
 	vbuuid := args[2].(uint64)
 	p := args[3].(*Producer)
 	id := args[4].(int)
-	keyspaceExist := args[5].(*bool)
+	endSeqNumber := args[5].(uint64)
+	keyspaceExist := args[6].(*bool)
 	metaCid := p.GetMetadataCid()
 	hexCid := common.Uint32ToHex(metaCid)
 
 	err := dcpFeed.DcpRequestStream(vb, uint16(vb), uint32(0), vbuuid, uint64(0),
-		uint64(0xFFFFFFFFFFFFFFFF), uint64(0), uint64(0xFFFFFFFFFFFFFFFF), "0", hexCid)
+		endSeqNumber, uint64(0), uint64(0), "0", hexCid)
 	if err != nil {
 		logging.Errorf("%s [%s:%d:id_%d] vb: %d failed to request stream error: %v",
 			logPrefix, p.appName, p.LenRunningConsumers(), id, vb, err)
