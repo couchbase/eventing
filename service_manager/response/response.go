@@ -86,6 +86,10 @@ func (r *responseWriter) send(runtimeInfo *RuntimeInfo) {
 	}
 
 	w := r.writer
+	if runtimeInfo.ContentType == "" {
+		runtimeInfo.ContentType = "application/json"
+	}
+	w.Header().Set("Content-Type", runtimeInfo.ContentType)
 
 	if sendRawResponse {
 		w.WriteHeader(httpCode)

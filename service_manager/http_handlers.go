@@ -347,7 +347,7 @@ func (m *ServiceMgr) getAppLog(w http.ResponseWriter, r *http.Request) {
 	}
 	sort.Sort(sort.Reverse(sort.StringSlice(lines)))
 
-	w.Header().Set("Content-Type", "text/plain")
+	runtimeInfo.ContentType = "text/plain"
 	runtimeInfo.SendRawDescription = true
 	runtimeInfo.OnlyDescription = true
 	runtimeInfo.Description = strings.Join(lines, "\n")
@@ -815,8 +815,6 @@ func (m *ServiceMgr) writeDebuggerURLHandler(w http.ResponseWriter, r *http.Requ
 	if !m.validateLocalAuth(w, r) {
 		return
 	}
-
-	w.Header().Set("Content-Type", "application/x-www-form-urlencoded")
 
 	appName := path.Base(r.URL.Path)
 	data, err := ioutil.ReadAll(r.Body)
@@ -2864,7 +2862,6 @@ func (m *ServiceMgr) configHandler(w http.ResponseWriter, r *http.Request) {
 
 	defer res.LogAndSend(runtimeInfo)
 
-	w.Header().Set("Content-Type", "application/json")
 	if notAllowed, err := rbac.ValidateAuthForOp(r, rbac.EventingAnyManageReadPermissions, rbac.EventingPermissionManage, false); err != nil {
 		*runtimeInfo = getAuthErrorInfo(notAllowed, false, err)
 		return
@@ -3015,8 +3012,6 @@ func (m *ServiceMgr) isUndeployOperation(settings map[string]interface{}) bool {
 
 func (m *ServiceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 	logPrefix := "ServiceMgr::functionsHandler"
-
-	w.Header().Set("Content-Type", "application/json")
 
 	if r.Method != "GET" { // We do not want to flood logs with GET calls
 		logging.Infof("%s REST Call: %v %v", logPrefix, r.URL.Path, r.Method)
@@ -4391,7 +4386,6 @@ func (m *ServiceMgr) exportHandler(w http.ResponseWriter, r *http.Request) {
 
 	defer res.LogAndSend(runtimeInfo)
 
-	w.Header().Set("Content-Type", "application/json")
 	if r.Method != "GET" {
 		runtimeInfo.ErrCode = response.ErrMethodNotAllowed
 		runtimeInfo.Description = "Method not allowed. Only GET is allowed"
@@ -4443,7 +4437,6 @@ func (m *ServiceMgr) importHandler(w http.ResponseWriter, r *http.Request) {
 
 	defer res.LogAndSend(runtimeInfo)
 
-	w.Header().Set("Content-Type", "application/json")
 	if r.Method != "POST" {
 		runtimeInfo.ErrCode = response.ErrMethodNotAllowed
 		runtimeInfo.Description = "Method not allowed. Only POST is allowed"
@@ -4793,7 +4786,6 @@ func (m *ServiceMgr) getCPUCount(w http.ResponseWriter, r *http.Request) {
 
 	defer res.LogAndSend(runtimeInfo)
 
-	w.Header().Set("Content-Type", "application/json")
 	if r.Method != "GET" {
 		runtimeInfo.ErrCode = response.ErrMethodNotAllowed
 		runtimeInfo.Description = "Method not allowed. Only GET is allowed"
@@ -4943,7 +4935,6 @@ func (m *ServiceMgr) triggerGC(w http.ResponseWriter, r *http.Request) {
 
 	defer res.LogAndSend(runtimeInfo)
 
-	w.Header().Set("Content-Type", "application/json")
 	if notAllowed, err := rbac.IsAllowed(r, rbac.EventingPermissionManage, false); err != nil {
 		*runtimeInfo = getAuthErrorInfo(notAllowed, false, err)
 		return
@@ -4962,7 +4953,6 @@ func (m *ServiceMgr) freeOSMemory(w http.ResponseWriter, r *http.Request) {
 
 	defer res.LogAndSend(runtimeInfo)
 
-	w.Header().Set("Content-Type", "application/json")
 	if notAllowed, err := rbac.IsAllowed(r, rbac.EventingPermissionManage, false); err != nil {
 		*runtimeInfo = getAuthErrorInfo(notAllowed, false, err)
 		return
@@ -5079,8 +5069,6 @@ func (m *ServiceMgr) listFunctions(w http.ResponseWriter, r *http.Request) {
 
 	defer res.LogAndSend(runtimeInfo)
 
-	w.Header().Set("Content-Type", "application/json")
-
 	if r.Method != "GET" {
 		runtimeInfo.ErrCode = response.ErrMethodNotAllowed
 		runtimeInfo.Description = "Method not allowed. Only GET is allowed"
@@ -5126,8 +5114,6 @@ func (m *ServiceMgr) triggerInternalRebalance(w http.ResponseWriter, r *http.Req
 	runtimeInfo := &response.RuntimeInfo{}
 
 	defer res.LogAndSend(runtimeInfo)
-
-	w.Header().Set("Content-Type", "application/json")
 
 	if r.Method != "POST" {
 		runtimeInfo.ErrCode = response.ErrMethodNotAllowed
@@ -5255,8 +5241,6 @@ func (m *ServiceMgr) resetStatsCounters(w http.ResponseWriter, r *http.Request) 
 	runtimeInfo := &response.RuntimeInfo{}
 
 	defer res.LogAndSend(runtimeInfo)
-
-	w.Header().Set("Content-Type", "application/json")
 
 	params := r.URL.Query()
 	res.AddRequestData("query", params)
