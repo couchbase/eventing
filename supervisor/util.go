@@ -160,8 +160,9 @@ func (s *SuperSupervisor) isDeployable(appName string) error {
 	permissions := rbac.HandlerBucketPermissions(srcKeyspace, metadataKeyspace)
 	permissions = append(permissions, rbac.HandlerManagePermissions(funcScope.ToKeyspace())...)
 	_, err = rbac.HasPermissions(owner, permissions, true)
-	// If error is not ErrAuthorisation or not nil then producer will undeploy it
-	if err == rbac.ErrAuthorisation {
+	// Return error only if its confirmed ErrAuthorisation or user deleted error
+	// For temp error producer will undeploy it based on the error message
+	if err == rbac.ErrAuthorisation || err == rbac.ErrUserDeleted {
 		return err
 	}
 	return nil
