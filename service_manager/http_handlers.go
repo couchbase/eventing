@@ -1940,7 +1940,7 @@ func (m *ServiceMgr) getTempStoreHandlerHelper(cred cbauth.Creds) []application 
 		if _, ok := app.Settings["num_timer_partitions"]; ok {
 			delete(app.Settings, "num_timer_partitions")
 		}
-		redactPasswords(&app)
+		redactSesitiveData(&app)
 		tempApps = append(tempApps, app)
 	}
 	return tempApps
@@ -3208,7 +3208,7 @@ func (m *ServiceMgr) functionName(w http.ResponseWriter, r *http.Request, appNam
 		}
 
 		m.maybeDeleteLifeCycleState(&app)
-		redactPasswords(&app)
+		redactSesitiveData(&app)
 
 		runtimeInfo.Description = app
 		runtimeInfo.OnlyDescription = true
@@ -3867,7 +3867,7 @@ func (m *ServiceMgr) functionConfig(w http.ResponseWriter, r *http.Request, appN
 			*runtimeInfo = *info
 			return
 		}
-		redactPasswords(&app)
+		redactSesitiveData(&app)
 
 		runtimeInfo.Description = app.DeploymentConfig
 		runtimeInfo.OnlyDescription = true

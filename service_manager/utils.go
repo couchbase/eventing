@@ -1158,11 +1158,12 @@ func applicationAdapter(app *application) (common.Application, error) {
 	return appConverted, nil
 }
 
-func redactPasswords(app *application) {
+func redactSesitiveData(app *application) {
 	for idx, _ := range app.DeploymentConfig.Curl {
 		app.DeploymentConfig.Curl[idx].BearerKey = PASSWORD_MASK
 		app.DeploymentConfig.Curl[idx].Password = PASSWORD_MASK
 	}
+	app.Owner = nil
 }
 
 func copyPasswords(newApp, oldApp *application) {
