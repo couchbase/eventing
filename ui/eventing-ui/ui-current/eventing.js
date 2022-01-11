@@ -12,6 +12,9 @@ import mnPoolDefault from "components/mn_pool_default";
 import mnPermissions from "components/mn_permissions";
 import mnSelect from "components/directives/mn_select/mn_select";
 import mnDetailStats from "components/directives/mn_detail_stats_controller";
+import mnStatisticsNewService from "mn_admin/mn_statistics_service";
+import mnStatisticsDescription from "mn_admin/mn_statistics_description";
+import mnFilters from "components/mn_filters";
 
 import Adapter from "./adapter.js";
 
@@ -32,20 +35,89 @@ import {
 
 export default 'eventing';
 
-angular.module('eventing', [
+angular
+  .module('eventing', [
     uiAce,
     uiRouter,
     mnPoolDefault,
     mnPermissions,
     mnSelect,
-    mnDetailStats
+    mnDetailStats,
+    mnStatisticsNewService,
+    mnFilters
   ])
+  .controller('SummaryDeployedStatsItemCtrl', [
+    '$scope', 'mnPoolDefault', 'mnStatisticsNewService',
+    function ($scope, mnPoolDefault, mnStatisticsNewService) {
+      let vm = this;
+      let isAtLeast70 = mnPoolDefault.export.compat.atLeast70;
+
+      vm.isFinite = Number.isFinite;
+
+      let row = $scope.app;
+
+      let perItemStats = [
+        "@eventing-.@items.eventing_processed_count",
+        "@eventing-.@items.eventing_failed_count",
+        "@eventing-.@items.eventing_timeout_count",
+        "@eventing-.@items.eventing_dcp_backlog"
+      ];
+      let getStatSamples = isAtLeast70 ? getStatSamples70 : getStatSamplesPre70;
+      let uiStatNames = perItemStats.map(stat => mnStatisticsDescription
+                                         .mapping70(stat).split(".").pop());
+
+      $scope.summaryCtrl.mnEventingStatsPoller.subscribeUIStatsPoller({
+        bucket: row.depcfg.metadata_bucket,
+        node: "all",
+        zoom: 3000,
+        step: 1,
+        stats: isAtLeast70 ? perItemStats : perItemStats.map(mnStatisticsDescription.mapping70),
+        items: {
+          eventing: isAtLeast70 ? row.appname : ("eventing/" + row.appname + "/")
+        }
+      }, $scope);
+
+      let permissions = $scope.rbac.cluster.collection[row.depcfg.metadata_bucket + ':.:.'];
+      if (permissions && permissions.stats.read) {
+        $scope.$watch("mnUIStats", updateValues);
+        $scope.$watch("app", updateValues);
+      }
+
+      function getIndexStatName(statName) {
+        return 'eventing/' + row.appname + '/' + statName;
+      }
+
+      function getStats(statName) {
+        let stats = $scope.mnUIStats && $scope.mnUIStats && $scope.mnUIStats.stats;
+        return stats && stats[statName] && stats[statName]["aggregate"];
+      }
+
+      function getStatSamples70(statName) {
+        statName = mnStatisticsDescription.mapping65("@eventing-.@items." + statName);
+        let stats = getStats(statName);
+        let last = stats && stats.values[stats.values.length - 1];
+        let val = last && last[1];
+        val = val ? Number(val) : !!val;
+        return val;
+      }
+
+      function getStatSamplesPre70(statName) {
+        let stats = getStats(getIndexStatName(statName));
+        return stats && stats.slice().reverse().find(stat => stat != null);
+      }
+
+      function updateValues() {
+        uiStatNames.forEach(statName => row[statName] = getStatSamples(statName));
+      }
+
+  }])
   // Controller for the summary page.
-  .controller('SummaryCtrl', ['$q', '$scope', '$rootScope', '$state',
+  .controller('SummaryCtrl', [
+    '$q', '$scope', '$rootScope', '$state',
     '$uibModal', '$timeout', '$location', 'ApplicationService', 'serverNodes',
-    'isEventingRunning', 'mnPoller',
-    function($q, $scope, $rootScope, $state, $uibModal, $timeout, $location,
-      ApplicationService, serverNodes, isEventingRunning, mnPoller) {
+    'isEventingRunning', 'mnPoller', 'mnStatisticsNewService',
+    function ($q, $scope, $rootScope, $state, $uibModal, $timeout, $location,
+              ApplicationService, serverNodes, isEventingRunning, mnPoller, mnStatisticsNewService) {
       var self = this;
 
       self.errorState = !ApplicationService.status.isErrorCodesLoaded();
@@ -62,7 +134,6 @@ angular.module('eventing', [
       self.appListStaleCount = 0;
       self.statusPollMillis = 2000;
       self.pollingCount = 0;
-      self.deployedStats = null;
       self.annotationList = []
       self.appstorefresh = []
 
@@ -80,6 +151,9 @@ angular.module('eventing', [
       new mnPoller($scope, deployedAppsTicker).setInterval(self
         .statusPollMillis).cycle();
 
+      self.mnEventingStatsPoller = mnStatisticsNewService.createStatsPoller($scope);
+      self.mnEventingStatsPoller.heartbeat.setInterval(4000);
+
       // Poll to get the App status and reflect the same in the UI
       function deployedAppsTicker() {
         if (!self.isEventingRunning) {
@@ -95,11 +169,7 @@ angular.module('eventing', [
               new Map(); // composite_status by appname (in UI and not in UI)
             var uiIsStale =
               false; // if we need to reload somehting new App or state change
-            var statsConfig = {
-              haveDeployedOrDeploying: false,
-              metaDataBucket: "",
-              lastSampleTime: new Date().valueOf()
-            };
+
             ApplicationService.public.getAnnotations().then(function(
               response) { self.annotationList = response.data });
             var deprecatedMap = new Map();
@@ -146,8 +216,7 @@ angular.module('eventing', [
                 }
               }
             }
-            self.appstorefresh = refreshapplist
-            statsConfig.reqstats = "";
+            self.appstorefresh = refreshapplist;
             for (var app of Object.keys(self.appList)) {
               if (!rspAppList.has(app)) {
                 // An App from the UI's current list doesn't exisit in the recurring status
@@ -156,37 +225,6 @@ angular.module('eventing', [
                 self.appList[app].uiState = determineUIStatus(self.appList[
                   app].status);
                 self.appList[app].warnings = getWarnings(self.appList[app]);
-                if (!self.appList[app].cluster_stats) {
-                  self.appList[app].cluster_stats = {};
-                }
-                if (self.appList[app].status === 'deployed' || self.appList[
-                    app].status === 'deploying') {
-                  statsConfig.haveDeployedOrDeploying = true;
-                  statsConfig.metaDataBucket = self.appList[app].depcfg
-                    .metadata_bucket;
-
-                  if (statsConfig.reqstats !== "") {
-                    statsConfig.reqstats = statsConfig.reqstats + ',';
-                  }
-
-                  statsConfig.reqstats = statsConfig.reqstats +
-                    '"eventing/' + app + '/processed_count",' +
-                    '"eventing/' + app + '/failed_count",' +
-                    '"eventing/' + app + '/timeout_count",' +
-                    '"eventing/' + app + '/dcp_backlog"';
-
-                  // make sure we loaded the needed stats
-                  if (self.deployedStats && self.deployedStats !== null) {
-                    // attach statistics to our UI information for the deployed hander else just '-'
-                    self.appList[app].cluster_stats.show = 1;
-                    formatDeployedStats(app, 'success', 'processed_count');
-                    formatDeployedStats(app, 'failure', 'failed_count');
-                    formatDeployedStats(app, 'timeout', 'timeout_count');
-                    formatDeployedStats(app, 'backlog', 'dcp_backlog');
-                  }
-                } else {
-                  self.appList[app].cluster_stats = {};
-                }
               }
             }
             if (!uiIsStale) {
@@ -224,21 +262,10 @@ angular.module('eventing', [
               fetchCpuCount();
             }
 
-
-            // Fetch at the beginning of every cycle
-            if (self.pollingCount == 0)
-              fetchDeployedStats(statsConfig);
-            // Only does the fetch if we have one or more items deploying or deployed in the UI
-            self.pollingCount += 1;
-
             // Fetch DeployesdStats once every scrapeInterval/2 seconds
             if ($scope.rbac.cluster.settings.metrics.read) {
-              ApplicationService.server.getScrapeInterval().then(function(
-                value) {
-                if (self.pollingCount >= ((value * 1000) / (self
-                    .statusPollMillis * 2))) {
-                  self.pollingCount = 0;
-                }
+              ApplicationService.server.getScrapeInterval().then(function () {
+                self.mnEventingStatsPoller.heartbeat.setInterval(value * 1000 / 2);
               });
             }
 
@@ -249,60 +276,6 @@ angular.module('eventing', [
                 'abort')) {
               console.error('Unable to list apps');
             }
-          });
-      }
-
-      function formatDeployedStats(app, tag, a) {
-        var ret = '-';
-        var ary_a = self.deployedStats.stats['eventing/' + app + '/' + a];
-        if (ary_a && ary_a.aggregate && ary_a.aggregate.length > 0) {
-          var val_a = null;
-          // sometimes the most recent stat is null, try to look into the past
-          for (var i = ary_a.aggregate.length - 1; i >= 0; i--) {
-            val_a = ary_a.aggregate[i];
-            if (val_a !== null) break;
-          }
-          if (!isNaN(val_a)) {
-            ret = val_a;
-            if (val_a > 999999) {
-              ret = d3Format(".4~s")(val_a);
-            }
-          }
-        }
-        if (typeof ret === 'undefined') {
-          ret = '-';
-        }
-        self.appList[app].cluster_stats[tag] = ret;
-        self.appList[app].cluster_stats[tag + '_gt_zero'] = false;
-        if (!isNaN(val_a) && val_a > 0) {
-          self.appList[app].cluster_stats[tag + '_gt_zero'] = true;
-        }
-        return ret;
-      }
-
-      function fetchDeployedStats(statsConfig) {
-
-        if (self.deployedStats && self.deployedStats['timestamps']) {
-          var tstamps = self.deployedStats['timestamps'];
-          statsConfig.lastSampleTime = tstamps[tstamps.length - 1];
-        }
-
-        self.deployedStats = null;
-        if (statsConfig.haveDeployedOrDeploying == false || statsConfig
-          .metaDataBucket === "") {
-          return;
-        }
-        ApplicationService.server.getDeployedStats(statsConfig)
-          .then(function(response) {
-            if (response && response.data && response.data[0]) {
-              self.deployedStats = response.data[0];
-              return;
-            }
-          })
-          .catch(function(errResponse) {
-            console.error('Unable to get deployed stats count',
-              errResponse);
-            return;
           });
       }
 
@@ -628,7 +601,6 @@ angular.module('eventing', [
               .deployment_status;
             app.settings.processing_status = appClone.settings
               .processing_status;
-            app.settings.cluster_stats = appClone.settings.cluster_stats;
 
             self.disableEditButton = false;
 
@@ -704,7 +676,6 @@ angular.module('eventing', [
 
             app.settings.deployment_status = false;
             app.settings.processing_status = false;
-            app.settings.cluster_stats = null;
             ApplicationService.server.showSuccessAlert(
               `${app.appname} will be undeployed`);
 
@@ -2383,14 +2354,6 @@ angular.module('eventing', [
                   errResponse
                   .data);
               });
-          },
-          getDeployedStats: function(statsConfig) {
-            // just one sample sometimes gets nothing, so grab the last five seconds
-            return $http.post('/_uistats',
-              '[{"bucket":"' + statsConfig.metaDataBucket +
-              '","step":1,"stats":[' + statsConfig.reqstats +
-              '],"startTS":-5000,"aggregate":true}]'
-            );
           },
           getWorkerCount: function() {
             return $http.get('/_p/event/getWorkerCount');

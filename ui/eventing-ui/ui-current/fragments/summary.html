@@ -41,9 +41,9 @@
         <span class="cbui-table-cell"></span>
       </div>
       <section class="has-hover"
-        ng-repeat="(appname, app) in summaryCtrl.appList"
-        ng-class="['dynamic_' + app.uiState]"
-        ng-click="app.toggleActionsVisibility()">
+         ng-repeat="(appname, app) in summaryCtrl.appList track by appname"
+         ng-class="['dynamic_' + app.uiState]"
+         ng-click="app.toggleActionsVisibility()">
         <div class="cbui-tablerow">
           <span
             class="cbui-table-cell cbui-tablerow-title flex-grow-2">{{appname}}</span>
@@ -52,8 +52,7 @@
           <span class="cbui-table-cell flex-grow-half">
             {{app.status === 'deployed' || app.status === 'undeployed' || app.status === 'paused' ? app.status : app.status + '...'}}
             <span class="icon fa-warning orange-3"
-              ng-show="app.status === 'deployed' &&
-              (app.cluster_stats.failure_gt_zero == true || app.cluster_stats.timeout_gt_zero == true )"></span>
+               ng-show="app.status === 'deployed' && (!!app.failed_count || !!app.timeout_count)"></span>
           </span>
           <span class="cbui-table-cell text-right">
             <a ng-click="$event.stopPropagation();summaryCtrl.openWarnings(appname);"
@@ -83,8 +82,9 @@
             <div
               style="display:flex;justify-content:flex-start;flex-wrap:wrap-reverse;">
               <div class="text-small"
-                style="display:table;clear:both;float:left;"
-                ng-show="app.status === 'deployed'">
+                 style="display:table;clear:both;float:left;"
+                 ng-if="app.status === 'deployed'"
+                 ng-controller="SummaryDeployedStatsItemCtrl as statsItemCtrl">
                 <div
                   style="margin-top:4px;margin-left:6px;margin-right:6px;display:inline-block;white-space:nowrap;">
                   <div class="text-medium"
@@ -96,23 +96,20 @@
                     success
                   </div>
                   <div
-                    style="position:relative;top:2.4em;float:left;width:5em;margin-left:-5em;text-align:right;"
-                    class=" ng-binding">
-                    {{app.cluster_stats.success}}
+                     style="position:relative;top:2.4em;float:left;width:5em;margin-left:-5em;text-align:right;"
+                     class=" ng-binding">
+                    {{statsItemCtrl.isFinite(app.processed_count) ? (app.processed_count | mnFormatQuantity:1000) : "-"}}
                   </div>
                   <div
-                    style="float:left;width:5em;margin-left:0px;text-align:right;">
+                     style="float:left;width:5em;margin-left:0px;text-align:right;">
                     failure
                   </div>
                   <div
-                    style="position:relative;top:2.4em;float:left;width:5em;margin-left:-5em;text-align:right;">
-                    <div style="display:inline-block;"
-                      ng-if="app.cluster_stats.failure_gt_zero == false">
-                      {{app.cluster_stats.failure}}
-                    </div>
-                    <div style="color:#CC0000;display:inline-block;"
-                      ng-if="app.cluster_stats.failure_gt_zero == true ">
-                      {{app.cluster_stats.failure}}
+                     style="position:relative;top:2.4em;float:left;width:5em;margin-left:-5em;text-align:right;">
+                    <div
+                       class="inline"
+                       ng-class="{'red-1': !!app.failed_count}">
+                      {{statsItemCtrl.isFinite(app.failed_count) ? (app.failed_count | mnFormatQuantity:1000) : "-"}}
                     </div>
                   </div>
                   <div
@@ -121,13 +118,10 @@
                   </div>
                   <div
                     style="position:relative;top:2.4em;float:left;width:5em;margin-left:-5em;text-align:right;">
-                    <div style="display:inline-block;"
-                      ng-if="app.cluster_stats.backlog_gt_zero == false">
-                      {{app.cluster_stats.backlog}}
-                    </div>
-                    <div style="color:#CC0000;display:inline-block;"
-                      ng-if="app.cluster_stats.backlog_gt_zero == true ">
-                      {{app.cluster_stats.backlog}}
+                    <div
+                       class="inline"
+                       ng-class="{'red-1': !!app.dcp_backlog}">
+                      {{statsItemCtrl.isFinite(app.dcp_backlog) ? (app.dcp_backlog | mnFormatQuantity:1000) : "-"}}
                     </div>
                   </div>
                   <div
@@ -136,13 +130,10 @@
                   </div>
                   <div
                     style="position:relative;top:2.4em;float:left;width:5em;margin-left:-5em;text-align:right;">
-                    <div style="display:inline-block;"
-                      ng-if="app.cluster_stats.timeout_gt_zero == false">
-                      {{app.cluster_stats.timeout}}
-                    </div>
-                    <div style="color:#CC0000;display:inline-block;"
-                      ng-if="app.cluster_stats.timeout_gt_zero == true ">
-                      {{app.cluster_stats.timeout}}
+                    <div
+                       class="inline"
+                       ng-class="{'red-1': !!app.timeout_count}">
+                      {{statsItemCtrl.isFinite(app.timeout_count) ? (app.timeout_count | mnFormatQuantity:1000) : "-"}}
                     </div>
                   </div>
                 </div>
