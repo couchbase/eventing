@@ -86,21 +86,19 @@ RetryLcbCommand(lcb_INSTANCE *instance, CmdType &cmd, int max_retry_count,
   int retry_count = 1;
   std::pair<lcb_STATUS, Result> result;
   auto start = GetUnixTime();
-
   while (true) {
     result = callable(instance, cmd);
-
     if ((result.first == LCB_SUCCESS && result.second.rc == LCB_SUCCESS) ||
         (!IsRetriable(result.first) && !IsRetriable(result.second.rc)) ||
-        (max_retry_count && retry_count >= max_retry_count))
-      break;
+        (max_retry_count && retry_count >= max_retry_count)) {
+          break;
+        }
 
     if (max_retry_secs > 0) {
       auto now = GetUnixTime();
       if (now - start >= max_retry_secs)
         break;
     }
-
     ++retry_count;
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
   }
