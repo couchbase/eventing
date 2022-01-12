@@ -5156,7 +5156,7 @@ func (m *ServiceMgr) prometheusLow(w http.ResponseWriter, r *http.Request) {
 	out = append(out, []byte(fmt.Sprintf("%vworker_restart_count %v\n", METRICS_PREFIX, m.superSup.WorkerRespawnedCount()))...)
 
 	runtimeInfo.SendRawDescription = true
-	runtimeInfo.Description = out
+	runtimeInfo.Description = fmt.Sprintf("%s", out)
 	runtimeInfo.OnlyDescription = true
 }
 
@@ -5174,7 +5174,7 @@ func (m *ServiceMgr) prometheusHigh(w http.ResponseWriter, r *http.Request) {
 	list := m.highCardStats()
 
 	runtimeInfo.SendRawDescription = true
-	runtimeInfo.Description = list
+	runtimeInfo.Description = fmt.Sprintf("%s", list)
 	runtimeInfo.OnlyDescription = true
 }
 
