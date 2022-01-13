@@ -89,7 +89,7 @@
     {
       "id": 32773,
       "name": "Delete Drafts",
-      "description": "Request to fetch eventing function draft definitions",
+      "description": "Request to delete eventing function draft definitions",
       "sync": false,
       "enabled": true,
       "filtering_permitted": true,
