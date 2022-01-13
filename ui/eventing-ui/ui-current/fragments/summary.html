@@ -117,12 +117,9 @@
                     backlog
                   </div>
                   <div
-                    style="position:relative;top:2.4em;float:left;width:5em;margin-left:-5em;text-align:right;">
-                    <div
-                       class="inline"
-                       ng-class="{'red-1': !!app.dcp_backlog}">
+                    style="position:relative;top:2.4em;float:left;width:5em;margin-left:-5em;text-align:right;"
+                    class=" ng-binding">
                       {{statsItemCtrl.isFinite(app.dcp_backlog) ? (app.dcp_backlog | mnFormatQuantity:1000) : "-"}}
-                    </div>
                   </div>
                   <div
                     style="float:left;width:5em;margin-left:0px;text-align:right;">
