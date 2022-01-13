@@ -117,3 +117,14 @@ func (c *Consumer) checkBinaryDocAllowed() bool {
 	binDocSupportVersion := common.CouchbaseVerMap["6.6.2"]
 	return langCompatibility.Compare(binDocSupportVersion)
 }
+
+func (c *Consumer) getEncryptionLevelName(enforceTLS, encryptOn bool) string {
+	encryptionLevel := "control_or_off"
+	if encryptOn {
+		encryptionLevel = "all"
+		if enforceTLS {
+			encryptionLevel = "strict"
+		}
+	}
+	return encryptionLevel
+}

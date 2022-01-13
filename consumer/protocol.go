@@ -81,6 +81,7 @@ const (
 const (
 	configOpcode int8 = iota
 	updateFeatureMatrix
+	updateEncryptionLevel
 )
 
 // message and opcode types for interpreting messages from C++ To Go
@@ -153,6 +154,7 @@ func (c *Consumer) makeVbFilterHeader(partition int16, meta string) ([]byte, *fl
 func (c *Consumer) makePauseConsumerHeader() ([]byte, *flatbuffers.Builder) {
 	return c.makeHeader(pauseConsumer, 0, 0, "")
 }
+
 func (c *Consumer) makeProcessedSeqNoHeader(partition int16, meta string) ([]byte, *flatbuffers.Builder) {
 	return c.filterEventHeader(processedSeqNo, partition, meta)
 }
@@ -334,16 +336,21 @@ func (c *Consumer) makeV8InitPayload(appName, debuggerPort, currHost, eventingDi
 	n1qlConsistency := builder.CreateString(c.n1qlConsistency)
 	languageCompatibility := builder.CreateString(c.languageCompatibility)
 	certFile := builder.CreateString("")
+	encryptionLevel := builder.CreateString("control_or_off")
+
 	var securitySetting *common.SecuritySetting
 	if c.superSup != nil {
 		securitySetting = c.superSup.GetSecuritySetting()
-		if securitySetting != nil && securitySetting.EncryptData == true {
-			if len(securitySetting.CAFile) > 0 {
-				certFile = builder.CreateString(securitySetting.CAFile)
-			} else {
-				certFile = builder.CreateString(securitySetting.CertFile)
+		if securitySetting != nil {
+			if securitySetting.EncryptData {
+				if len(securitySetting.CAFile) > 0 {
+					certFile = builder.CreateString(securitySetting.CAFile)
+				} else {
+					certFile = builder.CreateString(securitySetting.CertFile)
+				}
 			}
-
+			level := c.getEncryptionLevelName(securitySetting.DisableNonSSLPorts, securitySetting.EncryptData)
+			encryptionLevel = builder.CreateString(level)
 		}
 	}
 
@@ -384,6 +391,7 @@ func (c *Consumer) makeV8InitPayload(appName, debuggerPort, currHost, eventingDi
 	payload.PayloadAddBucketCacheSize(builder, c.bucketCacheSize)
 	payload.PayloadAddBucketCacheAge(builder, c.bucketCacheAge)
 	payload.PayloadAddCertFile(builder, certFile)
+	payload.PayloadAddEncryptionLevel(builder, encryptionLevel)
 
 	if c.n1qlPrepareAll {
 		payload.PayloadAddN1qlPrepareAll(builder, 0x1)

@@ -861,6 +861,12 @@ func (p *Producer) cleanupMetadataImpl(id int, vbsToCleanup []uint16, undeployWG
 	return nil
 }
 
+func (p *Producer) UpdateEncryptionLevel(enforceTLS, encryptOn bool) {
+	for _, c := range p.getConsumers() {
+		go c.UpdateEncryptionLevel(enforceTLS, encryptOn)
+	}
+}
+
 // UpdateMemoryQuota allows tuning of memory quota for Eventing
 func (p *Producer) UpdateMemoryQuota(quota int64) {
 	logPrefix := "Producer::UpdateMemoryQuota"

@@ -71,7 +71,7 @@ enum timer_opcode { oTimer, oCronTimer, Timer_Opcode_Unknown };
 
 enum debugger_opcode { oDebuggerStart, oDebuggerStop, Debugger_Opcode_Unknown };
 
-enum config_opcode { oUpdateDisableFeatureList, Config_Opcode_Unknown };
+enum config_opcode { oUpdateDisableFeatureList, oUpdateEncryptionLevel, Config_Opcode_Unknown };
 
 event_type getEvent(int8_t event);
 v8_worker_opcode getV8WorkerOpcode(int8_t opcode);

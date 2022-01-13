@@ -58,6 +58,7 @@ table Payload {
   curl_max_allowed_resp_size:int64; // max allowed size of curl response
   lcb_timeout:int;
   certFile:string; // TLS certFile, null string if encryption is disabled
+  encryption_level:string; // encryption level, at the time this consumer is being created
 }
 
 root_type Payload;
