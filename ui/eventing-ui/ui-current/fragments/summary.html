@@ -167,10 +167,14 @@
               </div>
             </div>
           </div>
-          <mn-detail-stats class="block eventing-charts"
-            ng-show="app.status === 'deployed'" node-name="all"
-            mn-title="Charts" item-id="{{app.appname}}" service="eventing"
-            prefix="eventing"></mn-detail-stats>
+          <mn-detail-stats
+             ng-if="app.status === 'deployed'"
+             class="block eventing-charts"
+             node-name="all"
+             mn-title="Charts"
+             item-id="{{app.appname}}"
+             service="eventing"
+             prefix="eventing"></mn-detail-stats>
       </section>
     </div>
     <div ng-if="summaryCtrl.isAppListEmpty()">
