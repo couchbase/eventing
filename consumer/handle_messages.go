@@ -11,10 +11,10 @@ import (
 	"sync/atomic"
 
 	mcd "github.com/couchbase/eventing/dcp/transport"
-	"github.com/couchbase/eventing/dcp/transport/client"
+	memcached "github.com/couchbase/eventing/dcp/transport/client"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
-	"github.com/google/flatbuffers/go"
+	flatbuffers "github.com/google/flatbuffers/go"
 )
 
 func (c *Consumer) sendLogLevel(logLevel string, sendToDebugger bool) {
@@ -535,6 +535,24 @@ func (c *Consumer) sendPauseConsumer() {
 
 	c.sendMessage(msg)
 	logging.Infof("%s [%s:%s:%d] Sending pause consumer message",
+		logPrefix, c.workerName, c.tcpPort, c.Pid())
+}
+
+func (c *Consumer) sendUpdateEncryptionLevel(enforceTLS, encryptOn bool) {
+	logPrefix := "Consumer::sendUpdateEncryptionLevel"
+	level := c.getEncryptionLevelName(enforceTLS, encryptOn)
+	encryptHeader, hBuilder := c.makeHeader(configChange, updateEncryptionLevel, 0, level)
+	msg := &msgToTransmit{
+		msg: &message{
+			Header: encryptHeader,
+		},
+		sendToDebugger: false,
+		prioritize:     true,
+		headerBuilder:  hBuilder,
+	}
+
+	c.sendMessage(msg)
+	logging.Infof("%s [%s:%s:%d] Sending encryption change message to consumer",
 		logPrefix, c.workerName, c.tcpPort, c.Pid())
 }
 

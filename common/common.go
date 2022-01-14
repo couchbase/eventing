@@ -199,6 +199,7 @@ type EventingProducer interface {
 	TimerDebugStats() map[int]map[string]interface{}
 	IsTrapEvent() bool
 	SetTrapEvent(value bool)
+	UpdateEncryptionLevel(enforceTLS, encryptOn bool)
 	UpdateMemoryQuota(quota int64)
 	VbDcpEventsRemainingToProcess() map[int]int64
 	VbDistributionStatsFromMetadata() map[string]map[string]string
@@ -252,6 +253,7 @@ type EventingConsumer interface {
 	String() string
 	TimerDebugStats() map[int]map[string]interface{}
 	NotifyPrepareTopologyChange(keepNodes, ejectNodes []string)
+	UpdateEncryptionLevel(enforceTLS, encryptOn bool)
 	UpdateWorkerQueueMemCap(quota int64)
 	VbDcpEventsRemainingToProcess() map[int]int64
 	VbEventingNodeAssignMapUpdate(map[uint16]string)
@@ -313,6 +315,7 @@ type EventingSuperSup interface {
 	SpanBlobDump(appName string) (interface{}, error)
 	StopProducer(appName string, skipMetaCleanup bool, updateMetakv bool)
 	TimerDebugStats(appName string) (map[int]map[string]interface{}, error)
+	UpdateEncryptionLevel(enforceTLS, encryptOn bool)
 	VbDcpEventsRemainingToProcess(appName string) map[int]int64
 	VbDistributionStatsFromMetadata(appName string) map[string]map[string]string
 	VbSeqnoStats(appName string) (map[int][]map[string]interface{}, error)

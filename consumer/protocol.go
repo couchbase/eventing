@@ -24,6 +24,7 @@ const (
 	filterEvent
 	reservedEvent
 	pauseConsumer
+	configChange
 )
 
 const (
@@ -74,6 +75,11 @@ const (
 	timerContextSize
 	vbMap
 	workerThreadMemQuota
+)
+
+const (
+	configOpcode int8 = iota
+	updateEncryptionLevel
 )
 
 // message and opcode types for interpreting messages from C++ To Go
@@ -326,11 +332,17 @@ func (c *Consumer) makeV8InitPayload(appName, debuggerPort, currHost, eventingDi
 	n1qlConsistency := builder.CreateString(c.n1qlConsistency)
 	languageCompatibility := builder.CreateString(c.languageCompatibility)
 	certFile := builder.CreateString("")
+	encryptionLevel := builder.CreateString("control_or_off")
+
 	var securitySetting *common.SecuritySetting
 	if c.superSup != nil {
 		securitySetting = c.superSup.GetSecuritySetting()
-		if securitySetting != nil && securitySetting.EncryptData == true {
-			certFile = builder.CreateString(securitySetting.CertFile)
+		if securitySetting != nil {
+			if securitySetting.EncryptData == true {
+				certFile = builder.CreateString(securitySetting.CertFile)
+			}
+			level := c.getEncryptionLevelName(securitySetting.DisableNonSSLPorts, securitySetting.EncryptData)
+			encryptionLevel = builder.CreateString(level)
 		}
 	}
 
@@ -364,6 +376,7 @@ func (c *Consumer) makeV8InitPayload(appName, debuggerPort, currHost, eventingDi
 	payload.PayloadAddNumTimerPartitions(builder, int32(c.numTimerPartitions))
 	payload.PayloadAddCurlMaxAllowedRespSize(builder, int64(c.curlMaxAllowedRespSize))
 	payload.PayloadAddCertFile(builder, certFile)
+	payload.PayloadAddEncryptionLevel(builder, encryptionLevel)
 
 	if c.n1qlPrepareAll {
 		payload.PayloadAddN1qlPrepareAll(builder, 0x1)

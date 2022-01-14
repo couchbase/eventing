@@ -21,6 +21,7 @@
 uint64_t timer_responses_sent(0);
 uint64_t messages_parsed(0);
 
+std::string curr_encryption_level("control_or_off");
 std::atomic<int64_t> e_app_worker_setting_lost = {0};
 std::atomic<int64_t> e_dcp_lost = {0};
 std::atomic<int64_t> e_debugger_lost = {0};
@@ -548,6 +549,7 @@ void AppWorker::RouteMessageWithResponse(
           payload->curr_eventing_sslport()->str());
       server_settings->host_addr.assign(payload->curr_host()->str());
       server_settings->certFile.assign(payload->certFile()->str());
+      curr_encryption_level = payload->encryption_level()->str();
 
       handler_instance_id = payload->function_instance_id()->str();
       handler_config->curl_max_allowed_resp_size =
@@ -897,6 +899,36 @@ void AppWorker::RouteMessageWithResponse(
       LOG(logError) << "Opcode " << getDebuggerOpcode(worker_msg->header.opcode)
                     << "is not implemented for eDebugger" << std::endl;
       ++e_debugger_lost;
+      break;
+    }
+    break;
+  case eConfigChange:
+    switch (getConfigOpcode(worker_msg->header.opcode)) {
+    case oUpdateEncryptionLevel: {
+      auto new_encryption_level = worker_msg->header.metadata;
+      if (curr_encryption_level != new_encryption_level) {
+        LOG(logInfo) << "Encryption level changed from " << curr_encryption_level
+                     << " to " << new_encryption_level << std::endl;
+        if (new_encryption_level == "strict" && curr_encryption_level == "control_or_off") {
+          // No point in allowing timer store lcb handles to attempt store operations
+          LOG(logInfo) << "Disabling timer store lcb handle ops" << std::endl;
+          for (auto &v8_worker : workers_)
+            v8_worker.second->SetFailFastTimerScans();
+        } else if (curr_encryption_level == "strict") {
+          // New level will definitely be more relaxed.
+          // Allow timer store lcb handles to attempt store operations
+          // This is a noop if handles are already in their correct state
+          LOG(logInfo) << "Re-enabling timer store lcb handle ops if disabled before" << std::endl;
+          for (auto &v8_worker : workers_)
+            v8_worker.second->ResetFailFastTimerScans();
+        }
+      }
+      // TODO : Use the flags to repair lcb handles
+      curr_encryption_level = new_encryption_level;
+      break;
+    }
+    default:
+      LOG(logError) << "Received invalid config opcode" << std::endl;
       break;
     }
     break;
