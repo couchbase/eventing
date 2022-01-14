@@ -24,6 +24,7 @@
 #include "timer_iterator.h"
 #include "utils.h"
 #include "v8worker.h"
+#include "lcbinstance.h"
 
 namespace timer {
 class TimerStore {
@@ -49,6 +50,18 @@ public:
   void SyncSpan();
 
   lcb_t GetTimerStoreHandle() const;
+
+  void SetFailFastTimerScans() {
+    if (crud_handle_ != nullptr && connected_.load()) {
+      crud_handle_->SetSkipLcbOps();
+    }
+  }
+
+  void ResetFailFastTimerScans() {
+    if (crud_handle_ != nullptr && connected_.load()) {
+      crud_handle_->ResetSkipLcbOps();
+    }
+  }
 
 private:
   void Connect();
@@ -102,7 +115,8 @@ private:
   std::unordered_map<int64_t, TimerSpan> span_map_;
   std::string prefix_;
   std::string metadata_bucket_;
-  lcb_t crud_handle_{nullptr};
+  std::unique_ptr<LcbInstance> crud_handle_{nullptr};
+  std::atomic<bool> connected_{false};
   std::mutex store_lock_;
   int32_t num_vbuckets_{1024};
   int32_t timer_reduction_ratio_{1};

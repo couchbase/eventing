@@ -194,7 +194,7 @@ void V8Worker::InitializeIsolateData(const server_settings_t *server_settings,
   data_.n1ql_prepare_all = h_config->n1ql_prepare_all;
   data_.lang_compat = new LanguageCompatibility(h_config->lang_compat);
   data_.lcb_retry_count = h_config->lcb_retry_count;
-
+  data_.min_lcb_timeout = 0.4 * 1e6;
   data_.bucket_ops = new BucketOps(isolate_, context);
 }
 
@@ -1314,6 +1314,18 @@ std::unique_lock<std::mutex> V8Worker::GetAndLockBucketOpsLock() {
 }
 
 void V8Worker::StopTimerScan() { stop_timer_scan_.store(true); }
+
+void V8Worker::SetFailFastTimerScans() {
+  if (timer_store_ != nullptr) {
+    timer_store_->SetFailFastTimerScans();
+  }
+}
+
+void V8Worker::ResetFailFastTimerScans() {
+  if (timer_store_ != nullptr) {
+    timer_store_->ResetFailFastTimerScans();
+  }
+}
 
 // TODO : Remove this when stats variables are handled properly
 void AddLcbException(const IsolateData *isolate_data, const int code) {

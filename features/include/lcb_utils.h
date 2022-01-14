@@ -32,6 +32,7 @@ struct Result {
 };
 
 constexpr int def_lcb_retry_count = 6;
+constexpr int def_lcb_min_retry_count = 2;
 constexpr int def_lcb_retry_timeout = 0;
 
 const char *GetUsername(void *cookie, const char *host, const char *port,
@@ -73,6 +74,7 @@ std::pair<lcb_error_t, Result> LcbUnlock(lcb_t instance,
                                          lcb_CMDUNLOCK &cmd);
 
 bool IsRetriable(lcb_error_t error);
+bool IsNetworkErr(lcb_error_t error);
 
 template <typename CmdType, typename Callable>
 std::pair<lcb_error_t, Result> RetryLcbCommand(lcb_t instance, CmdType &cmd,

@@ -343,6 +343,11 @@ bool IsRetriable(lcb_error_t error) {
   return static_cast<bool>(LCB_EIFTMP(error));
 }
 
+bool IsNetworkErr(lcb_error_t error) {
+  return static_cast<bool>(LCB_EIFNET(error));
+}
+
+
 void evt_log_formatter(char *buf, int buf_size, const char *subsystem,
                        int srcline, unsigned int instance_id, const char *fmt,
                        va_list ap) {

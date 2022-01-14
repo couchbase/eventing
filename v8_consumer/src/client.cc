@@ -13,6 +13,7 @@
 #include <string>
 #include <thread>
 
+#include "lcb_utils.h"
 #include "breakpad.h"
 #include "client.h"
 #include <nlohmann/json.hpp>
@@ -755,6 +756,7 @@ void AppWorker::RouteMessageWithResponse(
   case ePauseConsumer: {
     pause_consumer_.store(true);
     std::unordered_map<int64_t, uint64_t> lps_map;
+    LOG(logInfo) << "Received pause event from Go" << std::endl;
     for (size_t idx = 0; idx < thr_count_; ++idx) {
       auto worker = workers_[idx];
       auto lck = worker->GetAndLockBucketOpsLock();
@@ -767,6 +769,7 @@ void AppWorker::RouteMessageWithResponse(
         lps_map[vb] = lps;
       }
     }
+    LOG(logInfo) << "Pause event processing complete. Sending ack" << std::endl;
     SendPauseAck(lps_map);
   } break;
   case eApp_Worker_Setting:
