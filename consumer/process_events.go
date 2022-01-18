@@ -431,7 +431,7 @@ func (c *Consumer) startDcp() error {
 
 	logging.Debugf("%s [%s:%s:%d] get_all_vb_seqnos: len => %d dump => %v",
 		logPrefix, c.workerName, c.tcpPort, c.Pid(), len(vbSeqnos), vbSeqnos)
-	vbs := make([]uint16, len(vbSeqnos))
+	vbs := make([]uint16, 0, len(vbSeqnos))
 
 	var operr error
 	for _, vb := range c.vbnos {
@@ -456,6 +456,7 @@ func (c *Consumer) startDcp() error {
 			if err != nil {
 				logging.Errorf("%s [%s:%s:%d] vb: %d failed to grab failover log, err: %v",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, err)
+				c.addVbForRestreaming(vb)
 				continue
 			}
 
@@ -463,6 +464,7 @@ func (c *Consumer) startDcp() error {
 			if err != nil {
 				logging.Errorf("%s [%s:%s:%d] vb: %d failed to grab latest failover log, err: %v",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, err)
+				c.addVbForRestreaming(vb)
 				continue
 			}
 
@@ -549,6 +551,7 @@ func (c *Consumer) startDcp() error {
 			logging.Infof("%s [%s:%s:%d] vb: %d checkpoint blob prexisted, UUID: %s assigned worker: %s",
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, vbBlob.NodeUUID, vbBlob.AssignedWorker)
 
+			sentToReqStream := false
 			if (vbBlob.NodeUUID == c.NodeUUID() || vbBlob.NodeUUID == "") &&
 				(vbBlob.AssignedWorker == c.ConsumerName() || vbBlob.AssignedWorker == "") {
 
@@ -563,6 +566,7 @@ func (c *Consumer) startDcp() error {
 				logging.Infof("%s [%s:%s:%d] vb: %d Sending streamRequestInfo size: %d",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, len(c.reqStreamCh))
 
+				sentToReqStream = true
 				if !vbBlob.BootstrapStreamReqDone {
 
 					c.vbProcessingStats.updateVbStat(vb, "bootstrap_stream_req_done", false)
@@ -591,6 +595,8 @@ func (c *Consumer) startDcp() error {
 							startSeqNo: vbBlob.LastSeqNoProcessed,
 						}
 						c.vbProcessingStats.updateVbStat(vb, "start_seq_no", vbBlob.LastSeqNoProcessed)
+					default:
+						sentToReqStream = false
 					}
 				} else {
 					c.reqStreamCh <- &streamRequestInfo{
@@ -602,6 +608,9 @@ func (c *Consumer) startDcp() error {
 				}
 
 				c.vbProcessingStats.updateVbStat(vb, "timestamp", time.Now().Format(time.RFC3339))
+			}
+			if !sentToReqStream {
+				c.addVbForRestreaming(vb)
 			}
 		}
 	}
