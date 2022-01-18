@@ -80,7 +80,7 @@ angular
       $scope.$watch("mnUIStats", updateValues);
       $scope.$watch("app", updateValues);
 
-      function getIndexStatName(statName) {
+      function getEventingStatName(statName) {
         return 'eventing/' + row.appname + '/' + statName;
       }
 
@@ -99,7 +99,7 @@ angular
       }
 
       function getStatSamplesPre70(statName) {
-        let stats = getStats(getIndexStatName(statName));
+        let stats = getStats(getEventingStatName(statName));
         return stats && stats.slice().reverse().find(stat => stat != null);
       }
 
@@ -130,7 +130,6 @@ angular
       self.disableEditButton = false;
       self.appListStaleCount = 0;
       self.statusPollMillis = 2000;
-      self.pollingCount = 0;
       self.annotationList = []
       self.appstorefresh = []
 
@@ -261,7 +260,7 @@ angular
 
             // Fetch DeployesdStats once every scrapeInterval/2 seconds
             if ($scope.rbac.cluster.settings.metrics.read) {
-              ApplicationService.server.getScrapeInterval().then(function () {
+              ApplicationService.server.getScrapeInterval().then(function (value) {
                 self.mnEventingStatsPoller.heartbeat.setInterval(value * 1000 / 2);
               });
             }
