@@ -21,7 +21,7 @@
           Function Scope
           <small> bucket.scope</small>
         </label>
-        <span class="fa-stack icon-info" uib-tooltip="Function Scope"
+        <span class="fa-stack icon-info" uib-tooltip="A bucket.scope combination used for identifying functions belonging to the same group."
           tooltip-placement="right">
           <span class="icon fa-circle-thin fa-stack-2x"></span>
           <span class="icon fa-info fa-stack-1x"></span>
@@ -30,7 +30,9 @@
           <mn-select mn-disabled="formCtrl.isDisable"
             ng-model="appModel.function_scope.bucket"
             ng-init="formCtrl.populatefunctionScopes(appModel.function_scope.bucket)"
-            on-select="formCtrl.populatefunctionScopes(selectedOption)"
+            on-select="formCtrl.populatefunctionScopes(selectedOption);
+                        appModel.function_scope.scope = formCtrl.functionScopes.length > 0 ?
+                          formCtrl.functionScopes[0] : appModel.function_scope.scope"
             values="formCtrl.functionBuckets" name="function_bucket"
             class="margin-right-quarter width-12" has-search="true">
           </mn-select>
