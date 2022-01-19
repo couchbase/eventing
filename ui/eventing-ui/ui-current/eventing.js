@@ -2603,6 +2603,10 @@ angular
       }
 
       function isValidVariable(value) {
+        if (value.length > 64 || value.length < 1) {
+          return false;
+        }
+
         if (!isValidVariableRegex(value)) {
           return false;
         }

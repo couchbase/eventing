@@ -562,7 +562,7 @@
               <!-- binding error messaging ----------------------------------------------- -->
               <div class="row margin-bottom-half error field-error"
                 ng-show="!formCtrl.validateVariable((formCtrl.isDialog ? bindings : formCtrl.bindings)[$index])">
-                Alias Name can only contain characters in range A-Z, a-z, 0-9, _
+                Alias Name can contain no more than 64 characters in range A-Z, a-z, 0-9, _
                 and $ and it should not be a JavaScript or N1QL keyword.
               </div>
               <div class="row margin-bottom-half error field-error"
