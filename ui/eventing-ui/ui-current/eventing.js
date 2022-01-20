@@ -1764,7 +1764,7 @@ angular
                   appSaved = false
                   ApplicationService.server.showErrorAlert(
                     "Changes cannot be saved. Reason: " + JSON
-                    .stringify(errResponse.data.runtime_info.info));
+                    .stringify(errResponse.data.description));
                   console.error(errResponse);
                 })
                 .finally(function(response) {
@@ -1778,7 +1778,9 @@ angular
             }
           })
           .catch(function(errResponse) {
-            console.error(errResponse);
+	    ApplicationService.server.showErrorAlert(
+                    "Changes cannot be saved. Reason: " + JSON
+                    .stringify(errResponse.data.description));
           });
       };
 
