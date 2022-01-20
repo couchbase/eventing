@@ -77,11 +77,8 @@ angular
         }
       }, $scope);
 
-      let permissions = $scope.rbac.cluster.collection[row.depcfg.metadata_bucket + ':.:.'];
-      if (permissions && permissions.stats.read) {
-        $scope.$watch("mnUIStats", updateValues);
-        $scope.$watch("app", updateValues);
-      }
+      $scope.$watch("mnUIStats", updateValues);
+      $scope.$watch("app", updateValues);
 
       function getIndexStatName(statName) {
         return 'eventing/' + row.appname + '/' + statName;
