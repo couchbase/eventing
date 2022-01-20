@@ -202,7 +202,7 @@ std::string ExceptionString(v8::Isolate *isolate,
     os << "Line: " << v8exception_info.line << " " << std::endl;
 
     if (!v8exception_info.srcLine.empty()) {
-      os << "Code: " << v8exception_info.srcLine << " " << std::endl;
+      os << "Code: " << RU(v8exception_info.srcLine) << " " << std::endl;
     }
 
     // and stack trace
