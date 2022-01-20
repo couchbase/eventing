@@ -21,7 +21,7 @@
           Function Scope
           <small> bucket.scope</small>
         </label>
-        <span class="fa-stack icon-info" uib-tooltip="Function Scope"
+        <span class="fa-stack icon-info" uib-tooltip="A bucket.scope combination used for identifying functions belonging to the same group."
           tooltip-placement="right">
           <span class="icon fa-circle-thin fa-stack-2x"></span>
           <span class="icon fa-info fa-stack-1x"></span>
@@ -30,7 +30,9 @@
           <mn-select mn-disabled="formCtrl.isDisable"
             ng-model="appModel.function_scope.bucket"
             ng-init="formCtrl.populatefunctionScopes(appModel.function_scope.bucket)"
-            on-select="formCtrl.populatefunctionScopes(selectedOption)"
+            on-select="formCtrl.populatefunctionScopes(selectedOption);
+                        appModel.function_scope.scope = formCtrl.functionScopes.length > 0 ?
+                          formCtrl.functionScopes[0] : appModel.function_scope.scope"
             values="formCtrl.functionBuckets" name="function_bucket"
             class="margin-right-quarter width-12" has-search="true">
           </mn-select>
@@ -562,7 +564,7 @@
               <!-- binding error messaging ----------------------------------------------- -->
               <div class="row margin-bottom-half error field-error"
                 ng-show="!formCtrl.validateVariable((formCtrl.isDialog ? bindings : formCtrl.bindings)[$index])">
-                Alias Name can only contain characters in range A-Z, a-z, 0-9, _
+                Alias Name can contain no more than 64 characters in range A-Z, a-z, 0-9, _
                 and $ and it should not be a JavaScript or N1QL keyword.
               </div>
               <div class="row margin-bottom-half error field-error"

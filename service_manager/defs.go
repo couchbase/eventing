@@ -47,7 +47,7 @@ const (
 const (
 	headerKey                = "status"
 	maxApplicationNameLength = 100
-	maxAliasLength           = 20 // Technically, there isn't any limit on a JavaScript variable length.
+	maxAliasLength           = 64 // Technically, there isn't any limit on a JavaScript variable length.
 	maxPrefixLength          = 16
 
 	rebalanceStalenessCounter = 400
