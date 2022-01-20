@@ -389,6 +389,7 @@ func (m *ServiceMgr) initService() {
 				RootCAs:            rootCertPool}
 			m.configMutex.RUnlock()
 			util.SetSecurityConfig(setting)
+			// Pushes encryption level updates to consumer
 			m.superSup.SetSecuritySetting(setting)
 			return nil
 		}

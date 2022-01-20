@@ -575,6 +575,24 @@ func (c *Consumer) sendPauseConsumer() {
 		logPrefix, c.workerName, c.tcpPort, c.Pid())
 }
 
+func (c *Consumer) sendUpdateEncryptionLevel(enforceTLS, encryptOn bool) {
+	logPrefix := "Consumer::sendUpdateEncryptionLevel"
+	level := c.getEncryptionLevelName(enforceTLS, encryptOn)
+	encryptHeader, hBuilder := c.makeHeader(configChange, updateEncryptionLevel, 0, level)
+	msg := &msgToTransmit{
+		msg: &message{
+			Header: encryptHeader,
+		},
+		sendToDebugger: false,
+		prioritize:     true,
+		headerBuilder:  hBuilder,
+	}
+
+	c.sendMessage(msg)
+	logging.Infof("%s [%s:%s:%d] Sending encryption change message to consumer",
+		logPrefix, c.workerName, c.tcpPort, c.Pid())
+}
+
 func (c *Consumer) sendUpdateProcessedSeqNo(vb uint16, seqNo uint64) {
 	logPrefix := "Consumer::sendUpdateProcessedSeqNo"
 

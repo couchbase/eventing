@@ -822,6 +822,13 @@ func (c *Consumer) PauseConsumer() {
 	c.WorkerVbMapUpdate(nil)
 }
 
+func (c *Consumer) UpdateEncryptionLevel(enforceTLS, encryptOn bool) {
+	logPrefix := "Consumer::UpdateEncryptionLevel"
+	logging.Infof("%s [%s:%s:%d] Received notification to update encryption level to: enforceTLS: %v encryptOn: %v",
+		logPrefix, c.workerName, c.tcpPort, c.Pid(), enforceTLS, encryptOn)
+	c.sendUpdateEncryptionLevel(enforceTLS, encryptOn)
+}
+
 func (c *Consumer) NotifyWorker() {
 	atomic.StoreUint32(&c.notifyWorker, 1)
 }

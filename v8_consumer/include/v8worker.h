@@ -294,6 +294,10 @@ public:
 
   void StopTimerScan();
 
+  void SetFailFastTimerScans();
+
+  void ResetFailFastTimerScans();
+
   void UpdatePartitions(const std::unordered_set<int64_t> &vbuckets);
 
   std::unordered_set<int64_t> GetPartitions() const;

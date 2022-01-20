@@ -679,8 +679,14 @@ func (s *SuperSupervisor) CheckLifeCycleOpsDuringRebalance() bool {
 
 // SetSecuritySetting Sets the new security settings and returns whether reload is required or not
 func (s *SuperSupervisor) SetSecuritySetting(setting *common.SecuritySetting) bool {
+	defer func() {
+		s.securityMutex.Unlock()
+		if setting != nil {
+			// Push encryption change notifications to all consumers of all producers
+			s.UpdateEncryptionLevel(setting.DisableNonSSLPorts, setting.EncryptData)
+		}
+	}()
 	s.securityMutex.Lock()
-	defer s.securityMutex.Unlock()
 	if s.securitySetting != nil {
 		// TODO: 7.0.1 Change return value based on EncryptData and DisableNonSSLPorts since both can change
 		if s.securitySetting.EncryptData == false && setting.EncryptData == false {
@@ -749,4 +755,10 @@ func (s *SuperSupervisor) GetBSCSnapshot() (map[string]map[string][]string, erro
 		snapshot[bucketName] = scopeList
 	}
 	return snapshot, nil
+}
+
+func (s *SuperSupervisor) UpdateEncryptionLevel(enforceTLS, encryptOn bool) {
+	for _, p := range s.runningFns() {
+		p.UpdateEncryptionLevel(enforceTLS, encryptOn)
+	}
 }

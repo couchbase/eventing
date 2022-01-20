@@ -114,5 +114,7 @@ debugger_opcode getDebuggerOpcode(int8_t opcode) {
 config_opcode getConfigOpcode(int8_t opcode) {
   if (opcode == 1)
     return oUpdateDisableFeatureList;
+  if (opcode == 2)
+    return oUpdateEncryptionLevel;
   return Config_Opcode_Unknown;
 }
