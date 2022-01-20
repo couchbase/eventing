@@ -297,6 +297,7 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
   function_instance_id_.assign(oss.str());
   thread_exit_cond_.store(false);
   stop_timer_scan_.store(false);
+  event_processing_ongoing_.store(false);
   scan_timer_.store(false);
   update_v8_heap_.store(false);
   run_gc_.store(false);
@@ -607,6 +608,7 @@ void V8Worker::RouteMessage() {
                   << " metadata: " << RU(msg->header.metadata)
                   << " partition: " << msg->header.partition << std::endl;
 
+    event_processing_ongoing_.store(true);
     auto evt = getEvent(msg->header.event);
     switch (evt) {
     case eDCP:
@@ -697,6 +699,7 @@ void V8Worker::RouteMessage() {
     }
 
     ++messages_processed_counter;
+    event_processing_ongoing_.store(false);
   }
 }
 

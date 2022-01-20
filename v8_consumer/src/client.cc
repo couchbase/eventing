@@ -107,6 +107,8 @@ std::string GetExecutionStats(const std::map<int16_t, V8Worker *> &workers) {
     for (const auto &w : workers) {
       agg_queue_size += w.second->worker_queue_->GetSize();
       agg_queue_memory += w.second->worker_queue_->GetMemory();
+      if (w.second->event_processing_ongoing_.load())
+        agg_queue_size +=1;
     }
 
     estats["agg_queue_size"] = agg_queue_size;
@@ -426,6 +428,8 @@ void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
             for (const auto &w : workers_) {
               agg_queue_size += w.second->worker_queue_->GetSize();
               agg_queue_memory += w.second->worker_queue_->GetMemory();
+              if (w.second->event_processing_ongoing_.load())
+                agg_queue_size +=1;
             }
 
             std::ostringstream queue_stats;
