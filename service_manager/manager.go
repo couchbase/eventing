@@ -450,7 +450,7 @@ func (m *ServiceMgr) initService() {
 	go func(m *ServiceMgr) {
 		cancelCh := make(chan struct{})
 		for {
-			err := metakv.RunObserveChildrenV2(metakvChecksumPath, m.primaryStoreCsumPathCallback, cancelCh)
+			err := metakv.RunObserveChildren(metakvChecksumPath, m.primaryStoreCsumPathCallback, cancelCh)
 			if err != nil {
 				logging.Errorf("%s metakv observe error for primary store, err: %v. Retrying...", logPrefix, err)
 				time.Sleep(2 * time.Second)
@@ -461,7 +461,7 @@ func (m *ServiceMgr) initService() {
 	go func(m *ServiceMgr) {
 		cancelCh := make(chan struct{})
 		for {
-			err := metakv.RunObserveChildrenV2(metakvTempChecksumPath, m.tempStoreAppsPathCallback, cancelCh)
+			err := metakv.RunObserveChildren(metakvTempChecksumPath, m.tempStoreAppsPathCallback, cancelCh)
 			if err != nil {
 				logging.Errorf("%s metakv observe error for temp store, err: %v. Retrying...", logPrefix, err)
 				time.Sleep(2 * time.Second)
@@ -472,7 +472,7 @@ func (m *ServiceMgr) initService() {
 	go func(m *ServiceMgr) {
 		cancelCh := make(chan struct{})
 		for {
-			err := metakv.RunObserveChildrenV2(metakvAppSettingsPath, m.settingChangeCallback, cancelCh)
+			err := metakv.RunObserveChildren(metakvAppSettingsPath, m.settingChangeCallback, cancelCh)
 			if err != nil {
 				logging.Errorf("%s metakv observe error for setting store, err: %v. Retrying...", logPrefix, err)
 				time.Sleep(2 * time.Second)
