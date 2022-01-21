@@ -2491,7 +2491,7 @@ angular
             });
           },
           getScrapeInterval: function() {
-            return $http.get("/settings/metrics/").then(
+            return $http.get("/internal/settings/metrics/").then(
               function(response) {
                 return response.data.scrapeInterval ? response.data
                   .scrapeInterval : 10;

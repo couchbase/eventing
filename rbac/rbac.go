@@ -165,9 +165,13 @@ func IsAllowedCreds(cred cbauth.Creds, permissions []string, all bool) ([]string
 func HasPermissions(owner *common.Owner, permissions []string, all bool) ([]string, error) {
 	if owner.UUID != "" {
 		uuid, err := cbauth.GetUserUuid(owner.User, owner.Domain)
+		if err == cbauth.ErrNoUuid {
+			return nil, ErrUserDeleted
+		}
 		if err != nil {
 			return nil, err
 		}
+
 		if uuid != owner.UUID {
 			return nil, ErrUserDeleted
 		}

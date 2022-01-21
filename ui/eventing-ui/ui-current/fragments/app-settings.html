@@ -15,40 +15,40 @@
     <h2 ng-show="!formCtrl.isDialog">Function Settings</h2>
   </div>
   <form name="formCtrl.createAppForm" autocomplete="off" class="forms">
-    <div class="panel-content">
-      <div class="formrow">
-        <label class="inline">
-          Function Scope
-          <small> bucket.scope</small>
-        </label>
-        <span class="fa-stack icon-info" uib-tooltip="A bucket.scope combination used for identifying functions belonging to the same group."
-          tooltip-placement="right">
-          <span class="icon fa-circle-thin fa-stack-2x"></span>
-          <span class="icon fa-info fa-stack-1x"></span>
-        </span>
-        <div class="row items-bottom">
-          <mn-select mn-disabled="formCtrl.isDisable"
-            ng-model="appModel.function_scope.bucket"
-            ng-init="formCtrl.populatefunctionScopes(appModel.function_scope.bucket)"
-            on-select="formCtrl.populatefunctionScopes(selectedOption);
+        <div class="panel-content">
+          <div class="formrow">
+            <label class="inline">
+              Function Scope
+              <small> bucket.scope</small>
+            </label>
+            <span class="fa-stack icon-info" uib-tooltip="A bucket.scope combination used for identifying functions belonging to the same group."
+              tooltip-placement="right">
+              <span class="icon fa-circle-thin fa-stack-2x"></span>
+              <span class="icon fa-info fa-stack-1x"></span>
+            </span>
+            <div class="row items-bottom">
+              <mn-select mn-disabled="formCtrl.isDisable"
+                ng-model="appModel.function_scope.bucket"
+                ng-init="formCtrl.populatefunctionScopes(appModel.function_scope.bucket)"
+                on-select="formCtrl.populatefunctionScopes(selectedOption);
                         appModel.function_scope.scope = formCtrl.functionScopes.length > 0 ?
                           formCtrl.functionScopes[0] : appModel.function_scope.scope"
-            values="formCtrl.functionBuckets" name="function_bucket"
-            class="margin-right-quarter width-12" has-search="true">
-          </mn-select>
-          <mn-select mn-disabled="formCtrl.isDisable"
-            ng-model="appModel.function_scope.scope"
-            values="formCtrl.functionScopes" has-search="true"
-            name="function_scope" class="margin-right-quarter width-12">
-          </mn-select>
-        </div>
-        <div class="error field-error"
-          ng-show="formCtrl.functionBuckets.indexOf(appModel.function_scope.bucket) === -1 ||
-                    formCtrl.functionScopes.indexOf(appModel.function_scope.scope) === -1">
-          Please specify a scope to which the function belongs. User should have
-          Eventing Manage Scope Functions permission on this scope
-        </div>
-        <div class="panel-content">
+                values="formCtrl.functionBuckets" name="function_bucket"
+                class="margin-right-quarter width-12" has-search="true">
+              </mn-select>
+              <mn-select mn-disabled="formCtrl.isDisable"
+                ng-model="appModel.function_scope.scope"
+                values="formCtrl.functionScopes" has-search="true"
+                name="function_scope" class="margin-right-quarter width-12">
+              </mn-select>
+            </div>
+            <div class="error field-error"
+              ng-show="formCtrl.functionBuckets.indexOf(appModel.function_scope.bucket) === -1 ||
+                        formCtrl.functionScopes.indexOf(appModel.function_scope.scope) === -1">
+              Please specify a scope to which the function belongs. User should have
+              Eventing Manage Scope Functions permission on this scope
+            </div>
+          </div>
           <div class="formrow">
             <label class="inline">
               Listen To Location
@@ -340,7 +340,6 @@
               </div>
             </div>
           </div>
-
           <!-- bindings  ------------------------------------------------------------- -->
           <div class="row margin-top-1-5">
             <h4>Bindings</h4>
@@ -591,5 +590,6 @@
             ng-disabled="formCtrl.isFormInvalid() || formCtrl.srcMetaSameBucket(appModel)">
             Save
           </button>
+        </div>
   </form>
 </div>
