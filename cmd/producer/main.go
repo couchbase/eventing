@@ -39,7 +39,7 @@ func main() {
 	go func(s *supervisor.SuperSupervisor) {
 		cancelCh := make(chan struct{})
 		for {
-			err := metakv.RunObserveChildrenV2(supervisor.MetakvChecksumPath, s.EventHandlerLoadCallback, cancelCh)
+			err := metakv.RunObserveChildren(supervisor.MetakvChecksumPath, s.EventHandlerLoadCallback, cancelCh)
 			if err != nil {
 				logging.Errorf("Eventing::main metakv observe error for event handler code, err: %v. Retrying...", err)
 				time.Sleep(2 * time.Second)
@@ -51,7 +51,7 @@ func main() {
 	go func(s *supervisor.SuperSupervisor) {
 		cancelCh := make(chan struct{})
 		for {
-			err := metakv.RunObserveChildrenV2(supervisor.MetakvAppSettingsPath, s.SettingsChangeCallback, cancelCh)
+			err := metakv.RunObserveChildren(supervisor.MetakvAppSettingsPath, s.SettingsChangeCallback, cancelCh)
 			if err != nil {
 				logging.Errorf("Eventing::main metakv observe error for settings, err: %v. Retrying...", err)
 				time.Sleep(2 * time.Second)
@@ -63,7 +63,7 @@ func main() {
 	go func(s *supervisor.SuperSupervisor) {
 		cancelCh := make(chan struct{})
 		for {
-			err := metakv.RunObserveChildrenV2(supervisor.MetakvRebalanceTokenPath, s.TopologyChangeNotifCallback, cancelCh)
+			err := metakv.RunObserveChildren(supervisor.MetakvRebalanceTokenPath, s.TopologyChangeNotifCallback, cancelCh)
 			if err != nil {
 				logging.Errorf("Eventing::main metakv observe error for rebalance token, err: %v. Retrying...", err)
 				time.Sleep(2 * time.Second)
@@ -75,7 +75,7 @@ func main() {
 	go func(s *supervisor.SuperSupervisor) {
 		cancelCh := make(chan struct{})
 		for {
-			err := metakv.RunObserveChildrenV2(supervisor.MetakvClusterSettings, s.GlobalConfigChangeCallback, cancelCh)
+			err := metakv.RunObserveChildren(supervisor.MetakvClusterSettings, s.GlobalConfigChangeCallback, cancelCh)
 			if err != nil {
 				logging.Errorf("Eventing::main metakv observe error for global config, err: %v. Retrying...", err)
 				time.Sleep(2 * time.Second)
@@ -87,7 +87,7 @@ func main() {
 	go func(s *supervisor.SuperSupervisor) {
 		cancelCh := make(chan struct{})
 		for {
-			err := metakv.RunObserveChildrenV2(supervisor.MetakvAppsRetryPath, s.AppsRetryCallback, cancelCh)
+			err := metakv.RunObserveChildren(supervisor.MetakvAppsRetryPath, s.AppsRetryCallback, cancelCh)
 			if err != nil {
 				logging.Errorf("Eventing::main metakv observe error for apps retry, err: %v. Retrying.", err)
 				time.Sleep(2 * time.Second)
@@ -99,7 +99,7 @@ func main() {
 	go func(s *supervisor.SuperSupervisor) {
 		cancelCh := make(chan struct{})
 		for {
-			err := metakv.RunObserveChildrenV2(common.MetakvDebuggerPath, s.DebuggerCallback, cancelCh)
+			err := metakv.RunObserveChildren(common.MetakvDebuggerPath, s.DebuggerCallback, cancelCh)
 			if err != nil {
 				logging.Errorf("Eventing::main metakv observe error for debugger, err: %v. Retrying.", err)
 				time.Sleep(2 * time.Second)
