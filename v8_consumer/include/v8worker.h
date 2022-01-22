@@ -344,6 +344,7 @@ public:
   std::atomic<bool> scan_timer_;
   std::atomic<bool> update_v8_heap_;
   std::atomic<bool> run_gc_;
+  std::atomic<bool> event_processing_ongoing_;
   std::map<int, int64_t> lcb_exceptions_;
   IsolateData data_;
   int32_t num_vbuckets_{1024};
