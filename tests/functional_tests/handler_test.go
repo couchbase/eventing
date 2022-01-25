@@ -2112,3 +2112,102 @@ func TestConstantBindings(t *testing.T) {
 	dumpStats()
 	flushFunctionAndBucket(functionName)
 }
+
+func TestIncorrectPasswordLcb(t *testing.T) {
+	functionName := t.Name()
+	itemCount := 10
+	expectedCount := 10
+	handler := "n1ql_insert_on_update"
+
+	defer func() {
+		flushFunctionAndBucket(functionName)
+		_, err := fireQuery("CREATE PRIMARY INDEX on default;")
+		if err != nil {
+			log.Printf("Error in creating index on default : %v\n", err)
+		}
+
+		_, err = fireQuery("CREATE PRIMARY INDEX on `hello-world`;")
+		if err != nil {
+			log.Printf("Error in creating index on hello-world : %v\n", err)
+		}
+	}()
+
+	createAndDeployFunction(functionName, handler, &commonSettings{
+		thrCount:    1,
+		workerCount: 1,
+	})
+	waitForDeployToFinish(functionName)
+
+	statsResponse, err := eventingStats(statsEndpointURL0, functionName)
+	if err != nil {
+		t.Errorf("Invalid stats response: %v", err)
+		return
+	}
+
+	numCredRequest, ok := statsResponse["lcb_creds_request_counter"].(float64)
+	if !ok {
+		t.Errorf("Invalid stats response: %v", statsResponse)
+		return
+	}
+
+	pumpBucketOps(opsType{count: itemCount}, &rateLimit{})
+	eventCount := verifyBucketCount(expectedCount, statsLookupRetryCounter, dstBucket)
+	if expectedCount != eventCount {
+		failAndCollectLogs(t, "For", "TestIncorrectPasswordLcb",
+			"expected", expectedCount,
+			"got", eventCount,
+		)
+	}
+
+	statsResponse, err = eventingStats(statsEndpointURL0, functionName)
+	if err != nil {
+		t.Errorf("Invalid stats response: %v", err)
+		return
+	}
+
+	numCredRequest2, ok := statsResponse["lcb_creds_request_counter"].(float64)
+	if !ok {
+		t.Errorf("Invalid stats response: %v", statsResponse)
+		return
+	}
+
+	if (numCredRequest2 - numCredRequest) > 2 {
+		t.Errorf("creds requested more number of times: %v before: %v", numCredRequest2, numCredRequest)
+		return
+	}
+
+	// Keep the lcb handle idle and remove and add query node
+	// Here lcb handle will have wrong credentials for query node
+	rebalanceFromRest([]string{"https://127.0.0.1:19001"})
+	waitForRebalanceFinish()
+
+	addNodeFromRest("https://127.0.0.1:19001", "kv,index,n1ql")
+	rebalanceFromRest([]string{""})
+	waitForRebalanceFinish()
+
+	pumpBucketOps(opsType{count: itemCount}, &rateLimit{})
+	eventCount = verifyBucketCount(expectedCount*2, statsLookupRetryCounter, dstBucket)
+	if expectedCount*2 != eventCount {
+		failAndCollectLogs(t, "For", "TestIncorrectPasswordLcb",
+			"expected", expectedCount*2,
+			"got", eventCount,
+		)
+	}
+
+	statsResponse, err = eventingStats(statsEndpointURL0, functionName)
+	if err != nil {
+		t.Errorf("Invalid stats response: %v", err)
+		return
+	}
+
+	numCredRequest3, ok := statsResponse["lcb_creds_request_counter"].(float64)
+	if !ok {
+		t.Errorf("Invalid stats response: %v", statsResponse)
+		return
+	}
+
+	if (numCredRequest3 - numCredRequest2) > 1 {
+		t.Errorf("creds requested more number of times: %v before: %v", numCredRequest3, numCredRequest2)
+		return
+	}
+}

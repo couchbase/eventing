@@ -675,6 +675,39 @@ func eventingConsumerPids(port int, fnName string) ([]int, error) {
 	return pids, nil
 }
 
+func eventingStats(url string, appName string) (map[string]interface{}, error) {
+	statsDump, err := makeStatsRequest("Node0: Eventing stats", url, false)
+	if err != nil {
+		return nil, err
+	}
+
+	stats, ok := statsDump.([]interface{})
+	if !ok {
+		return nil, fmt.Errorf("failed type assertion")
+	}
+
+	if len(stats) == 0 {
+		return nil, fmt.Errorf("failed to grab stats")
+	}
+
+	for _, v := range stats {
+		fnStats, ok := v.(map[string]interface{})
+		if !ok {
+			return nil, fmt.Errorf("Invalid stats response: %v", stats)
+		}
+
+		name, ok := fnStats["function_name"]
+		if !ok {
+			return nil, fmt.Errorf("Invalid stats response: %v", stats)
+		}
+
+		if name == appName {
+			return fnStats, nil
+		}
+	}
+	return nil, fmt.Errorf("failed to grab stats")
+}
+
 func killPid(pid int) error {
 	if pid < 1 {
 		return fmt.Errorf("Can not kill %d", pid)
