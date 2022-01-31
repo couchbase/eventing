@@ -104,6 +104,11 @@ func authCreds(req *http.Request) (cbauth.Creds, error) {
 	}
 
 	if err != nil {
+		// for some reason cbauth does not return ErrNoAuth when no credentials are provided. Only does when
+		// the provided credentials are invalid. Manually check for the no credentials and return err.
+		if err.Error() == "no web credentials found in request" {
+			return nil, ErrAuthentication
+		}
 		return nil, err
 	}
 
