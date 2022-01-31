@@ -373,7 +373,7 @@ angular
         return $q.all(thePromises).then(function(result) {
           for (var i = 0; i < result.length; i++) {
             var appname = result[i].data.appname;
-            ApplicationService.local.createApp(result[i].data);
+            ApplicationService.local.createApp(new ApplicationModel(result[i].data));
             self.appList[appname] = ApplicationService.local.getAppByName(
               appname);
             self.appList[appname].status = rspAppStat.get(appname);
