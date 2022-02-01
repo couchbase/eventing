@@ -2620,9 +2620,21 @@ angular
         return true;
       }
 
-      function isValidApplicationName(value) {
+      function isValidApplicationNameRegex(value) {
         var re = /^[a-zA-Z0-9][a-zA-Z0-9_-]*$/g;
         return value && value.match(re);
+      }
+
+      function isValidApplicationName(value) {
+        if (value && (value.length > 100 || value.length < 1)) {
+          return false;
+        }
+
+        if (!isValidApplicationNameRegex(value)) {
+          return false;
+        }
+
+        return true;
       }
 
       function isValidHostname(str) {
