@@ -373,7 +373,7 @@ angular
         return $q.all(thePromises).then(function(result) {
           for (var i = 0; i < result.length; i++) {
             var appname = result[i].data.appname;
-            ApplicationService.local.createApp(result[i].data);
+            ApplicationService.local.createApp(new ApplicationModel(result[i].data));
             self.appList[appname] = ApplicationService.local.getAppByName(
               appname);
             self.appList[appname].status = rspAppStat.get(appname);
@@ -2620,9 +2620,21 @@ angular
         return true;
       }
 
-      function isValidApplicationName(value) {
+      function isValidApplicationNameRegex(value) {
         var re = /^[a-zA-Z0-9][a-zA-Z0-9_-]*$/g;
         return value && value.match(re);
+      }
+
+      function isValidApplicationName(value) {
+        if (value && (value.length > 100 || value.length < 1)) {
+          return false;
+        }
+
+        if (!isValidApplicationNameRegex(value)) {
+          return false;
+        }
+
+        return true;
       }
 
       function isValidHostname(str) {
