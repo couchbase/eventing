@@ -108,7 +108,7 @@ func (r *responseWriter) send(runtimeInfo *RuntimeInfo) {
 	}
 
 	w.WriteHeader(httpCode)
-	fmt.Fprintf(w, string(response))
+	fmt.Fprintf(w, "%s", response)
 }
 
 func (r *responseWriter) log(runtimeInfo *RuntimeInfo) {
