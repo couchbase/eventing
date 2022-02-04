@@ -4483,6 +4483,13 @@ func (m *ServiceMgr) importHandler(w http.ResponseWriter, r *http.Request) {
 
 	runtimeInfo.ExtraAttributes = map[string]interface{}{"appNames": importedFns}
 	runtimeInfo.Description = infoList
+
+	if len(importedFns) == 0 {
+		runtimeInfo.ErrCode = response.ErrInvalidRequest
+		runtimeInfo.OnlyDescription = false
+		return
+	}
+
 	runtimeInfo.OnlyDescription = true
 	logging.Infof("%s Imported functions: %+v", logPrefix, importedFns)
 }
