@@ -73,7 +73,7 @@ type AdminPortConfig struct {
 
 type bucketWatchStruct struct {
 	b    *couchbase.Bucket
-	apps map[string]int
+	apps map[string]map[common.Keyspace]common.MonitorType
 }
 
 type gocbBucketInstance struct {

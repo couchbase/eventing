@@ -631,3 +631,11 @@ const (
 func Uint32ToHex(uint32Val uint32) string {
 	return fmt.Sprintf("%x", uint32Val)
 }
+
+type MonitorType int8
+
+const (
+	SrcWatch MonitorType = iota
+	MetaWatch
+	FunctionScopeWatch
+)

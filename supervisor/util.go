@@ -208,9 +208,10 @@ func (s *SuperSupervisor) getFuncDetails(appName string) (*common.DepCfg, *commo
 	return depCfg, funcScope, owner, nil
 }
 
-func (s *SuperSupervisor) getSourceAndMetaBucket(appName string) (source string, meta string, err error) {
-	logPrefix := "SuperSupervisor::getSourceAndMetaBucket"
+func (s *SuperSupervisor) getSourceMetaAndFunctionKeySpaces(appName string) (source, meta, funcScope common.Keyspace, err error) {
+	logPrefix := "SuperSupervisor::getSourceMetaAndFunctionKeySpaces"
 	var appData []byte
+	source, meta, funcScope = common.Keyspace{}, common.Keyspace{}, common.Keyspace{}
 	err = util.Retry(util.NewFixedBackoff(time.Second), nil, metakvAppCallback, s, MetakvAppsPath, MetakvChecksumPath, appName, &appData)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s] Exiting due to timeout", logPrefix, appName)
@@ -218,8 +219,20 @@ func (s *SuperSupervisor) getSourceAndMetaBucket(appName string) (source string,
 	}
 	config := cfg.GetRootAsConfig(appData, 0)
 	depcfg := config.DepCfg(new(cfg.DepCfg))
-	source = string(depcfg.SourceBucket())
-	meta = string(depcfg.MetadataBucket())
+	source.BucketName = string(depcfg.SourceBucket())
+	source.ScopeName = string(depcfg.SourceScope())
+	source.CollectionName = string(depcfg.SourceCollection())
+
+	meta.BucketName = string(depcfg.MetadataBucket())
+	meta.ScopeName = string(depcfg.MetadataScope())
+	meta.CollectionName = string(depcfg.MetadataCollection())
+
+	fs := config.FunctionScope(new(cfg.FunctionScope))
+	if fs != nil {
+		funcScope.BucketName = string(fs.BucketName())
+		funcScope.ScopeName = string(fs.ScopeName())
+	}
+
 	return
 }
 
@@ -277,8 +290,9 @@ func parseNano(n uint64) string {
 	return strconv.Itoa(int(n)) + suffix
 }
 
-func (s *SuperSupervisor) watchBucketWithLock(bucketName, appName string) error {
+func (s *SuperSupervisor) watchBucketWithLock(keyspace common.Keyspace, appName string, mType common.MonitorType) error {
 	logPrefix := "Supervisor::watchBucketWithLock"
+	bucketName := keyspace.BucketName
 	bucketWatch, ok := s.buckets[bucketName]
 	if !ok {
 		bucketWatch = &bucketWatchStruct{}
@@ -290,10 +304,16 @@ func (s *SuperSupervisor) watchBucketWithLock(bucketName, appName string) error 
 		// forcefully update the manifest of the Bucket
 		bucketWatch.refreshBucketManifestOnUIDChange("", s.restPort)
 		s.scn.RunObserveCollectionManifestChanges(bucketName)
-		bucketWatch.apps = make(map[string]int)
+		bucketWatch.apps = make(map[string]map[common.Keyspace]common.MonitorType)
 		s.buckets[bucketName] = bucketWatch
 	}
-	bucketWatch.apps[appName]++
+
+	apps, ok := bucketWatch.apps[appName]
+	if !ok {
+		apps = make(map[common.Keyspace]common.MonitorType)
+		bucketWatch.apps[appName] = apps
+	}
+	apps[keyspace] = mType
 
 	return nil
 }
@@ -378,9 +398,12 @@ func (s *SuperSupervisor) checkDeletedCid(bucketName string) {
 	for _, appName := range appNames {
 		p, ok := s.runningProducers[appName]
 		if !ok {
-			// possible that app didn't get spawned yet
-			logging.Infof("%s Undeploying %s Reason: Not in running producer", logPrefix, appName)
-			util.Retry(util.NewExponentialBackoff(), &s.retryCount, undeployFunctionCallback, s, appName)
+			// Case where app is not yet added to running producers list
+			undeploy := s.checkAppNeedsUndeployment(bucketName, appName)
+			if undeploy {
+				logging.Infof("%s Undeploying %s Reason: Not in running producer", logPrefix, appName)
+				util.Retry(util.NewExponentialBackoff(), &s.retryCount, undeployFunctionCallback, s, appName)
+			}
 			continue
 		}
 
@@ -416,6 +439,38 @@ func (s *SuperSupervisor) checkDeletedCid(bucketName string) {
 			p.UndeployHandler(false)
 		}
 	}
+}
+
+func (s *SuperSupervisor) getMonitoringKeyspace(bucketName, appName string) map[common.Keyspace]common.MonitorType {
+	s.bucketsRWMutex.RLock()
+	defer s.bucketsRWMutex.RUnlock()
+
+	copyWatchers := make(map[common.Keyspace]common.MonitorType)
+	bucketWatch, ok := s.buckets[bucketName]
+	if !ok {
+		return copyWatchers
+	}
+
+	watchers, ok := bucketWatch.apps[appName]
+	if !ok {
+		return copyWatchers
+	}
+
+	for keyspace, mType := range watchers {
+		copyWatchers[keyspace] = mType
+	}
+	return copyWatchers
+}
+
+func (s *SuperSupervisor) checkAppNeedsUndeployment(bucketName string, appName string) bool {
+	watchers := s.getMonitoringKeyspace(bucketName, appName)
+	for keyspace, _ := range watchers {
+		_, _, err := s.GetScopeAndCollectionID(keyspace.BucketName, keyspace.ScopeName, keyspace.CollectionName)
+		if err != nil {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *SuperSupervisor) watchBucketChanges() {
@@ -567,42 +622,42 @@ func (s *SuperSupervisor) getConfig() (c common.Config) {
 	return
 }
 
-func (s *SuperSupervisor) watchBucketWithGocb(bucketName, appName string) error {
-	err := s.watchBucket(bucketName, appName)
+func (s *SuperSupervisor) watchBucketWithGocb(keyspace common.Keyspace, appName string) error {
+	err := s.watchBucket(keyspace, appName, common.MetaWatch)
 	if err != nil {
 		return err
 	}
-	err = s.gocbGlobalConfigHandle.maybeRegistergocbBucket(bucketName, appName, s.GetSecuritySetting(), s)
+	err = s.gocbGlobalConfigHandle.maybeRegistergocbBucket(keyspace.BucketName, appName, s.GetSecuritySetting(), s)
 	if err != nil {
-		s.unwatchBucket(bucketName, appName)
+		s.unwatchBucket(keyspace, appName)
 	}
 	return err
 }
 
-func (s *SuperSupervisor) unwatchBucketWithGocb(bucketName, appName string) {
-	s.unwatchBucket(bucketName, appName)
-	s.gocbGlobalConfigHandle.maybeUnregistergocbBucket(bucketName, appName)
-
+func (s *SuperSupervisor) unwatchBucketWithGocb(keyspace common.Keyspace, appName string) {
+	s.unwatchBucket(keyspace, appName)
+	s.gocbGlobalConfigHandle.maybeUnregistergocbBucket(keyspace.BucketName, appName)
 }
 
-func (s *SuperSupervisor) watchBucket(bucketName, appName string) error {
+func (s *SuperSupervisor) watchBucket(keyspace common.Keyspace, appName string, mType common.MonitorType) error {
 	// Function bucket can be nil
-	if bucketName == "" || bucketName == "*" {
+	if keyspace.BucketName == "" || keyspace.BucketName == "*" {
 		return nil
 	}
 	s.bucketsRWMutex.Lock()
 	defer s.bucketsRWMutex.Unlock()
-	return s.watchBucketWithLock(bucketName, appName)
+	return s.watchBucketWithLock(keyspace, appName, mType)
 }
 
 // UnwatchBucket removes the bucket from supervisor
-func (s *SuperSupervisor) unwatchBucket(bucketName, appName string) {
+func (s *SuperSupervisor) unwatchBucket(keyspace common.Keyspace, appName string) {
+	bucketName := keyspace.BucketName
 	s.bucketsRWMutex.Lock()
 	defer s.bucketsRWMutex.Unlock()
 	if bucketWatch, ok := s.buckets[bucketName]; ok {
-		if _, ok := bucketWatch.apps[appName]; ok {
-			bucketWatch.apps[appName]--
-			if bucketWatch.apps[appName] <= 0 {
+		if apps, ok := bucketWatch.apps[appName]; ok {
+			delete(apps, keyspace)
+			if len(apps) == 0 {
 				delete(bucketWatch.apps, appName)
 				if len(bucketWatch.apps) == 0 {
 					bucketWatch.Close()
