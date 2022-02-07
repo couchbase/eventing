@@ -231,8 +231,8 @@ func createFunction(deploymentStatus, processingStatus bool, id int, s *commonSe
 
 	// TODO: make it variable
 	app.FunctionScope = FunctionScope{
-		BucketName: sourceBucket,
-		ScopeName:  "_default",
+		BucketName: "*",
+		ScopeName:  "*",
 	}
 
 	if s.version != "" {

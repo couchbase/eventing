@@ -93,8 +93,8 @@ type ServiceMgr struct {
 	failoverNotifTs         int64
 	failoverChangeId        string
 	finch                   chan bool
-	fnsInPrimaryStore       map[string]depCfg                           // Access controlled by fnMu
-	fnsInTempStore          map[string]*application                     // Access controlled by fnMu
+	fnsInPrimaryStore       map[string]depCfg // Access controlled by fnMu
+	tempAppStore            AppStore
 	bucketFunctionMap       map[common.Keyspace]map[string]functionInfo // Access controlled by fnMu
 	fnMu                    *sync.RWMutex
 	keepNodeUUIDs           []string
@@ -225,31 +225,32 @@ type backlogStat struct {
 }
 
 type stats struct {
-	CheckpointBlobDump              interface{} `json:"checkpoint_blob_dump,omitempty"`
-	DCPFeedBoundary                 interface{} `json:"dcp_feed_boundary"`
-	DocTimerDebugStats              interface{} `json:"doc_timer_debug_stats,omitempty"`
-	EventProcessingStats            interface{} `json:"event_processing_stats,omitempty"`
-	EventsRemaining                 interface{} `json:"events_remaining,omitempty"`
-	ExecutionStats                  interface{} `json:"execution_stats,omitempty"`
-	FailureStats                    interface{} `json:"failure_stats,omitempty"`
-	FunctionName                    interface{} `json:"function_name"`
-	GocbCredsRequestCounter         interface{} `json:"gocb_creds_request_counter,omitempty"`
-	FunctionID                      interface{} `json:"function_id,omitempty"`
-	InternalVbDistributionStats     interface{} `json:"internal_vb_distribution_stats,omitempty"`
-	LatencyPercentileStats          interface{} `json:"latency_percentile_stats,omitempty"`
-	LatencyStats                    interface{} `json:"latency_stats,omitempty"`
-	CurlLatencyStats                interface{} `json:"curl_latency_stats,omitempty"`
-	LcbCredsRequestCounter          interface{} `json:"lcb_creds_request_counter,omitempty"`
-	LcbExceptionStats               interface{} `json:"lcb_exception_stats,omitempty"`
-	PlannerStats                    interface{} `json:"planner_stats,omitempty"`
-	MetastoreStats                  interface{} `json:"metastore_stats,omitempty"`
-	RebalanceStats                  interface{} `json:"rebalance_stats,omitempty"`
-	SeqsProcessed                   interface{} `json:"seqs_processed,omitempty"`
-	SpanBlobDump                    interface{} `json:"span_blob_dump,omitempty"`
-	VbDcpEventsRemaining            interface{} `json:"dcp_event_backlog_per_vb,omitempty"`
-	VbDistributionStatsFromMetadata interface{} `json:"vb_distribution_stats_from_metadata,omitempty"`
-	VbSeqnoStats                    interface{} `json:"vb_seq_no_stats,omitempty"`
-	WorkerPids                      interface{} `json:"worker_pids,omitempty"`
+	CheckpointBlobDump              interface{}          `json:"checkpoint_blob_dump,omitempty"`
+	DCPFeedBoundary                 interface{}          `json:"dcp_feed_boundary"`
+	DocTimerDebugStats              interface{}          `json:"doc_timer_debug_stats,omitempty"`
+	EventProcessingStats            interface{}          `json:"event_processing_stats,omitempty"`
+	EventsRemaining                 interface{}          `json:"events_remaining,omitempty"`
+	ExecutionStats                  interface{}          `json:"execution_stats,omitempty"`
+	FailureStats                    interface{}          `json:"failure_stats,omitempty"`
+	FunctionName                    interface{}          `json:"function_name"`
+	FunctionScope                   common.FunctionScope `json:"function_scope"`
+	GocbCredsRequestCounter         interface{}          `json:"gocb_creds_request_counter,omitempty"`
+	FunctionID                      interface{}          `json:"function_id,omitempty"`
+	InternalVbDistributionStats     interface{}          `json:"internal_vb_distribution_stats,omitempty"`
+	LatencyPercentileStats          interface{}          `json:"latency_percentile_stats,omitempty"`
+	LatencyStats                    interface{}          `json:"latency_stats,omitempty"`
+	CurlLatencyStats                interface{}          `json:"curl_latency_stats,omitempty"`
+	LcbCredsRequestCounter          interface{}          `json:"lcb_creds_request_counter,omitempty"`
+	LcbExceptionStats               interface{}          `json:"lcb_exception_stats,omitempty"`
+	PlannerStats                    interface{}          `json:"planner_stats,omitempty"`
+	MetastoreStats                  interface{}          `json:"metastore_stats,omitempty"`
+	RebalanceStats                  interface{}          `json:"rebalance_stats,omitempty"`
+	SeqsProcessed                   interface{}          `json:"seqs_processed,omitempty"`
+	SpanBlobDump                    interface{}          `json:"span_blob_dump,omitempty"`
+	VbDcpEventsRemaining            interface{}          `json:"dcp_event_backlog_per_vb,omitempty"`
+	VbDistributionStatsFromMetadata interface{}          `json:"vb_distribution_stats_from_metadata,omitempty"`
+	VbSeqnoStats                    interface{}          `json:"vb_seq_no_stats,omitempty"`
+	WorkerPids                      interface{}          `json:"worker_pids,omitempty"`
 }
 
 type configResponse struct {
@@ -261,19 +262,21 @@ type retry struct {
 }
 
 type appStatus struct {
-	CompositeStatus       string `json:"composite_status"`
-	Name                  string `json:"name"`
-	NumBootstrappingNodes int    `json:"num_bootstrapping_nodes"`
-	NumDeployedNodes      int    `json:"num_deployed_nodes"`
-	DeploymentStatus      bool   `json:"deployment_status"`
-	ProcessingStatus      bool   `json:"processing_status"`
-	RedeployRequired      bool   `json:"redeploy_required"`
+	CompositeStatus       string               `json:"composite_status"`
+	Name                  string               `json:"name"`
+	FunctionScope         common.FunctionScope `json:"function_scope"`
+	NumBootstrappingNodes int                  `json:"num_bootstrapping_nodes"`
+	NumDeployedNodes      int                  `json:"num_deployed_nodes"`
+	DeploymentStatus      bool                 `json:"deployment_status"`
+	ProcessingStatus      bool                 `json:"processing_status"`
+	RedeployRequired      bool                 `json:"redeploy_required"`
 }
 
 type annotation struct {
-	Name            string   `json:"name"`
-	DeprecatedNames []string `json:"deprecatedNames",omitempty`
-	OverloadedNames []string `json:"overloadedNames",omitempty`
+	Name            string               `json:"name"`
+	FunctionScope   common.FunctionScope `json:"function_scope"`
+	DeprecatedNames []string             `json:"deprecatedNames",omitempty`
+	OverloadedNames []string             `json:"overloadedNames",omitempty`
 }
 
 type appStatusResponse struct {

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"strings"
 
 	"github.com/couchbase/cbauth/metakv"
 	"github.com/couchbase/cbauth/service"
@@ -648,3 +649,78 @@ const (
 	MetaWatch
 	FunctionScopeWatch
 )
+
+type Identity struct {
+	AppName string
+	Bucket  string
+	Scope   string
+}
+
+func (id Identity) String() string {
+	return id.ToLocation()
+}
+
+func (id Identity) ToLocation() string {
+	return getLocation(id)
+}
+
+func GetIdentityFromLocation(locationString string) (Identity, error) {
+	return getIdentityFromLocation(locationString)
+}
+
+func getIdentityFromLocation(locationString string) (Identity, error) {
+	location := strings.Split(locationString, "/")
+	bucket, scope, name := "*", "*", ""
+	id := Identity{}
+
+	switch len(location) {
+	case 1:
+		name = location[0]
+	case 3:
+		bucket, scope, name = location[0], location[1], location[2]
+	default:
+		return id, fmt.Errorf("Invalid location: %s", location)
+	}
+
+	id.AppName = name
+	id.Bucket = bucket
+	id.Scope = scope
+	return id, nil
+}
+
+func getLocation(id Identity) string {
+	if id.Bucket == "" || id.Bucket == "*" {
+		return id.AppName
+	}
+
+	return fmt.Sprintf("%s/%s/%s", id.Bucket, id.Scope, id.AppName)
+}
+
+func GetLogfileName(locationString string) string {
+	id, err := getIdentityFromLocation(locationString)
+	if err != nil {
+		return locationString
+	}
+
+	if id.Bucket == "*" && id.Scope == "*" {
+		return id.AppName
+	}
+
+	return fmt.Sprintf("%s:%s:%s", id.Bucket, id.Scope, id.AppName)
+}
+
+func GetFunctionScope(identity Identity) FunctionScope {
+        bucketName, scopeName := identity.Bucket, identity.Scope
+        if bucketName == "" {
+                bucketName = "*"
+        }
+
+        if scopeName == "" {
+                scopeName = "*"
+        }
+
+        return FunctionScope{
+                BucketName: bucketName,
+                ScopeName:  scopeName,
+        }
+}

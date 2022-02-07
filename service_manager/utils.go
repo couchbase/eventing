@@ -35,12 +35,12 @@ func init() {
 	}
 }
 
-func (m *ServiceMgr) checkAppExists(appName string) (*application, *response.RuntimeInfo) {
-	app, info := m.getAppFromTempStore(appName)
+func (m *ServiceMgr) checkAppExists(appLocation string) (*application, *response.RuntimeInfo) {
+	app, info := m.getAppFromTempStore(appLocation)
 	if info.ErrCode != response.Ok {
 		return nil, info
 	}
-	return &app, info
+	return app, info
 }
 
 func (m *ServiceMgr) checkIfDeployed(appName string) bool {
@@ -63,11 +63,17 @@ func (m *ServiceMgr) checkAndGetAdminPort() string {
 	return m.adminHTTPPort
 }
 
-func (m *ServiceMgr) checkIfDeployedAndRunning(appName string) bool {
+func (m *ServiceMgr) checkIfDeployedAndRunning(appLocation string) bool {
 	mhVersion := common.CouchbaseVerMap["mad-hatter"]
 	if m.compareEventingVersion(mhVersion) {
 		logPrefix := "ServiceMgr::CheckIfDeployedAndRunning"
-		bootstrapStatus, err := util.GetAggBootstrapAppStatus(net.JoinHostPort(util.Localhost(), m.adminHTTPPort), appName, true)
+		id, err := common.GetIdentityFromLocation(appLocation)
+		if err != nil {
+			return false
+		}
+
+		query := fmt.Sprintf("appName=%s&bucket=%s&scope=%s", id.AppName, id.Bucket, id.Scope)
+		bootstrapStatus, err := util.GetAggBootstrapAppStatus(net.JoinHostPort(util.Localhost(), m.adminHTTPPort), query, true)
 		if err != nil {
 			logging.Errorf("%s %s", logPrefix, err)
 			return false
@@ -77,12 +83,12 @@ func (m *ServiceMgr) checkIfDeployedAndRunning(appName string) bool {
 			return false
 		}
 
-		return m.superSup.GetAppCompositeState(appName) == common.AppStateEnabled
+		return m.superSup.GetAppCompositeState(appLocation) == common.AppStateEnabled
 	}
 	bootstrappingApps := m.superSup.BootstrapAppList()
-	_, isBootstrapping := bootstrappingApps[appName]
+	_, isBootstrapping := bootstrappingApps[appLocation]
 
-	return !isBootstrapping && m.superSup.GetAppCompositeState(appName) == common.AppStateEnabled
+	return !isBootstrapping && m.superSup.GetAppCompositeState(appLocation) == common.AppStateEnabled
 }
 
 func (m *ServiceMgr) checkCompressHandler() bool {
@@ -172,8 +178,13 @@ func (m *ServiceMgr) fillMissingWithDefaults(appName string, settings map[string
 	fillMissingDefault(app, settings, "num_timer_partitions", float64(defaultNumTimerPartitions))
 }
 
-func fillMissingDefault(app application, settings map[string]interface{}, field string, defaultValue interface{}) {
+func fillMissingDefault(app *application, settings map[string]interface{}, field string, defaultValue interface{}) {
 	if _, ok := settings[field]; !ok {
+		if app == nil {
+			settings[field] = defaultValue
+			return
+		}
+
 		if _, tOk := app.Settings[field]; !tOk {
 			settings[field] = defaultValue
 			return
@@ -858,14 +869,7 @@ func (m *ServiceMgr) checkLocalTopologyChangeReadiness() error {
 }
 
 func (m *ServiceMgr) getTempStoreAppNames() []string {
-	m.fnMu.RLock()
-	defer m.fnMu.RUnlock()
-	appsNames := make([]string, 0, len(m.fnsInTempStore))
-	for app := range m.fnsInTempStore {
-		appsNames = append(appsNames, app)
-	}
-
-	return appsNames
+	return m.tempAppStore.GetActiveAppsInternalLocation()
 }
 
 func (m *ServiceMgr) rbacSupport() bool {
@@ -1220,5 +1224,44 @@ func getAuthErrorInfo(notAllowed []string, all bool, err error) (runtimeInfo res
 		runtimeInfo.ErrCode = response.ErrInternalServer
 
 	}
+	return
+}
+
+func getBucketScope(params map[string][]string, id *common.Identity) (info *response.RuntimeInfo) {
+	info = &response.RuntimeInfo{}
+
+	bucket, bInfo := CheckAndGetQueryParam(params, "bucket")
+	scope, sInfo := CheckAndGetQueryParam(params, "scope")
+	if bInfo.ErrCode == response.Ok && sInfo.ErrCode == response.Ok {
+		id.Bucket = bucket
+		id.Scope = scope
+		return
+	}
+
+	// If both of them are not provided then its fine
+	if bInfo.ErrCode != response.Ok && sInfo.ErrCode != response.Ok {
+		id.Bucket = "*"
+		id.Scope = "*"
+		return
+	}
+
+	info.ErrCode = response.ErrInvalidRequest
+	info.Description = fmt.Sprintf("Either both 'bucket' and 'scope' should be specified or none")
+	return
+}
+
+// Create identity of the app
+func createIdentity(params map[string][]string) (id common.Identity, info *response.RuntimeInfo) {
+	info = &response.RuntimeInfo{}
+
+	name, info := CheckAndGetQueryParam(params, "name")
+	if info.ErrCode != response.Ok {
+		name, info = CheckAndGetQueryParam(params, "appName")
+		if info.ErrCode != response.Ok {
+			return id, info
+		}
+	}
+	id.AppName = name
+	info = getBucketScope(params, &id)
 	return
 }

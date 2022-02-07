@@ -154,7 +154,12 @@ func (s *SuperSupervisor) DebuggerCallback(kve metakv.KVEntry) error {
 		return nil
 	}
 
-	appName := util.GetAppNameFromPath(kve.Path)
+	appName, err := util.GetAppNameFromPath(kve.Path)
+	if err != nil {
+		logging.Errorf("%s Error in parsing name from path", logPrefix, err)
+		return nil
+	}
+
 	p, exists := s.runningFns()[appName]
 	if !exists || p == nil {
 		logging.Errorf("%s [%d] Function %s not found", logPrefix, s.runningFnsCount(), appName)
@@ -179,10 +184,13 @@ func (s *SuperSupervisor) EventHandlerLoadCallback(kve metakv.KVEntry) error {
 
 	if kve.Value == nil {
 		// Delete application request
-		splitRes := strings.Split(kve.Path, "/")
-		appName := splitRes[len(splitRes)-1]
+		appLocation, err := util.GetAppNameFromPath(kve.Path)
+		if err != nil {
+			logging.Errorf("%s Error in parsing name from path", logPrefix, err)
+			return nil
+		}
 		msg := supCmdMsg{
-			ctx: appName,
+			ctx: appLocation,
 			cmd: cmdAppDelete,
 		}
 
@@ -211,7 +219,12 @@ func (s *SuperSupervisor) SettingsChangeCallback(kve metakv.KVEntry) error {
 
 		logging.Infof("%s [%d] Path => %s value => %#v", logPrefix, s.runningFnsCount(), kve.Path, sValue)
 
-		appName := util.GetAppNameFromPath(kve.Path)
+		appName, err := util.GetAppNameFromPath(kve.Path)
+		if err != nil {
+			logging.Errorf("%s Error in parsing name from path", logPrefix, err)
+			return nil
+		}
+
 		msg := supCmdMsg{
 			ctx: appName,
 			cmd: cmdSettingsUpdate,
@@ -747,7 +760,12 @@ func (s *SuperSupervisor) AppsRetryCallback(kve metakv.KVEntry) error {
 		return errors.New("value is empty")
 	}
 
-	appName := util.GetAppNameFromPath(kve.Path)
+	appName, err := util.GetAppNameFromPath(kve.Path)
+	if err != nil {
+		logging.Errorf("%s Error in parsing name from path", logPrefix, err)
+		return nil
+	}
+
 	retryValue, err := strconv.Atoi(string(kve.Value))
 	if err != nil {
 		logging.Infof("%s [%d] Unable to parse retry value as a number, err : %v", logPrefix, s.runningFnsCount(), retryValue)
@@ -846,7 +864,8 @@ func (s *SuperSupervisor) HandleSupCmdMsg() {
 					continue
 				}
 
-				prefix := fmt.Sprintf("%s.log", appName)
+				logfileName := common.GetLogfileName(appName)
+				prefix := fmt.Sprintf("%s.log", logfileName)
 				for _, name := range names {
 					if strings.HasPrefix(name, prefix) {
 						err = os.RemoveAll(filepath.Join(s.eventingDir, name))

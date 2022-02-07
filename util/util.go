@@ -517,12 +517,12 @@ func Console(clusterAddr string, format string, v ...interface{}) error {
 	return err
 }
 
-func StopDebugger(nodeAddr, appName string) {
+func StopDebugger(nodeAddr, appLocation string) {
 	var endpointURL string
 	var netClient *Client
 
 	netClient = CheckTLSandGetClient(HTTPRequestTimeout)
-	endpointURL = CheckTLSandReplaceProtocol("https://%s/stopDebugger/?name=%s", nodeAddr, appName)
+	endpointURL = CheckTLSandReplaceProtocol("https://%s/stopDebugger/?name=%s", nodeAddr, appLocation)
 
 	res, err := netClient.Get(endpointURL)
 	if err != nil {
@@ -831,10 +831,10 @@ func MetakvRecursiveDelete(dirpath string) error {
 }
 
 //WriteAppContent fragments the payload and store it to metakv
-func WriteAppContent(appsPath, checksumPath, appName string, payload []byte, compressPayload bool) error {
+func WriteAppContent(appsPath, checksumPath, appLocation string, payload []byte, compressPayload bool) error {
 	logPrefix := "util::WriteAppContent"
 
-	payload2, err := StripCurlCredentials(appsPath, appName, payload)
+	payload2, err := StripCurlCredentials(appsPath, appLocation, payload)
 	if err != nil {
 		return err
 	}
@@ -844,18 +844,18 @@ func WriteAppContent(appsPath, checksumPath, appName string, payload []byte, com
 		return err
 	}
 
-	appsPath += appName
+	appsPath += appLocation
 	appsPath += "/"
 	length := len(payload3)
 
-	checksumPath += appName
+	checksumPath += appLocation
 	fragmentCount := length / MetaKvMaxDocSize()
 	if length%MetaKvMaxDocSize() != 0 {
 		fragmentCount++
 	}
 
 	logging.Infof("%s Function: %s number of fragments: %d payload size: %d app path: %s checksum path: %s",
-		logPrefix, appName, fragmentCount, length, appsPath, checksumPath)
+		logPrefix, appLocation, fragmentCount, length, appsPath, checksumPath)
 
 	for idx := 0; idx < fragmentCount; idx++ {
 		currpath := appsPath + strconv.Itoa(int(idx))
@@ -870,9 +870,9 @@ func WriteAppContent(appsPath, checksumPath, appName string, payload []byte, com
 		err := MetakvSet(currpath, fragment, nil)
 		if err != nil {
 			//Delete existing entry from appspath
-			logging.Errorf("%s Function: %s metakv set failed for fragments, fragment number: %d, err: %v", logPrefix, appName, idx, err)
+			logging.Errorf("%s Function: %s metakv set failed for fragments, fragment number: %d, err: %v", logPrefix, appLocation, idx, err)
 			if errd := MetakvRecursiveDelete(appsPath); errd != nil {
-				logging.Errorf("%s Function: %s metakv recursive delete failed, fragment number: %d, err: %v", logPrefix, appName, idx, errd)
+				logging.Errorf("%s Function: %s metakv recursive delete failed, fragment number: %d, err: %v", logPrefix, appLocation, idx, errd)
 				return errd
 			}
 			return err
@@ -882,10 +882,10 @@ func WriteAppContent(appsPath, checksumPath, appName string, payload []byte, com
 	//Compute MD5 hash and update it in metakv
 	payloadhash := PayloadHash{}
 	if err := payloadhash.Update(payload3, MetaKvMaxDocSize()); err != nil {
-		logging.Errorf("%s Function: %s updating payload hash failed err: %v", logPrefix, appName, err)
+		logging.Errorf("%s Function: %s updating payload hash failed err: %v", logPrefix, appLocation, err)
 		//Delete existing entry from appspath
 		if errd := MetakvRecursiveDelete(appsPath); errd != nil {
-			logging.Errorf("%s Function: %s payload hash metakv recursive delete failed, err: %v", logPrefix, appName, errd)
+			logging.Errorf("%s Function: %s payload hash metakv recursive delete failed, err: %v", logPrefix, appLocation, errd)
 			return errd
 		}
 		return err
@@ -895,9 +895,9 @@ func WriteAppContent(appsPath, checksumPath, appName string, payload []byte, com
 	hashdata, err := json.Marshal(&payloadhash)
 	if err != nil {
 		//Delete existing entry from apps path
-		logging.Errorf("%s Function: %s marshal failed, err: %v", logPrefix, appName, err)
+		logging.Errorf("%s Function: %s marshal failed, err: %v", logPrefix, appLocation, err)
 		if errd := MetakvRecursiveDelete(appsPath); errd != nil {
-			logging.Errorf("%s Function: %s unmarshal failed, err: %v", logPrefix, appName, errd)
+			logging.Errorf("%s Function: %s unmarshal failed, err: %v", logPrefix, appLocation, errd)
 			return errd
 		}
 		return err
@@ -905,9 +905,9 @@ func WriteAppContent(appsPath, checksumPath, appName string, payload []byte, com
 
 	if err = MetakvSet(checksumPath, hashdata, nil); err != nil {
 		//Delete existing entry from apps path
-		logging.Errorf("%s Function: %s metakv set failed for checksum, err: %v", logPrefix, appName, err)
+		logging.Errorf("%s Function: %s metakv set failed for checksum, err: %v", logPrefix, appLocation, err)
 		if errd := MetakvRecursiveDelete(appsPath); errd != nil {
-			logging.Errorf("%s Function: %s checksum metakv recursive delete, err: %v", logPrefix, appName, errd)
+			logging.Errorf("%s Function: %s checksum metakv recursive delete, err: %v", logPrefix, appLocation, errd)
 			return errd
 		}
 		return err
@@ -917,52 +917,52 @@ func WriteAppContent(appsPath, checksumPath, appName string, payload []byte, com
 }
 
 // ReadAppContent reads function code
-func ReadAppContent(appsPath, checksumPath, appName string) ([]byte, error) {
+func ReadAppContent(appsPath, checksumPath, appLocation string) ([]byte, error) {
 	logPrefix := "util::ReadAppContent"
 
-	checksumPath += appName
+	checksumPath += appLocation
 	var payloadhash PayloadHash
 	if hashdata, err := MetakvGet(checksumPath); err != nil {
-		logging.Errorf("%s Function: %s metakv get failed for checksum, err: %v", logPrefix, appName, err)
+		logging.Errorf("%s Function: %s metakv get failed for checksum, err: %v", logPrefix, appLocation, err)
 		return nil, err
 	} else {
 		if len(hashdata) == 0 {
-			logging.Errorf("%s Function: %s app content doesn't exist or is empty", logPrefix, appName)
+			logging.Errorf("%s Function: %s app content doesn't exist or is empty", logPrefix, appLocation)
 			return nil, AppNotExist
 		}
 
 		if err := json.Unmarshal(hashdata, &payloadhash); err != nil {
-			logging.Errorf("%s Function: %s unmarshal failed for checksum", logPrefix, appName)
+			logging.Errorf("%s Function: %s unmarshal failed for checksum", logPrefix, appLocation)
 			return nil, err
 		}
 	}
 
 	//Read fragment data
 	var payload []byte
-	appsPath += appName
+	appsPath += appLocation
 	for idx := 0; idx < payloadhash.Fragmentcnt; idx++ {
 		path := appsPath + "/" + strconv.Itoa(int(idx))
 		data, err := MetakvGet(path)
 		if err != nil {
 			logging.Errorf("%s Function: %s metakv get failed for fragments, fragment number: %d fragment count: %d, err: %v",
-				logPrefix, appName, idx, payloadhash.Fragmentcnt, err)
+				logPrefix, appLocation, idx, payloadhash.Fragmentcnt, err)
 			return nil, err
 		}
 
 		if data == nil {
 			logging.Errorf("%s Function: %s metakv get data is empty, fragment number: %d fragment count: %d",
-				logPrefix, appName, idx, payloadhash.Fragmentcnt)
+				logPrefix, appLocation, idx, payloadhash.Fragmentcnt)
 			return nil, errors.New("Reading stale data")
 		}
 
 		if fragmenthash, err := ComputeMD5(data); err != nil {
 			logging.Errorf("%s Function: %s metakv get MD5 computation failed, fragment number: %d fragment count: %d, err: %v",
-				logPrefix, appName, idx, payloadhash.Fragmentcnt, err)
+				logPrefix, appLocation, idx, payloadhash.Fragmentcnt, err)
 			return nil, err
 		} else {
 			if bytes.Equal(fragmenthash, payloadhash.Fragmenthash[idx]) != true {
 				logging.Errorf("%s Function: %s metakv get checksum mismatch, fragment number: %d fragment count: %d",
-					logPrefix, appName, idx, payloadhash.Fragmentcnt)
+					logPrefix, appLocation, idx, payloadhash.Fragmentcnt)
 				return nil, errors.New("checksum mismatch for payload fragments")
 			}
 			payload = append(payload, data...)
@@ -974,12 +974,12 @@ func ReadAppContent(appsPath, checksumPath, appName string) ([]byte, error) {
 		return nil, err
 	}
 
-	payload3, mErr := AppendCredentials(appsPath, appName, payload2)
+	payload3, mErr := AppendCredentials(appsPath, appLocation, payload2)
 	if mErr != nil {
 		return nil, mErr
 	}
 
-	payload4, lErr := AppendLangCompat(appsPath, appName, payload3)
+	payload4, lErr := AppendLangCompat(appsPath, appLocation, payload3)
 	if lErr != nil {
 		return nil, lErr
 	}
@@ -987,26 +987,26 @@ func ReadAppContent(appsPath, checksumPath, appName string) ([]byte, error) {
 }
 
 //DeleteAppContent delete handler code
-func DeleteAppContent(appPath, checksumPath, appName string) error {
+func DeleteAppContent(appPath, checksumPath, appLocation string) error {
 	//Delete Checksum path
 	logPrefix := "util::DeleteAppContent"
-	checksumPath += appName
+	checksumPath += appLocation
 	if err := MetaKvDelete(checksumPath, nil); err != nil {
-		logging.Errorf("%s Function: %s metakv delete failed for checksum, err: %v", logPrefix, appName, err)
+		logging.Errorf("%s Function: %s metakv delete failed for checksum, err: %v", logPrefix, appLocation, err)
 		return err
 	}
 
 	//Delete Apps Path
-	appPath += appName
+	appPath += appLocation
 	appPath += "/"
 	if err := MetakvRecursiveDelete(appPath); err != nil {
-		logging.Errorf("%s Function: %s metakv recursive delete failed, err: %v", logPrefix, appName, err)
+		logging.Errorf("%s Function: %s metakv recursive delete failed, err: %v", logPrefix, appLocation, err)
 		return err
 	}
 
 	//Delete Credentials path
-	if err := MetaKvDelete(cm.MetakvCredentialsPath+appName, nil); err != nil {
-		logging.Infof("%s Function: %s failed to delete credentials, err: %v", logPrefix, appName, err)
+	if err := MetaKvDelete(cm.MetakvCredentialsPath+appLocation, nil); err != nil {
+		logging.Infof("%s Function: %s failed to delete credentials, err: %v", logPrefix, appLocation, err)
 		return err
 	}
 
@@ -1014,13 +1014,13 @@ func DeleteAppContent(appPath, checksumPath, appName string) error {
 }
 
 //Delete stale app fragments
-func DeleteStaleAppContent(appPath, appName string) error {
+func DeleteStaleAppContent(appPath, appLocation string) error {
 	//Delete Apps Path
 	logPrefix := "util::DeleteStaleAppContent"
-	appPath += appName
+	appPath += appLocation
 	appPath += "/"
 	if err := MetakvRecursiveDelete(appPath); err != nil {
-		logging.Errorf("%s Function: %s metakv recursive delete failed, err: %v", logPrefix, appName, err)
+		logging.Errorf("%s Function: %s metakv recursive delete failed, err: %v", logPrefix, appLocation, err)
 		return err
 	}
 	return nil
@@ -1407,7 +1407,7 @@ func CheckIfBootstrapOngoing(urlSuffix string, nodeAddrs []string) (bool, error)
 	return false, nil
 }
 
-func CheckIfAppBootstrapOngoing(urlSuffix string, nodeAddrs []string, appName string) (bool, error) {
+func CheckIfAppBootstrapOngoing(urlSuffix string, nodeAddrs []string, query string) (bool, error) {
 	logPrefix := "util::CheckIfAppBootstrapOngoing"
 
 	var netClient *Client
@@ -1415,7 +1415,7 @@ func CheckIfAppBootstrapOngoing(urlSuffix string, nodeAddrs []string, appName st
 
 	for _, nodeAddr := range nodeAddrs {
 		var endpointURL string
-		endpointURL = CheckTLSandReplaceProtocol("http://%s%s?appName=%s", nodeAddr, urlSuffix, appName)
+		endpointURL = CheckTLSandReplaceProtocol("http://%s%s?%s", nodeAddr, urlSuffix, query)
 
 		res, err := netClient.Get(endpointURL)
 		if err != nil {
@@ -1552,13 +1552,13 @@ func GetAggBootstrapStatus(nodeAddr string) (bool, error) {
 	return status, nil
 }
 
-func GetAggBootstrapAppStatus(nodeAddr string, appName string, isLocalhost bool) (bool, error) {
+func GetAggBootstrapAppStatus(nodeAddr string, query string, isLocalhost bool) (bool, error) {
 	logPrefix := "util::GetAggBootstrapAppStatus"
 
 	var netClient *Client
 	var url string
 
-	url = CheckTLSandReplaceProtocol("https://%s/getAggBootstrapAppStatus?appName=%s", nodeAddr, appName)
+	url = CheckTLSandReplaceProtocol("https://%s/getAggBootstrapAppStatus?%s", nodeAddr, query)
 	netClient = CheckTLSandGetClient(HTTPRequestTimeout)
 
 	res, err := netClient.Get(url)
@@ -1677,9 +1677,15 @@ func DeepCopy(kv map[string]interface{}) (newKv map[string]interface{}) {
 	return
 }
 
-func GetAppNameFromPath(path string) string {
+func GetAppNameFromPath(path string) (string, error) {
 	split := strings.Split(path, "/")
-	return split[len(split)-1]
+	switch len(split) {
+	case 4:
+		return split[3], nil
+	case 6:
+		return fmt.Sprintf("%s/%s/%s", split[3], split[4], split[5]), nil
+	}
+	return "", fmt.Errorf("Invalid path: %s", path)
 }
 
 func GenerateFunctionID() (uint32, error) {
@@ -2132,13 +2138,13 @@ func ParseFunctionPayload(data []byte, fnName string) cm.Application {
 	return app
 }
 
-func StripCurlCredentials(path, appName string, payload []byte) ([]byte, error) {
+func StripCurlCredentials(path, appLocation string, payload []byte) ([]byte, error) {
 	logPrefix := "Util::StripCurlCredentials"
 
 	if path == cm.MetakvTempAppsPath {
 		var app cm.Application
 		if err := json.Unmarshal(payload, &app); err != nil {
-			logging.Errorf("%s Function: %s unmarshal failed for data from metakv", logPrefix, appName)
+			logging.Errorf("%s Function: %s unmarshal failed for data from metakv", logPrefix, appLocation)
 			return nil, err
 		}
 
@@ -2153,11 +2159,11 @@ func StripCurlCredentials(path, appName string, payload []byte) ([]byte, error) 
 
 		data, err := json.MarshalIndent(creds, "", " ")
 		if err != nil {
-			logging.Errorf("%s Function %s marshal failed for credentials", logPrefix, appName)
+			logging.Errorf("%s Function %s marshal failed for credentials", logPrefix, appLocation)
 			return nil, err
 		}
 
-		err = MetakvSetSensitive(cm.MetakvCredentialsPath+app.Name, data, nil)
+		err = MetakvSetSensitive(cm.MetakvCredentialsPath+appLocation, data, nil)
 		if err != nil {
 			logging.Errorf("%s Function: %s failed to store credentials in credentials path", logPrefix, app.Name)
 			return nil, err
@@ -2170,7 +2176,7 @@ func StripCurlCredentials(path, appName string, payload []byte) ([]byte, error) 
 		}
 		return data, nil
 	}
-	app := ParseFunctionPayload(payload, appName)
+	app := ParseFunctionPayload(payload, appLocation)
 
 	var creds []cm.Credential
 	for i, binding := range app.DeploymentConfig.Curl {
@@ -2183,11 +2189,11 @@ func StripCurlCredentials(path, appName string, payload []byte) ([]byte, error) 
 
 	data, err := json.MarshalIndent(creds, "", " ")
 	if err != nil {
-		logging.Errorf("%s Function %s marshal failed for credentials", logPrefix, appName)
+		logging.Errorf("%s Function %s marshal failed for credentials", logPrefix, appLocation)
 		return nil, err
 	}
 
-	err = MetakvSetSensitive(cm.MetakvCredentialsPath+app.Name, data, nil)
+	err = MetakvSetSensitive(cm.MetakvCredentialsPath+appLocation, data, nil)
 	if err != nil {
 		logging.Errorf("%s Function: %s failed to store credentials in credentials path", logPrefix, app.Name)
 		return nil, err
@@ -2198,13 +2204,13 @@ func StripCurlCredentials(path, appName string, payload []byte) ([]byte, error) 
 
 }
 
-func AppendCredentials(path, appName string, payload []byte) ([]byte, error) {
+func AppendCredentials(path, appLocation string, payload []byte) ([]byte, error) {
 	logPrefix := "Util::AppendCredentials"
 
-	data, err := MetakvGet(cm.MetakvCredentialsPath + appName)
+	data, err := MetakvGet(cm.MetakvCredentialsPath + appLocation)
 	if err != nil {
 		logging.Errorf("%s Function: %s metakv get failed for credentials, err: %v",
-			logPrefix, appName, err)
+			logPrefix, appLocation, err)
 		return nil, err
 	}
 
@@ -2214,14 +2220,14 @@ func AppendCredentials(path, appName string, payload []byte) ([]byte, error) {
 
 	var creds []cm.Credential
 	if err = json.Unmarshal(data, &creds); err != nil {
-		logging.Errorf("%s Function: %s unmarshal failed for credentials", logPrefix, appName)
+		logging.Errorf("%s Function: %s unmarshal failed for credentials", logPrefix, appLocation)
 		return nil, err
 	}
 
-	if path == cm.MetakvTempAppsPath+appName {
+	if path == cm.MetakvTempAppsPath+appLocation {
 		var app cm.Application
 		if err = json.Unmarshal(payload, &app); err != nil {
-			logging.Errorf("%s Function: %s unmarshal failed for data from metakv", logPrefix, appName)
+			logging.Errorf("%s Function: %s unmarshal failed for data from metakv", logPrefix, appLocation)
 			return nil, err
 		}
 
@@ -2237,14 +2243,14 @@ func AppendCredentials(path, appName string, payload []byte) ([]byte, error) {
 
 		data, err = json.MarshalIndent(app, "", " ")
 		if err != nil {
-			logging.Errorf("%s Function: %s failed to marshal data", logPrefix, appName)
+			logging.Errorf("%s Function: %s failed to marshal data", logPrefix, appLocation)
 			return nil, err
 		}
 
 		return data, nil
 	}
 
-	app := ParseFunctionPayload(payload, appName)
+	app := ParseFunctionPayload(payload, appLocation)
 
 	if len(creds) < len(app.DeploymentConfig.Curl) {
 		app.DeploymentConfig.Curl = app.DeploymentConfig.Curl[:len(creds)]
@@ -2261,13 +2267,13 @@ func AppendCredentials(path, appName string, payload []byte) ([]byte, error) {
 
 }
 
-func AppendLangCompat(path, appName string, payload []byte) ([]byte, error) {
+func AppendLangCompat(path, appLocation string, payload []byte) ([]byte, error) {
 	logPrefix := "Util::AppendLangCompat"
 
-	if path == cm.MetakvTempAppsPath+appName {
+	if path == cm.MetakvTempAppsPath+appLocation {
 		var app cm.Application
 		if err := json.Unmarshal(payload, &app); err != nil {
-			logging.Errorf("%s Function: %s unmarshal failed for data from metakv", logPrefix, appName)
+			logging.Errorf("%s Function: %s unmarshal failed for data from metakv", logPrefix, appLocation)
 			return nil, err
 		}
 
@@ -2277,7 +2283,7 @@ func AppendLangCompat(path, appName string, payload []byte) ([]byte, error) {
 
 		data, mErr := json.MarshalIndent(app, "", " ")
 		if mErr != nil {
-			logging.Errorf("%s Function: %s failed to marshal data", logPrefix, appName)
+			logging.Errorf("%s Function: %s failed to marshal data", logPrefix, appLocation)
 			return nil, mErr
 		}
 

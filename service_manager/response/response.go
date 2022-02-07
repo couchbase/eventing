@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 
 	"github.com/couchbase/eventing/audit"
 	"github.com/couchbase/eventing/gen/auditevent"
@@ -67,6 +68,7 @@ func (r *responseWriter) send(runtimeInfo *RuntimeInfo) {
 
 	var res interface{}
 	httpCode := errMap[Ok].httpStatusCode
+	statusCode := errMap[Ok].Code
 	sendRawResponse := runtimeInfo.SendRawDescription
 
 	if runtimeInfo.ErrCode == Ok {
@@ -83,6 +85,7 @@ func (r *responseWriter) send(runtimeInfo *RuntimeInfo) {
 		sendRawResponse = false
 		res = errRes
 		httpCode = errRes.httpStatusCode
+		statusCode = errRes.Code
 	}
 
 	w := r.writer
@@ -90,6 +93,7 @@ func (r *responseWriter) send(runtimeInfo *RuntimeInfo) {
 		runtimeInfo.ContentType = "application/json"
 	}
 	w.Header().Set("Content-Type", runtimeInfo.ContentType)
+	w.Header().Add(headerKey, strconv.Itoa(statusCode))
 
 	if sendRawResponse {
 		w.WriteHeader(httpCode)
