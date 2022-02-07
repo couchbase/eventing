@@ -1214,9 +1214,9 @@ func (p *Producer) AppendLatencyStats(deltas common.StatsData) {
 	p.latencyStats.Append(deltas)
 }
 
-func (p *Producer) UndeployHandler(skipMetadataCleanup bool) {
+func (p *Producer) UndeployHandler(msg common.UndeployAction) {
 	if atomic.CompareAndSwapInt32(&p.lazyUndeploy, 0, 1) {
-		p.undeployHandler <- skipMetadataCleanup
+		p.undeployHandler <- msg
 	}
 }
 

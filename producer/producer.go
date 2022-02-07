@@ -50,7 +50,7 @@ func NewProducer(appName, debuggerPort, eventingPort, eventingSSLPort, eventingD
 		isPausing:                    false,
 		stateChangeCh:                make(chan state, 1),
 		plannerNodeMappingsRWMutex:   &sync.RWMutex{},
-		undeployHandler:              make(chan bool, 2),
+		undeployHandler:              make(chan common.UndeployAction, 2),
 		metadataHandleMutex:          &sync.RWMutex{},
 		MemoryQuota:                  memoryQuota,
 		retryCount:                   -1,
@@ -116,7 +116,9 @@ func (p *Producer) Serve() {
 			p.notifyInitCh <- struct{}{}
 			p.bootstrapFinishCh <- struct{}{}
 			p.superSup.RemoveProducerToken(p.appName)
-			p.superSup.StopProducer(p.appName, false, true)
+
+			msg := common.DefaultUndeployAction()
+			p.UndeployHandler(msg)
 		}
 	}()
 
@@ -124,17 +126,15 @@ func (p *Producer) Serve() {
 	p.isBootstrapping = true
 	logging.Infof("%s [%s:%d] Bootstrapping status: %t", logPrefix, p.appName, p.LenRunningConsumers(), p.isBootstrapping)
 
-	if err != nil {
-		logging.Fatalf("%s [%s:%d] Failure parsing depcfg, err: %v", logPrefix, p.appName, p.LenRunningConsumers(), err)
-		return
-	}
-
 	go p.undeployHandlerWait()
 	if p.functionScope.BucketName != "*" {
 		p.funcScopeId, _, err = p.superSup.GetScopeAndCollectionID(p.functionScope.BucketName, p.functionScope.ScopeName, "")
 		if err != nil {
 			logging.Errorf("%s [%s] Error in getting function manage scope, err: %v", logPrefix, p.appName, err)
-			p.UndeployHandler(false)
+
+			msg := common.DefaultUndeployAction()
+			msg.DeleteFunction = true
+			p.UndeployHandler(msg)
 			return
 		}
 	}
@@ -143,7 +143,9 @@ func (p *Producer) Serve() {
 		p.handlerConfig.SourceKeyspace.ScopeName,
 		p.handlerConfig.SourceKeyspace.CollectionName)
 	if err == common.BucketNotWatched || err == collections.SCOPE_NOT_FOUND || err == collections.COLLECTION_NOT_FOUND {
-		p.UndeployHandler(false)
+		msg := common.DefaultUndeployAction()
+		p.UndeployHandler(msg)
+
 		logging.Errorf("%s [%s] source scope or collection not found %v", logPrefix, p.appName, err)
 		return
 	}
@@ -155,7 +157,10 @@ func (p *Producer) Serve() {
 
 	_, metaCid, err := p.superSup.GetScopeAndCollectionID(p.metadataKeyspace.BucketName, p.metadataKeyspace.ScopeName, p.metadataKeyspace.CollectionName)
 	if err == common.BucketNotWatched || err == collections.SCOPE_NOT_FOUND || err == collections.COLLECTION_NOT_FOUND {
-		p.UndeployHandler(true)
+		msg := common.DefaultUndeployAction()
+		msg.SkipMetadataCleanup = true
+		p.UndeployHandler(msg)
+
 		logging.Errorf("%s [%s] metadata scope or collection not found %v", logPrefix, p.appName, err)
 		return
 	}
@@ -956,24 +961,35 @@ func (p *Producer) undeployHandlerWait() {
 	}
 	defer t.Stop()
 
-	updateMetakv := true
 	for {
 		select {
-		case skipMetadataCleanup := <-p.undeployHandler:
-			p.superSup.StopProducer(p.appName, skipMetadataCleanup, updateMetakv)
+		case msg := <-p.undeployHandler:
+			p.superSup.StopProducer(p.appName, msg)
 
 		case <-t.C:
-			if atomic.LoadInt32(&p.lazyUndeploy) == 0 {
-				notAllowed, err := rbac.HasPermissions(p.owner, permissions, true)
-				// If user not present it will return as user don't have the permission
-				if !checkUndeployHandlerForUser(err) {
-					continue
+			if atomic.LoadInt32(&p.lazyUndeploy) == 1 {
+				continue
+			}
+
+			notAllowed, err := rbac.HasPermissions(p.owner, permissions, true)
+			if !checkPermError(err) {
+				continue
+			}
+
+			if atomic.CompareAndSwapInt32(&p.lazyUndeploy, 0, 1) {
+				deleteFunction := false
+				if p.functionScope.BucketName != "*" {
+					_, sid := p.GetFuncScopeDetails()
+					scopeId, _, err := p.superSup.GetScopeAndCollectionID(p.functionScope.BucketName, p.functionScope.ScopeName, "")
+					if err != nil || scopeId != sid {
+						deleteFunction = true
+					}
 				}
 
-				if atomic.CompareAndSwapInt32(&p.lazyUndeploy, 0, 1) {
-					logging.Errorf("%s [%s] Undeploying handler due to handler lost permission. notAllowed: %v", logPrefix, p.appName, notAllowed)
-					p.superSup.StopProducer(p.appName, false, updateMetakv)
-				}
+				logging.Errorf("%s [%s] Undeploying handler due to handler lost permission. notAllowed: %v", logPrefix, p.appName, notAllowed)
+				msg := common.DefaultUndeployAction()
+				msg.DeleteFunction = deleteFunction
+				p.superSup.StopProducer(p.appName, msg)
 			}
 
 		case <-p.stopUndeployWaitCh:
@@ -1130,7 +1146,7 @@ func (p *Producer) encryptionChangedDuringLifecycle() bool {
 	return false
 }
 
-func checkUndeployHandlerForUser(err error) bool {
+func checkPermError(err error) bool {
 	return (err == rbac.ErrAuthorisation) ||
 		(err == rbac.ErrUserDeleted)
 }

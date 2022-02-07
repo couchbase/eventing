@@ -275,7 +275,7 @@ type EventingProducer interface {
 	String() string
 	SetTrapEvent(value bool)
 	TimerDebugStats() map[int]map[string]interface{}
-	UndeployHandler(skipMetaCleanup bool)
+	UndeployHandler(msg UndeployAction)
 	UpdateEncryptionLevel(enforceTLS, encryptOn bool)
 	UpdateMemoryQuota(quota int64)
 	UsingTimer() bool
@@ -402,7 +402,7 @@ type EventingSuperSup interface {
 	GetGocbSubscribedApps(encryptionEnabled bool) map[string]struct{}
 	SignalStopDebugger(appName string) error
 	SpanBlobDump(appName string) (interface{}, error)
-	StopProducer(appName string, skipMetaCleanup bool, updateMetakv bool)
+	StopProducer(appName string, msg UndeployAction)
 	TimerDebugStats(appName string) (map[int]map[string]interface{}, error)
 	UpdateEncryptionLevel(enforceTLS, encryptOn bool)
 	VbDcpEventsRemainingToProcess(appName string) map[int]int64
@@ -414,6 +414,9 @@ type EventingSuperSup interface {
 	WorkerRespawnedCount() uint32
 	CheckLifeCycleOpsDuringRebalance() bool
 	GetBSCSnapshot() (map[string]map[string][]string, error)
+
+	WatchBucket(keyspace Keyspace, appName string, mType MonitorType) error
+	UnwatchBucket(keyspace Keyspace, appName string)
 }
 
 type EventingServiceMgr interface {
@@ -710,17 +713,34 @@ func GetLogfileName(locationString string) string {
 }
 
 func GetFunctionScope(identity Identity) FunctionScope {
-        bucketName, scopeName := identity.Bucket, identity.Scope
-        if bucketName == "" {
-                bucketName = "*"
-        }
+	bucketName, scopeName := identity.Bucket, identity.Scope
+	if bucketName == "" {
+		bucketName = "*"
+	}
 
-        if scopeName == "" {
-                scopeName = "*"
-        }
+	if scopeName == "" {
+		scopeName = "*"
+	}
 
-        return FunctionScope{
-                BucketName: bucketName,
-                ScopeName:  scopeName,
-        }
+	return FunctionScope{
+		BucketName: bucketName,
+		ScopeName:  scopeName,
+	}
+}
+
+type UndeployAction struct {
+	UpdateMetakv        bool
+	SkipMetadataCleanup bool
+	DeleteFunction      bool
+}
+
+func DefaultUndeployAction() UndeployAction {
+	return UndeployAction{
+		UpdateMetakv: true,
+	}
+}
+
+func (msg UndeployAction) String() string {
+	return fmt.Sprintf("DeleteFunction: %v, SkipMetadataCleanup: %v, UpdateMetakv: %v",
+		msg.DeleteFunction, msg.SkipMetadataCleanup, msg.UpdateMetakv)
 }

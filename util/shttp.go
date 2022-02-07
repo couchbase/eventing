@@ -95,6 +95,24 @@ func (c *Client) Head(url string) (resp *http.Response, err error) {
 	return c.Client.Do(req)
 }
 
+func (c *Client) Delete(url string) (resp *http.Response, err error) {
+	logPrefix := "Client::Delete"
+
+	req, err := NewRequest("DELETE", url, nil)
+	if err != nil {
+		logging.Errorf("%s URL: %rs Encountered err: %v", logPrefix, url, err)
+		return nil, err
+	}
+
+	err = cbauth.SetRequestAuthVia(req, nil)
+	if err != nil {
+		logging.Errorf("%s URL: %rs Failed to set auth params, err: %v", logPrefix, url, err)
+		return nil, err
+	}
+
+	return c.Client.Do(req)
+}
+
 func (c *Client) Post(url string, contentType string, body io.Reader) (resp *http.Response, err error) {
 	logPrefix := "Client::Post"
 

@@ -554,9 +554,21 @@ func (m *ServiceMgr) tempStoreAppsPathCallback(kve metakv.KVEntry) error {
 			return nil
 		}
 
+		m.superSup.WatchBucket(*app.FunctionScope.ToKeyspace(), fnLocation, common.FunctionScopeWatch)
 		m.tempAppStore.Set(id, &app)
 		logging.Infof("%s Added function: %s to appCache", logPrefix, fnLocation)
 	} else {
+		id, err := common.GetIdentityFromLocation(fnLocation)
+		if err != nil {
+			return nil
+		}
+
+		app, err := m.tempAppStore.Get(id)
+		if err != nil {
+			return nil
+		}
+
+		m.superSup.UnwatchBucket(*app.FunctionScope.ToKeyspace(), fnLocation)
 		m.tempAppStore.Delete(id)
 		logging.Infof("%s Deleted function: %s from appCache", logPrefix, fnLocation)
 	}

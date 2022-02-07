@@ -91,6 +91,7 @@ var undeployFunctionCallback = func(args ...interface{}) error {
 
 	s := args[0].(*SuperSupervisor)
 	appName := args[1].(string)
+	deleteFunction := args[2].(bool)
 
 	settings := make(map[string]interface{})
 	settings["deployment_status"] = false
@@ -105,6 +106,36 @@ var undeployFunctionCallback = func(args ...interface{}) error {
 	client := util.NewClient(5 * time.Second)
 	url := fmt.Sprintf("http://%s:%s/setSettings/?name=%s&force=true", util.Localhost(), s.adminPort.HTTPPort, appName)
 	resp, err := client.Post(url, "application/json", bytes.NewBuffer(data))
+	if err != nil {
+		logging.Errorf("%s [%d] Function: %s failed to send http request", logPrefix, s.runningFnsCount(), appName)
+		return err
+	}
+	defer resp.Body.Close()
+
+	content, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		logging.Errorf("%s [%d] Function: %s failed to read content", logPrefix, s.runningFnsCount(), appName)
+		return err
+	}
+
+	logging.Infof("%s [%d] Function: %s response from server: %s resp: %rs", logPrefix, s.runningFnsCount(), appName, string(content), resp)
+
+	if deleteFunction {
+		util.Retry(util.NewExponentialBackoff(), &s.retryCount, deleteFunctionCallback, s, appName)
+	}
+	return nil
+}
+
+var deleteFunctionCallback = func(args ...interface{}) error {
+	logPrefix := "SuperSupervisor::deleteFunctionCallback"
+
+	s := args[0].(*SuperSupervisor)
+	appName := args[1].(string)
+
+	id, _ := common.GetIdentityFromLocation(appName)
+	client := util.NewClient(5 * time.Second)
+	url := fmt.Sprintf("http://%s:%s/api/v1/functions/%s?bucket=%s&scope=%s", util.Localhost(), s.adminPort.HTTPPort, id.AppName, id.Bucket, id.Scope)
+	resp, err := client.Delete(url)
 	if err != nil {
 		logging.Errorf("%s [%d] Function: %s failed to send http request", logPrefix, s.runningFnsCount(), appName)
 		return err

@@ -116,34 +116,38 @@ func (s *SuperSupervisor) getStatuses(data []byte) (bool, bool, map[string]inter
 	return pStatus, dStatus, settings, nil
 }
 
-func (s *SuperSupervisor) isDeployable(appName string) error {
+func (s *SuperSupervisor) isDeployable(appName string) (common.UndeployAction, error) {
+	msg := common.DefaultUndeployAction()
+
 	depCfg, funcScope, owner, err := s.getFuncDetails(appName)
 	if err != nil {
-		return err
+		return msg, err
 	}
 
 	hostAddress := net.JoinHostPort(util.Localhost(), s.restPort)
 	sourceExist := util.CheckKeyspaceExist(depCfg.SourceBucket, depCfg.SourceScope,
 		depCfg.SourceCollection, hostAddress)
 	if !sourceExist {
-		return fmt.Errorf("Source Keyspace doesn't exist")
+		return msg, fmt.Errorf("Source Keyspace doesn't exist")
 	}
 
 	metaExist := util.CheckKeyspaceExist(depCfg.MetadataBucket, depCfg.MetadataScope,
 		depCfg.MetadataCollection, hostAddress)
 	if !metaExist {
-		return fmt.Errorf("Meta Keyspace doesn't exist")
+		msg.SkipMetadataCleanup = true
+		return msg, fmt.Errorf("Meta Keyspace doesn't exist")
 	}
 
 	if (funcScope.BucketName != "" || funcScope.ScopeName != "") && (funcScope.BucketName != "*" || funcScope.ScopeName != "*") {
 		_, _, err = util.CheckAndGetBktAndScopeIDs(funcScope, s.restPort)
 		if err == couchbase.ErrBucketNotFound || err == collections.SCOPE_NOT_FOUND {
-			return fmt.Errorf("Function Scope doesn't exist: %v", err)
+			msg.DeleteFunction = true
+			return msg, fmt.Errorf("Function Scope doesn't exist: %v", err)
 		}
 	}
 
 	if owner.User == "" && owner.Domain == "" {
-		return nil
+		return msg, nil
 	}
 
 	srcKeyspace := &common.Keyspace{
@@ -163,9 +167,9 @@ func (s *SuperSupervisor) isDeployable(appName string) error {
 	// Return error only if its confirmed ErrAuthorisation or user deleted error
 	// For temp error producer will undeploy it based on the error message
 	if err == rbac.ErrAuthorisation || err == rbac.ErrUserDeleted {
-		return err
+		return msg, err
 	}
-	return nil
+	return msg, nil
 }
 
 func (s *SuperSupervisor) getFuncDetails(appName string) (*common.DepCfg, *common.FunctionScope, *common.Owner, error) {
@@ -376,14 +380,20 @@ func (s *SuperSupervisor) undeployFunctionsOnDeletedBkts(deletedBuckets []string
 			continue
 		}
 
+		msg := common.DefaultUndeployAction()
 		for _, appName := range appNames {
 			p, ok := s.runningProducers[appName]
 			if !ok {
-				util.Retry(util.NewExponentialBackoff(), &s.retryCount, undeployFunctionCallback, s, appName)
+				msg, undeploy := s.checkAppNeedsUndeployment(bucketName, appName, true)
+				if undeploy {
+					util.Retry(util.NewExponentialBackoff(), &s.retryCount, undeployFunctionCallback, s, appName, msg.DeleteFunction)
+				}
 				continue
 			}
-			skipMetadataCleanup := (p.MetadataBucket() == bucketName)
-			p.UndeployHandler(skipMetadataCleanup)
+
+			msg.SkipMetadataCleanup = (p.MetadataBucket() == bucketName)
+			msg.DeleteFunction = (p.FunctionManageBucket() == bucketName)
+			p.UndeployHandler(msg)
 		}
 	}
 }
@@ -396,36 +406,16 @@ func (s *SuperSupervisor) checkDeletedCid(bucketName string) {
 	}
 
 	for _, appName := range appNames {
+		msg := common.DefaultUndeployAction()
 		p, ok := s.runningProducers[appName]
 		if !ok {
 			// Case where app is not yet added to running producers list
-			undeploy := s.checkAppNeedsUndeployment(bucketName, appName)
+			msg, undeploy := s.checkAppNeedsUndeployment(bucketName, appName, false)
 			if undeploy {
 				logging.Infof("%s Undeploying %s Reason: Not in running producer", logPrefix, appName)
-				util.Retry(util.NewExponentialBackoff(), &s.retryCount, undeployFunctionCallback, s, appName)
+				util.Retry(util.NewExponentialBackoff(), &s.retryCount, undeployFunctionCallback, s, appName, msg.DeleteFunction)
 			}
 			continue
-		}
-
-		mCid := p.GetMetadataCid()
-		if mCid == math.MaxUint32 {
-			continue
-		}
-		_, cid, err := s.GetScopeAndCollectionID(p.MetadataBucket(), p.MetadataScope(), p.MetadataCollection())
-		if err != nil || cid != mCid {
-			logging.Infof("%s Undeploying %s Reason: metadata collection delete err: %v", logPrefix, appName, err)
-			p.UndeployHandler(true)
-			continue
-		}
-
-		sCid := p.GetSourceCid()
-		if sCid == math.MaxUint32 {
-			continue
-		}
-		_, cid, err = s.GetScopeAndCollectionID(p.SourceBucket(), p.SourceScope(), p.SourceCollection())
-		if err != nil || cid != sCid {
-			logging.Infof("%s Undeploying %s Reason: source collection delete err: %v", logPrefix, appName, err)
-			p.UndeployHandler(false)
 		}
 
 		_, sid := p.GetFuncScopeDetails()
@@ -436,32 +426,64 @@ func (s *SuperSupervisor) checkDeletedCid(bucketName string) {
 		currentSid, _, err := s.GetScopeAndCollectionID(p.FunctionManageBucket(), p.FunctionManageScope(), "")
 		if err != nil || sid != currentSid {
 			logging.Infof("%s Undeploying %s Reason: function manage scope delete err: %v", logPrefix, appName, err)
-			p.UndeployHandler(false)
+			msg.DeleteFunction = true
+			p.UndeployHandler(msg)
+		}
+
+		mCid := p.GetMetadataCid()
+		if mCid == math.MaxUint32 {
+			continue
+		}
+		_, cid, err := s.GetScopeAndCollectionID(p.MetadataBucket(), p.MetadataScope(), p.MetadataCollection())
+		if err != nil || cid != mCid {
+			logging.Infof("%s Undeploying %s Reason: metadata collection delete err: %v", logPrefix, appName, err)
+			msg.SkipMetadataCleanup = true
+			p.UndeployHandler(msg)
+			continue
+		}
+
+		sCid := p.GetSourceCid()
+		if sCid == math.MaxUint32 {
+			continue
+		}
+		_, cid, err = s.GetScopeAndCollectionID(p.SourceBucket(), p.SourceScope(), p.SourceCollection())
+		if err != nil || cid != sCid {
+			logging.Infof("%s Undeploying %s Reason: source collection delete err: %v", logPrefix, appName, err)
+			p.UndeployHandler(msg)
 		}
 	}
 }
 
-func (s *SuperSupervisor) checkAppNeedsUndeployment(bucketName string, appName string) bool {
+func (s *SuperSupervisor) checkAppNeedsUndeployment(bucketName, appName string, bucketDeleted bool) (msg common.UndeployAction, undeploy bool) {
 	s.bucketsRWMutex.RLock()
 	defer s.bucketsRWMutex.RUnlock()
 
+	msg = common.DefaultUndeployAction()
 	bucketWatch, ok := s.buckets[bucketName]
 	if !ok {
-		return false
+		return
 	}
 
 	watchers, ok := bucketWatch.apps[appName]
 	if !ok {
-		return false
+		return
 	}
 
-	for keyspace, _ := range watchers {
-		_, _, err := s.GetScopeAndCollectionID(keyspace.BucketName, keyspace.ScopeName, keyspace.CollectionName)
-		if err != nil {
-			return true
+	for keyspace, mType := range watchers {
+		// Check for collection existence only when bucket is not deleted
+		if !bucketDeleted {
+			_, _, err := s.GetScopeAndCollectionID(keyspace.BucketName, keyspace.ScopeName, keyspace.CollectionName)
+			if err == nil {
+				continue
+			}
 		}
+
+		undeploy = true
+		msg.DeleteFunction = (msg.DeleteFunction || (mType == common.FunctionScopeWatch))
+		msg.SkipMetadataCleanup = (msg.SkipMetadataCleanup || (mType == common.MetaWatch))
 	}
-	return false
+
+	return
 }
 
 func (s *SuperSupervisor) watchBucketChanges() {
@@ -614,23 +636,23 @@ func (s *SuperSupervisor) getConfig() (c common.Config) {
 }
 
 func (s *SuperSupervisor) watchBucketWithGocb(keyspace common.Keyspace, appName string) error {
-	err := s.watchBucket(keyspace, appName, common.MetaWatch)
+	err := s.WatchBucket(keyspace, appName, common.MetaWatch)
 	if err != nil {
 		return err
 	}
 	err = s.gocbGlobalConfigHandle.maybeRegistergocbBucket(keyspace.BucketName, appName, s.GetSecuritySetting(), s)
 	if err != nil {
-		s.unwatchBucket(keyspace, appName)
+		s.UnwatchBucket(keyspace, appName)
 	}
 	return err
 }
 
 func (s *SuperSupervisor) unwatchBucketWithGocb(keyspace common.Keyspace, appName string) {
-	s.unwatchBucket(keyspace, appName)
+	s.UnwatchBucket(keyspace, appName)
 	s.gocbGlobalConfigHandle.maybeUnregistergocbBucket(keyspace.BucketName, appName)
 }
 
-func (s *SuperSupervisor) watchBucket(keyspace common.Keyspace, appName string, mType common.MonitorType) error {
+func (s *SuperSupervisor) WatchBucket(keyspace common.Keyspace, appName string, mType common.MonitorType) error {
 	// Function bucket can be nil
 	if keyspace.BucketName == "" || keyspace.BucketName == "*" {
 		return nil
@@ -641,7 +663,7 @@ func (s *SuperSupervisor) watchBucket(keyspace common.Keyspace, appName string, 
 }
 
 // UnwatchBucket removes the bucket from supervisor
-func (s *SuperSupervisor) unwatchBucket(keyspace common.Keyspace, appName string) {
+func (s *SuperSupervisor) UnwatchBucket(keyspace common.Keyspace, appName string) {
 	bucketName := keyspace.BucketName
 	s.bucketsRWMutex.Lock()
 	defer s.bucketsRWMutex.Unlock()
