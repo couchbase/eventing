@@ -177,7 +177,7 @@ type Producer struct {
 	// Supervisor of workers responsible for
 	// pipelining messages to V8
 	workerSupervisor *suptree.Supervisor
-	lazyUndeploy     bool
+	lazyUndeploy     int32
 
 	functionScope *common.Keyspace
 	owner         *common.Owner
@@ -188,7 +188,7 @@ type Producer struct {
 
 	// Maybe we can use it for other global config
 	featureChangeChan chan uint32
-	featureMatrix  uint32
+	featureMatrix     uint32
 }
 
 type vbNodeWorkerMapping struct {

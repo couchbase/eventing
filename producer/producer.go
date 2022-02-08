@@ -116,7 +116,7 @@ func (p *Producer) Serve() {
 			p.notifyInitCh <- struct{}{}
 			p.bootstrapFinishCh <- struct{}{}
 			p.superSup.RemoveProducerToken(p.appName)
-			p.superSup.CleanupProducer(p.appName, false, true)
+			p.superSup.StopProducer(p.appName, false, true)
 		}
 	}()
 
@@ -134,7 +134,7 @@ func (p *Producer) Serve() {
 		p.funcScopeId, _, err = p.superSup.GetScopeAndCollectionID(p.functionScope.BucketName, p.functionScope.ScopeName, "")
 		if err != nil {
 			logging.Errorf("%s [%s] Error in getting function manage scope, err: %v", logPrefix, p.appName, err)
-			p.undeployHandler <- false
+			p.UndeployHandler(false)
 			return
 		}
 	}
@@ -143,7 +143,7 @@ func (p *Producer) Serve() {
 		p.handlerConfig.SourceKeyspace.ScopeName,
 		p.handlerConfig.SourceKeyspace.CollectionName)
 	if err == common.BucketNotWatched || err == collections.SCOPE_NOT_FOUND || err == collections.COLLECTION_NOT_FOUND {
-		p.undeployHandler <- false
+		p.UndeployHandler(false)
 		logging.Errorf("%s [%s] source scope or collection not found %v", logPrefix, p.appName, err)
 		return
 	}
@@ -155,7 +155,7 @@ func (p *Producer) Serve() {
 
 	_, metaCid, err := p.superSup.GetScopeAndCollectionID(p.metadataKeyspace.BucketName, p.metadataKeyspace.ScopeName, p.metadataKeyspace.CollectionName)
 	if err == common.BucketNotWatched || err == collections.SCOPE_NOT_FOUND || err == collections.COLLECTION_NOT_FOUND {
-		p.undeployHandler <- true
+		p.UndeployHandler(true)
 		logging.Errorf("%s [%s] metadata scope or collection not found %v", logPrefix, p.appName, err)
 		return
 	}
@@ -960,25 +960,28 @@ func (p *Producer) undeployHandlerWait() {
 	for {
 		select {
 		case skipMetadataCleanup := <-p.undeployHandler:
-			if !p.lazyUndeploy {
-				p.lazyUndeploy = true
-				p.superSup.StopProducer(p.appName, skipMetadataCleanup, updateMetakv)
-			}
+			p.superSup.StopProducer(p.appName, skipMetadataCleanup, updateMetakv)
 
 		case <-t.C:
-			if !p.lazyUndeploy {
+			if atomic.LoadInt32(&p.lazyUndeploy) == 0 {
 				notAllowed, err := rbac.HasPermissions(p.owner, permissions, true)
 				// If user not present it will return as user don't have the permission
 				if !checkUndeployHandlerForUser(err) {
 					continue
 				}
 
-				p.lazyUndeploy = true
-				logging.Errorf("%s [%s] Undeploying handler due to handler lost permission. notAllowed: %v", logPrefix, p.appName, notAllowed)
-				p.superSup.StopProducer(p.appName, false, updateMetakv)
+				if atomic.CompareAndSwapInt32(&p.lazyUndeploy, 0, 1) {
+					logging.Errorf("%s [%s] Undeploying handler due to handler lost permission. notAllowed: %v", logPrefix, p.appName, notAllowed)
+					p.superSup.StopProducer(p.appName, false, updateMetakv)
+				}
 			}
 
 		case <-p.stopUndeployWaitCh:
+			atomic.StoreInt32(&p.lazyUndeploy, 1)
+			// Empty channel before going out
+			for len(p.undeployHandler) > 0 {
+				<-p.undeployHandler
+			}
 			return
 		}
 	}

@@ -558,7 +558,7 @@ func (p *Producer) RebalanceTaskProgress() *common.RebalanceProgress {
 
 	producerLevelProgress := &common.RebalanceProgress{}
 
-	if p.lazyUndeploy {
+	if atomic.LoadInt32(&p.lazyUndeploy) == 1 {
 		return producerLevelProgress
 	}
 
@@ -658,10 +658,11 @@ func (p *Producer) cleanupMetadataImpl(id int, vbsToCleanup []uint16, undeployWG
 
 	b, err := p.superSup.GetBucket(p.metadataKeyspace.BucketName, p.appName)
 	if err != nil {
+		logging.Errorf("%s appName: %s Error in getting metadata bucket %s err: %s", logPrefix, p.appName, p.metadataKeyspace.BucketName, err)
 		return err
 	}
-	var dcpFeed *couchbase.DcpFeed
 
+	var dcpFeed *couchbase.DcpFeed
 	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, cleanupMetadataCallback, p, &b, &dcpFeed, id)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%d:id_%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers(), id)
@@ -967,7 +968,7 @@ func (p *Producer) BootstrapStatus() bool {
 func (p *Producer) RebalanceStatus() bool {
 	logPrefix := "Producer::RebalanceStatus"
 
-	if p.lazyUndeploy {
+	if atomic.LoadInt32(&p.lazyUndeploy) == 1 {
 		return false
 	}
 
@@ -1214,7 +1215,9 @@ func (p *Producer) AppendLatencyStats(deltas common.StatsData) {
 }
 
 func (p *Producer) UndeployHandler(skipMetadataCleanup bool) {
-	p.undeployHandler <- skipMetadataCleanup
+	if atomic.CompareAndSwapInt32(&p.lazyUndeploy, 0, 1) {
+		p.undeployHandler <- skipMetadataCleanup
+	}
 }
 
 func (p *Producer) GetOwner() *common.Owner {
