@@ -5,7 +5,9 @@ export {
   ApplicationManager,
   ApplicationModel,
   determineUIStatus,
-  getWarnings
+  getWarnings,
+  getAppLocation,
+  getReverseAppLocation
 };
 
 function Application(data) {
@@ -90,8 +92,9 @@ ApplicationManager.prototype.createApp = function(appModel) {
   app.id = appList.length;
   app.enforceSchema();
 
-  // Store the app - appname is the key for the application.
-  appList[app.appname] = app;
+  var appLocation = getAppLocation(app.appname, app.function_scope);
+  // applocation is the key for the app
+  appList[appLocation] = app;
 
   // Alpha sort the UI
   this.sortApplications();
@@ -102,27 +105,30 @@ ApplicationManager.prototype.pushApp = function(app) {
     throw 'Parameter must be an instance of Application';
   }
 
+  var appLocation = getAppLocation(app.appname, app.function_scope);
   app.enforceSchema();
-  this.getApplications()[app.appname] = app;
+  this.getApplications()[appLocation] = app;
 };
 
-ApplicationManager.prototype.getAppByName = function(appName) {
+ApplicationManager.prototype.getAppByName = function(appName, function_scope) {
   var appList = this.getApplications();
+  var appLocation = getAppLocation(appName, function_scope);
 
-  if (appList[appName]) {
-    return appList[appName];
+  if (appList[appLocation]) {
+    return appList[appLocation];
   } else {
-    throw appName + ' does not exist';
+    throw appName+ " in " + function_scope + ' does not exist';
   }
 };
 
-ApplicationManager.prototype.deleteApp = function(appName) {
+ApplicationManager.prototype.deleteApp = function(appName, function_scope) {
   var appList = this.getApplications();
+  var appLocation = getAppLocation(appName, function_scope);
 
-  if (appList[appName]) {
-    delete appList[appName];
+  if (appList[appLocation]) {
+    delete appList[appLocation];
   } else {
-    throw appName + ' does not exist';
+    throw appName+ " in " + function_scope + ' does not exist';
   }
 };
 
@@ -238,4 +244,25 @@ function getWarnings(app) {
     ]
   }
   return [];
+}
+
+function getAppLocation(appname, function_scope) {
+  var appLocation = appname;
+  if(function_scope && function_scope.bucket != "" && function_scope.bucket != "*" && function_scope.bucket != undefined) {
+    appLocation = function_scope.bucket+"/"+function_scope.scope+"/"+appname
+  }
+  return appLocation
+}
+
+function getReverseAppLocation(app_location) {
+  var values = app_location.split("/")
+  if(values.length == 3) {
+    return {name: values[2],
+            function_scope: {
+              bucket: values[1],
+              scope: values[0]
+            }
+        }
+    }
+  return {name: app_location, function_scope: {bucket: "*", scope: "*"}}
 }
