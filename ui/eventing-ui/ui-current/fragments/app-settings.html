@@ -343,12 +343,12 @@
           <div class="row margin-top-1-5">
             <h4>Bindings</h4>
             <div class="margin-bottom-half">
-              <button class="outline btn-small" title="Add a binding"
+              <button class="outline btn-small" title="Add a binding" type="button"
                 ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
                 ng-click="formCtrl.Initialize();">
                 +
               </button>
-              <button class="outline btn-small" title="Remove parameter"
+              <button class="outline btn-small" title="Remove parameter" type="button"
                 ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
                 ng-click="formCtrl.Remove(-1)">
                 -
@@ -576,7 +576,7 @@
           <a ng-if="formCtrl.isDialog" ng-click="$dismiss('cancel')">
             Cancel
           </a>
-          <button ng-if="formCtrl.isDialog" ng-click="$close('ok')"
+          <button ng-if="formCtrl.isDialog" ng-click="$close('ok')" type="button"
             ng-disabled="formCtrl.isFormInvalid() || formCtrl.srcMetaSameBucket(appModel) || formCtrl.isFuncNameUndefined() ">
             Next: Add Code
           </button>
@@ -584,7 +584,7 @@
             ng-click="formCtrl.cancelEdit($dismiss)">
             Cancel
           </a>
-          <button ng-if="!formCtrl.isDialog"
+          <button ng-if="!formCtrl.isDialog" type="button"
             ng-click="formCtrl.saveSettings($dismiss, $close)"
             ng-disabled="formCtrl.isFormInvalid() || formCtrl.srcMetaSameBucket(appModel)">
             Save
