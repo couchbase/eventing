@@ -641,8 +641,8 @@ func (s *SuperSupervisor) GetCurrentManifestId(bucketName string) (string, error
 // Empty collectionName returns collection id as 0
 // Caller of this functions should take care of it
 func (s *SuperSupervisor) GetScopeAndCollectionID(bucketName, scopeName, collectionName string) (uint32, uint32, error) {
-	s.bucketsRWMutex.Lock()
-	defer s.bucketsRWMutex.Unlock()
+	s.bucketsRWMutex.RLock()
+	defer s.bucketsRWMutex.RUnlock()
 	bucketWatch, ok := s.buckets[bucketName]
 	if !ok {
 		return 0, 0, common.BucketNotWatched

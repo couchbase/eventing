@@ -441,29 +441,20 @@ func (s *SuperSupervisor) checkDeletedCid(bucketName string) {
 	}
 }
 
-func (s *SuperSupervisor) getMonitoringKeyspace(bucketName, appName string) map[common.Keyspace]common.MonitorType {
+func (s *SuperSupervisor) checkAppNeedsUndeployment(bucketName string, appName string) bool {
 	s.bucketsRWMutex.RLock()
 	defer s.bucketsRWMutex.RUnlock()
 
-	copyWatchers := make(map[common.Keyspace]common.MonitorType)
 	bucketWatch, ok := s.buckets[bucketName]
 	if !ok {
-		return copyWatchers
+		return false
 	}
 
 	watchers, ok := bucketWatch.apps[appName]
 	if !ok {
-		return copyWatchers
+		return false
 	}
 
-	for keyspace, mType := range watchers {
-		copyWatchers[keyspace] = mType
-	}
-	return copyWatchers
-}
-
-func (s *SuperSupervisor) checkAppNeedsUndeployment(bucketName string, appName string) bool {
-	watchers := s.getMonitoringKeyspace(bucketName, appName)
 	for keyspace, _ := range watchers {
 		_, _, err := s.GetScopeAndCollectionID(keyspace.BucketName, keyspace.ScopeName, keyspace.CollectionName)
 		if err != nil {
