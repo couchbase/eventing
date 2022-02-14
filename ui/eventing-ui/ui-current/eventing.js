@@ -20,6 +20,16 @@ import Adapter from "./adapter.js";
 
 const PASSWORD_MASK = "*****";
 
+import appLogTemplate from './dialogs/app-log.html';
+import appWarningsTemplate from './dialogs/app-warnings.html';
+import appSettingsTemplate from './fragments/app-settings.html';
+import appActionsTemplate from './dialogs/app-actions.html';
+import eventingSettingsTemplate from './fragments/eventing-settings.html';
+import appDebugTemplate from './dialogs/app-debug.html';
+import eventingTemplate from '../eventing.html';
+import summaryTemplate from './fragments/summary.html';
+import handlerEditorTemplate from './fragments/handler-editor.html';
+
 import {
   Application,
   ApplicationManager,
@@ -420,7 +430,7 @@ angular
             logScope.logMessages = log.split(/\r?\n/);
           }
           $uibModal.open({
-            templateUrl: '../_p/ui/event/ui-current/dialogs/app-log.html',
+            template: appLogTemplate,
             scope: logScope
           });
         });
@@ -431,14 +441,14 @@ angular
         scope.appName = appName;
         scope.warnings = self.appList[appName].warnings;
         $uibModal.open({
-          templateUrl: '../_p/ui/event/ui-current/dialogs/app-warnings.html',
+          template: appWarningsTemplate,
           scope: scope
         });
       };
 
       self.openSettings = function(appName) {
         $uibModal.open({
-            templateUrl: '../_p/ui/event/ui-current/fragments/app-settings.html',
+            template: appSettingsTemplate,
             controller: 'SettingsCtrl',
             controllerAs: 'formCtrl',
             resolve: {
@@ -529,7 +539,7 @@ angular
           .dcp_stream_boundary;
 
         $uibModal.open({
-            templateUrl: '../_p/ui/event/ui-current/dialogs/app-actions.html',
+            template: appActionsTemplate,
             scope: scope
           }).result
           .then(function(response) {
@@ -643,7 +653,7 @@ angular
 
       function undeployApp(app, scope) {
         $uibModal.open({
-            templateUrl: '../_p/ui/event/ui-current/dialogs/app-actions.html',
+            template: appActionsTemplate,
             scope: scope
           }).result
           .then(function(response) {
@@ -725,7 +735,7 @@ angular
 
         // Open dialog to confirm delete.
         $uibModal.open({
-            templateUrl: '../_p/ui/event/ui-current/dialogs/app-actions.html',
+            template: appActionsTemplate,
             scope: $scope
           }).result
           .then(function(response) {
@@ -761,7 +771,7 @@ angular
       function createApp(creationScope) {
         // Open the settings fragment as create dialog.
         $uibModal.open({
-            templateUrl: '../_p/ui/event/ui-current/fragments/app-settings.html',
+            template: appSettingsTemplate,
             scope: creationScope,
             controller: 'CreateCtrl',
             controllerAs: 'formCtrl',
@@ -852,7 +862,7 @@ angular
 
       self.showEventingSettings = function() {
         $uibModal.open({
-            templateUrl: '../_p/ui/event/ui-current/fragments/eventing-settings.html',
+            template: eventingSettingsTemplate,
             controller: 'EventingSettingsCtrl',
             controllerAs: 'ctrl',
             resolve: {
@@ -1842,7 +1852,7 @@ angular
 
                   // Open the dialog to show the URL for debugging.
                   $uibModal.open({
-                      templateUrl: '../_p/ui/event/ui-current/dialogs/app-debug.html',
+                      template: appDebugTemplate,
                       scope: debugScope
                     }).result
                     .then(function(response) {
@@ -2771,7 +2781,7 @@ angular
           url: '/eventing',
           views: {
             'main@app.admin': {
-              templateUrl: '../_p/ui/event/eventing.html'
+              template: eventingTemplate
             }
           },
           data: {
@@ -2780,7 +2790,7 @@ angular
         })
         .state('app.admin.eventing.summary', {
           url: '/summary',
-          templateUrl: '../_p/ui/event/ui-current/fragments/summary.html',
+          template: summaryTemplate,
           controller: 'SummaryCtrl',
           controllerAs: 'summaryCtrl',
           resolve: {
@@ -2803,7 +2813,7 @@ angular
         })
         .state('app.admin.eventing.handler', {
           url: '/handler/:appName',
-          templateUrl: '../_p/ui/event/ui-current/fragments/handler-editor.html',
+          template: handlerEditorTemplate,
           resolve: {
             loadApps: ['ApplicationService',
               function(ApplicationService) {
