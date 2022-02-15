@@ -9,6 +9,7 @@ import (
 	"github.com/couchbase/cbauth/metakv"
 	"github.com/couchbase/cbauth/service"
 	couchbase "github.com/couchbase/eventing/dcp"
+	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/gocb/v2"
 )
 
@@ -106,10 +107,19 @@ type Owner struct {
 	Domain string
 }
 
+func (o *Owner) String() string {
+	user := logging.TagUD(o.User)
+	return fmt.Sprintf("{User: %s Domain: %s Uuid: %s}", user, o.Domain, o.UUID)
+}
+
 // needed only during 1st creation of the function
 type FunctionScope struct {
 	BucketName string `json:"bucket,omitempty"`
 	ScopeName  string `json:"scope,omitempty"`
+}
+
+func (fs FunctionScope) String() string {
+	return fmt.Sprintf("{Bucket: %s scope: %s}", fs.BucketName, fs.ScopeName)
 }
 
 func (fs *FunctionScope) ToKeyspace() *Keyspace {
