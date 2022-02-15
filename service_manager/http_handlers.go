@@ -3266,6 +3266,7 @@ func (m *ServiceMgr) functionName(w http.ResponseWriter, r *http.Request, appNam
 				*runtimeInfo = *info
 				return
 			}
+			logging.Infof("%s Creating app: %s under: %s with owner: %s", logPrefix, app.Name, app.FunctionScope, app.Owner)
 		} else {
 			if info := m.checkAuthAndPermissionWithApp(w, r, appName, rbac.HandlerManagePermissions, false); info.ErrCode != response.Ok {
 				*runtimeInfo = *info
@@ -4744,6 +4745,7 @@ func (m *ServiceMgr) createApplications(cred cbauth.Creds, appList *[]applicatio
 				infoList = append(infoList, info)
 				continue
 			}
+			logging.Infof("%s Creating app: %s under: %s with owner: %s", logPrefix, app.Name, app.FunctionScope, app.Owner)
 		} else if info.ErrCode == response.Ok {
 			info = m.checkPermissionFromCred(cred, app.Name, rbac.HandlerManagePermissions, false)
 			if info.ErrCode != response.Ok {
