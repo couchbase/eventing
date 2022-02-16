@@ -744,7 +744,12 @@ func ListChildren(path string) ([]string, error) {
 	hmap := make(map[string]bool)
 	for _, entry := range entries {
 		splitRes := strings.Split(entry.Path, "/")
-		child := splitRes[len(splitRes)-2]
+		appPath := splitRes[:len(splitRes)-1]
+		child, err := getAppNameFromSplitPath(appPath)
+		if err != nil {
+			logging.Errorf("%s Failed to fetch deployed app list from metakv, err: %v", logPrefix, err)
+			return nil, err
+		}
 		if _, seen := hmap[child]; seen == false {
 			hmap[child] = true
 			children = append(children, child)
@@ -1679,13 +1684,17 @@ func DeepCopy(kv map[string]interface{}) (newKv map[string]interface{}) {
 
 func GetAppNameFromPath(path string) (string, error) {
 	split := strings.Split(path, "/")
-	switch len(split) {
+	return getAppNameFromSplitPath(split)
+}
+
+func getAppNameFromSplitPath(splitPath []string) (string, error) {
+	switch len(splitPath) {
 	case 4:
-		return split[3], nil
+		return splitPath[3], nil
 	case 6:
-		return fmt.Sprintf("%s/%s/%s", split[3], split[4], split[5]), nil
+		return fmt.Sprintf("%s/%s/%s", splitPath[3], splitPath[4], splitPath[5]), nil
 	}
-	return "", fmt.Errorf("Invalid path: %s", path)
+	return "", fmt.Errorf("Invalid path: %s", splitPath)
 }
 
 func GenerateFunctionID() (uint32, error) {
