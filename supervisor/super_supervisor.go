@@ -263,10 +263,7 @@ func (s *SuperSupervisor) SettingsChangeCallback(kve metakv.KVEntry) error {
 					if err != nil {
 						logging.Errorf("%s [%d] Function %s is not deployable: %v", logPrefix, s.runningFnsCount(), appName, err)
 						util.Retry(util.NewExponentialBackoff(), &s.retryCount, undeployFunctionCallback, s, appName)
-						s.appRWMutex.Lock()
-						s.appDeploymentStatus[appName] = false
-						s.appProcessingStatus[appName] = false
-						s.appRWMutex.Unlock()
+						s.checkAndSwapStatus(appName, false, false)
 						return nil
 					}
 
@@ -312,11 +309,7 @@ func (s *SuperSupervisor) SettingsChangeCallback(kve metakv.KVEntry) error {
 						}
 					}
 
-					s.appRWMutex.Lock()
-					s.appDeploymentStatus[appName] = deploymentStatus
-					s.appProcessingStatus[appName] = processingStatus
-					s.appRWMutex.Unlock()
-
+					s.checkAndSwapStatus(appName, deploymentStatus, processingStatus)
 					if eventingProducer, ok := s.runningFns()[appName]; ok {
 						eventingProducer.SignalBootstrapFinish()
 						// we reach here only when we've waited on producer's and all consumers' bootstrap channels
@@ -332,7 +325,7 @@ func (s *SuperSupervisor) SettingsChangeCallback(kve metakv.KVEntry) error {
 							s.appListRWMutex.Lock()
 							delete(s.bootstrappingApps, appName)
 							s.appListRWMutex.Unlock()
-							s.CleanupProducer(appName, true, false)
+							s.StopProducer(appName, true, false)
 							goto retryAppDeploy
 						}
 
@@ -381,10 +374,7 @@ func (s *SuperSupervisor) SettingsChangeCallback(kve metakv.KVEntry) error {
 					s.appListRWMutex.Unlock()
 					s.setinitLifecycleEncryptData()
 
-					s.appRWMutex.Lock()
-					s.appDeploymentStatus[appName] = deploymentStatus
-					s.appProcessingStatus[appName] = processingStatus
-					s.appRWMutex.Unlock()
+					s.checkAndSwapStatus(appName, deploymentStatus, processingStatus)
 
 					if p, ok := s.runningFns()[appName]; ok {
 						logging.Infof("%s [%d] Function: %s, Stopping running instance of Eventing.Producer", logPrefix, s.runningFnsCount(), appName)
@@ -402,10 +392,7 @@ func (s *SuperSupervisor) SettingsChangeCallback(kve metakv.KVEntry) error {
 				} else {
 					// This can happen if eventing producer crashed and respawned
 					// Spawning of the producer happens lazily when user deploy this function
-					s.appRWMutex.Lock()
-					s.appDeploymentStatus[appName] = deploymentStatus
-					s.appProcessingStatus[appName] = processingStatus
-					s.appRWMutex.Unlock()
+					s.checkAndSwapStatus(appName, deploymentStatus, processingStatus)
 					s.addToDeployedApps(appName)
 					s.addToLocallyDeployedApps(appName)
 				}
@@ -440,17 +427,11 @@ func (s *SuperSupervisor) SettingsChangeCallback(kve metakv.KVEntry) error {
 
 				if state == common.AppStateEnabled || state == common.AppStatePaused || state == common.AppStateUndeployed {
 
-					s.appRWMutex.Lock()
-					s.appDeploymentStatus[appName] = deploymentStatus
-					s.appProcessingStatus[appName] = processingStatus
-					s.appRWMutex.Unlock()
-
 					logging.Infof("%s [%d] Function: %s enabled, settings change requesting undeployment",
 						logPrefix, s.runningFnsCount(), appName)
 
-					s.deleteFromLocallyDeployedApps(appName)
-					s.CleanupProducer(appName, skipMetaCleanup, updateMetakv)
-					s.deleteFromDeployedApps(appName)
+					s.StopProducer(appName, skipMetaCleanup, updateMetakv)
+
 					s.appListRWMutex.Lock()
 					delete(s.bootstrappingApps, appName)
 					delete(s.pausingApps, appName)
@@ -593,10 +574,7 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(kve metakv.KVEntry) error 
 						continue
 					}
 
-					s.appRWMutex.Lock()
-					s.appDeploymentStatus[appName] = deploymentStatus
-					s.appProcessingStatus[appName] = processingStatus
-					s.appRWMutex.Unlock()
+					s.checkAndSwapStatus(appName, deploymentStatus, processingStatus)
 					err = s.serviceMgr.UpdateBucketGraphFromMetakv(appName)
 					if err != nil {
 						logging.Errorf("%s [%d] Function: %s UpdateBucketGraphFromMetakv error: %v", logPrefix, s.runningFnsCount(), appName, err)
@@ -613,7 +591,7 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(kve metakv.KVEntry) error 
 							s.appListRWMutex.Lock()
 							delete(s.bootstrappingApps, appName)
 							s.appListRWMutex.Unlock()
-							s.CleanupProducer(appName, true, false)
+							s.StopProducer(appName, true, false)
 							goto retryAppDeploy
 						}
 
@@ -639,10 +617,7 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(kve metakv.KVEntry) error 
 					extraAttributes := map[string]interface{}{"appName": appName}
 					util.LogSystemEvent(util.EVENTID_DEPLOY_FUNCTION, systemeventlog.SEInfo, extraAttributes)
 				} else {
-					s.appRWMutex.Lock()
-					s.appDeploymentStatus[appName] = deploymentStatus
-					s.appProcessingStatus[appName] = processingStatus
-					s.appRWMutex.Unlock()
+					s.checkAndSwapStatus(appName, deploymentStatus, processingStatus)
 
 					if deploymentStatus && !processingStatus {
 						s.addToDeployedApps(appName)
@@ -916,7 +891,7 @@ func (s *SuperSupervisor) NotifyPrepareTopologyChange(ejectNodes, keepNodes []st
 }
 
 // CleanupProducer purges all metadata  related to a function from couchbase bucket
-func (s *SuperSupervisor) CleanupProducer(appName string, skipMetaCleanup bool, updateMetakv bool) error {
+func (s *SuperSupervisor) cleanupProducer(appName string, skipMetaCleanup bool, updateMetakv bool) error {
 	logPrefix := "SuperSupervisor::CleanupProducer"
 
 	if p, ok := s.runningFns()[appName]; ok {
@@ -936,9 +911,6 @@ func (s *SuperSupervisor) CleanupProducer(appName string, skipMetaCleanup bool, 
 			p.NotifyInit()
 		}
 
-		s.deleteFromRunningProducers(appName)
-		s.addToCleanupApps(appName)
-
 		p.StopRunningConsumers()
 		p.CleanupUDSs()
 
@@ -954,6 +926,9 @@ func (s *SuperSupervisor) CleanupProducer(appName string, skipMetaCleanup bool, 
 
 		metadataKeyspace := common.Keyspace{BucketName: p.MetadataBucket(), ScopeName: p.MetadataScope(), CollectionName: p.MetadataCollection()}
 		s.unwatchBucketWithGocb(metadataKeyspace, appName)
+
+		s.deleteFromRunningProducers(appName)
+		s.addToCleanupApps(appName)
 
 		if updateMetakv {
 			util.Retry(util.NewExponentialBackoff(), &s.retryCount, undeployFunctionCallback, s, appName)
@@ -1042,4 +1017,26 @@ func (s *SuperSupervisor) waitAndNotifyTopologyChange(appName string, topologyCh
 			return
 		}
 	}
+}
+
+func (s *SuperSupervisor) checkAndSwapStatus(appName string, deploymentStatus, processingStatus bool) bool {
+	s.appRWMutex.Lock()
+	defer s.appRWMutex.Unlock()
+
+	dStatus, dOk := s.appDeploymentStatus[appName]
+	pStatus, pOk := s.appProcessingStatus[appName]
+
+	if !dOk || !pOk {
+		s.appDeploymentStatus[appName] = deploymentStatus
+		s.appProcessingStatus[appName] = processingStatus
+		return true
+	}
+
+	if dStatus == deploymentStatus && pStatus == processingStatus {
+		return false
+	}
+
+	s.appDeploymentStatus[appName] = deploymentStatus
+	s.appProcessingStatus[appName] = processingStatus
+	return true
 }
