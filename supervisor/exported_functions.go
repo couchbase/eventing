@@ -432,7 +432,7 @@ func (s *SuperSupervisor) CheckpointBlobDump(appName string) (interface{}, error
 }
 
 // StopProducer tries to gracefully stop running producer instance for a function
-func (s *SuperSupervisor) StopProducer(appName string, skipMetaCleanup bool, updateMetakv bool) {
+func (s *SuperSupervisor) StopProducer(appName string, msg common.UndeployAction) {
 	logPrefix := "SuperSupervisor::StopProducer"
 
 	if swapped := s.checkAndSwapStatus(appName, false, false); !swapped {
@@ -440,12 +440,12 @@ func (s *SuperSupervisor) StopProducer(appName string, skipMetaCleanup bool, upd
 		return
 	}
 
-	logging.Infof("%s [%d] Function: %s stopping running producer instance, skipMetaCleanup: %t, updateMetakv: %t",
-		logPrefix, s.runningFnsCount(), appName, skipMetaCleanup, updateMetakv)
+	logging.Infof("%s [%d] Function: %s stopping running producer instance, %s",
+		logPrefix, s.runningFnsCount(), appName, msg)
 
 	s.deleteFromLocallyDeployedApps(appName)
 
-	s.cleanupProducer(appName, skipMetaCleanup, updateMetakv)
+	s.cleanupProducer(appName, msg)
 	s.deleteFromDeployedApps(appName)
 }
 

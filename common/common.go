@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"strings"
 
 	"github.com/couchbase/cbauth/metakv"
 	"github.com/couchbase/cbauth/service"
@@ -274,7 +275,7 @@ type EventingProducer interface {
 	String() string
 	SetTrapEvent(value bool)
 	TimerDebugStats() map[int]map[string]interface{}
-	UndeployHandler(skipMetaCleanup bool)
+	UndeployHandler(msg UndeployAction)
 	UpdateEncryptionLevel(enforceTLS, encryptOn bool)
 	UpdateMemoryQuota(quota int64)
 	UsingTimer() bool
@@ -401,7 +402,7 @@ type EventingSuperSup interface {
 	GetGocbSubscribedApps(encryptionEnabled bool) map[string]struct{}
 	SignalStopDebugger(appName string) error
 	SpanBlobDump(appName string) (interface{}, error)
-	StopProducer(appName string, skipMetaCleanup bool, updateMetakv bool)
+	StopProducer(appName string, msg UndeployAction)
 	TimerDebugStats(appName string) (map[int]map[string]interface{}, error)
 	UpdateEncryptionLevel(enforceTLS, encryptOn bool)
 	VbDcpEventsRemainingToProcess(appName string) map[int]int64
@@ -413,6 +414,9 @@ type EventingSuperSup interface {
 	WorkerRespawnedCount() uint32
 	CheckLifeCycleOpsDuringRebalance() bool
 	GetBSCSnapshot() (map[string]map[string][]string, error)
+
+	WatchBucket(keyspace Keyspace, appName string, mType MonitorType) error
+	UnwatchBucket(keyspace Keyspace, appName string)
 }
 
 type EventingServiceMgr interface {
@@ -648,3 +652,95 @@ const (
 	MetaWatch
 	FunctionScopeWatch
 )
+
+type Identity struct {
+	AppName string
+	Bucket  string
+	Scope   string
+}
+
+func (id Identity) String() string {
+	return id.ToLocation()
+}
+
+func (id Identity) ToLocation() string {
+	return getLocation(id)
+}
+
+func GetIdentityFromLocation(locationString string) (Identity, error) {
+	return getIdentityFromLocation(locationString)
+}
+
+func getIdentityFromLocation(locationString string) (Identity, error) {
+	location := strings.Split(locationString, "/")
+	bucket, scope, name := "*", "*", ""
+	id := Identity{}
+
+	switch len(location) {
+	case 1:
+		name = location[0]
+	case 3:
+		bucket, scope, name = location[0], location[1], location[2]
+	default:
+		return id, fmt.Errorf("Invalid location: %s", location)
+	}
+
+	id.AppName = name
+	id.Bucket = bucket
+	id.Scope = scope
+	return id, nil
+}
+
+func getLocation(id Identity) string {
+	if id.Bucket == "" || id.Bucket == "*" {
+		return id.AppName
+	}
+
+	return fmt.Sprintf("%s/%s/%s", id.Bucket, id.Scope, id.AppName)
+}
+
+func GetLogfileName(locationString string) string {
+	id, err := getIdentityFromLocation(locationString)
+	if err != nil {
+		return locationString
+	}
+
+	if id.Bucket == "*" && id.Scope == "*" {
+		return id.AppName
+	}
+
+	return fmt.Sprintf("%s:%s:%s", id.Bucket, id.Scope, id.AppName)
+}
+
+func GetFunctionScope(identity Identity) FunctionScope {
+	bucketName, scopeName := identity.Bucket, identity.Scope
+	if bucketName == "" {
+		bucketName = "*"
+	}
+
+	if scopeName == "" {
+		scopeName = "*"
+	}
+
+	return FunctionScope{
+		BucketName: bucketName,
+		ScopeName:  scopeName,
+	}
+}
+
+type UndeployAction struct {
+	UpdateMetakv        bool
+	SkipMetadataCleanup bool
+	DeleteFunction      bool
+}
+
+func DefaultUndeployAction() UndeployAction {
+	return UndeployAction{
+		UpdateMetakv: true,
+	}
+}
+
+func (msg UndeployAction) String() string {
+	return fmt.Sprintf("DeleteFunction: %v, SkipMetadataCleanup: %v, UpdateMetakv: %v",
+		msg.DeleteFunction, msg.SkipMetadataCleanup, msg.UpdateMetakv)
+}

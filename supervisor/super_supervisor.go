@@ -154,7 +154,12 @@ func (s *SuperSupervisor) DebuggerCallback(kve metakv.KVEntry) error {
 		return nil
 	}
 
-	appName := util.GetAppNameFromPath(kve.Path)
+	appName, err := util.GetAppNameFromPath(kve.Path)
+	if err != nil {
+		logging.Errorf("%s Error in parsing name from path", logPrefix, err)
+		return nil
+	}
+
 	p, exists := s.runningFns()[appName]
 	if !exists || p == nil {
 		logging.Errorf("%s [%d] Function %s not found", logPrefix, s.runningFnsCount(), appName)
@@ -179,10 +184,13 @@ func (s *SuperSupervisor) EventHandlerLoadCallback(kve metakv.KVEntry) error {
 
 	if kve.Value == nil {
 		// Delete application request
-		splitRes := strings.Split(kve.Path, "/")
-		appName := splitRes[len(splitRes)-1]
+		appLocation, err := util.GetAppNameFromPath(kve.Path)
+		if err != nil {
+			logging.Errorf("%s Error in parsing name from path", logPrefix, err)
+			return nil
+		}
 		msg := supCmdMsg{
-			ctx: appName,
+			ctx: appLocation,
 			cmd: cmdAppDelete,
 		}
 
@@ -211,7 +219,12 @@ func (s *SuperSupervisor) SettingsChangeCallback(kve metakv.KVEntry) error {
 
 		logging.Infof("%s [%d] Path => %s value => %#v", logPrefix, s.runningFnsCount(), kve.Path, sValue)
 
-		appName := util.GetAppNameFromPath(kve.Path)
+		appName, err := util.GetAppNameFromPath(kve.Path)
+		if err != nil {
+			logging.Errorf("%s Error in parsing name from path", logPrefix, err)
+			return nil
+		}
+
 		msg := supCmdMsg{
 			ctx: appName,
 			cmd: cmdSettingsUpdate,
@@ -259,10 +272,10 @@ func (s *SuperSupervisor) SettingsChangeCallback(kve metakv.KVEntry) error {
 				retryAppDeploy:
 					s.setinitLifecycleEncryptData()
 
-					err := s.isDeployable(appName)
+					msg, err := s.isDeployable(appName)
 					if err != nil {
 						logging.Errorf("%s [%d] Function %s is not deployable: %v", logPrefix, s.runningFnsCount(), appName, err)
-						util.Retry(util.NewExponentialBackoff(), &s.retryCount, undeployFunctionCallback, s, appName)
+						util.Retry(util.NewExponentialBackoff(), &s.retryCount, undeployFunctionCallback, s, appName, msg.DeleteFunction)
 						s.checkAndSwapStatus(appName, false, false)
 						return nil
 					}
@@ -279,7 +292,7 @@ func (s *SuperSupervisor) SettingsChangeCallback(kve metakv.KVEntry) error {
 					s.appListRWMutex.Unlock()
 
 					if err := util.MetaKvDelete(MetakvAppsRetryPath+appName, nil); err != nil {
-						util.Retry(util.NewExponentialBackoff(), &s.retryCount, undeployFunctionCallback, s, appName)
+						util.Retry(util.NewExponentialBackoff(), &s.retryCount, undeployFunctionCallback, s, appName, false)
 						s.appListRWMutex.Lock()
 						delete(s.bootstrappingApps, appName)
 						s.appListRWMutex.Unlock()
@@ -325,7 +338,11 @@ func (s *SuperSupervisor) SettingsChangeCallback(kve metakv.KVEntry) error {
 							s.appListRWMutex.Lock()
 							delete(s.bootstrappingApps, appName)
 							s.appListRWMutex.Unlock()
-							s.StopProducer(appName, true, false)
+
+							msg := common.UndeployAction{
+								SkipMetadataCleanup: true,
+							}
+							s.StopProducer(appName, msg)
 							goto retryAppDeploy
 						}
 
@@ -400,10 +417,9 @@ func (s *SuperSupervisor) SettingsChangeCallback(kve metakv.KVEntry) error {
 				// This is handling the condition when app is paused and not watching buckets(due to crash and respawn)
 				// Monitor the buckets for undeployment
 				if !alreadySpawned {
-					source, metadata, funcScope, err := s.getSourceMetaAndFunctionKeySpaces(appName)
+					source, metadata, _, err := s.getSourceMetaAndFunctionKeySpaces(appName)
 					if err == nil {
-						s.watchBucket(funcScope, appName, common.FunctionScopeWatch)
-						s.watchBucket(source, appName, common.SrcWatch)
+						s.WatchBucket(source, appName, common.SrcWatch)
 						s.watchBucketWithGocb(metadata, appName)
 					}
 				}
@@ -420,9 +436,6 @@ func (s *SuperSupervisor) SettingsChangeCallback(kve metakv.KVEntry) error {
 
 			case false:
 				state := s.GetAppCompositeState(appName)
-				updateMetakv := false
-				skipMetaCleanup := false
-
 				logging.Infof("%s [%d] Function: %s Begin undeploy process. Current state: %d", logPrefix, s.runningFnsCount(), appName, state)
 
 				if state == common.AppStateEnabled || state == common.AppStatePaused || state == common.AppStateUndeployed {
@@ -430,8 +443,10 @@ func (s *SuperSupervisor) SettingsChangeCallback(kve metakv.KVEntry) error {
 					logging.Infof("%s [%d] Function: %s enabled, settings change requesting undeployment",
 						logPrefix, s.runningFnsCount(), appName)
 
-					s.StopProducer(appName, skipMetaCleanup, updateMetakv)
-
+					msg := common.UndeployAction{
+						SkipMetadataCleanup: false,
+					}
+					s.StopProducer(appName, msg)
 					s.appListRWMutex.Lock()
 					delete(s.bootstrappingApps, appName)
 					delete(s.pausingApps, appName)
@@ -545,11 +560,11 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(kve metakv.KVEntry) error 
 				retryAppDeploy:
 					finalEncryptData = false
 					s.setinitLifecycleEncryptData()
-					err := s.isDeployable(appName)
+					msg, err := s.isDeployable(appName)
 					if err != nil {
 						logging.Errorf("%s [%d] Function %s is not deployable: %s err: %v",
 							logPrefix, s.runningFnsCount(), appName, err)
-						util.Retry(util.NewExponentialBackoff(), &s.retryCount, undeployFunctionCallback, s, appName)
+						util.Retry(util.NewExponentialBackoff(), &s.retryCount, undeployFunctionCallback, s, appName, msg.DeleteFunction)
 						continue
 					}
 
@@ -591,7 +606,11 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(kve metakv.KVEntry) error 
 							s.appListRWMutex.Lock()
 							delete(s.bootstrappingApps, appName)
 							s.appListRWMutex.Unlock()
-							s.StopProducer(appName, true, false)
+
+							msg := common.UndeployAction{
+								SkipMetadataCleanup: true,
+							}
+							s.StopProducer(appName, msg)
 							goto retryAppDeploy
 						}
 
@@ -623,10 +642,9 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(kve metakv.KVEntry) error 
 						s.addToDeployedApps(appName)
 						s.addToLocallyDeployedApps(appName)
 
-						source, metadata, funcScope, err := s.getSourceMetaAndFunctionKeySpaces(appName)
+						source, metadata, _, err := s.getSourceMetaAndFunctionKeySpaces(appName)
 						if err == nil {
-							s.watchBucket(funcScope, appName, common.FunctionScopeWatch)
-							s.watchBucket(source, appName, common.SrcWatch)
+							s.WatchBucket(source, appName, common.SrcWatch)
 							s.watchBucketWithGocb(metadata, appName)
 						}
 
@@ -747,7 +765,12 @@ func (s *SuperSupervisor) AppsRetryCallback(kve metakv.KVEntry) error {
 		return errors.New("value is empty")
 	}
 
-	appName := util.GetAppNameFromPath(kve.Path)
+	appName, err := util.GetAppNameFromPath(kve.Path)
+	if err != nil {
+		logging.Errorf("%s Error in parsing name from path", logPrefix, err)
+		return nil
+	}
+
 	retryValue, err := strconv.Atoi(string(kve.Value))
 	if err != nil {
 		logging.Infof("%s [%d] Unable to parse retry value as a number, err : %v", logPrefix, s.runningFnsCount(), retryValue)
@@ -777,27 +800,18 @@ func (s *SuperSupervisor) spawnApp(appName string) error {
 	p := producer.NewProducer(appName, s.adminPort.DebuggerPort, s.adminPort.HTTPPort, s.adminPort.SslPort, s.eventingDir,
 		s.kvPort, metakvAppHostPortsPath, s.restPort, s.uuid, s.diagDir, s.memoryQuota, s.numVbuckets, atomic.LoadUint32(&s.featureMatrix), s)
 
-	funcKeyspace := common.Keyspace{BucketName: p.FunctionManageBucket(), ScopeName: p.FunctionManageScope()}
-	err := s.watchBucket(funcKeyspace, appName, common.FunctionScopeWatch)
-	if err != nil {
-		util.Retry(util.NewExponentialBackoff(), &s.retryCount, undeployFunctionCallback, s, appName)
-		return err
-	}
-
 	sourceKeyspace := common.Keyspace{BucketName: p.SourceBucket(), ScopeName: p.SourceScope(), CollectionName: p.SourceCollection()}
-	err = s.watchBucket(sourceKeyspace, appName, common.SrcWatch)
+	err := s.WatchBucket(sourceKeyspace, appName, common.SrcWatch)
 	if err != nil {
-		s.unwatchBucket(funcKeyspace, appName)
-		util.Retry(util.NewExponentialBackoff(), &s.retryCount, undeployFunctionCallback, s, appName)
+		util.Retry(util.NewExponentialBackoff(), &s.retryCount, undeployFunctionCallback, s, appName, false)
 		return err
 	}
 
 	metadataKeyspace := common.Keyspace{BucketName: p.MetadataBucket(), ScopeName: p.MetadataScope(), CollectionName: p.MetadataCollection()}
 	err = s.watchBucketWithGocb(metadataKeyspace, appName)
 	if err != nil {
-		s.unwatchBucket(funcKeyspace, appName)
-		s.unwatchBucket(sourceKeyspace, appName)
-		util.Retry(util.NewExponentialBackoff(), &s.retryCount, undeployFunctionCallback, s, appName)
+		s.UnwatchBucket(sourceKeyspace, appName)
+		util.Retry(util.NewExponentialBackoff(), &s.retryCount, undeployFunctionCallback, s, appName, false)
 		return err
 	}
 
@@ -846,7 +860,8 @@ func (s *SuperSupervisor) HandleSupCmdMsg() {
 					continue
 				}
 
-				prefix := fmt.Sprintf("%s.log", appName)
+				logfileName := common.GetLogfileName(appName)
+				prefix := fmt.Sprintf("%s.log", logfileName)
 				for _, name := range names {
 					if strings.HasPrefix(name, prefix) {
 						err = os.RemoveAll(filepath.Join(s.eventingDir, name))
@@ -891,7 +906,7 @@ func (s *SuperSupervisor) NotifyPrepareTopologyChange(ejectNodes, keepNodes []st
 }
 
 // CleanupProducer purges all metadata  related to a function from couchbase bucket
-func (s *SuperSupervisor) cleanupProducer(appName string, skipMetaCleanup bool, updateMetakv bool) error {
+func (s *SuperSupervisor) cleanupProducer(appName string, msg common.UndeployAction) error {
 	logPrefix := "SuperSupervisor::CleanupProducer"
 
 	if p, ok := s.runningFns()[appName]; ok {
@@ -904,25 +919,22 @@ func (s *SuperSupervisor) cleanupProducer(appName string, skipMetaCleanup bool, 
 			logging.Infof("%s [%d] Function: %s cleaned up running Eventing.Producer instance", logPrefix, s.runningFnsCount(), appName)
 		}()
 
-		logging.Infof("%s [%d] Function: %s stopping running instance of Eventing.Producer, skipMetaCleanup: %t, updateMetakv: %t",
-			logPrefix, s.runningFnsCount(), appName, skipMetaCleanup, updateMetakv)
+		logging.Infof("%s [%d] Function: %s stopping running instance of Eventing.Producer, %s",
+			logPrefix, s.runningFnsCount(), appName, msg)
 
-		if !skipMetaCleanup {
+		if !msg.SkipMetadataCleanup {
 			p.NotifyInit()
 		}
 
 		p.StopRunningConsumers()
 		p.CleanupUDSs()
 
-		if !skipMetaCleanup {
+		if !msg.SkipMetadataCleanup {
 			p.CleanupMetadataBucket(false)
 		}
 
-		funcKeyspace := common.Keyspace{BucketName: p.FunctionManageBucket(), ScopeName: p.FunctionManageScope()}
-		s.unwatchBucket(funcKeyspace, appName)
-
 		sourceKeyspace := common.Keyspace{BucketName: p.SourceBucket(), ScopeName: p.SourceScope(), CollectionName: p.SourceCollection()}
-		s.unwatchBucket(sourceKeyspace, appName)
+		s.UnwatchBucket(sourceKeyspace, appName)
 
 		metadataKeyspace := common.Keyspace{BucketName: p.MetadataBucket(), ScopeName: p.MetadataScope(), CollectionName: p.MetadataCollection()}
 		s.unwatchBucketWithGocb(metadataKeyspace, appName)
@@ -930,14 +942,13 @@ func (s *SuperSupervisor) cleanupProducer(appName string, skipMetaCleanup bool, 
 		s.deleteFromRunningProducers(appName)
 		s.addToCleanupApps(appName)
 
-		if updateMetakv {
-			util.Retry(util.NewExponentialBackoff(), &s.retryCount, undeployFunctionCallback, s, appName)
+		if msg.UpdateMetakv || msg.DeleteFunction {
+			util.Retry(util.NewExponentialBackoff(), &s.retryCount, undeployFunctionCallback, s, appName, msg.DeleteFunction)
 		}
 	} else {
-		source, metadata, funcScope, err := s.getSourceMetaAndFunctionKeySpaces(appName)
+		source, metadata, _, err := s.getSourceMetaAndFunctionKeySpaces(appName)
 		if err == nil {
-			s.unwatchBucket(funcScope, appName)
-			s.unwatchBucket(source, appName)
+			s.UnwatchBucket(source, appName)
 			s.unwatchBucketWithGocb(metadata, appName)
 		}
 	}

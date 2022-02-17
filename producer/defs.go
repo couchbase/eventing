@@ -77,7 +77,7 @@ type Producer struct {
 	numVbuckets            int
 	isPausing              bool
 	stateChangeCh          chan state
-	undeployHandler        chan bool
+	undeployHandler        chan common.UndeployAction
 	retryCount             int64
 	stopCh                 chan struct{}
 	stopUndeployWaitCh     chan struct{}

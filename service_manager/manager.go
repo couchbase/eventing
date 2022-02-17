@@ -12,7 +12,6 @@ import (
 	"net/http"
 	_ "net/http/pprof" // For debugging
 	"os"
-	"strings"
 	"sync"
 	"time"
 
@@ -55,7 +54,6 @@ func NewServiceMgr(config util.Config, rebalanceRunning bool,
 		tlsServer:               nil,
 		graph:                   newBucketMultiDiGraph(),
 		fnsInPrimaryStore:       make(map[string]depCfg),
-		fnsInTempStore:          make(map[string]*application),
 		bucketFunctionMap:       make(map[common.Keyspace]map[string]functionInfo),
 		fnMu:                    &sync.RWMutex{},
 		failoverMu:              &sync.RWMutex{},
@@ -94,6 +92,7 @@ func (m *ServiceMgr) initService() {
 	m.restPort = cfg["rest_port"].(string)
 	m.uuid = cfg["uuid"].(string)
 	m.initErrCodes()
+	m.tempAppStore = NewAppStore()
 
 	couchbase.SetCAFile(m.caFile)
 	couchbase.SetCertFile(m.certFile)
@@ -487,12 +486,11 @@ func (m *ServiceMgr) primaryStoreCsumPathCallback(kve metakv.KVEntry) error {
 
 	logging.Infof("%s path: %s encoded value size: %d", logPrefix, kve.Path, len(kve.Value))
 
-	splitRes := strings.Split(kve.Path, "/")
-	if len(splitRes) != 4 {
+	fnLocation, err := util.GetAppNameFromPath(kve.Path)
+	if err != nil {
+		logging.Errorf("%s error parsing function name: %s", logPrefix, err)
 		return nil
 	}
-
-	fnName := splitRes[len(splitRes)-1]
 	m.fnMu.Lock()
 	defer m.fnMu.Unlock()
 
@@ -500,27 +498,27 @@ func (m *ServiceMgr) primaryStoreCsumPathCallback(kve metakv.KVEntry) error {
 		//Read application from metakv
 		//NOTE WELL: Please do not access settings from this callback. While saving to primary store, we write app->csum->settings, in that order
 		//So by the time we hit this code, settings are likely not available or stale, so, do not access them
-		data, err := util.ReadAppContent(metakvAppsPath, metakvChecksumPath, fnName)
+		data, err := util.ReadAppContent(metakvAppsPath, metakvChecksumPath, fnLocation)
 		if err != nil {
-			logging.Errorf("%s Reading function: %s from metakv failed, err: %v", logPrefix, fnName, err)
+			logging.Errorf("%s Reading function: %s from metakv failed, err: %v", logPrefix, fnLocation, err)
 			return nil
 		}
-		app := m.parseFunctionPayload(data, fnName)
-		m.fnsInPrimaryStore[fnName] = app.DeploymentConfig
-		logging.Infof("%s Added function: %s to fnsInPrimaryStore", logPrefix, fnName)
+		app := m.parseFunctionPayload(data, fnLocation)
+		m.fnsInPrimaryStore[fnLocation] = app.DeploymentConfig
+		logging.Infof("%s Added function: %s to fnsInPrimaryStore", logPrefix, fnLocation)
 	} else {
-		cfg := m.fnsInPrimaryStore[fnName]
-		m.graph.removeEdges(fnName)
-		delete(m.fnsInPrimaryStore, fnName)
+		cfg := m.fnsInPrimaryStore[fnLocation]
+		m.graph.removeEdges(fnLocation)
+		delete(m.fnsInPrimaryStore, fnLocation)
 		source := common.Keyspace{BucketName: cfg.SourceBucket,
 			ScopeName:      cfg.SourceScope,
 			CollectionName: cfg.SourceCollection,
 		}
-		delete(m.bucketFunctionMap[source], fnName)
+		delete(m.bucketFunctionMap[source], fnLocation)
 		if len(m.bucketFunctionMap[source]) == 0 {
 			delete(m.bucketFunctionMap, source)
 		}
-		logging.Infof("%s Deleted function: %s from fnsInPrimaryStore", logPrefix, fnName)
+		logging.Infof("%s Deleted function: %s from fnsInPrimaryStore", logPrefix, fnLocation)
 	}
 
 	return nil
@@ -531,33 +529,48 @@ func (m *ServiceMgr) tempStoreAppsPathCallback(kve metakv.KVEntry) error {
 
 	logging.Infof("%s path: %s encoded value size: %d", logPrefix, kve.Path, len(kve.Value))
 
-	splitRes := strings.Split(kve.Path, "/")
-	if len(splitRes) != 4 {
+	fnLocation, err := util.GetAppNameFromPath(kve.Path)
+	if err != nil {
+		logging.Errorf("%s error parsing function name: %s", logPrefix, err)
+		return nil
+	}
+	id, err := common.GetIdentityFromLocation(fnLocation)
+	if err != nil {
+		logging.Errorf("%s Error getting identifier of the app: %v", logPrefix, err)
 		return nil
 	}
 
-	fnName := splitRes[len(splitRes)-1]
-	m.fnMu.Lock()
-	defer m.fnMu.Unlock()
-
 	if len(kve.Value) > 0 {
-		data, err := util.ReadAppContent(metakvTempAppsPath, metakvTempChecksumPath, fnName)
+		data, err := util.ReadAppContent(metakvTempAppsPath, metakvTempChecksumPath, fnLocation)
 		// TODO: need to handle it correctly
 		if err != nil {
-			logging.Errorf("%s Reading function: %s from metakv failed, err: %v", logPrefix, fnName, err)
+			logging.Errorf("%s Reading function: %s from metakv failed, err: %v", logPrefix, fnLocation, err)
 			return nil
 		}
 		var app application
 		err = json.Unmarshal(data, &app)
 		if err != nil {
-			logging.Errorf("%s Error unmarshalling function: %s err: %v", logPrefix, fnName, err)
+			logging.Errorf("%s Error unmarshalling function: %s err: %v", logPrefix, fnLocation, err)
 			return nil
 		}
-		m.fnsInTempStore[fnName] = &app
-		logging.Infof("%s Added function: %s to fnsInTempStore", logPrefix, fnName)
+
+		m.superSup.WatchBucket(*app.FunctionScope.ToKeyspace(), fnLocation, common.FunctionScopeWatch)
+		m.tempAppStore.Set(id, &app)
+		logging.Infof("%s Added function: %s to appCache", logPrefix, fnLocation)
 	} else {
-		delete(m.fnsInTempStore, fnName)
-		logging.Infof("%s Deleted function: %s from fnsInTempStore", logPrefix, fnName)
+		id, err := common.GetIdentityFromLocation(fnLocation)
+		if err != nil {
+			return nil
+		}
+
+		app, err := m.tempAppStore.Get(id)
+		if err != nil {
+			return nil
+		}
+
+		m.superSup.UnwatchBucket(*app.FunctionScope.ToKeyspace(), fnLocation)
+		m.tempAppStore.Delete(id)
+		logging.Infof("%s Deleted function: %s from appCache", logPrefix, fnLocation)
 	}
 
 	return nil
@@ -568,15 +581,14 @@ func (m *ServiceMgr) settingChangeCallback(kve metakv.KVEntry) error {
 
 	logging.Infof("%s path: %s encoded value size: %d", logPrefix, kve.Path, len(kve.Value))
 
-	pathTokens := strings.Split(kve.Path, "/")
-	if len(pathTokens) != 4 {
-		logging.Errorf("%s Expected path length 4, path: %s encoded value size: %d", logPrefix, kve.Path, len(kve.Value))
+	functionName, err := util.GetAppNameFromPath(kve.Path)
+	if err != nil {
+		logging.Errorf("%s error parsing function name: %s", logPrefix, err)
 		return nil
 	}
 
 	m.fnMu.Lock()
 	defer m.fnMu.Unlock()
-	functionName := pathTokens[len(pathTokens)-1]
 	cfg, ok := m.fnsInPrimaryStore[functionName]
 
 	if !ok {
@@ -603,7 +615,7 @@ func (m *ServiceMgr) settingChangeCallback(kve metakv.KVEntry) error {
 	}
 
 	settings := make(map[string]interface{})
-	err := json.Unmarshal(kve.Value, &settings)
+	err = json.Unmarshal(kve.Value, &settings)
 	if err != nil {
 		logging.Errorf("%s [%s] Failed to unmarshal settings received from metakv, err: %v",
 			logPrefix, functionName, err)

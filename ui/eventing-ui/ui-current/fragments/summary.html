@@ -36,7 +36,8 @@
       </div>
       <div class="cbui-table-header" ng-if="!summaryCtrl.isAppListEmpty()">
         <span class="cbui-table-cell flex-grow-2">function name</span>
-        <span class="cbui-table-cell flex-grow-2">source keyspace</span>
+        <span class="cbui-table-cell flex-grow-2">Function scope</span>
+        <span class="cbui-table-cell flex-grow-2">Source Keyspace</span>
         <span class="cbui-table-cell flex-grow-half">status</span>
         <span class="cbui-table-cell"></span>
       </div>
@@ -46,7 +47,9 @@
          ng-click="app.toggleActionsVisibility()">
         <div class="cbui-tablerow">
           <span
-            class="cbui-table-cell cbui-tablerow-title flex-grow-2">{{appname}}</span>
+            class="cbui-table-cell cbui-tablerow-title flex-grow-2">{{app.appname}}</span>
+          <span
+            class="cbui-table-cell flex-grow-2">{{app.function_scope.bucket}}.{{app.function_scope.scope}}</span>
           <span
             class="cbui-table-cell flex-grow-2">{{app.depcfg.source_bucket}}.{{app.depcfg.source_scope}}.{{app.depcfg.source_collection}}</span>
           <span class="cbui-table-cell flex-grow-half">
@@ -55,16 +58,16 @@
                ng-show="app.status === 'deployed' && (!!app.failed_count || !!app.timeout_count)"></span>
           </span>
           <span class="cbui-table-cell text-right">
-            <a ng-click="$event.stopPropagation();summaryCtrl.openWarnings(appname);"
+            <a ng-click="$event.stopPropagation();summaryCtrl.openWarnings(app.appname, app.function_scope);"
               ng-hide="app.warnings && app.warnings.length === 0">
               {{app.warnings ? 'Warnings(' + app.warnings.length + ')' : ''}}
             </a>
-            <a ng-click="$event.stopPropagation();summaryCtrl.openAppLog(appname);"
+            <a ng-click="$event.stopPropagation();summaryCtrl.openAppLog(app.appname, app.function_scope);"
               ng-hide="app.status !== 'deployed' && app.status !== 'deploying'">
               Log
             </a>
             <a class="margin-left-half"
-              ng-click="$event.stopPropagation();summaryCtrl.openSettings(appname);">
+              ng-click="$event.stopPropagation();summaryCtrl.openSettings(app.appname, app.function_scope);">
               Settings
             </a>
           </span>
@@ -137,12 +140,12 @@
               </div>
               <div style="margin-left:auto;">
                 <button class="outline"
-                  ng-click="$event.stopPropagation();summaryCtrl.deleteApp(app.appname)"
+                  ng-click="$event.stopPropagation();summaryCtrl.deleteApp(app.appname, app.function_scope)"
                   ng-disabled=" app.status !== 'undeployed' || app.uiState === 'healthy'">
                   Delete
                 </button>
                 <button class="outline"
-                  ng-click="$event.stopPropagation();summaryCtrl.exportApp(app.appname)">
+                  ng-click="$event.stopPropagation();summaryCtrl.exportApp(app.appname, app.function_scope)">
                   Export
                 </button>
                 <button class="outline"
@@ -156,7 +159,7 @@
                   {{app.getProcessingStatus(true)}}
                 </button>
                 <button
-                  ui-sref="app.admin.eventing.handler({appName:app.appname})"
+                  ui-sref="app.admin.eventing.handler({appName:app.appname, function_scope:app.function_scope})"
                   ng-disabled="summaryCtrl.disableEditButton"
                   ng-click="$event.stopPropagation();">
                   {{app.status === 'deployed' || app.status === 'deploying' || app.status === 'pausing' || app.status === 'undeploying' ? 'View JavaScript' : 'Edit JavaScript'}}
