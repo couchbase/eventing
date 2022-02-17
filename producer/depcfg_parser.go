@@ -205,7 +205,7 @@ func (p *Producer) parseDepcfg() error {
 	if val, ok := settings["idle_checkpoint_interval"]; ok {
 		p.handlerConfig.IdleCheckpointInterval = int(val.(float64))
 	} else {
-		p.handlerConfig.IdleCheckpointInterval = 30000
+		p.handlerConfig.IdleCheckpointInterval = 1800000
 	}
 
 	if val, ok := settings["log_level"]; ok {
