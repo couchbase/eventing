@@ -512,13 +512,6 @@ var addOwnershipHistorySRRCallback = func(args ...interface{}) error {
 	c := args[0].(*Consumer)
 	vbKey := args[1].(common.Key)
 	operr := args[2].(*error)
-
-	if atomic.LoadUint32(&c.isTerminateRunning) == 1 {
-		logging.Tracef("%s [%s:%s:%d] Exiting as worker is terminating",
-			logPrefix, c.workerName, c.tcpPort, c.Pid())
-		return nil
-	}
-
 	upsertOptions := &gocb.UpsertSpecOptions{CreatePath: true}
 
 retrySRRUpdate:
