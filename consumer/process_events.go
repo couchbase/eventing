@@ -64,13 +64,7 @@ func (c *Consumer) processDCPEvents() {
 			}
 
 			atomic.AddInt64(&c.aggDCPFeedMem, -int64(len(e.Value)))
-
-			c.msgProcessedRWMutex.Lock()
-			if _, ok := c.dcpMessagesProcessed[e.Opcode]; !ok {
-				c.dcpMessagesProcessed[e.Opcode] = 0
-			}
-			c.dcpMessagesProcessed[e.Opcode]++
-			c.msgProcessedRWMutex.Unlock()
+			c.updateDcpProcessedMsgs(e.Opcode)
 
 			switch e.Opcode {
 			case mcd.DCP_MUTATION:
@@ -512,6 +506,7 @@ func (c *Consumer) addToAggChan(dcpFeed *couchbase.DcpFeed) {
 
 				switch e.Opcode {
 				case mcd.DCP_STREAMREQ:
+					c.updateDcpProcessedMsgs(e.Opcode)
 					logging.Infof("%s [%s:%s:%d] vb: %d got STREAMREQ status: %v",
 						logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket, e.Status)
 

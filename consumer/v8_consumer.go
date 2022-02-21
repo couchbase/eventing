@@ -587,3 +587,12 @@ func (c *Consumer) killAndRespawn() {
 	util.LogSystemEvent(util.EVENTID_CONSUMER_CRASH, systemeventlog.SEError, extraAttributes)
 	c.producer.KillAndRespawnEventingConsumer(c)
 }
+
+func (c *Consumer) updateDcpProcessedMsgs(code mcd.CommandCode) {
+	c.msgProcessedRWMutex.Lock()
+	if _, ok := c.dcpMessagesProcessed[code]; !ok {
+		c.dcpMessagesProcessed[code] = 0
+	}
+	c.dcpMessagesProcessed[code]++
+	c.msgProcessedRWMutex.Unlock()
+}
