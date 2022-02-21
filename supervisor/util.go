@@ -419,15 +419,13 @@ func (s *SuperSupervisor) checkDeletedCid(bucketName string) {
 		}
 
 		_, sid := p.GetFuncScopeDetails()
-		if sid == math.MaxUint32 {
-			continue
-		}
-
-		currentSid, _, err := s.GetScopeAndCollectionID(p.FunctionManageBucket(), p.FunctionManageScope(), "")
-		if err != nil || sid != currentSid {
-			logging.Infof("%s Undeploying %s Reason: function manage scope delete err: %v", logPrefix, appName, err)
-			msg.DeleteFunction = true
-			p.UndeployHandler(msg)
+		if sid != math.MaxUint32 {
+			currentSid, _, err := s.GetScopeAndCollectionID(p.FunctionManageBucket(), p.FunctionManageScope(), "")
+			if err != nil || sid != currentSid {
+				logging.Infof("%s Undeploying %s Reason: function manage scope delete err: %v", logPrefix, appName, err)
+				msg.DeleteFunction = true
+				p.UndeployHandler(msg)
+			}
 		}
 
 		mCid := p.GetMetadataCid()
