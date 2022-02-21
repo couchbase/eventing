@@ -21,6 +21,12 @@ import (
 	flatbuffers "github.com/google/flatbuffers/go"
 )
 
+// Note: Should be a multiple of number of dcpFeeds which we might not know during initialising consumer
+// Hence, assuming 8 KV dcpFeeds for an average of 8 KV nodes.
+const (
+	AggChanSizeMultiplier = 8
+)
+
 // NewConsumer called by producer to create consumer handle
 func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, rConfig *common.RebalanceConfig,
 	index int, uuid, nsServerPort string, eventingNodeUUIDs []string, vbnos []uint16, app *common.AppConfig,
@@ -34,7 +40,7 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		isPausing:                       false,
 		languageCompatibility:           hConfig.LanguageCompatibility,
 		app:                             app,
-		aggDCPFeed:                      make(chan *memcached.DcpEvent, dcpConfig["dataChanSize"].(int)),
+		aggDCPFeed:                      make(chan *memcached.DcpEvent, (AggChanSizeMultiplier * dcpConfig["dataChanSize"].(int))),
 		aggDCPFeedMemCap:                hConfig.AggDCPFeedMemCap,
 		breakpadOn:                      pConfig.BreakpadOn,
 		sourceKeyspace:                  hConfig.SourceKeyspace,
