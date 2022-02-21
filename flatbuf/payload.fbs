@@ -8,6 +8,7 @@ table VbsThreadMap {
 table Payload {
   // Handler config
   app_name:string;
+
   checkpoint_interval:int; // Controls how frequently checkpoint will be updated in metadata bucket
   depcfg:string;
   debugger_port:string;
@@ -59,6 +60,9 @@ table Payload {
   lcb_timeout:int;
   certFile:string; // TLS certFile, null string if encryption is disabled
   encryption_level:string; // encryption level, at the time this consumer is being created
+
+  bucket:string;
+  scope:string;
 }
 
 root_type Payload;

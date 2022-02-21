@@ -36,7 +36,8 @@ func (p *Producer) parseDepcfg() error {
 
 	p.app = new(common.AppConfig)
 	p.app.AppCode = string(config.AppCode())
-	p.app.AppName = string(p.appName)
+	p.app.AppName = string(config.AppName())
+	p.app.AppLocation = string(p.appName)
 	p.app.AppState = fmt.Sprintf("%v", appUndeployed)
 	p.app.AppVersion = util.GetHash(p.app.AppCode)
 	p.app.FunctionID = uint32(config.HandlerUUID())
@@ -60,6 +61,7 @@ func (p *Producer) parseDepcfg() error {
 	}
 
 	p.functionScope = funcScope.ToKeyspace()
+	p.app.FunctionScope = *funcScope
 
 	o := new(cfg.Owner)
 	ownerEncrypted := config.Owner(o)
@@ -362,6 +364,7 @@ func (p *Producer) parseDepcfg() error {
 		parentDir = val.(string)
 	}
 	logFileDirectory, logFileName := common.GetLogfileLocationAndName(parentDir, p.appName)
+	p.processConfig.EventingDir = logFileDirectory
 	os.MkdirAll(logFileDirectory, 0755)
 	separator := string(os.PathSeparator)
 	p.appLogPath = fmt.Sprintf("%s%s%s.log", logFileDirectory, separator, logFileName)

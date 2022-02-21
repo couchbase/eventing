@@ -317,13 +317,15 @@ func (c *Consumer) makeDcpPayload(key, value []byte, isBinary bool) (encodedPayl
 	return
 }
 
-func (c *Consumer) makeV8InitPayload(appName, debuggerPort, currHost, eventingDir, eventingPort,
+func (c *Consumer) makeV8InitPayload(appName string, functionScope common.FunctionScope, debuggerPort, currHost, eventingDir, eventingPort,
 	eventingSSLPort, depCfg string, capacity, executionTimeout, checkpointInterval int,
 	skipLcbBootstrap bool, timerContextSize int64,
 	usingTimer, srcMutation bool) (encodedPayload []byte, builder *flatbuffers.Builder) {
 	builder = c.getBuilder()
 
 	app := builder.CreateString(appName)
+	bucket := builder.CreateString(functionScope.BucketName)
+	scope := builder.CreateString(functionScope.ScopeName)
 	dp := builder.CreateString(debuggerPort)
 	ch := builder.CreateString(currHost)
 	ed := builder.CreateString(eventingDir)
@@ -392,6 +394,8 @@ func (c *Consumer) makeV8InitPayload(appName, debuggerPort, currHost, eventingDi
 	payload.PayloadAddBucketCacheAge(builder, c.bucketCacheAge)
 	payload.PayloadAddCertFile(builder, certFile)
 	payload.PayloadAddEncryptionLevel(builder, encryptionLevel)
+	payload.PayloadAddBucket(builder, bucket)
+	payload.PayloadAddScope(builder, scope)
 
 	if c.n1qlPrepareAll {
 		payload.PayloadAddN1qlPrepareAll(builder, 0x1)

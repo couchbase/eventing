@@ -54,7 +54,7 @@ func (c *Consumer) controlRoutine() error {
 			logging.Infof("%s [%s:%s:%d] Got notification for settings change",
 				logPrefix, c.workerName, c.tcpPort, c.Pid())
 
-			settingsPath := metakvAppSettingsPath + c.app.AppName
+			settingsPath := metakvAppSettingsPath + c.app.AppLocation
 			sData, err := util.MetakvGet(settingsPath)
 			if err != nil {
 				logging.Errorf("%s [%s:%s:%d] Failed to fetch updated settings from metakv, err: %v",
@@ -111,7 +111,7 @@ func (c *Consumer) controlRoutine() error {
 			// for the ones which recently have returned STREAMEND. QE frequently does flush
 			// on source bucket right after undeploy
 			deployedApps := c.superSup.GetLocallyDeployedApps()
-			if _, ok := deployedApps[c.app.AppName]; !ok && !c.isBootstrapping {
+			if _, ok := deployedApps[c.app.AppLocation]; !ok && !c.isBootstrapping {
 
 				c.Lock()
 				c.vbsRemainingToRestream = make([]uint16, 0)
@@ -194,7 +194,7 @@ func (c *Consumer) controlRoutine() error {
 				c.vbProcessingStats.updateVbStat(vb, "timestamp", time.Now().Format(time.RFC3339))
 
 				var vbBlob vbucketKVBlob
-				vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppName, vb)
+				vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppLocation, vb)
 
 				err = c.updateCheckpoint(vbKey, vb, &vbBlob)
 				if err == common.ErrRetryTimeout {
@@ -228,7 +228,7 @@ func (c *Consumer) controlRoutine() error {
 				var vbBlob vbucketKVBlob
 				var cas gocb.Cas
 				var isNoEnt bool
-				vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppName, vb)
+				vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppLocation, vb)
 
 				logging.Infof("%s [%s:%s:%d] vb: %v, reclaiming it back by restarting dcp stream",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)

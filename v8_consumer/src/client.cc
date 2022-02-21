@@ -13,10 +13,10 @@
 #include <string>
 #include <thread>
 
-#include "lcb_utils.h"
 #include "breakpad.h"
 #include "bucket_cache.h"
 #include "client.h"
+#include "lcb_utils.h"
 
 #include <nlohmann/json.hpp>
 
@@ -108,7 +108,7 @@ std::string GetExecutionStats(const std::map<int16_t, V8Worker *> &workers) {
       agg_queue_size += w.second->worker_queue_->GetSize();
       agg_queue_memory += w.second->worker_queue_->GetMemory();
       if (w.second->event_processing_ongoing_.load())
-        agg_queue_size +=1;
+        agg_queue_size += 1;
     }
 
     estats["agg_queue_size"] = agg_queue_size;
@@ -198,7 +198,7 @@ std::vector<char> *AppWorker::GetReadBufferFeedback() {
 void AppWorker::InitTcpSock(const std::string &function_name,
                             const std::string &function_id,
                             const std::string &user_prefix,
-                            const std::string &appname, const std::string &addr,
+                            const std::string &app_location, const std::string &addr,
                             const std::string &worker_id, int bsize, int fbsize,
                             int feedback_port, int port) {
   uv_tcp_init(&feedback_loop_, &feedback_tcp_sock_);
@@ -214,14 +214,14 @@ void AppWorker::InitTcpSock(const std::string &function_name,
   function_name_ = function_name;
   function_id_ = function_id;
   user_prefix_ = user_prefix;
-  app_name_ = appname;
+  app_location_ = app_location;
   batch_size_ = bsize;
   feedback_batch_size_ = fbsize;
   messages_processed_counter = 0;
   processed_events_size = 0;
   num_processed_events = 0;
 
-  LOG(logInfo) << "Starting worker with af_inet for appname:" << appname
+  LOG(logInfo) << "Starting worker with af_inet for appname:" << app_location
                << " worker id:" << worker_id << " batch size:" << batch_size_
                << " feedback batch size:" << fbsize
                << " feedback port:" << RS(feedback_port) << " port:" << RS(port)
@@ -249,7 +249,7 @@ void AppWorker::InitTcpSock(const std::string &function_name,
 void AppWorker::InitUDS(const std::string &function_name,
                         const std::string &function_id,
                         const std::string &user_prefix,
-                        const std::string &appname, const std::string &addr,
+                        const std::string &app_location, const std::string &addr,
                         const std::string &worker_id, int bsize, int fbsize,
                         std::string feedback_sock_path,
                         std::string uds_sock_path) {
@@ -259,14 +259,14 @@ void AppWorker::InitUDS(const std::string &function_name,
   function_name_ = function_name;
   function_id_ = function_id;
   user_prefix_ = user_prefix;
-  app_name_ = appname;
+  app_location_ = app_location;
   batch_size_ = bsize;
   feedback_batch_size_ = fbsize;
   messages_processed_counter = 0;
   processed_events_size = 0;
   num_processed_events = 0;
 
-  LOG(logInfo) << "Starting worker with af_unix for appname:" << appname
+  LOG(logInfo) << "Starting worker with af_unix for appname:" << app_location
                << " worker id:" << worker_id << " batch size:" << batch_size_
                << " feedback batch size:" << fbsize
                << " feedback uds path:" << RS(feedback_sock_path)
@@ -429,7 +429,7 @@ void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
               agg_queue_size += w.second->worker_queue_->GetSize();
               agg_queue_memory += w.second->worker_queue_->GetMemory();
               if (w.second->event_processing_ongoing_.load())
-                agg_queue_size +=1;
+                agg_queue_size += 1;
             }
 
             std::ostringstream queue_stats;
@@ -535,6 +535,8 @@ void AppWorker::RouteMessageWithResponse(
 
       handler_config->n1ql_prepare_all = payload->n1ql_prepare_all();
       handler_config->app_name.assign(payload->app_name()->str());
+      handler_config->bucket.assign(payload->bucket()->str());
+      handler_config->scope.assign(payload->scope()->str());
       handler_config->lang_compat.assign(
           payload->language_compatibility()->str());
       handler_config->timer_context_size = payload->timer_context_size();
@@ -573,7 +575,7 @@ void AppWorker::RouteMessageWithResponse(
       handler_config->curl_max_allowed_resp_size =
           payload->curl_max_allowed_resp_size();
 
-      LOG(logDebug) << "Loading app:" << app_name_ << std::endl;
+      LOG(logDebug) << "Loading app:" << app_location_ << std::endl;
 
       v8::V8::InitializeICUDefaultLocation(executable_img.c_str(), nullptr);
       platform = v8::platform::NewDefaultPlatform();
@@ -937,10 +939,13 @@ void AppWorker::RouteMessageWithResponse(
     case oUpdateEncryptionLevel: {
       auto new_encryption_level = worker_msg->header.metadata;
       if (curr_encryption_level != new_encryption_level) {
-        LOG(logInfo) << "Encryption level changed from " << curr_encryption_level
-                     << " to " << new_encryption_level << std::endl;
-        if (new_encryption_level == "strict" && curr_encryption_level == "control_or_off") {
-          // No point in allowing timer store lcb handles to attempt store operations
+        LOG(logInfo) << "Encryption level changed from "
+                     << curr_encryption_level << " to " << new_encryption_level
+                     << std::endl;
+        if (new_encryption_level == "strict" &&
+            curr_encryption_level == "control_or_off") {
+          // No point in allowing timer store lcb handles to attempt store
+          // operations
           LOG(logInfo) << "Disabling timer store lcb handle ops" << std::endl;
           for (auto &v8_worker : workers_)
             v8_worker.second->SetFailFastTimerScans();
@@ -948,7 +953,9 @@ void AppWorker::RouteMessageWithResponse(
           // New level will definitely be more relaxed.
           // Allow timer store lcb handles to attempt store operations
           // This is a noop if handles are already in their correct state
-          LOG(logInfo) << "Re-enabling timer store lcb handle ops if disabled before" << std::endl;
+          LOG(logInfo)
+              << "Re-enabling timer store lcb handle ops if disabled before"
+              << std::endl;
           for (auto &v8_worker : workers_)
             v8_worker.second->ResetFailFastTimerScans();
         }
@@ -1222,7 +1229,7 @@ int main(int argc, char **argv) {
 
   if (argc < 16) {
     std::cerr
-        << "Need at least 13 arguments: appname, ipc_type, port, "
+        << "Need at least 13 arguments: app_location, ipc_type, port, "
            "feedback_port"
            "worker_id, batch_size, feedback_batch_size, diag_dir, ipv4/6, "
            "breakpad_on, handler_uuid, user_prefix, ns_server_port, "
@@ -1232,7 +1239,7 @@ int main(int argc, char **argv) {
   }
 
   executable_img = argv[0];
-  std::string appname(argv[1]);
+  std::string app_location(argv[1]);
   std::string ipc_type(argv[2]); // can be af_unix or af_inet
   std::string port = argv[3];
   std::string feedback_port(argv[4]);
@@ -1266,11 +1273,11 @@ int main(int argc, char **argv) {
   worker->SetOwner(user, domain);
 
   if (std::strcmp(ipc_type.c_str(), "af_unix") == 0) {
-    worker->InitUDS(appname, function_id, user_prefix, appname,
+    worker->InitUDS(app_location, function_id, user_prefix, app_location,
                     Localhost(false), worker_id, batch_size,
                     feedback_batch_size, feedback_port, port);
   } else {
-    worker->InitTcpSock(appname, function_id, user_prefix, appname,
+    worker->InitTcpSock(app_location, function_id, user_prefix, app_location,
                         Localhost(false), worker_id, batch_size,
                         feedback_batch_size, atoi(feedback_port.c_str()),
                         atoi(port.c_str()));

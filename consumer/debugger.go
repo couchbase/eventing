@@ -182,8 +182,10 @@ func (c *Consumer) startDebugger(e *cb.DcpEvent, instance common.DebuggerInstanc
 	}
 
 	var err error
-	udsSockPath := fmt.Sprintf("%s/debug_%s.sock", os.TempDir(), c.ConsumerName())
-	feedbackSockPath := fmt.Sprintf("%s/debug_feedback_%s.sock", os.TempDir(), c.ConsumerName())
+
+	consumerDebugName := c.getDebuggerConnName()
+	udsSockPath := fmt.Sprintf("%s/debug_%s.sock", os.TempDir(), consumerDebugName)
+	feedbackSockPath := fmt.Sprintf("%s/debug_feedback_%s.sock", os.TempDir(), consumerDebugName)
 
 	if runtime.GOOS == "windows" || len(feedbackSockPath) > udsSockPathLimit {
 
@@ -269,7 +271,7 @@ func (c *Consumer) startDebugger(e *cb.DcpEvent, instance common.DebuggerInstanc
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
 	}
 
-	c.debugClient = newDebugClient(c, c.app.AppName, c.debugTCPPort,
+	c.debugClient = newDebugClient(c, c.app.AppLocation, c.debugTCPPort,
 		c.eventingAdminPort, c.debugFeedbackTCPPort, c.debugIPCType, c.workerName)
 
 	debuggerSpawned := make(chan struct{}, 1)
@@ -300,7 +302,7 @@ func (c *Consumer) startDebugger(e *cb.DcpEvent, instance common.DebuggerInstanc
 	logging.Infof("%s [%s:%s:%d] Spawning debugger on host:port %rs:%rs",
 		logPrefix, c.workerName, c.tcpPort, c.Pid(), ip, c.debuggerPort)
 
-	payload, pBuilder := c.makeV8InitPayload(c.app.AppName, c.debuggerPort,
+	payload, pBuilder := c.makeV8InitPayload(c.app.AppName, c.app.FunctionScope, c.debuggerPort,
 		ip, c.eventingDir, c.eventingAdminPort, c.eventingSSLPort,
 		c.producer.CfgData(), c.lcbInstCapacity,
 		c.executionTimeout, int(c.checkpointInterval.Nanoseconds()/(1000*1000)),

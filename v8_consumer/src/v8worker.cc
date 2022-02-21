@@ -208,9 +208,9 @@ void V8Worker::InitializeIsolateData(const server_settings_t *server_settings,
   data_.utils = new Utils(isolate_, context, certFile_);
   data_.js_exception = new JsException(isolate_);
   auto key = GetLocalKey();
-  data_.comm = new Communicator(server_settings->host_addr,
-                                server_settings->eventing_port, key.first,
-                                key.second, false, app_name_, isolate_);
+  data_.comm = new Communicator(
+      server_settings->host_addr, server_settings->eventing_port, key.first,
+      key.second, false, app_name_, bucket_, scope_, isolate_);
   data_.timer = new Timer(isolate_, context, this->timer_reduction_ratio_);
   // TODO : Need to make HEAD call to all the bindings to establish TCP
   // Connections
@@ -274,7 +274,8 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
                    // .ForKv() and .ForQuery()
                    vb_lock_map_t *vb_locks, int worker_idx,
                    const std::string &user, const std::string &domain)
-    : app_name_(h_config->app_name), settings_(server_settings),
+    : app_name_(h_config->app_name), bucket_(h_config->bucket),
+      scope_(h_config->scope), settings_(server_settings),
       num_vbuckets_(num_vbuckets),
       timer_reduction_ratio_(
           int(num_vbuckets / h_config->num_timer_partitions)),
@@ -344,7 +345,7 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
       std::chrono::milliseconds(h_config->bucket_cache_age));
 
   LOG(logInfo) << "Initialised V8Worker handle, app_name: "
-               << h_config->app_name
+               << h_config->app_name << " under " << bucket_ << ":" << scope_
                << " debugger port: " << RS(settings_->debugger_port)
                << " curr_host: " << RS(settings_->host_addr)
                << " curr_eventing_port: " << RS(settings_->eventing_port)

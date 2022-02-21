@@ -74,7 +74,7 @@ var clearDebuggerInstanceCallback = func(args ...interface{}) error {
 		return nil
 	}
 
-	key := p.AddMetadataPrefix(p.app.AppName).Raw() + "::" + common.DebuggerTokenKey
+	key := p.AddMetadataPrefix(p.app.AppLocation).Raw() + "::" + common.DebuggerTokenKey
 	var instance common.DebuggerInstance
 	result, err := p.metadataHandle.Get(key, nil)
 	if errors.Is(err, gocb.ErrDocumentNotFound) || errors.Is(err, gocbcore.ErrShutdown) || errors.Is(err, gocbcore.ErrCollectionsUnsupported) {
@@ -116,7 +116,7 @@ var writeDebuggerURLCallback = func(args ...interface{}) error {
 		return nil
 	}
 
-	key := p.AddMetadataPrefix(p.app.AppName).Raw() + "::" + common.DebuggerTokenKey
+	key := p.AddMetadataPrefix(p.app.AppLocation).Raw() + "::" + common.DebuggerTokenKey
 	var instance common.DebuggerInstance
 	result, err := p.metadataHandle.Get(key, nil)
 	if errors.Is(err, gocb.ErrDocumentNotFound) || errors.Is(err, gocbcore.ErrShutdown) || errors.Is(err, gocbcore.ErrCollectionsUnsupported) {

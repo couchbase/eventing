@@ -914,7 +914,7 @@ var acquireDebuggerTokenCallback = func(args ...interface{}) error {
 	success := args[2].(*bool)
 	instance := args[3].(*common.DebuggerInstance)
 
-	key := c.producer.AddMetadataPrefix(c.app.AppName).Raw() + "::" + common.DebuggerTokenKey
+	key := c.producer.AddMetadataPrefix(c.app.AppLocation).Raw() + "::" + common.DebuggerTokenKey
 
 	c.gocbMetaHandleMutex.RLock()
 	defer c.gocbMetaHandleMutex.RUnlock()

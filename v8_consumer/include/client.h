@@ -155,7 +155,7 @@ private:
   uv_tcp_t tcp_sock_;
   uv_pipe_t uds_sock_;
 
-  std::string app_name_;
+  std::string app_location_;
 
   std::string function_name_;
 
