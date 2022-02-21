@@ -356,15 +356,15 @@ func (p *Producer) parseDepcfg() error {
 		p.rebalanceConfig.VBOwnershipTakeoverRoutineCount = 3
 	}
 
+	parentDir := p.processConfig.EventingDir
 	// Application logging related configurations
-	logFileName := common.GetLogfileName(p.appName)
 	if val, ok := settings["app_log_dir"]; ok {
-		os.MkdirAll(val.(string), 0755)
-		p.appLogPath = fmt.Sprintf("%s/%s", val.(string), logFileName)
-	} else {
-		os.MkdirAll(p.processConfig.EventingDir, 0755)
-		p.appLogPath = fmt.Sprintf("%s/%s.log", p.processConfig.EventingDir, logFileName)
+		parentDir = val.(string)
 	}
+	logFileDirectory, logFileName := common.GetLogfileLocationAndName(parentDir, p.appName)
+	os.MkdirAll(logFileDirectory, 0755)
+	separator := string(os.PathSeparator)
+	p.appLogPath = fmt.Sprintf("%s%s%s.log", logFileDirectory, separator, logFileName)
 
 	if val, ok := settings["app_log_max_size"]; ok {
 		p.appLogMaxSize = int64(val.(float64))

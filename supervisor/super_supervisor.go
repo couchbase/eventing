@@ -845,7 +845,8 @@ func (s *SuperSupervisor) HandleSupCmdMsg() {
 			case cmdAppDelete:
 				logging.Infof("%s [%d] Function: %s deleting", logPrefix, s.runningFnsCount(), appName)
 
-				d, err := os.Open(s.eventingDir)
+				logfileDir, logfileName := common.GetLogfileLocationAndName(s.eventingDir, appName)
+				d, err := os.Open(logfileDir)
 				if err != nil {
 					logging.Errorf("%s [%d] Function: %s failed to open eventingDir: %s while trying to purge app logs, err: %v",
 						logPrefix, s.runningFnsCount(), appName, s.eventingDir, err)
@@ -860,11 +861,10 @@ func (s *SuperSupervisor) HandleSupCmdMsg() {
 					continue
 				}
 
-				logfileName := common.GetLogfileName(appName)
 				prefix := fmt.Sprintf("%s.log", logfileName)
 				for _, name := range names {
 					if strings.HasPrefix(name, prefix) {
-						err = os.RemoveAll(filepath.Join(s.eventingDir, name))
+						err = os.RemoveAll(filepath.Join(logfileDir, name))
 						if err != nil {
 							logging.Errorf("%s [%d] Function: %s failed to remove app log: %s, err: %v",
 								logPrefix, s.runningFnsCount(), appName, name, err)
