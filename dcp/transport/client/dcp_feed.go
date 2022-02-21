@@ -207,13 +207,7 @@ loop:
 				break loop
 			}
 			pkt, bytes := resp[0].(*transport.MCRequest), resp[1].(int)
-			switch feed.handlePacket(pkt, bytes, reqch, rcvch) {
-			case "break":
-				break loop
-			case "exit":
-				feed.sendStreamEnd(feed.outch)
-				break loop
-			}
+			feed.handlePacket(pkt, bytes, reqch, rcvch)
 		}
 	}
 }
@@ -393,23 +387,11 @@ func (feed *DcpFeed) handlePacket(
 		logging.Warnf(fmsg, prefix, pkt.Opcode, vb)
 	}
 
-	rc := "ok"
 	if event != nil {
-	loop:
-		for {
-			select {
-			case msg := <-reqch:
-				rc = feed.handleControlRequest(msg, rcvch, event)
-				if rc == "break" {
-					return rc
-				}
-			case feed.outch <- event:
-				break loop
-			}
-		}
+		feed.outch <- event
 	}
 	feed.sendBufferAck(sendAck, uint32(bytes))
-	return rc
+	return "ok"
 }
 
 func (feed *DcpFeed) doDcpGetFailoverLog(
