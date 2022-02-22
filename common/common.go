@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"os"
 	"strings"
 
 	"github.com/couchbase/cbauth/metakv"
@@ -699,17 +700,21 @@ func getLocation(id Identity) string {
 	return fmt.Sprintf("%s/%s/%s", id.Bucket, id.Scope, id.AppName)
 }
 
-func GetLogfileName(locationString string) string {
+func GetLogfileLocationAndName(parentDir string, locationString string) (string, string) {
 	id, err := getIdentityFromLocation(locationString)
 	if err != nil {
-		return locationString
+		return parentDir, locationString
 	}
 
 	if id.Bucket == "*" && id.Scope == "*" {
-		return id.AppName
+		return parentDir, id.AppName
 	}
 
-	return fmt.Sprintf("%s:%s:%s", id.Bucket, id.Scope, id.AppName)
+	separator := string(os.PathSeparator)
+	bucketFolder := fmt.Sprintf("b_%s", id.Bucket)
+	scopeFolder := fmt.Sprintf("s_%s", id.Scope)
+	filePath := fmt.Sprintf("%s%s%s%s%s", parentDir, separator, bucketFolder, separator, scopeFolder)
+	return filePath, id.AppName
 }
 
 func GetFunctionScope(identity Identity) FunctionScope {
