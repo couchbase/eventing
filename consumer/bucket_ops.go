@@ -780,12 +780,8 @@ var getEFFailoverLogOpAllVbucketsCallback = func(args ...interface{}) error {
 	c := args[0].(*Consumer)
 	flogs := args[1].(*couchbase.FailoverLog)
 	vb := args[2].(uint16)
+	vbs := []uint16{vb}
 	reterr := args[3].(*error)
-
-	vbs := make([]uint16, 0)
-	for vb := 0; vb < c.numVbuckets; vb++ {
-		vbs = append(vbs, uint16(vb))
-	}
 
 	if atomic.LoadUint32(&c.isTerminateRunning) == 1 {
 		logging.Tracef("%s [%s:%s:%d] Exiting as worker is terminating",
