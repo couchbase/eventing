@@ -2174,13 +2174,13 @@ func StripCurlCredentials(path, appLocation string, payload []byte) ([]byte, err
 
 		err = MetakvSetSensitive(cm.MetakvCredentialsPath+appLocation, data, nil)
 		if err != nil {
-			logging.Errorf("%s Function: %s failed to store credentials in credentials path", logPrefix, app.Name)
+			logging.Errorf("%s Function: %s failed to store credentials in credentials path", logPrefix, appLocation)
 			return nil, err
 		}
 
 		data, err = json.MarshalIndent(app, "", " ")
 		if err != nil {
-			logging.Errorf("%s Function: %s failed to marshal data", logPrefix, app.Name)
+			logging.Errorf("%s Function: %s failed to marshal data", logPrefix, appLocation)
 			return nil, err
 		}
 		return data, nil
@@ -2204,7 +2204,7 @@ func StripCurlCredentials(path, appLocation string, payload []byte) ([]byte, err
 
 	err = MetakvSetSensitive(cm.MetakvCredentialsPath+appLocation, data, nil)
 	if err != nil {
-		logging.Errorf("%s Function: %s failed to store credentials in credentials path", logPrefix, app.Name)
+		logging.Errorf("%s Function: %s failed to store credentials in credentials path", logPrefix, appLocation)
 		return nil, err
 	}
 

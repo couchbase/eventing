@@ -47,7 +47,8 @@ func (m *ServiceMgr) validateAppRecursion(app *application) (info *response.Runt
 		allowInterBucketRecursion = flag.(bool)
 	}
 
-	if allowInterBucketRecursion == false && m.isAppDeployable(app) == false {
+	appLocation := getAppLocationFromApp(app)
+	if allowInterBucketRecursion == false && m.isAppDeployable(appLocation, app) == false {
 		info.ErrCode = response.ErrInterFunctionRecursion
 		info.Description = fmt.Sprintf("Inter handler recursion error")
 		return
@@ -62,7 +63,7 @@ func (m *ServiceMgr) validateAppRecursion(app *application) (info *response.Runt
 			dest := ConstructKeyspace(pinfo.PInfo.KeyspaceName)
 			if dest == source {
 				info.ErrCode = response.ErrInterBucketRecursion
-				info.Description = fmt.Sprintf("Function: %s N1QL DML to source keyspace %s", app.Name, pinfo.PInfo.KeyspaceName)
+				info.Description = fmt.Sprintf("Function: %s N1QL DML to source keyspace %s", appLocation, pinfo.PInfo.KeyspaceName)
 				logging.Errorf("%s %s", logPrefix, info.Description)
 				return
 			}
@@ -71,16 +72,16 @@ func (m *ServiceMgr) validateAppRecursion(app *application) (info *response.Runt
 	}
 
 	if !allowInterBucketRecursion && len(destinations) != 0 {
-		if possible, path := m.graph.isAcyclicInsertPossible(app.Name, source, destinations); !possible {
+		if possible, path := m.graph.isAcyclicInsertPossible(appLocation, source, destinations); !possible {
 			info.ErrCode = response.ErrInterBucketRecursion
 			info.Description = fmt.Sprintf("Inter bucket recursion error; function: %s causes a cycle "+
-				"involving functions: %v, hence deployment is disallowed", app.Name, path)
+				"involving functions: %v, hence deployment is disallowed", appLocation, path)
 			return
 		}
 
 		functions := m.graph.getAcyclicInsertSideEffects(destinations)
 		if len(functions) > 0 {
-			info.WarningInfo = fmt.Sprintf("Function %s will modify source buckets of following functions %v", app.Name, functions)
+			info.WarningInfo = fmt.Sprintf("Function %s will modify source buckets of following functions %v", appLocation, functions)
 		}
 	}
 
@@ -109,13 +110,14 @@ func (m *ServiceMgr) validateApplication(app *application) (info *response.Runti
 		return
 	}
 
-	if info = m.validateSettings(app.Name, util.DeepCopy(app.Settings)); info.ErrCode != response.Ok {
+	appLocation := getAppLocationFromApp(app)
+	if info = m.validateSettings(appLocation, util.DeepCopy(app.Settings)); info.ErrCode != response.Ok {
 		return
 	}
 
 	if val, ok := app.Settings["processing_status"].(bool); ok && val {
 		if info = m.validateAppRecursion(app); info.ErrCode != response.Ok {
-			logging.Errorf("%s Function: %s recursion error %d: %s", logPrefix, app.Name, info.ErrCode, info.Description)
+			logging.Errorf("%s Function: %s recursion error %d: %s", logPrefix, appLocation, info.ErrCode, info.Description)
 			return
 		}
 	}
