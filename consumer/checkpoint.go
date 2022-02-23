@@ -1,7 +1,6 @@
 package consumer
 
 import (
-	"fmt"
 	"sort"
 	"time"
 
@@ -49,7 +48,7 @@ func (c *Consumer) doLastSeqNoCheckpoint() {
 				if c.ConsumerName() == c.vbProcessingStats.getVbStat(vb, "assigned_worker") &&
 					c.NodeUUID() == c.vbProcessingStats.getVbStat(vb, "node_uuid") {
 
-					vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppLocation, vb)
+					vbKey := common.GetCheckpointKey(c.app, vb, common.Checkpoint)
 
 					if c.isVbIdle(vb, &checkpoints[vb]) {
 						continue

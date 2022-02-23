@@ -444,7 +444,7 @@ func (p *Producer) vbDistributionStats() error {
 
 	var operr error
 	for vb := 0; vb < p.numVbuckets; vb++ {
-		vbKey := fmt.Sprintf("%s::vb::%d", p.appName, vb)
+		vbKey := common.GetCheckpointKey(p.app, uint16(vb), common.Checkpoint)
 		err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, getOpCallback,
 			p, p.AddMetadataPrefix(vbKey), &vbBlob, &operr)
 		if err == common.ErrRetryTimeout {
@@ -517,7 +517,7 @@ func (p *Producer) getSeqsProcessed() error {
 
 	var operr error
 	for vb := 0; vb < p.numVbuckets; vb++ {
-		vbKey := fmt.Sprintf("%s::vb::%d", p.appName, vb)
+		vbKey := common.GetCheckpointKey(p.app, uint16(vb), common.Checkpoint)
 		err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, getOpCallback,
 			p, p.AddMetadataPrefix(vbKey), &vbBlob, &operr)
 		if err == common.ErrRetryTimeout {
@@ -1076,7 +1076,7 @@ func (p *Producer) CheckpointBlobDump() map[string]interface{} {
 	var operr error
 	for vb := 0; vb < p.numVbuckets; vb++ {
 		vbBlob := make(map[string]interface{})
-		vbKey := fmt.Sprintf("%s::vb::%d", p.appName, vb)
+		vbKey := common.GetCheckpointKey(p.app, uint16(vb), common.Checkpoint)
 		err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, getOpCallback, p, p.AddMetadataPrefix(vbKey), &vbBlob, &operr)
 		if err == common.ErrRetryTimeout {
 			logging.Errorf("%s [%s:%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
@@ -1139,7 +1139,8 @@ func (p *Producer) WriteDebuggerToken(token string, hostnames []string) error {
 		NodesExternalIP: hostnames,
 	}
 
-	key := p.AddMetadataPrefix(p.app.AppLocation + "::" + common.DebuggerTokenKey)
+	vbKey := common.GetCheckpointKey(p.app, 0, common.DebuggerCheckpoint)
+	key := p.AddMetadataPrefix(vbKey)
 
 	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, setOpCallback, p, key, data)
 	if err == common.ErrRetryTimeout {

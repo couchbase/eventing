@@ -40,7 +40,7 @@ var cleanupMetadataCallback = func(args ...interface{}) error {
 	kvNodeAddrs := p.getKvNodeAddrs()
 	workerID := args[3].(int)
 
-	feedName := couchbase.NewDcpFeedName(fmt.Sprintf("%s_%s_%d_undeploy", p.uuid, p.appName, workerID))
+	feedName := couchbase.NewDcpFeedName(fmt.Sprintf("%d_undeploy_%s_%s_%d", p.app.FunctionID, p.uuid, p.appName, workerID))
 
 	var err error
 	(*b), err = p.superSup.GetBucket(p.metadataKeyspace.BucketName, p.appName)
@@ -74,7 +74,7 @@ var clearDebuggerInstanceCallback = func(args ...interface{}) error {
 		return nil
 	}
 
-	key := p.AddMetadataPrefix(p.app.AppLocation).Raw() + "::" + common.DebuggerTokenKey
+	key := p.AddMetadataPrefix(common.GetCheckpointKey(p.app, 0, common.DebuggerCheckpoint)).Raw()
 	var instance common.DebuggerInstance
 	result, err := p.metadataHandle.Get(key, nil)
 	if errors.Is(err, gocb.ErrDocumentNotFound) || errors.Is(err, gocbcore.ErrShutdown) || errors.Is(err, gocbcore.ErrCollectionsUnsupported) {
@@ -116,7 +116,7 @@ var writeDebuggerURLCallback = func(args ...interface{}) error {
 		return nil
 	}
 
-	key := p.AddMetadataPrefix(p.app.AppLocation).Raw() + "::" + common.DebuggerTokenKey
+	key := p.AddMetadataPrefix(common.GetCheckpointKey(p.app, 0, common.DebuggerCheckpoint)).Raw()
 	var instance common.DebuggerInstance
 	result, err := p.metadataHandle.Get(key, nil)
 	if errors.Is(err, gocb.ErrDocumentNotFound) || errors.Is(err, gocbcore.ErrShutdown) || errors.Is(err, gocbcore.ErrCollectionsUnsupported) {
