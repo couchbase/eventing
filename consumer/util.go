@@ -128,3 +128,7 @@ func (c *Consumer) getEncryptionLevelName(enforceTLS, encryptOn bool) string {
 	}
 	return encryptionLevel
 }
+
+func (c *Consumer) getDebuggerConnName() string {
+	return c.app.FunctionInstanceID
+}

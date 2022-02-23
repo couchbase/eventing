@@ -34,7 +34,7 @@ func (c *Consumer) checkAndUpdateMetadata() {
 			continue
 		}
 
-		vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppName, vb)
+		vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppLocation, vb)
 
 		var operr error
 		err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getOpCallback,
@@ -207,7 +207,7 @@ func (c *Consumer) doVbTakeover(vb uint16) error {
 	var cas gocb.Cas
 	var isNoEnt bool
 
-	vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppName, vb)
+	vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppLocation, vb)
 
 	var operr error
 	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getOpCallback,
@@ -221,7 +221,7 @@ func (c *Consumer) doVbTakeover(vb uint16) error {
 
 	var possibleConsumers []string
 	for i := 0; i < c.workerCount; i++ {
-		possibleConsumers = append(possibleConsumers, fmt.Sprintf("worker_%s_%d", c.app.AppName, i))
+		possibleConsumers = append(possibleConsumers, fmt.Sprintf("worker_%s_%d", c.app.AppLocation, i))
 	}
 
 	switch vbBlob.DCPStreamStatus {
@@ -601,7 +601,7 @@ func (c *Consumer) doCleanupForPreviouslyOwnedVbs() error {
 func (c *Consumer) cleanupVbMetadata(vb uint16) error {
 	logPrefix := "Consumer::cleanupVbMetadata"
 
-	vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppName, vb)
+	vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppLocation, vb)
 
 	var vbBlob vbucketKVBlob
 	var cas gocb.Cas

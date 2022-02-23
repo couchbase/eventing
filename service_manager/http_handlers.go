@@ -12,7 +12,6 @@ import (
 	"net/http/pprof"
 	"net/url"
 	"os"
-	"path"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -576,6 +575,7 @@ func (m *ServiceMgr) getDebuggerURL(w http.ResponseWriter, r *http.Request) {
 	if m.checkIfDeployed(appLocation) {
 		debugURL, err := m.superSup.GetDebuggerURL(appLocation)
 		if err != nil {
+
 			logging.Errorf("Error in getting debugger url for %s err: %v", appLocation, err)
 			runtimeInfo.ErrCode = response.ErrInternalServer
 			return
@@ -818,7 +818,18 @@ func (m *ServiceMgr) writeDebuggerURLHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	appLocation := path.Base(r.URL.Path)
+	id := common.Identity{}
+	debuggerUrlPath := regexp.MustCompile("^/writeDebuggerURL/([^/].*)")
+	if match := debuggerUrlPath.FindStringSubmatch(r.URL.Path); len(match) > 1 {
+		id.AppName = match[1]
+	}
+	info := getBucketScope(r.URL.Query(), &id)
+	if info.ErrCode != response.Ok {
+		*runtimeInfo = *info
+                return
+	}
+
+	appLocation := id.ToLocation()
 	data, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		runtimeInfo.ErrCode = response.ErrReadReq

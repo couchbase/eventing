@@ -143,8 +143,8 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		vbsStreamClosedRWMutex:          &sync.RWMutex{},
 		vbStreamRequested:               make(map[uint16]uint64),
 		vbsStreamRRWMutex:               &sync.RWMutex{},
-		workerName:                      fmt.Sprintf("worker_%s_%d", app.AppName, index),
-		vbProcessingStats:               newVbProcessingStats(app.AppName, uint16(numVbuckets), uuid, fmt.Sprintf("worker_%s_%d", app.AppName, index)),
+		workerName:                      fmt.Sprintf("worker_%s_%d", app.AppLocation, index),
+		vbProcessingStats:               newVbProcessingStats(app.AppLocation, uint16(numVbuckets), uuid, fmt.Sprintf("worker_%s_%d", app.AppLocation, index)),
 		workerCount:                     len(workerVbucketMap),
 		workerQueueCap:                  hConfig.WorkerQueueCap,
 		workerQueueMemCap:               hConfig.WorkerQueueMemCap,
@@ -200,7 +200,7 @@ func (c *Consumer) Serve() {
 	c.cppWorkerThrPartitionMap()
 
 	var err error
-	c.cbBucket, err = c.superSup.GetBucket(c.sourceKeyspace.BucketName, c.app.AppName)
+	c.cbBucket, err = c.superSup.GetBucket(c.sourceKeyspace.BucketName, c.app.AppLocation)
 	if err != nil {
 		return
 	}
@@ -229,7 +229,7 @@ func (c *Consumer) Serve() {
 		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.HostPortAddr())
 
 	if atomic.LoadUint32(&c.isTerminateRunning) == 0 {
-		c.client = newClient(c, c.app.AppName, c.tcpPort, c.feedbackTCPPort, c.workerName, c.eventingAdminPort)
+		c.client = newClient(c, c.app.AppLocation, c.tcpPort, c.feedbackTCPPort, c.workerName, c.eventingAdminPort)
 		c.clientSupToken = c.consumerSup.Add(c.client)
 	}
 
@@ -305,7 +305,7 @@ func (c *Consumer) HandleV8Worker() error {
 		}
 	}
 
-	payload, pBuilder := c.makeV8InitPayload(c.app.AppName, c.debuggerPort, currHost,
+	payload, pBuilder := c.makeV8InitPayload(c.app.AppName, c.app.FunctionScope, c.debuggerPort, currHost,
 		c.eventingDir, c.eventingAdminPort, c.eventingSSLPort,
 		c.producer.CfgData(), c.lcbInstCapacity, c.executionTimeout,
 		int(c.checkpointInterval.Nanoseconds()/(1000*1000)), false, c.timerContextSize,
@@ -442,7 +442,7 @@ func (c *Consumer) String() string {
 
 	countMsg, _, _ := util.SprintDCPCounts(c.dcpMessagesProcessed)
 	return fmt.Sprintf("consumer => app: %s name: %v tcpPort: %s ospid: %d"+
-		" dcpEventProcessed: %s v8EventProcessed: %s", c.app.AppName, c.ConsumerName(),
+		" dcpEventProcessed: %s v8EventProcessed: %s", c.app.AppLocation, c.ConsumerName(),
 		c.tcpPort, c.Pid(), countMsg, util.SprintV8Counts(c.v8WorkerMessagesProcessed))
 }
 
@@ -522,7 +522,7 @@ func (c *Consumer) updategocbMetaHandle() error {
 	var err error
 	c.gocbMetaHandleMutex.Lock()
 	defer c.gocbMetaHandleMutex.Unlock()
-	c.gocbMetaHandle, err = c.superSup.GetMetadataHandle(c.producer.MetadataBucket(), c.producer.MetadataScope(), c.producer.MetadataCollection(), c.app.AppName)
+	c.gocbMetaHandle, err = c.superSup.GetMetadataHandle(c.producer.MetadataBucket(), c.producer.MetadataScope(), c.producer.MetadataCollection(), c.app.AppLocation)
 	return err
 }
 

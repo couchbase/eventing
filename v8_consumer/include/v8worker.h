@@ -155,6 +155,8 @@ typedef struct server_settings_s {
 typedef struct handler_config_s {
   bool n1ql_prepare_all;
   std::string app_name;
+  std::string bucket;
+  std::string scope;
   std::string dep_cfg;
   std::string lang_compat;
   int execution_timeout;
@@ -319,6 +321,8 @@ public:
   v8::Persistent<v8::Function> on_delete_;
 
   std::string app_name_;
+  std::string bucket_;
+  std::string scope_;
   std::string script_to_execute_;
 
   std::string cb_source_bucket_;

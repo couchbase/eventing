@@ -37,7 +37,8 @@ class Communicator {
 public:
   Communicator(const std::string &host_ip, const std::string &host_port,
                const std::string &usr, const std::string &key, bool ssl,
-               const std::string &app_name, v8::Isolate *isolate);
+               const std::string &app_name, const std::string &bucket,
+               const std::string &scope, v8::Isolate *isolate);
 
   CredsInfo GetCreds(const std::string &endpoint);
   CredsInfo GetCredsCached(const std::string &endpoint, bool useCachedEntry);
@@ -53,6 +54,8 @@ private:
   std::unordered_map<std::string, CredsInfo> creds_cache_;
   CurlClient curl_;
   std::string app_name_;
+  std::string bucket_;
+  std::string scope_;
   std::string get_creds_url_;
   std::string get_named_params_url_;
   std::string get_kv_nodes_url_;

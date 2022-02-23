@@ -436,6 +436,7 @@ type AppConfig struct {
 	ParsedAppCode      string
 	AppDeployState     string
 	AppName            string
+	AppLocation        string
 	AppState           string
 	AppVersion         string
 	FunctionID         uint32
@@ -443,6 +444,7 @@ type AppConfig struct {
 	LastDeploy         string
 	Settings           map[string]interface{}
 	UserPrefix         string
+	FunctionScope      FunctionScope
 }
 
 type RebalanceProgress struct {

@@ -438,7 +438,7 @@ func (c *Consumer) sendNoOpEvent(seqNo uint64, partition uint16) {
 	metadata, err := json.Marshal(&m)
 	if err != nil {
 		logging.Errorf("CRHM[%s:%s:%s:%d] key: %ru failed to marshal NoOp data seq: %d",
-			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), seqNo)
+			c.app.AppLocation, c.workerName, c.tcpPort, c.Pid(), seqNo)
 		return
 	}
 
@@ -480,7 +480,7 @@ func (c *Consumer) sendDcpEvent(e *memcached.DcpEvent, sendToDebugger bool) {
 
 	if err != nil {
 		logging.Errorf("CRHM[%s:%s:%s:%d] key: %ru failed to marshal metadata",
-			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), string(e.Key))
+			c.app.AppLocation, c.workerName, c.tcpPort, c.Pid(), string(e.Key))
 		return
 	}
 
@@ -496,7 +496,7 @@ func (c *Consumer) sendDcpEvent(e *memcached.DcpEvent, sendToDebugger bool) {
 		options, err := json.Marshal(&optionMap)
 		if err != nil {
 			logging.Errorf("CRHM[%s:%s:%s:%d] key: %v failed to marshal options for delete",
-				c.app.AppName, c.workerName, c.tcpPort, c.Pid(), string(options))
+				c.app.AppLocation, c.workerName, c.tcpPort, c.Pid(), string(options))
 			return
 		}
 
@@ -537,7 +537,7 @@ func (c *Consumer) sendVbFilterData(vb uint16, seqNo uint64, skipAck bool) {
 	metadata, err := json.Marshal(&data)
 	if err != nil {
 		logging.Errorf("[%s:%s:%s:%d] Failed to marshal metadata",
-			c.app.AppName, c.workerName, c.tcpPort, c.Pid())
+			c.app.AppLocation, c.workerName, c.tcpPort, c.Pid())
 		return
 	}
 
@@ -604,7 +604,7 @@ func (c *Consumer) sendUpdateProcessedSeqNo(vb uint16, seqNo uint64) {
 	metadata, err := json.Marshal(&data)
 	if err != nil {
 		logging.Errorf("[%s:%s:%s:%d] vb: %d failed to marshal ",
-			c.app.AppName, c.workerName, c.tcpPort, c.Pid(), vb)
+			c.app.AppLocation, c.workerName, c.tcpPort, c.Pid(), vb)
 		return
 	}
 

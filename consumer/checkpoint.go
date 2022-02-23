@@ -24,7 +24,7 @@ func (c *Consumer) doLastSeqNoCheckpoint() {
 		select {
 		case <-c.checkpointTicker.C:
 			deployedApps := c.superSup.GetLocallyDeployedApps()
-			if _, ok := deployedApps[c.app.AppName]; !ok {
+			if _, ok := deployedApps[c.app.AppLocation]; !ok {
 				logging.Infof("%s [%s:%s:%d] Returning from checkpoint ticker routine",
 					logPrefix, c.workerName, c.tcpPort, c.Pid())
 				return
@@ -49,7 +49,7 @@ func (c *Consumer) doLastSeqNoCheckpoint() {
 				if c.ConsumerName() == c.vbProcessingStats.getVbStat(vb, "assigned_worker") &&
 					c.NodeUUID() == c.vbProcessingStats.getVbStat(vb, "node_uuid") {
 
-					vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppName, vb)
+					vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppLocation, vb)
 
 					if c.isVbIdle(vb, &checkpoints[vb]) {
 						continue

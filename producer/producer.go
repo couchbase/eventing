@@ -335,7 +335,7 @@ func (p *Producer) Serve() {
 				eventingConsumer.NotifySettingsChange()
 			}
 
-			settingsPath := metakvAppSettingsPath + p.app.AppName
+			settingsPath := metakvAppSettingsPath + p.app.AppLocation
 			sData, err := util.MetakvGet(settingsPath)
 			if err != nil {
 				logging.Errorf("%s [%s:%d] Failed to fetch updated settings from metakv, err: %v",
@@ -846,7 +846,7 @@ func (p *Producer) SignalStartDebugger(token string) error {
 func (p *Producer) SignalStopDebugger() error {
 	logPrefix := "Producer::SignalStopDebugger"
 
-	key := p.AddMetadataPrefix(p.app.AppName + "::" + common.DebuggerTokenKey)
+	key := p.AddMetadataPrefix(p.app.AppLocation + "::" + common.DebuggerTokenKey)
 	var instance common.DebuggerInstance
 	var opErr error
 	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, getOpCallback, p, key, &instance, &opErr)
@@ -883,7 +883,7 @@ func (p *Producer) SignalStopDebugger() error {
 // GetDebuggerURL returns V8 Debugger url
 func (p *Producer) GetDebuggerURL() (string, error) {
 	var instance common.DebuggerInstance
-	key := p.AddMetadataPrefix(p.app.AppName + "::" + common.DebuggerTokenKey)
+	key := p.AddMetadataPrefix(p.app.AppLocation + "::" + common.DebuggerTokenKey)
 	var opErr error
 	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount,
 		getOpCallback, p, key, &instance, &opErr)

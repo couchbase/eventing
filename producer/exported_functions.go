@@ -1139,7 +1139,7 @@ func (p *Producer) WriteDebuggerToken(token string, hostnames []string) error {
 		NodesExternalIP: hostnames,
 	}
 
-	key := p.AddMetadataPrefix(p.app.AppName + "::" + common.DebuggerTokenKey)
+	key := p.AddMetadataPrefix(p.app.AppLocation + "::" + common.DebuggerTokenKey)
 
 	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, setOpCallback, p, key, data)
 	if err == common.ErrRetryTimeout {
