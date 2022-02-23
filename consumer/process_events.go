@@ -493,13 +493,13 @@ func (c *Consumer) addToAggChan(dcpFeed *couchbase.DcpFeed) {
 						if metadataUpdated {
 							c.vbProcessingStats.updateVbStat(e.VBucket, "vb_stream_request_metadata_updated", false)
 						} else {
-							time.Sleep(time.Second)
+							time.Sleep(100 * time.Millisecond)
 							goto retryCheckMetadataUpdated
 						}
 					} else {
 						logging.Infof("%s [%s:%s:%d] vb: %d STREAMREQ metadataUpdated not found",
 							logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket)
-						time.Sleep(time.Second)
+						time.Sleep(100 * time.Millisecond)
 						goto retryCheckMetadataUpdated
 					}
 
