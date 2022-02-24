@@ -2,7 +2,6 @@ package consumer
 
 import (
 	"encoding/json"
-	"fmt"
 	"sort"
 	"time"
 
@@ -194,7 +193,7 @@ func (c *Consumer) controlRoutine() error {
 				c.vbProcessingStats.updateVbStat(vb, "timestamp", time.Now().Format(time.RFC3339))
 
 				var vbBlob vbucketKVBlob
-				vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppLocation, vb)
+				vbKey := common.GetCheckpointKey(c.app, vb, common.Checkpoint)
 
 				err = c.updateCheckpoint(vbKey, vb, &vbBlob)
 				if err == common.ErrRetryTimeout {
@@ -228,7 +227,7 @@ func (c *Consumer) controlRoutine() error {
 				var vbBlob vbucketKVBlob
 				var cas gocb.Cas
 				var isNoEnt bool
-				vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppLocation, vb)
+				vbKey := common.GetCheckpointKey(c.app, vb, common.Checkpoint)
 
 				logging.Infof("%s [%s:%s:%d] vb: %v, reclaiming it back by restarting dcp stream",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)

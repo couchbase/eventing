@@ -553,6 +553,34 @@ func (k Key) GetPrefix() string {
 	return k.prefix
 }
 
+type checkpointType int
+
+const (
+	DebuggerCheckpoint checkpointType = iota
+	Checkpoint
+)
+
+func GetCheckpointKey(app *AppConfig, vb uint16, cType checkpointType) string {
+	if app == nil {
+		return ""
+	}
+
+	prefix := app.FunctionInstanceID
+	if app.FunctionScope.BucketName == "*" {
+		prefix = app.AppName
+	}
+
+	suffix := ""
+	switch cType {
+	case DebuggerCheckpoint:
+		suffix = fmt.Sprintf("::%s", DebuggerTokenKey)
+	case Checkpoint:
+		suffix = fmt.Sprintf("::vb::%d", vb)
+	}
+
+	return fmt.Sprintf("%s%s", prefix, suffix)
+}
+
 func StreamBoundary(boundary string) DcpStreamBoundary {
 	switch boundary {
 	case "everything":

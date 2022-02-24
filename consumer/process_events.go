@@ -267,7 +267,7 @@ func (c *Consumer) startDcp() error {
 
 	var operr error
 	for _, vb := range c.vbnos {
-		vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppLocation, vb)
+		vbKey := common.GetCheckpointKey(c.app, vb, common.Checkpoint)
 		var vbBlob vbucketKVBlob
 		var cas gocb.Cas
 		var isNoEnt bool
@@ -533,7 +533,7 @@ func (c *Consumer) addToAggChan(dcpFeed *couchbase.DcpFeed) {
 						var vbBlob vbucketKVBlob
 						var cas gocb.Cas
 
-						vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppLocation, e.VBucket)
+						vbKey := common.GetCheckpointKey(c.app, e.VBucket, common.Checkpoint)
 
 						var operr error
 						err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getOpCallback,
@@ -640,7 +640,7 @@ func (c *Consumer) addToAggChan(dcpFeed *couchbase.DcpFeed) {
 							vb:             e.VBucket,
 						}
 
-						vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppLocation, e.VBucket)
+						vbKey := common.GetCheckpointKey(c.app, e.VBucket, common.Checkpoint)
 
 						var operr error
 						err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, addOwnershipHistorySRFCallback,
@@ -748,7 +748,7 @@ func (c *Consumer) clearUpOwnershipInfoFromMeta(vb uint16) error {
 	var vbBlob vbucketKVBlob
 	var cas gocb.Cas
 	logPrefix := "Consumer::clearUpOwnershipInfoFromMeta"
-	vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppLocation, vb)
+	vbKey := common.GetCheckpointKey(c.app, vb, common.Checkpoint)
 
 	var operr error
 	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getOpCallback,
@@ -832,7 +832,7 @@ func (c *Consumer) dcpRequestStreamHandle(vb uint16, vbBlob *vbucketKVBlob, star
 	c.hostDcpFeedRWMutex.Lock()
 	dcpFeed, ok := c.kvHostDcpFeedMap[vbKvAddr]
 	if !ok {
-		feedName := couchbase.NewDcpFeedName(c.workerName + "_" + vbKvAddr + "_" + c.HostPortAddr())
+		feedName := couchbase.NewDcpFeedName(fmt.Sprintf("%d_%s_%s_%s", c.app.FunctionID, vbKvAddr, c.workerName, c.HostPortAddr()))
 		var operr error
 		err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, startDCPFeedOpCallback, c, feedName, vbKvAddr, &operr)
 		if err == common.ErrRetryTimeout {
@@ -926,7 +926,7 @@ func (c *Consumer) dcpRequestStreamHandle(vb uint16, vbBlob *vbucketKVBlob, star
 		c.inflightDcpStreams[vb] = struct{}{}
 		c.inflightDcpStreamsRWMutex.Unlock()
 
-		vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppLocation, vb)
+		vbKey := common.GetCheckpointKey(c.app, vb, common.Checkpoint)
 		var operr error
 		err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, addOwnershipHistorySRRCallback,
 			c, c.producer.AddMetadataPrefix(vbKey), &operr)
@@ -978,7 +978,7 @@ func (c *Consumer) handleFailoverLog() {
 			}
 
 			if vbFlog.streamReqRetry {
-				vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppLocation, vbFlog.vb)
+				vbKey := common.GetCheckpointKey(c.app, vbFlog.vb, common.Checkpoint)
 				var vbBlob vbucketKVBlob
 				var cas gocb.Cas
 				var isNoEnt bool
@@ -1288,7 +1288,7 @@ func (c *Consumer) handleStreamEnd(vBucket uint16, last_processed_seqno uint64) 
 	}
 	c.inflightDcpStreamsRWMutex.Unlock()
 
-	vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppLocation, vBucket)
+	vbKey := common.GetCheckpointKey(c.app, vBucket, common.Checkpoint)
 
 	var operr error
 	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, addOwnershipHistorySECallback,

@@ -34,7 +34,7 @@ func (c *Consumer) checkAndUpdateMetadata() {
 			continue
 		}
 
-		vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppLocation, vb)
+		vbKey := common.GetCheckpointKey(c.app, vb, common.Checkpoint)
 
 		var operr error
 		err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getOpCallback,
@@ -207,7 +207,7 @@ func (c *Consumer) doVbTakeover(vb uint16) error {
 	var cas gocb.Cas
 	var isNoEnt bool
 
-	vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppLocation, vb)
+	vbKey := common.GetCheckpointKey(c.app, vb, common.Checkpoint)
 
 	var operr error
 	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getOpCallback,
@@ -601,7 +601,7 @@ func (c *Consumer) doCleanupForPreviouslyOwnedVbs() error {
 func (c *Consumer) cleanupVbMetadata(vb uint16) error {
 	logPrefix := "Consumer::cleanupVbMetadata"
 
-	vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppLocation, vb)
+	vbKey := common.GetCheckpointKey(c.app, vb, common.Checkpoint)
 
 	var vbBlob vbucketKVBlob
 	var cas gocb.Cas
