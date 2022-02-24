@@ -826,7 +826,7 @@ func (m *ServiceMgr) writeDebuggerURLHandler(w http.ResponseWriter, r *http.Requ
 	info := getBucketScope(r.URL.Query(), &id)
 	if info.ErrCode != response.Ok {
 		*runtimeInfo = *info
-                return
+		return
 	}
 
 	appLocation := id.ToLocation()
@@ -1743,7 +1743,7 @@ func (m *ServiceMgr) setSettings(appLocation string, data []byte, force bool) (i
 			}
 
 			if info = m.validateApplication(app); info.ErrCode != response.Ok {
-				logging.Errorf("%s Function: %s recursion error %d: %s", logPrefix, app.Name, info.ErrCode, info.Description)
+				logging.Errorf("%s Function: %s recursion error %d: %s", logPrefix, appLocation, info.ErrCode, info.Description)
 				return
 			}
 
@@ -2337,14 +2337,13 @@ func (m *ServiceMgr) savePrimaryStore(app *application) (info *response.RuntimeI
 	logPrefix := "ServiceMgr::savePrimaryStore"
 	info = &response.RuntimeInfo{}
 
-	logging.Infof("%s Function: %s saving to primary store", logPrefix, app.Name)
-
 	id := common.Identity{
 		AppName: app.Name,
 		Bucket:  app.FunctionScope.BucketName,
 		Scope:   app.FunctionScope.ScopeName,
 	}
 	appLocation := id.ToLocation()
+	logging.Infof("%s Function: %s saving to primary store", logPrefix, appLocation)
 
 	currApp, info := m.checkAppExists(appLocation)
 	if info.ErrCode == response.Ok {
@@ -2445,7 +2444,7 @@ func (m *ServiceMgr) savePrimaryStore(app *application) (info *response.RuntimeI
 	}
 	if len(payload) > util.MaxFunctionSize() {
 		info.ErrCode = response.ErrAppCodeSize
-		info.Description = fmt.Sprintf("Function: %s handler Code size is more than %d. Code Size: %d", app.Name, util.MaxFunctionSize(), len(payload))
+		info.Description = fmt.Sprintf("Function: %s handler Code size is more than %d. Code Size: %d", appLocation, util.MaxFunctionSize(), len(payload))
 		logging.Errorf("%s %s", logPrefix, info.Description)
 		return
 	}
@@ -2518,11 +2517,12 @@ func (m *ServiceMgr) savePrimaryStore(app *application) (info *response.RuntimeI
 
 func (m *ServiceMgr) determineWarnings(app *application, compilationInfo *common.CompileStatus) *response.WarningsInfo {
 	wInfo := &response.WarningsInfo{}
-	wInfo.Status = fmt.Sprintf("Stored function: '%s' in metakv", app.Name)
+	appLocation := getAppLocationFromApp(app)
+	wInfo.Status = fmt.Sprintf("Stored function: '%s' in metakv", appLocation)
 
 	curlWarning, err := m.determineCurlWarning(app)
 	if err != nil {
-		logging.Errorf("Function: %s unable to determine curl warnings, err : %v", app.Name, err)
+		logging.Errorf("Function: %s unable to determine curl warnings, err : %v", appLocation, err)
 	} else if curlWarning != "" {
 		wInfo.Warnings = append(wInfo.Warnings, curlWarning)
 	}
@@ -2544,6 +2544,8 @@ func (m *ServiceMgr) determineCurlWarning(app *application) (string, error) {
 	clusterInfo.RLock()
 	defer clusterInfo.RUnlock()
 
+	appLocation := getAppLocationFromApp(app)
+
 	allNodes := clusterInfo.GetAllNodes()
 	for _, curl := range app.DeploymentConfig.Curl {
 		parsedUrl, err := url.Parse(curl.Hostname)
@@ -2556,13 +2558,13 @@ func (m *ServiceMgr) determineCurlWarning(app *application) (string, error) {
 			return fmt.Sprintf("Unable to resolve hostname for cURL binding alias %s, err : %v", curl.Value, err), nil
 		}
 		if node.HasLoopbackAddress() {
-			msg := fmt.Sprintf(" Function '%s' has a curl binding to a Couchbase node in the same cluster.", app.Name)
+			msg := fmt.Sprintf(" Function '%s' has a curl binding to a Couchbase node in the same cluster.", appLocation)
 			return msg, nil
 		}
 
 		for _, nodeInCluster := range allNodes {
 			if node.IsEqual(nodeInCluster) {
-				msg := fmt.Sprintf(" Function '%s' has a curl binding to a Couchbase node in the same cluster.", app.Name)
+				msg := fmt.Sprintf(" Function '%s' has a curl binding to a Couchbase node in the same cluster.", appLocation)
 				return msg, nil
 			}
 		}
@@ -4053,7 +4055,9 @@ func (m *ServiceMgr) addDefaultTimerPartitionsIfMissing(app *application) {
 func (m *ServiceMgr) addLifeCycleStateByFunctionState(app *application) {
 	deploymentStatus, _ := app.Settings["deployment_status"]
 	processingStatus, _ := app.Settings["processing_status"]
-	state := m.superSup.GetAppCompositeState(app.Name)
+	appLocation := getAppLocationFromApp(app)
+
+	state := m.superSup.GetAppCompositeState(appLocation)
 	if app.Metainfo == nil {
 		app.Metainfo = make(map[string]interface{})
 	}
@@ -4530,7 +4534,7 @@ func (m *ServiceMgr) exportHandler(w http.ResponseWriter, r *http.Request) {
 
 		app.Settings["deployment_status"] = false
 		app.Settings["processing_status"] = false
-		exportedFns = append(exportedFns, app.Name)
+		exportedFns = append(exportedFns, appLocation)
 		exportedFuncs = append(exportedFuncs, app)
 	}
 
@@ -4658,7 +4662,8 @@ func (m *ServiceMgr) backupHandler(w http.ResponseWriter, r *http.Request) {
 		exportedFun := m.backupApps(cred, filterMap, filterType)
 		appNames := make([]string, 0, len(exportedFun))
 		for _, app := range exportedFun {
-			appNames = append(appNames, app.Name)
+			appLocation := getAppLocationFromApp(&app)
+			appNames = append(appNames, appLocation)
 		}
 		runtimeInfo.ExtraAttributes = map[string]interface{}{"appNames": appNames}
 		runtimeInfo.Description = exportedFun
@@ -4720,7 +4725,8 @@ func (m *ServiceMgr) backupApps(cred cbauth.Creds, filterMap map[string]bool, fi
 	apps := m.getTempStoreAll()
 	appList := make([]application, 0, len(apps))
 	for _, app := range apps {
-		info := m.checkPermissionFromCred(cred, app.Name, rbac.HandlerManagePermissions, false)
+		appLocation := getAppLocationFromApp(app)
+		info := m.checkPermissionFromCred(cred, appLocation, rbac.HandlerManagePermissions, false)
 		if info.ErrCode != response.Ok {
 			continue
 		}

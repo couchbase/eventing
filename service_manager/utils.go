@@ -331,7 +331,7 @@ func (m *ServiceMgr) isSrcMutationEnabled(cfg *depCfg) bool {
 	return false
 }
 
-func (m *ServiceMgr) isAppDeployable(app *application) bool {
+func (m *ServiceMgr) isAppDeployable(appLocation string, app *application) bool {
 	if !m.isSrcMutationEnabled(&app.DeploymentConfig) {
 		return true
 	}
@@ -342,7 +342,7 @@ func (m *ServiceMgr) isAppDeployable(app *application) bool {
 	}
 
 	for _, appName := range m.superSup.DeployedAppList() {
-		if appName == app.Name || m.superSup.GetAppCompositeState(appName) != common.AppStateEnabled {
+		if appName == appLocation || m.superSup.GetAppCompositeState(appName) != common.AppStateEnabled {
 			continue
 		}
 		data, err := util.ReadAppContent(metakvAppsPath, metakvChecksumPath, appName)
@@ -1264,4 +1264,17 @@ func createIdentity(params map[string][]string) (id common.Identity, info *respo
 	id.AppName = name
 	info = getBucketScope(params, &id)
 	return
+}
+
+func getAppLocationFromApp(app *application) string {
+	if app == nil {
+		return ""
+	}
+
+	id := common.Identity{
+		AppName: app.Name,
+		Bucket:  app.FunctionScope.BucketName,
+		Scope:   app.FunctionScope.ScopeName,
+	}
+	return id.ToLocation()
 }
