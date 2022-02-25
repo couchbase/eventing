@@ -235,7 +235,7 @@ func (s *Supervisor) Add(service Service) ServiceToken {
 	s.Unlock()
 
 	response := make(chan serviceID)
-	s.control <- addService{service, serviceName(service), response}
+	s.sendControl(addService{service, serviceName(service), response})
 
 	token := ServiceToken{uint64(s.id)<<32 | uint64(<-response)}
 	logging.Infof("%s Token id: %v", logPrefix, token)
@@ -310,7 +310,7 @@ func (s *Supervisor) Serve() {
 
 				msg.response <- id
 			case removeService:
-				s.removeService(msg.id, s.control)
+				s.removeService(msg.id)
 			case serviceTerminated:
 				delete(s.servicesShuttingDown, msg.id)
 			case stopSupervisor:
@@ -416,8 +416,7 @@ func (s *Supervisor) runService(service Service, id serviceID) {
 	}()
 }
 
-func (s *Supervisor) removeService(id serviceID,
-	removedChan chan supervisorMessage) {
+func (s *Supervisor) removeService(id serviceID) {
 	namedService, present := s.services[id]
 	if present {
 		delete(s.services, id)
@@ -435,7 +434,7 @@ func (s *Supervisor) removeService(id serviceID,
 			case <-s.getAfterChan(s.timeout):
 				s.logBadStop(s, namedService.Service, namedService.name)
 			}
-			removedChan <- serviceTerminated{id}
+			s.sendControl(serviceTerminated{id})
 		}()
 	}
 }
@@ -443,28 +442,31 @@ func (s *Supervisor) removeService(id serviceID,
 func (s *Supervisor) stopSupervisor() {
 	notifyDone := make(chan serviceID)
 
-	for id := range s.services {
-		namedService, present := s.services[id]
-		if present {
-			delete(s.services, id)
-			s.servicesShuttingDown[id] = namedService
-			go func(sID serviceID) {
-				namedService.Service.Stop("")
-				notifyDone <- sID
-			}(id)
-		}
+	wait := false
+	for id, namedService := range s.services {
+		wait = true
+		delete(s.services, id)
+		s.servicesShuttingDown[id] = namedService
+		go func(sID serviceID) {
+			namedService.Service.Stop("")
+			notifyDone <- sID
+		}(id)
 	}
 
-	timeout := s.getAfterChan(s.timeout)
-	for len(s.servicesShuttingDown) > 0 {
-		select {
-		case id := <-notifyDone:
-			delete(s.servicesShuttingDown, id)
-		case <-timeout:
-			for _, namedService := range s.servicesShuttingDown {
-				s.logBadStop(s, namedService.Service, namedService.name)
+	if wait {
+		timeout := s.getAfterChan(s.timeout)
+		// Wait for shutting down of child services when close is called from this routine
+		for len(s.servicesShuttingDown) > 0 {
+			select {
+			case id := <-notifyDone:
+				delete(s.servicesShuttingDown, id)
+			case <-timeout:
+				for id, namedService := range s.servicesShuttingDown {
+					s.logBadStop(s, namedService.Service, namedService.name)
+					delete(s.servicesShuttingDown, id)
+				}
+				break
 			}
-			return
 		}
 	}
 
@@ -481,7 +483,7 @@ func (s *Supervisor) sendControl(sm supervisorMessage) bool {
 	select {
 	case s.control <- sm:
 		return true
-	case _, _ = (<-s.liveness):
+	case <-s.liveness:
 		return false
 	}
 }
