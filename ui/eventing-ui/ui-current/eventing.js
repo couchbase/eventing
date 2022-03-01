@@ -2111,11 +2111,11 @@ angular
             return $http.get('/_p/event/getAnnotations')
           },
           getFunction: function(fname, function_scope) {
-            return $http.get('/_p/event/api/v1/functions/' + fname+'?bucket='+function_scope.bucket+'&scope='+function_scope.scope);
+            return $http.get(encodeURI('/_p/event/api/v1/functions/' + fname+'?bucket='+function_scope.bucket+'&scope='+function_scope.scope));
           },
           updateSettings: function(appModel) {
             return $http({
-              url: `/_p/event/api/v1/functions/${appModel.appname}/settings?bucket=${appModel.function_scope.bucket}&scope=${appModel.function_scope.scope}`,
+              url: encodeURI(`/_p/event/api/v1/functions/${appModel.appname}/settings?bucket=${appModel.function_scope.bucket}&scope=${appModel.function_scope.scope}`),
               method: 'POST',
               mnHttp: {
                 isNotForm: true
@@ -2128,7 +2128,7 @@ angular
           },
           deployApp: function(appModel) {
             return $http({
-              url: `/_p/event/api/v1/functions/${appModel.appname}/deploy?bucket=${appModel.function_scope.bucket}&scope=${appModel.function_scope.scope}`,
+              url: encodeURI(`/_p/event/api/v1/functions/${appModel.appname}/deploy?bucket=${appModel.function_scope.bucket}&scope=${appModel.function_scope.scope}`),
               method: 'POST',
               mnHttp: {
                 isNotForm: true
@@ -2140,7 +2140,7 @@ angular
           },
           resumeApp: function(appModel) {
             return $http({
-              url: `/_p/event/api/v1/functions/${appModel.appname}/resume?bucket=${appModel.function_scope.bucket}&scope=${appModel.function_scope.scope}`,
+              url: encodeURI(`/_p/event/api/v1/functions/${appModel.appname}/resume?bucket=${appModel.function_scope.bucket}&scope=${appModel.function_scope.scope}`),
               method: 'POST',
               mnHttp: {
                 isNotForm: true
@@ -2152,7 +2152,7 @@ angular
           },
           pauseApp: function(appModel) {
             return $http({
-              url: `/_p/event/api/v1/functions/${appModel.appname}/pause?bucket=${appModel.function_scope.bucket}&scope=${appModel.function_scope.scope}`,
+              url: encodeURI(`/_p/event/api/v1/functions/${appModel.appname}/pause?bucket=${appModel.function_scope.bucket}&scope=${appModel.function_scope.scope}`),
               method: 'POST',
               mnHttp: {
                 isNotForm: true
@@ -2164,7 +2164,7 @@ angular
           },
           undeployApp: function(appName, function_scope) {
             return $http({
-              url: `/_p/event/api/v1/functions/${appName}/undeploy?bucket=${function_scope.bucket}&scope=${function_scope.scope}`,
+              url: encodeURI(`/_p/event/api/v1/functions/${appName}/undeploy?bucket=${function_scope.bucket}&scope=${function_scope.scope}`),
               method: 'POST',
               mnHttp: {
                 isNotForm: true
@@ -2176,7 +2176,7 @@ angular
           },
           deleteApp: function(appName, function_scope) {
             return $http({
-              url: `/_p/event/api/v1/functions/${appName}/?bucket=${function_scope.bucket}&scope=${function_scope.scope}`,
+              url: encodeURI(`/_p/event/api/v1/functions/${appName}/?bucket=${function_scope.bucket}&scope=${function_scope.scope}`),
               method: 'DELETE',
               mnHttp: {
                 isNotForm: true
@@ -2216,7 +2216,7 @@ angular
           },
           saveApp: function(app) {
             return $http({
-              url: `/_p/event/saveAppTempStore/?name=${app.appname}&bucket=${app.function_scope.bucket}&scope=${app.function_scope.scope}`,
+              url: encodeURI(`/_p/event/saveAppTempStore/?name=${app.appname}&bucket=${app.function_scope.bucket}&scope=${app.function_scope.scope}`),
               method: 'POST',
               mnHttp: {
                 isNotForm: true
@@ -2229,7 +2229,7 @@ angular
           },
           saveAppCode: function(app) {
             return $http({
-              url: `/_p/event/api/v1/functions/${app.appname}/appcode?bucket=${app.function_scope.bucket}&scope=${app.function_scope.scope}`,
+              url: encodeURI(`/_p/event/api/v1/functions/${app.appname}/appcode?bucket=${app.function_scope.bucket}&scope=${app.function_scope.scope}`),
               method: 'POST',
               headers: {
                 'Content-Type': 'application/javascript'
@@ -2239,7 +2239,7 @@ angular
           },
           saveAppDepcfg: function(app) {
             return $http({
-              url: `/_p/event/api/v1/functions/${app.appname}/config?bucket=${app.function_scope.bucket}&scope=${app.function_scope.scope}`,
+              url: encodeURI(`/_p/event/api/v1/functions/${app.appname}/config?bucket=${app.function_scope.bucket}&scope=${app.function_scope.scope}`),
               method: 'POST',
               mnHttp: {
                 isNotForm: true
@@ -2303,7 +2303,7 @@ angular
         debug: {
           start: function(appName, function_scope, nodesInfo) {
             return $http({
-              url: `/_p/event/startDebugger/?name=${appName}&bucket=${function_scope.bucket}&scope=${function_scope.scope}`,
+              url: encodeURI(`/_p/event/startDebugger/?name=${appName}&bucket=${function_scope.bucket}&scope=${function_scope.scope}`),
               method: 'POST',
               mnHttp: {
                 isNotForm: true
@@ -2316,7 +2316,7 @@ angular
           },
           getUrl: function(appName, function_scope) {
             return $http({
-              url: `/_p/event/getDebuggerUrl/?name=${appName}&bucket=${function_scope.bucket}&scope=${function_scope.scope}`,
+              url: encodeURI(`/_p/event/getDebuggerUrl/?name=${appName}&bucket=${function_scope.bucket}&scope=${function_scope.scope}`),
               method: 'POST',
               mnHttp: {
                 isNotForm: true
@@ -2329,7 +2329,7 @@ angular
           },
           stop: function(appName, function_scope) {
             return $http({
-              url: `/_p/event/stopDebugger/?name=${appName}&bucket=${function_scope.bucket}&scope=${function_scope.scope}`,
+              url: encodeURI(`/_p/event/stopDebugger/?name=${appName}&bucket=${function_scope.bucket}&scope=${function_scope.scope}`),
               method: 'POST',
               mnHttp: {
                 isNotForm: true
@@ -2508,7 +2508,7 @@ angular
             mnAlertsService.formatAndSetAlerts(message, 'error');
           },
           getAppLog: function(appname, function_scope) {
-            return $http.get(`/_p/event/getAppLog?aggregate=true&name=${appname}&bucket=${function_scope.bucket}&scope=${function_scope.scope}`).then(
+            return $http.get(encodeURI(`/_p/event/getAppLog?aggregate=true&name=${appname}&bucket=${function_scope.bucket}&scope=${function_scope.scope}`)).then(
               function(response) {
                 return response.data;
               }).catch(function(response) {
@@ -2517,7 +2517,7 @@ angular
             });
           },
           getInsight: function(appname, function_scope) {
-            return $http.get(`/_p/event/getInsight?aggregate=true&name=${appname}&bucket=${function_scope.bucket}&scope=${function_scope.scope}`).then(
+            return $http.get(encodeURI(`/_p/event/getInsight?aggregate=true&name=${appname}&bucket=${function_scope.bucket}&scope=${function_scope.scope}`)).then(
               function(response) {
 		var applocation = getAppLocation(appname, function_scope);
                 return response.data[applocation];

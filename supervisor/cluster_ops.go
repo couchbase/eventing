@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"math"
 	"net"
+	"net/url"
 	"strings"
 	"time"
 
@@ -104,8 +105,8 @@ var undeployFunctionCallback = func(args ...interface{}) error {
 	}
 
 	client := util.NewClient(5 * time.Second)
-	url := fmt.Sprintf("http://%s:%s/setSettings/?name=%s&force=true", util.Localhost(), s.adminPort.HTTPPort, appName)
-	resp, err := client.Post(url, "application/json", bytes.NewBuffer(data))
+	settingsUrl := fmt.Sprintf("http://%s:%s/setSettings/?name=%s&force=true", util.Localhost(), s.adminPort.HTTPPort, url.QueryEscape(appName))
+	resp, err := client.Post(settingsUrl, "application/json", bytes.NewBuffer(data))
 	if err != nil {
 		logging.Errorf("%s [%d] Function: %s failed to send http request", logPrefix, s.runningFnsCount(), appName)
 		return err
@@ -134,8 +135,9 @@ var deleteFunctionCallback = func(args ...interface{}) error {
 
 	id, _ := common.GetIdentityFromLocation(appName)
 	client := util.NewClient(5 * time.Second)
-	url := fmt.Sprintf("http://%s:%s/api/v1/functions/%s?bucket=%s&scope=%s", util.Localhost(), s.adminPort.HTTPPort, id.AppName, id.Bucket, id.Scope)
-	resp, err := client.Delete(url)
+	deleteUrl := fmt.Sprintf("http://%s:%s/api/v1/functions/%s?bucket=%s&scope=%s", util.Localhost(), s.adminPort.HTTPPort,
+		url.QueryEscape(id.AppName), url.QueryEscape(id.Bucket), url.QueryEscape(id.Scope))
+	resp, err := client.Delete(deleteUrl)
 	if err != nil {
 		logging.Errorf("%s [%d] Function: %s failed to send http request", logPrefix, s.runningFnsCount(), appName)
 		return err

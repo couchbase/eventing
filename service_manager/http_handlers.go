@@ -438,7 +438,7 @@ func getGlobalAppLog(m *ServiceMgr, appName string, sz int64, creds http.Header)
 	var lines []string
 	for _, node := range nodes {
 
-		var url string
+		var appLogUrl string
 		var client *util.Client
 
 		m.configMutex.RLock()
@@ -446,14 +446,14 @@ func getGlobalAppLog(m *ServiceMgr, appName string, sz int64, creds http.Header)
 		m.configMutex.RUnlock()
 
 		if check {
-			url = "https://" + node + "/getAppLog?name=" + appName + "&aggregate=false" + "&size=" + strconv.Itoa(int(psz))
+			appLogUrl = "https://" + node + "/getAppLog?name=" + url.QueryEscape(appName) + "&aggregate=false" + "&size=" + strconv.Itoa(int(psz))
 			client = util.NewTLSClient(time.Second*15, m.superSup.GetSecuritySetting())
 		} else {
-			url = "http://" + node + "/getAppLog?name=" + appName + "&aggregate=false" + "&size=" + strconv.Itoa(int(psz))
+			appLogUrl = "http://" + node + "/getAppLog?name=" + url.QueryEscape(appName) + "&aggregate=false" + "&size=" + strconv.Itoa(int(psz))
 			client = util.NewClient(time.Second * 15)
 		}
 
-		req, err := http.NewRequest(http.MethodGet, url, nil)
+		req, err := http.NewRequest(http.MethodGet, appLogUrl, nil)
 		if err != nil {
 			logging.Errorf("Got failure creating http request to %v: %v", node, err)
 			continue
@@ -1198,7 +1198,7 @@ func (m *ServiceMgr) getAggEventProcessingStats(w http.ResponseWriter, r *http.R
 	}
 
 	util.Retry(util.NewFixedBackoff(time.Second), nil, getEventingNodesAddressesOpCallback, m)
-	query := fmt.Sprintf("/getEventProcessingStats?name=%s&bucket=%s&scope=%s", id.AppName, id.Bucket, id.Scope)
+	query := fmt.Sprintf("/getEventProcessingStats?name=%s&bucket=%s&scope=%s", url.QueryEscape(id.AppName), url.QueryEscape(id.Bucket), url.QueryEscape(id.Scope))
 	pStats, err := util.GetEventProcessingStats(query, m.eventingNodeAddrs)
 	if err != nil {
 		runtimeInfo.ErrCode = response.ErrInternalServer
@@ -1323,7 +1323,7 @@ func (m *ServiceMgr) getAggBootstrapAppStatus(w http.ResponseWriter, r *http.Req
 
 	util.Retry(util.NewFixedBackoff(time.Second), nil, getEventingNodesAddressesOpCallback, m)
 
-	query := fmt.Sprintf("appName=%s&bucket=%s&scope=%s", id.AppName, id.Bucket, id.Scope)
+	query := fmt.Sprintf("appName=%s&bucket=%s&scope=%s", url.QueryEscape(id.AppName), url.QueryEscape(id.Bucket), url.QueryEscape(id.Scope))
 	status, err := util.CheckIfAppBootstrapOngoing("/getBootstrapAppStatus", m.eventingNodeAddrs, query)
 	if err != nil {
 		logging.Errorf("%s failed to grab correct bootstrap status of app from some/all nodes, err: %v", logPrefix, err)
@@ -1589,7 +1589,7 @@ func (m *ServiceMgr) setSettings(appLocation string, data []byte, force bool) (i
 					return
 				}
 
-				query := fmt.Sprintf("appName=%s&bucket=%s&scope=%s", id.AppName, id.Bucket, id.Scope)
+				query := fmt.Sprintf("appName=%s&bucket=%s&scope=%s", url.QueryEscape(id.AppName), url.QueryEscape(id.Bucket), url.QueryEscape(id.Scope))
 				status, err := util.GetAggBootstrapAppStatus(net.JoinHostPort(util.Localhost(), m.adminHTTPPort), query, true)
 				if err != nil {
 					logging.Errorf("%s %s", logPrefix, err)
@@ -4216,7 +4216,7 @@ func (m *ServiceMgr) statusHandlerImpl(cred cbauth.Creds, appLocation string) (f
 			// Possible that consumer process might be restarting on some node which will update the status but not bootstrapping list
 			// synchronise with other node only if app is not in bootstrapping list
 			if status.NumBootstrappingNodes == 0 {
-				query := fmt.Sprintf("appName=%s&bucket=%s&scope=%s", id.AppName, id.Bucket, id.Scope)
+				query := fmt.Sprintf("appName=%s&bucket=%s&scope=%s", url.QueryEscape(id.AppName), url.QueryEscape(id.Bucket), url.QueryEscape(id.Scope))
 				bootstrapStatus, err = util.CheckIfAppBootstrapOngoing("/getBootstrapAppStatus", eventingNodeAddrs, query)
 				if err != nil {
 					info.ErrCode = response.ErrInternalServer
@@ -5394,7 +5394,7 @@ func (m *ServiceMgr) resetStatsCounters(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	util.Retry(util.NewFixedBackoff(time.Second), nil, getEventingNodesAddressesOpCallback, m)
-	query := fmt.Sprintf("/resetNodeStatsCounters?appName=%s&bucket=%s&scope=%s", id.AppName, id.Bucket, id.Scope)
+	query := fmt.Sprintf("/resetNodeStatsCounters?appName=%s&bucket=%s&scope=%s", url.QueryEscape(id.AppName), url.QueryEscape(id.Bucket), url.QueryEscape(id.Scope))
 	httpresp, err := util.ResetStatsCounters(query, m.eventingNodeAddrs)
 	if err != nil && httpresp != nil {
 		runtimeInfo.ErrCode = response.ErrInternalServer
