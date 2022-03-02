@@ -72,7 +72,7 @@ func (m *ServiceMgr) checkIfDeployedAndRunning(appLocation string) bool {
 			return false
 		}
 
-		query := fmt.Sprintf("appName=%s&bucket=%s&scope=%s", id.AppName, id.Bucket, id.Scope)
+		query := fmt.Sprintf("appName=%s&bucket=%s&scope=%s", url.QueryEscape(id.AppName), url.QueryEscape(id.Bucket), url.QueryEscape(id.Scope))
 		bootstrapStatus, err := util.GetAggBootstrapAppStatus(net.JoinHostPort(util.Localhost(), m.adminHTTPPort), query, true)
 		if err != nil {
 			logging.Errorf("%s %s", logPrefix, err)

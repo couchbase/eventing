@@ -72,7 +72,7 @@ func TestCurlGetText(t *testing.T) {
 	curl.testGet()
 }
 
-/*func TestCurlGetGzip(t *testing.T) {
+func TestCurlGetGzip(t *testing.T) {
 	curl := curlTester{
 		handler:    "curl_get_gzip",
 		testName:   "TestCurlGetGzip",
@@ -88,7 +88,7 @@ func TestCurlGetDeflate(t *testing.T) {
 		testHandle: t,
 	}
 	curl.testGet()
-}*/
+}
 
 func TestCurlGetRedirect(t *testing.T) {
 	curl := curlTester{

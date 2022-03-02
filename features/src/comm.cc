@@ -121,10 +121,16 @@ KVNodesInfo Communicator::GetKVNodes() {
 void Communicator::Refresh() { creds_cache_.clear(); }
 
 void Communicator::WriteDebuggerURL(const std::string &url) {
-  auto response = curl_.HTTPPost({"Content-Type: text/plain"},
-                                 write_debugger_url_ + "/" + app_name_ +
-                                     "?bucket=" + bucket_ + "&scope=" + scope_,
-                                 url, lo_usr_, lo_key_);
+  auto utils = UnwrapData(isolate_)->utils;
+  auto bucket_encoded = utils->UrlEncodeAsString(bucket_);
+  auto scope_encoded = utils->UrlEncodeAsString(scope_);
+  auto app_name_encoded = utils->UrlEncodeAsString(app_name_);
+  auto response =
+      curl_.HTTPPost({"Content-Type: text/plain"},
+                     write_debugger_url_ + "/" + app_name_encoded.encoded +
+                         "?bucket=" + bucket_encoded.encoded +
+                         "&scope=" + scope_encoded.encoded,
+                     url, lo_usr_, lo_key_);
   int status = std::stoi(response.headers.data["Status"]);
   if (status != 0) {
     LOG(logError) << "Unable to write debugger URL: non-zero status in header"
