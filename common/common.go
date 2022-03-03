@@ -116,8 +116,8 @@ func (o *Owner) String() string {
 
 // needed only during 1st creation of the function
 type FunctionScope struct {
-	BucketName string `json:"bucket,omitempty"`
-	ScopeName  string `json:"scope,omitempty"`
+	BucketName string `json:"bucket"`
+	ScopeName  string `json:"scope"`
 }
 
 func (fs FunctionScope) String() string {
