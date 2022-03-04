@@ -554,6 +554,13 @@ func (m *ServiceMgr) tempStoreAppsPathCallback(kve metakv.KVEntry) error {
 			return nil
 		}
 
+		if app.FunctionScope.BucketName == "" {
+			app.FunctionScope.BucketName = "*"
+		}
+
+		if app.FunctionScope.ScopeName == "" {
+			app.FunctionScope.ScopeName = "*"
+		}
 		m.superSup.WatchBucket(*app.FunctionScope.ToKeyspace(), fnLocation, common.FunctionScopeWatch)
 		m.tempAppStore.Set(id, &app)
 		logging.Infof("%s Added function: %s to appCache", logPrefix, fnLocation)
