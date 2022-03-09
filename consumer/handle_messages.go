@@ -749,6 +749,7 @@ func (c *Consumer) sendMessage(m *msgToTransmit) error {
 		c.connMutex.Lock()
 		defer c.connMutex.Unlock()
 
+		msgSent := false
 		if !m.sendToDebugger && c.conn != nil {
 
 			err := io.ErrShortWrite
@@ -774,6 +775,7 @@ func (c *Consumer) sendMessage(m *msgToTransmit) error {
 				c.killAndRespawn()
 				return err
 			}
+			msgSent = true
 		} else if c.debugConn != nil {
 			_, err := c.sendMsgBuffer.WriteTo(c.debugConn)
 			if err != nil {
@@ -782,12 +784,15 @@ func (c *Consumer) sendMessage(m *msgToTransmit) error {
 				c.debugConn.Close()
 				return err
 			}
+			msgSent = true
 		}
 
-		// Reset the sendMessage buffer and message counter
-		c.aggMessagesSentCounter += c.sendMsgCounter
-		c.sendMsgBuffer.Reset()
-		c.sendMsgCounter = 0
+		// Reset the sendMessage buffer and message counter only if message has been successfully sent
+		if msgSent {
+			c.aggMessagesSentCounter += c.sendMsgCounter
+			c.sendMsgBuffer.Reset()
+			c.sendMsgCounter = 0
+		}
 	}
 
 	return nil
