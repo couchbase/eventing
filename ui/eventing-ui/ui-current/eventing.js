@@ -971,6 +971,7 @@ angular
       var self = this;
       config = config.data;
       self.enableDebugger = config.enable_debugger;
+      self.enableCurl = !config.disable_curl;
       self.encryptionLevel = encryptionLevel
 
       if (self.encryptionLevel == 'strict') {
@@ -982,7 +983,8 @@ angular
       }
       self.saveSettings = function(closeDialog) {
         ApplicationService.public.updateConfig({
-          enable_debugger: self.enableDebugger
+          enable_debugger: self.enableDebugger,
+          disable_curl: !self.enableCurl
         }).then(function(response) {
           if ($stateParams.appName) {
             let app = ApplicationService.local.getAppByName($stateParams
