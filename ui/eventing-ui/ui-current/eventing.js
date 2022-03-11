@@ -726,10 +726,6 @@ angular
             }
 
             var fileName = appName + '.json';
-            if(function_scope.bucket == "" || function_scope.bucket == "*") {
-                fileName = function_scope.bucket+":"+app_function_scope.scope+":"+appName+".json"
-            }
-
             // Create a new blob of the app.
             var fileToSave = new Blob([JSON.stringify([app])], {
               type: 'application/json',
@@ -1471,13 +1467,14 @@ angular
       }
 
       self.saveSettings = function(dismissDialog, closeDialog) {
-        var config = JSON.parse(JSON.stringify(appModel.depcfg));
+        var config = JSON.parse(JSON.stringify($scope.appModel.depcfg));
+        var settings = JSON.parse(JSON.stringify($scope.appModel.settings));
 
         Object.assign(config, ApplicationService.convertBindingToConfig(self
           .bindings));
         self.copyNamespace(config, $scope.appModel.depcfg);
 
-        if (JSON.stringify(appModel.depcfg) !== JSON.stringify(config)) {
+        if (JSON.stringify(appModel.depcfg) !== JSON.stringify(config) || JSON.stringify(appModel.settings) !== JSON.stringify(settings)) {
           $scope.appModel.depcfg = config;
           ApplicationService.tempStore.saveAppDepcfg($scope.appModel).
             then(function(response) {
