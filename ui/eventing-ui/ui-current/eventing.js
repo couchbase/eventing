@@ -60,7 +60,7 @@ angular
   ])
   .controller('SummaryDeployedStatsItemCtrl', [
     '$scope', 'mnPoolDefault', 'mnStatisticsNewService',
-    function ($scope, mnPoolDefault, mnStatisticsNewService) {
+    function($scope, mnPoolDefault, mnStatisticsNewService) {
       let vm = this;
       let isAtLeast70 = mnPoolDefault.export.compat.atLeast70;
 
@@ -74,9 +74,10 @@ angular
         "@eventing-.@items.eventing_timeout_count",
         "@eventing-.@items.eventing_dcp_backlog"
       ];
-      let getStatSamples = isAtLeast70 ? getStatSamples70 : getStatSamplesPre70;
+      let getStatSamples = isAtLeast70 ? getStatSamples70 :
+        getStatSamplesPre70;
       let uiStatNames = perItemStats.map(stat => mnStatisticsDescription
-                                         .mapping70(stat).split(".").pop());
+        .mapping70(stat).split(".").pop());
 
       var app_location = getAppLocation(row.appname, row.function_scope);
       $scope.summaryCtrl.mnEventingStatsPoller.subscribeUIStatsPoller({
@@ -84,9 +85,11 @@ angular
         node: "all",
         zoom: 3000,
         step: 1,
-        stats: isAtLeast70 ? perItemStats : perItemStats.map(mnStatisticsDescription.mapping70),
+        stats: isAtLeast70 ? perItemStats : perItemStats.map(
+          mnStatisticsDescription.mapping70),
         items: {
-          eventing: isAtLeast70 ? app_location : ("eventing/" + app_location + "/")
+          eventing: isAtLeast70 ? app_location : ("eventing/" +
+            app_location + "/")
         }
       }, $scope);
 
@@ -98,12 +101,14 @@ angular
       }
 
       function getStats(statName) {
-        let stats = $scope.mnUIStats && $scope.mnUIStats && $scope.mnUIStats.stats;
+        let stats = $scope.mnUIStats && $scope.mnUIStats && $scope.mnUIStats
+          .stats;
         return stats && stats[statName] && stats[statName]["aggregate"];
       }
 
       function getStatSamples70(statName) {
-        statName = mnStatisticsDescription.mapping65("@eventing-.@items." + statName);
+        statName = mnStatisticsDescription.mapping65("@eventing-.@items." +
+          statName);
         let stats = getStats(statName);
         let last = stats && stats.values[stats.values.length - 1];
         let val = last && last[1];
@@ -117,17 +122,20 @@ angular
       }
 
       function updateValues() {
-        uiStatNames.forEach(statName => row[statName] = getStatSamples(statName));
+        uiStatNames.forEach(statName => row[statName] = getStatSamples(
+          statName));
       }
 
-  }])
+    }
+  ])
   // Controller for the summary page.
   .controller('SummaryCtrl', [
     '$q', '$scope', '$rootScope', '$state',
     '$uibModal', '$timeout', '$location', 'ApplicationService', 'serverNodes',
     'isEventingRunning', 'mnPoller', 'mnStatisticsNewService',
-    function ($q, $scope, $rootScope, $state, $uibModal, $timeout, $location,
-              ApplicationService, serverNodes, isEventingRunning, mnPoller, mnStatisticsNewService) {
+    function($q, $scope, $rootScope, $state, $uibModal, $timeout, $location,
+      ApplicationService, serverNodes, isEventingRunning, mnPoller,
+      mnStatisticsNewService) {
       var self = this;
 
       self.errorState = !ApplicationService.status.isErrorCodesLoaded();
@@ -160,7 +168,8 @@ angular
       new mnPoller($scope, deployedAppsTicker).setInterval(self
         .statusPollMillis).cycle();
 
-      self.mnEventingStatsPoller = mnStatisticsNewService.createStatsPoller($scope);
+      self.mnEventingStatsPoller = mnStatisticsNewService.createStatsPoller(
+        $scope);
       self.mnEventingStatsPoller.heartbeat.setInterval(4000);
 
       // Poll to get the App status and reflect the same in the UI
@@ -184,7 +193,8 @@ angular
             var deprecatedMap = new Map();
             var overloadedMap = new Map();
             for (var app of self.annotationList) {
-	      var appLocation = getAppLocation(app.name, app.function_scope);
+              var appLocation = getAppLocation(app.name, app
+              .function_scope);
               deprecatedMap[appLocation] = (app.deprecatedNames ? app
                 .deprecatedNames : [""]).join(", ");
               overloadedMap[appLocation] = (app.overloadedNames ? app
@@ -193,7 +203,8 @@ angular
 
             let refreshapplist = []
             for (var rspApp of response.apps ? response.apps : []) {
-              var app_location = getAppLocation(rspApp.name, rspApp.function_scope);
+              var app_location = getAppLocation(rspApp.name, rspApp
+                .function_scope);
               if (rspApp.hasOwnProperty("redeploy_required") && rspApp
                 .redeploy_required == true) {
                 refreshapplist.push(app_location);
@@ -275,8 +286,10 @@ angular
 
             // Fetch DeployesdStats once every scrapeInterval/2 seconds
             if ($scope.rbac.cluster.settings.metrics.read) {
-              ApplicationService.server.getScrapeInterval().then(function (value) {
-                self.mnEventingStatsPoller.heartbeat.setInterval(value * 1000 / 2);
+              ApplicationService.server.getScrapeInterval().then(function(
+                value) {
+                self.mnEventingStatsPoller.heartbeat.setInterval(value *
+                  1000 / 2);
               });
             }
 
@@ -323,9 +336,11 @@ angular
           if (rspAppList.size == 0 || !rspAppList.has(app_location)) {
             delAppCnt++;
             var function_scope = self.appList[app_location].function_scope;
-            var tstApp = ApplicationService.local.getAppByName(app_location, function_scope)
+            var tstApp = ApplicationService.local.getAppByName(app_location,
+              function_scope)
             if (tstApp) {
-              ApplicationService.local.deleteApp(app_location, function_scope);
+              ApplicationService.local.deleteApp(app_location,
+              function_scope);
             }
             delete self.appList[app_location];
           }
@@ -381,8 +396,9 @@ angular
         var responses = new Map();
         var thePromises = [];
         for (var name of appsToFetch ? appsToFetch : []) {
-	  var id = getReverseAppLocation(name);
-          var curPromise = ApplicationService.public.getFunction(id.name, id.function_scope);
+          var id = getReverseAppLocation(name);
+          var curPromise = ApplicationService.public.getFunction(id.name, id
+            .function_scope);
           thePromises.push(curPromise);
         }
 
@@ -392,10 +408,13 @@ angular
             var appname = result[i].data.appname;
             var function_scope = result[i].data.function_scope;
             var appLocation = getAppLocation(appname, function_scope);
-            ApplicationService.local.createApp(new ApplicationModel(result[i].data));
-            self.appList[appLocation] = ApplicationService.local.getAppByName(
-              appname, function_scope);
-            self.appList[appLocation].status = rspAppStat.get(appLocation);
+            ApplicationService.local.createApp(new ApplicationModel(
+              result[i].data));
+            self.appList[appLocation] = ApplicationService.local
+              .getAppByName(
+                appname, function_scope);
+            self.appList[appLocation].status = rspAppStat.get(
+            appLocation);
             self.appList[appLocation].uiState = determineUIStatus(self
               .appList[appLocation].status);
             self.appList[appLocation].warnings = getWarnings(self.appList[
@@ -431,23 +450,24 @@ angular
       };
 
       self.openAppLog = function(appName, function_scope) {
-        ApplicationService.server.getAppLog(appName, function_scope).then(function(log) {
-          let logScope = $scope.$new(true);
-          logScope.appName = appName;
-          logScope.logMessages = [];
-          if (log && log.length > 0) {
-            logScope.logMessages = log.split(/\r?\n/);
-          }
-          $uibModal.open({
-            template: appLogTemplate,
-            scope: logScope
+        ApplicationService.server.getAppLog(appName, function_scope).then(
+          function(log) {
+            let logScope = $scope.$new(true);
+            logScope.appName = appName;
+            logScope.logMessages = [];
+            if (log && log.length > 0) {
+              logScope.logMessages = log.split(/\r?\n/);
+            }
+            $uibModal.open({
+              template: appLogTemplate,
+              scope: logScope
+            });
           });
-        });
       };
 
       self.openWarnings = function(appName, function_scope) {
         let scope = $scope.$new(true);
-	var appLocation = getAppLocation(appName, function_scope);
+        var appLocation = getAppLocation(appName, function_scope);
         scope.appName = appName;
         scope.warnings = self.appList[appLocation].warnings;
         $uibModal.open({
@@ -556,7 +576,8 @@ angular
             return ApplicationService.primaryStore.getDeployedApps();
           })
           .then(function(response) {
-            var appLocation = getAppLocation(appClone.appname, appClone.function_scope)
+            var appLocation = getAppLocation(appClone.appname, appClone
+              .function_scope)
             switch (operation) {
               case 'deploy':
                 if (appLocation in response.data) {
@@ -675,7 +696,8 @@ angular
             return ApplicationService.primaryStore.getDeployedApps();
           })
           .then(function(response) {
-	    var appLocation = getAppLocation(app.appname, app.function_scope);
+            var appLocation = getAppLocation(app.appname, app
+              .function_scope);
             // Check if the app is deployed completely before trying to undeploy.
             if (!(appLocation in response.data)) {
               ApplicationService.server.showErrorAlert(
@@ -686,7 +708,8 @@ angular
               );
             }
 
-            return ApplicationService.public.undeployApp(app.appname, app.function_scope);
+            return ApplicationService.public.undeployApp(app.appname, app
+              .function_scope);
           })
           .then(function(response) {
             var responseCode = ApplicationService.status.getResponseCode(
@@ -699,7 +722,8 @@ angular
             app.settings.deployment_status = false;
             app.settings.processing_status = false;
             ApplicationService.server.showSuccessAlert(
-              `${app.appname} under ${app.function_scope.bucket}:${app.function_scope.scope} will be undeployed`);
+              `${app.appname} under ${app.function_scope.bucket}:${app.function_scope.scope} will be undeployed`
+              );
 
             // since the UI is changing state via undeploy update the count
             fetchWorkerCount();
@@ -719,7 +743,9 @@ angular
           .then(function(apps) {
             var app = apps.data.find(function(app) {
               var app_function_scope = app.function_scope;
-              return app.appname === appName && function_scope.bucket === app_function_scope.bucket && function_scope.scope === app_function_scope.scope;
+              return app.appname === appName && function_scope
+                .bucket === app_function_scope.bucket &&
+                function_scope.scope === app_function_scope.scope;
             });
             if (!app) {
               return $q.reject('app not found');
@@ -755,13 +781,15 @@ angular
             scope: $scope
           }).result
           .then(function(response) {
-            return ApplicationService.public.deleteApp(appName, function_scope);
+            return ApplicationService.public.deleteApp(appName,
+              function_scope);
           })
           .then(function(response) {
             // Delete the local copy of the app in the browser
             ApplicationService.local.deleteApp(appName, function_scope);
             ApplicationService.server.showSuccessAlert(
-              `${appName} under ${function_scope.bucket}:${function_scope.scope} deleted successfully!`);
+              `${appName} under ${function_scope.bucket}:${function_scope.scope} deleted successfully!`
+              );
           })
           .catch(function(errResponse) {
             ApplicationService.server.showErrorAlert(
@@ -835,7 +863,7 @@ angular
 
               return $state.transitionTo('app.admin.eventing.handler', {
                 appName: creationScope.appModel.appname,
-		function_scope: creationScope.appModel.function_scope,
+                function_scope: creationScope.appModel.function_scope,
               }, {
                 // Explained in detail - https://github.com/angular-ui/ui-router/issues/3196
                 reload: true
@@ -851,10 +879,11 @@ angular
               ApplicationService.server.showErrorAlert(
                 "Changes cannot be saved. Reason: " + JSON.stringify(
                   errResponse.data[0].info));
-                return;
-             }
+              return;
+            }
             ApplicationService.server.showErrorAlert(
-                "Changes cannot be saved. Reason: " +JSON.stringify(errResponse.data));
+              "Changes cannot be saved. Reason: " + JSON.stringify(
+                errResponse.data));
           });
       }
 
@@ -1474,53 +1503,62 @@ angular
           .bindings));
         self.copyNamespace(config, $scope.appModel.depcfg);
 
-        if (JSON.stringify(appModel.depcfg) !== JSON.stringify(config) || JSON.stringify(appModel.settings) !== JSON.stringify(settings)) {
+        if (JSON.stringify(appModel.depcfg) !== JSON.stringify(config) ||
+          JSON.stringify(appModel.settings) !== JSON.stringify(settings)) {
           $scope.appModel.depcfg = config;
           ApplicationService.tempStore.saveAppDepcfg($scope.appModel).
-            then(function(response) {
-              ApplicationService.local.saveApp(new Application($scope
-                .appModel));
-              ApplicationService.server.showWarningAlert(
-                'Bindings/Settings changed. Deploy or Resume function for changes to take effect.'
-              );
+          then(function(response) {
+            ApplicationService.local.saveApp(new Application($scope
+              .appModel));
+            ApplicationService.server.showWarningAlert(
+              'Bindings/Settings changed. Deploy or Resume function for changes to take effect.'
+            );
 
-              // Update local changes.
-              appModel.settings = $scope.appModel.settings;
-              appModel.depcfg = config;
+            // Update local changes.
+            appModel.settings = $scope.appModel.settings;
+            appModel.depcfg = config;
 
-              ApplicationService.tempStore.isAppDeployed(appName, appModel.function_scope)
+            ApplicationService.tempStore.isAppDeployed(appName, appModel
+                .function_scope)
               .then(function(isDeployed) {
-                ApplicationService.tempStore.isAppPaused(appName, appModel.function_scope)
+                ApplicationService.tempStore.isAppPaused(appName,
+                    appModel.function_scope)
                   .then(function(isPaused) {
-                  if (isDeployed && isPaused) {
-                    return ApplicationService.public.updateSettings($scope
-                    .appModel);
-                  } else if (isDeployed) {
-                    // deleting the dcp_stream_boundary as it is not allowed to change for a deployed app
-                    delete $scope.appModel.settings.dcp_stream_boundary;
-                    return ApplicationService.public.updateSettings($scope
-                      .appModel);
-                  } else {
-                    var redacted = ApplicationService.tempStore
-                      .redactPWDApp(JSON.parse(JSON.stringify($scope
-                      .appModel)));
-                    return ApplicationService.tempStore.saveApp(redacted);
-                }
+                    if (isDeployed && isPaused) {
+                      return ApplicationService.public
+                        .updateSettings($scope
+                          .appModel);
+                    } else if (isDeployed) {
+                      // deleting the dcp_stream_boundary as it is not allowed to change for a deployed app
+                      delete $scope.appModel.settings
+                        .dcp_stream_boundary;
+                      return ApplicationService.public
+                        .updateSettings($scope
+                          .appModel);
+                    } else {
+                      var redacted = ApplicationService.tempStore
+                        .redactPWDApp(JSON.parse(JSON.stringify(
+                          $scope
+                          .appModel)));
+                      return ApplicationService.tempStore.saveApp(
+                        redacted);
+                    }
+                  })
+                  .catch(function(errResponse) {
+                    console.error('Failed to get function status',
+                      errResponse);
+                  })
               })
               .catch(function(errResponse) {
-                console.error('Failed to get function status',
+                console.error('Unable to get deployed apps list',
                   errResponse);
-              })
-            })
-            .catch(function(errResponse) {
-              console.error('Unable to get deployed apps list',
-                errResponse);
-            });
-         }).
-        catch(function(errResponse) {
-	console.error(errResponse.data);
-          ApplicationService.server.showErrorAlert(
-            'Changes cannot be saved. '+errResponse.data.description);
+              });
+          }).
+          catch(function(errResponse) {
+            console.error(errResponse.data);
+            ApplicationService.server.showErrorAlert(
+              'Changes cannot be saved. ' + errResponse.data
+              .description);
           });
         }
 
@@ -1586,7 +1624,8 @@ angular
       var self = this,
         isDebugOn = false,
         debugScope = $scope.$new(true),
-        app = ApplicationService.local.getAppByName($stateParams.appName, $stateParams.function_scope);
+        app = ApplicationService.local.getAppByName($stateParams.appName,
+          $stateParams.function_scope);
       var startTime = 0;
 
       debugScope.appName = app.appname;
@@ -1660,7 +1699,8 @@ angular
 
           // insights
           if (self.editorDisabled) {
-            ApplicationService.server.getInsight(app.appname, app.function_scope).then(
+            ApplicationService.server.getInsight(app.appname, app
+              .function_scope).then(
               function(insight) {
                 console.log(insight);
                 var annotations = [];
@@ -1812,9 +1852,9 @@ angular
             }
           })
           .catch(function(errResponse) {
-	    ApplicationService.server.showErrorAlert(
-                    "Changes cannot be saved. Reason: " + JSON
-                    .stringify(errResponse.data.description));
+            ApplicationService.server.showErrorAlert(
+              "Changes cannot be saved. Reason: " + JSON
+              .stringify(errResponse.data.description));
           });
       };
 
@@ -1844,7 +1884,8 @@ angular
             return ApplicationService.primaryStore.getDeployedApps()
           })
           .then(function(response) {
-	    var appLocation = getAppLocation(app.appname, app.function_scope);
+            var appLocation = getAppLocation(app.appname, app
+              .function_scope);
             if (!(appLocation in response.data)) {
               ApplicationService.server.showErrorAlert(
                 `Function ${app.appname} under ${app.function_scope.bucket}:${app.function_scope.scope} may be undergoing bootstrap. Please try later.`
@@ -1869,7 +1910,8 @@ angular
               isDebugOn = true;
 
               // Starts the debugger agent.
-              ApplicationService.debug.start(app.appname, app.function_scope, response.data)
+              ApplicationService.debug.start(app.appname, app
+                  .function_scope, response.data)
                 .then(function(response) {
                   var responseCode = ApplicationService.status
                     .getResponseCode(response);
@@ -1896,7 +1938,8 @@ angular
                   function getDebugUrl() {
                     console.error('Fetching debug url for ' + app
                       .appname);
-                    ApplicationService.debug.getUrl(app.appname, app.function_scope)
+                    ApplicationService.debug.getUrl(app.appname, app
+                        .function_scope)
                       .then(function(response) {
                         var responseCode = ApplicationService.status
                           .getResponseCode(response);
@@ -1958,7 +2001,8 @@ angular
             }
 
             function stopDebugger() {
-              return ApplicationService.debug.stop(app.appname, app.function_scope)
+              return ApplicationService.debug.stop(app.appname, app
+                  .function_scope)
                 .then(function(response) {
                   var responseCode = ApplicationService.status
                     .getResponseCode(response);
@@ -2110,11 +2154,15 @@ angular
             return $http.get('/_p/event/getAnnotations')
           },
           getFunction: function(fname, function_scope) {
-            return $http.get(encodeURI('/_p/event/api/v1/functions/' + fname+'?bucket='+function_scope.bucket+'&scope='+function_scope.scope));
+            return $http.get(encodeURI('/_p/event/api/v1/functions/' +
+              fname + '?bucket=' + function_scope.bucket + '&scope=' +
+              function_scope.scope));
           },
           updateSettings: function(appModel) {
             return $http({
-              url: encodeURI(`/_p/event/api/v1/functions/${appModel.appname}/settings?bucket=${appModel.function_scope.bucket}&scope=${appModel.function_scope.scope}`),
+              url: encodeURI(
+                `/_p/event/api/v1/functions/${appModel.appname}/settings?bucket=${appModel.function_scope.bucket}&scope=${appModel.function_scope.scope}`
+                ),
               method: 'POST',
               mnHttp: {
                 isNotForm: true
@@ -2127,7 +2175,9 @@ angular
           },
           deployApp: function(appModel) {
             return $http({
-              url: encodeURI(`/_p/event/api/v1/functions/${appModel.appname}/deploy?bucket=${appModel.function_scope.bucket}&scope=${appModel.function_scope.scope}`),
+              url: encodeURI(
+                `/_p/event/api/v1/functions/${appModel.appname}/deploy?bucket=${appModel.function_scope.bucket}&scope=${appModel.function_scope.scope}`
+                ),
               method: 'POST',
               mnHttp: {
                 isNotForm: true
@@ -2139,7 +2189,9 @@ angular
           },
           resumeApp: function(appModel) {
             return $http({
-              url: encodeURI(`/_p/event/api/v1/functions/${appModel.appname}/resume?bucket=${appModel.function_scope.bucket}&scope=${appModel.function_scope.scope}`),
+              url: encodeURI(
+                `/_p/event/api/v1/functions/${appModel.appname}/resume?bucket=${appModel.function_scope.bucket}&scope=${appModel.function_scope.scope}`
+                ),
               method: 'POST',
               mnHttp: {
                 isNotForm: true
@@ -2151,7 +2203,9 @@ angular
           },
           pauseApp: function(appModel) {
             return $http({
-              url: encodeURI(`/_p/event/api/v1/functions/${appModel.appname}/pause?bucket=${appModel.function_scope.bucket}&scope=${appModel.function_scope.scope}`),
+              url: encodeURI(
+                `/_p/event/api/v1/functions/${appModel.appname}/pause?bucket=${appModel.function_scope.bucket}&scope=${appModel.function_scope.scope}`
+                ),
               method: 'POST',
               mnHttp: {
                 isNotForm: true
@@ -2163,7 +2217,9 @@ angular
           },
           undeployApp: function(appName, function_scope) {
             return $http({
-              url: encodeURI(`/_p/event/api/v1/functions/${appName}/undeploy?bucket=${function_scope.bucket}&scope=${function_scope.scope}`),
+              url: encodeURI(
+                `/_p/event/api/v1/functions/${appName}/undeploy?bucket=${function_scope.bucket}&scope=${function_scope.scope}`
+                ),
               method: 'POST',
               mnHttp: {
                 isNotForm: true
@@ -2175,7 +2231,9 @@ angular
           },
           deleteApp: function(appName, function_scope) {
             return $http({
-              url: encodeURI(`/_p/event/api/v1/functions/${appName}/?bucket=${function_scope.bucket}&scope=${function_scope.scope}`),
+              url: encodeURI(
+                `/_p/event/api/v1/functions/${appName}/?bucket=${function_scope.bucket}&scope=${function_scope.scope}`
+                ),
               method: 'DELETE',
               mnHttp: {
                 isNotForm: true
@@ -2215,7 +2273,9 @@ angular
           },
           saveApp: function(app) {
             return $http({
-              url: encodeURI(`/_p/event/saveAppTempStore/?name=${app.appname}&bucket=${app.function_scope.bucket}&scope=${app.function_scope.scope}`),
+              url: encodeURI(
+                `/_p/event/saveAppTempStore/?name=${app.appname}&bucket=${app.function_scope.bucket}&scope=${app.function_scope.scope}`
+                ),
               method: 'POST',
               mnHttp: {
                 isNotForm: true
@@ -2228,7 +2288,9 @@ angular
           },
           saveAppCode: function(app) {
             return $http({
-              url: encodeURI(`/_p/event/api/v1/functions/${app.appname}/appcode?bucket=${app.function_scope.bucket}&scope=${app.function_scope.scope}`),
+              url: encodeURI(
+                `/_p/event/api/v1/functions/${app.appname}/appcode?bucket=${app.function_scope.bucket}&scope=${app.function_scope.scope}`
+                ),
               method: 'POST',
               headers: {
                 'Content-Type': 'application/javascript'
@@ -2238,7 +2300,9 @@ angular
           },
           saveAppDepcfg: function(app) {
             return $http({
-              url: encodeURI(`/_p/event/api/v1/functions/${app.appname}/config?bucket=${app.function_scope.bucket}&scope=${app.function_scope.scope}`),
+              url: encodeURI(
+                `/_p/event/api/v1/functions/${app.appname}/config?bucket=${app.function_scope.bucket}&scope=${app.function_scope.scope}`
+                ),
               method: 'POST',
               mnHttp: {
                 isNotForm: true
@@ -2262,7 +2326,8 @@ angular
                 return deployedAppsMgr;
               })
               .then(function(deployedAppsMgr) {
-                return deployedAppsMgr.getAppByName(appName, function_scope).settings
+                return deployedAppsMgr.getAppByName(appName,
+                    function_scope).settings
                   .deployment_status;
               });
           },
@@ -2278,9 +2343,11 @@ angular
                 return pausedAppsMgr;
               })
               .then(function(pausedAppsMgr) {
-                return pausedAppsMgr.getAppByName(appName, function_scope).settings
+                return pausedAppsMgr.getAppByName(appName,
+                    function_scope).settings
                   .deployment_status &&
-                  !pausedAppsMgr.getAppByName(appName, function_scope).settings
+                  !pausedAppsMgr.getAppByName(appName, function_scope)
+                  .settings
                   .processing_status;
               })
           },
@@ -2302,7 +2369,9 @@ angular
         debug: {
           start: function(appName, function_scope, nodesInfo) {
             return $http({
-              url: encodeURI(`/_p/event/startDebugger/?name=${appName}&bucket=${function_scope.bucket}&scope=${function_scope.scope}`),
+              url: encodeURI(
+                `/_p/event/startDebugger/?name=${appName}&bucket=${function_scope.bucket}&scope=${function_scope.scope}`
+                ),
               method: 'POST',
               mnHttp: {
                 isNotForm: true
@@ -2315,7 +2384,9 @@ angular
           },
           getUrl: function(appName, function_scope) {
             return $http({
-              url: encodeURI(`/_p/event/getDebuggerUrl/?name=${appName}&bucket=${function_scope.bucket}&scope=${function_scope.scope}`),
+              url: encodeURI(
+                `/_p/event/getDebuggerUrl/?name=${appName}&bucket=${function_scope.bucket}&scope=${function_scope.scope}`
+                ),
               method: 'POST',
               mnHttp: {
                 isNotForm: true
@@ -2328,7 +2399,9 @@ angular
           },
           stop: function(appName, function_scope) {
             return $http({
-              url: encodeURI(`/_p/event/stopDebugger/?name=${appName}&bucket=${function_scope.bucket}&scope=${function_scope.scope}`),
+              url: encodeURI(
+                `/_p/event/stopDebugger/?name=${appName}&bucket=${function_scope.bucket}&scope=${function_scope.scope}`
+                ),
               method: 'POST',
               mnHttp: {
                 isNotForm: true
@@ -2507,7 +2580,9 @@ angular
             mnAlertsService.formatAndSetAlerts(message, 'error');
           },
           getAppLog: function(appname, function_scope) {
-            return $http.get(encodeURI(`/_p/event/getAppLog?aggregate=true&name=${appname}&bucket=${function_scope.bucket}&scope=${function_scope.scope}`)).then(
+            return $http.get(encodeURI(
+              `/_p/event/getAppLog?aggregate=true&name=${appname}&bucket=${function_scope.bucket}&scope=${function_scope.scope}`
+              )).then(
               function(response) {
                 return response.data;
               }).catch(function(response) {
@@ -2516,9 +2591,12 @@ angular
             });
           },
           getInsight: function(appname, function_scope) {
-            return $http.get(encodeURI(`/_p/event/getInsight?aggregate=true&name=${appname}&bucket=${function_scope.bucket}&scope=${function_scope.scope}`)).then(
+            return $http.get(encodeURI(
+              `/_p/event/getInsight?aggregate=true&name=${appname}&bucket=${function_scope.bucket}&scope=${function_scope.scope}`
+              )).then(
               function(response) {
-		var applocation = getAppLocation(appname, function_scope);
+                var applocation = getAppLocation(appname,
+                  function_scope);
                 return response.data[applocation];
               }).catch(function(response) {
               console.log("error getting insight", response);
@@ -2744,9 +2822,12 @@ angular
 
           // Check whether the appname exists in the list of apps.
           if (form.appname.$viewValue && form.appname.$viewValue !== '') {
-	    var function_scope = {"bucket": form.function_bucket.$viewValue, "scope": form.function_scope.$viewValue};
-            var app_location = getAppLocation(form.appname.$viewValue, function_scope);
-            form.appname.$error.appExists = app_location in formCtrl.savedApps;
+            var function_scope = { "bucket": form.function_bucket
+                .$viewValue, "scope": form.function_scope.$viewValue };
+            var app_location = getAppLocation(form.appname.$viewValue,
+              function_scope);
+            form.appname.$error.appExists = app_location in formCtrl
+              .savedApps;
             form.appname.$error.appnameInvalid = !isValidApplicationName(
               form.appname.$viewValue);
             form.appname.$error.bindingsValidList = bindingsValidList;
