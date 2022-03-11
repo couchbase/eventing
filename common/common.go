@@ -426,6 +426,8 @@ type EventingServiceMgr interface {
 	GetFailoverStatus() (failoverNotifTs int64, changeId string)
 	CheckLifeCycleOpsDuringRebalance() bool
 	NotifySupervisorWaitCh()
+	// TODO: Replace it with getting back the whole application.
+	GetFunctionId(id Identity) (uint32, error)
 }
 
 type Config map[string]interface{}

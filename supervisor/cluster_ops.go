@@ -93,6 +93,11 @@ var undeployFunctionCallback = func(args ...interface{}) error {
 	s := args[0].(*SuperSupervisor)
 	appName := args[1].(string)
 	deleteFunction := args[2].(bool)
+	id, _ := common.GetIdentityFromLocation(appName)
+	functionId, err := s.getFunctionId(id)
+	if err == util.AppNotExist {
+		return nil
+	}
 
 	settings := make(map[string]interface{})
 	settings["deployment_status"] = false
@@ -122,7 +127,8 @@ var undeployFunctionCallback = func(args ...interface{}) error {
 	logging.Infof("%s [%d] Function: %s response from server: %s resp: %rs", logPrefix, s.runningFnsCount(), appName, string(content), resp)
 
 	if deleteFunction {
-		util.Retry(util.NewExponentialBackoff(), &s.retryCount, deleteFunctionCallback, s, appName)
+		util.Retry(util.NewFixedBackoff(time.Second), &s.retryCount, waitForStateChange, s, id, "undeployed", functionId)
+		util.Retry(util.NewExponentialBackoff(), &s.retryCount, deleteFunctionCallback, s, id, functionId)
 	}
 	return nil
 }
@@ -131,27 +137,80 @@ var deleteFunctionCallback = func(args ...interface{}) error {
 	logPrefix := "SuperSupervisor::deleteFunctionCallback"
 
 	s := args[0].(*SuperSupervisor)
-	appName := args[1].(string)
+	id := args[1].(common.Identity)
+	functionId := args[2].(uint32)
 
-	id, _ := common.GetIdentityFromLocation(appName)
 	client := util.NewClient(5 * time.Second)
-	deleteUrl := fmt.Sprintf("http://%s:%s/api/v1/functions/%s?bucket=%s&scope=%s", util.Localhost(), s.adminPort.HTTPPort,
-		url.QueryEscape(id.AppName), url.QueryEscape(id.Bucket), url.QueryEscape(id.Scope))
+	deleteUrl := fmt.Sprintf("http://%s:%s/api/v1/functions/%s?bucket=%s&scope=%s&handleruuid=%s", util.Localhost(), s.adminPort.HTTPPort,
+		url.QueryEscape(id.AppName), url.QueryEscape(id.Bucket), url.QueryEscape(id.Scope), functionId)
 	resp, err := client.Delete(deleteUrl)
 	if err != nil {
-		logging.Errorf("%s [%d] Function: %s failed to send http request", logPrefix, s.runningFnsCount(), appName)
+		logging.Errorf("%s [%d] Function: %s failed to send http request", logPrefix, s.runningFnsCount(), id)
 		return err
 	}
 	defer resp.Body.Close()
 
 	content, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		logging.Errorf("%s [%d] Function: %s failed to read content", logPrefix, s.runningFnsCount(), appName)
+		logging.Errorf("%s [%d] Function: %s failed to read content", logPrefix, s.runningFnsCount(), id)
 		return err
 	}
 
-	logging.Infof("%s [%d] Function: %s response from server: %s resp: %rs", logPrefix, s.runningFnsCount(), appName, string(content), resp)
+	logging.Infof("%s [%d] Function: %s response from server: %s resp: %rs", logPrefix, s.runningFnsCount(), id, string(content), resp)
 	return nil
+}
+
+type AppStatus struct {
+	CompositeStatus string `json:"composite_status"`
+}
+
+type StatusResponse struct {
+	App  AppStatus `json:"app"`
+	Code int       `json:"code"`
+}
+
+var waitForStateChange = func(args ...interface{}) error {
+	logPrefix := "SuperSupervisor::WaitForStateChange"
+	s := args[0].(*SuperSupervisor)
+	id := args[1].(common.Identity)
+	compositeStatus := args[2].(string)
+	functionId := args[3].(uint32)
+
+	client := util.NewClient(5 * time.Second)
+	statusUrl := fmt.Sprintf("http://%s:%s/api/v1/status/%s?bucket=%s&scope=%s", util.Localhost(), s.adminPort.HTTPPort,
+		url.QueryEscape(id.AppName), url.QueryEscape(id.Bucket), url.QueryEscape(id.Scope))
+	resp, err := client.Get(statusUrl)
+	if err != nil {
+		logging.Errorf("%s [%d] Function: %s failed to send http request", logPrefix, s.runningFnsCount(), id)
+		return err
+	}
+	defer resp.Body.Close()
+
+	content, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		logging.Errorf("%s [%d] Function: %s failed to read content err: %v", logPrefix, s.runningFnsCount(), id, err)
+		return err
+	}
+
+	statusResponse := &StatusResponse{}
+	err = json.Unmarshal(content, statusResponse)
+	if err != nil {
+		logging.Errorf("%s [%d] Function: %s failed to read content err: %v", logPrefix, s.runningFnsCount(), id, err)
+		return err
+	}
+
+	// Return nil if app is not present or apps composite status is required status
+	if statusResponse.Code == 13 || statusResponse.App.CompositeStatus == compositeStatus {
+		return nil
+	}
+	currentId, err := s.getFunctionId(id)
+	// App is already deleted or recreated by the user in that case exit
+	// TODO: Make status handler to accept the functionId
+	if err == util.AppNotExist || currentId != functionId {
+		return nil
+	}
+
+	return fmt.Errorf("%s [%d] Function: %s response from server: %s resp: %rs", logPrefix, id, statusResponse)
 }
 
 var commonConnectBucketOpCallback = func(args ...interface{}) error {
