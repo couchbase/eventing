@@ -477,9 +477,14 @@ func (c *Consumer) getVbRemainingToOwn() []uint16 {
 
 	var vbsRemainingToOwn []uint16
 
+	/* Should own the vb if either:
+	1. this vb is owned by another node / worker or not owned at all
+	2. OR if currently owned by this worker but streamend is on its way
+	*/
 	for vb := range c.vbEventingNodeAssignMap {
-		if (c.vbProcessingStats.getVbStat(vb, "node_uuid") != c.NodeUUID() ||
-			c.vbProcessingStats.getVbStat(vb, "assigned_worker") != c.ConsumerName()) &&
+		if ((c.vbProcessingStats.getVbStat(vb, "node_uuid") != c.NodeUUID() ||
+			c.vbProcessingStats.getVbStat(vb, "assigned_worker") != c.ConsumerName()) ||
+			c.vbProcessingStats.getVbStat(vb, "dcp_stream_requested") == false) &&
 			c.checkIfCurrentConsumerShouldOwnVb(vb) {
 
 			vbsRemainingToOwn = append(vbsRemainingToOwn, vb)
