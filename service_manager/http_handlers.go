@@ -3403,6 +3403,31 @@ func (m *ServiceMgr) functionName(w http.ResponseWriter, r *http.Request, id com
 			return
 		}
 
+		params := r.URL.Query()
+		requestId, ok := params["handleruuid"]
+		if ok {
+			handlerId, err := strconv.ParseUint(requestId[0], 10, 32)
+			if err != nil {
+				runtimeInfo.ErrCode = response.ErrInvalidRequest
+				return
+			}
+
+			functionId, err := m.GetFunctionId(id)
+			if err == util.AppNotExist {
+				runtimeInfo.ErrCode = response.ErrAppNotFoundTs
+				return
+			}
+			if err != nil {
+				runtimeInfo.ErrCode = response.ErrInternalServer
+				return
+			}
+
+			if uint32(handlerId) != functionId {
+				runtimeInfo.ErrCode = response.ErrInvalidRequest
+				return
+			}
+		}
+
 		info := m.deletePrimaryStore(cred, appLocation)
 		// Delete the application from temp store only if app does not exist in primary store
 		// or if the deletion succeeds on primary store

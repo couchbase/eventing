@@ -240,6 +240,10 @@ func (s *SuperSupervisor) getSourceMetaAndFunctionKeySpaces(appName string) (sou
 	return
 }
 
+func (s *SuperSupervisor) getFunctionId(id common.Identity) (uint32, error) {
+	return s.serviceMgr.GetFunctionId(id)
+}
+
 func printMemoryStats() {
 	stats := memoryStats()
 	buf, err := json.Marshal(&stats)
