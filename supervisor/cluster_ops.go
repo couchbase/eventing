@@ -127,7 +127,7 @@ var undeployFunctionCallback = func(args ...interface{}) error {
 	logging.Infof("%s [%d] Function: %s response from server: %s resp: %rs", logPrefix, s.runningFnsCount(), appName, string(content), resp)
 
 	if deleteFunction {
-		util.Retry(util.NewFixedBackoff(time.Second), &s.retryCount, waitForStateChange, s, id, "undeployed", functionId)
+		util.Retry(util.NewFixedBackoff(5*time.Second), &s.retryCount, waitForStateChange, s, id, "undeployed", functionId)
 		util.Retry(util.NewExponentialBackoff(), &s.retryCount, deleteFunctionCallback, s, id, functionId)
 	}
 	return nil
