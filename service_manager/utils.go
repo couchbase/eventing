@@ -453,6 +453,15 @@ func (m *ServiceMgr) NotifySupervisorWaitCh() {
 	close(m.supWaitCh)
 }
 
+func (m *ServiceMgr) GetFunctionId(id common.Identity) (uint32, error) {
+	app, err := m.tempAppStore.Get(id)
+	if err != nil {
+		return uint32(0), err
+	}
+
+	return app.FunctionID, nil
+}
+
 func (m *ServiceMgr) validateQueryKey(query url.Values) (info *response.RuntimeInfo) {
 	info = &response.RuntimeInfo{}
 
