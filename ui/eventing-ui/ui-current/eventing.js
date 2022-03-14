@@ -194,7 +194,7 @@ angular
             var overloadedMap = new Map();
             for (var app of self.annotationList) {
               var appLocation = getAppLocation(app.name, app
-              .function_scope);
+                .function_scope);
               deprecatedMap[appLocation] = (app.deprecatedNames ? app
                 .deprecatedNames : [""]).join(", ");
               overloadedMap[appLocation] = (app.overloadedNames ? app
@@ -340,7 +340,7 @@ angular
               function_scope)
             if (tstApp) {
               ApplicationService.local.deleteApp(app_location,
-              function_scope);
+                function_scope);
             }
             delete self.appList[app_location];
           }
@@ -414,7 +414,7 @@ angular
               .getAppByName(
                 appname, function_scope);
             self.appList[appLocation].status = rspAppStat.get(
-            appLocation);
+              appLocation);
             self.appList[appLocation].uiState = determineUIStatus(self
               .appList[appLocation].status);
             self.appList[appLocation].warnings = getWarnings(self.appList[
@@ -723,7 +723,7 @@ angular
             app.settings.processing_status = false;
             ApplicationService.server.showSuccessAlert(
               `${app.appname} under ${app.function_scope.bucket}:${app.function_scope.scope} will be undeployed`
-              );
+            );
 
             // since the UI is changing state via undeploy update the count
             fetchWorkerCount();
@@ -789,7 +789,7 @@ angular
             ApplicationService.local.deleteApp(appName, function_scope);
             ApplicationService.server.showSuccessAlert(
               `${appName} under ${function_scope.bucket}:${function_scope.scope} deleted successfully!`
-              );
+            );
           })
           .catch(function(errResponse) {
             ApplicationService.server.showErrorAlert(
@@ -1496,63 +1496,21 @@ angular
       }
 
       self.saveSettings = function(dismissDialog, closeDialog) {
-        var config = JSON.parse(JSON.stringify($scope.appModel.depcfg));
-        var settings = JSON.parse(JSON.stringify($scope.appModel.settings));
+        var config = $scope.appModel.depcfg;
 
         Object.assign(config, ApplicationService.convertBindingToConfig(self
           .bindings));
         self.copyNamespace(config, $scope.appModel.depcfg);
 
-        if (JSON.stringify(appModel.depcfg) !== JSON.stringify(config) ||
-          JSON.stringify(appModel.settings) !== JSON.stringify(settings)) {
+        if (JSON.stringify(appModel.depcfg) !== JSON.stringify(config)) {
           $scope.appModel.depcfg = config;
+
           ApplicationService.tempStore.saveAppDepcfg($scope.appModel).
           then(function(response) {
-            ApplicationService.local.saveApp(new Application($scope
-              .appModel));
             ApplicationService.server.showWarningAlert(
-              'Bindings/Settings changed. Deploy or Resume function for changes to take effect.'
+              'Bindings changed. Deploy or Resume function for changes to take effect.'
             );
-
-            // Update local changes.
-            appModel.settings = $scope.appModel.settings;
             appModel.depcfg = config;
-
-            ApplicationService.tempStore.isAppDeployed(appName, appModel
-                .function_scope)
-              .then(function(isDeployed) {
-                ApplicationService.tempStore.isAppPaused(appName,
-                    appModel.function_scope)
-                  .then(function(isPaused) {
-                    if (isDeployed && isPaused) {
-                      return ApplicationService.public
-                        .updateSettings($scope
-                          .appModel);
-                    } else if (isDeployed) {
-                      // deleting the dcp_stream_boundary as it is not allowed to change for a deployed app
-                      delete $scope.appModel.settings
-                        .dcp_stream_boundary;
-                      return ApplicationService.public
-                        .updateSettings($scope
-                          .appModel);
-                    } else {
-                      var redacted = ApplicationService.tempStore
-                        .redactPWDApp(JSON.parse(JSON.stringify(
-                          $scope
-                          .appModel)));
-                      return ApplicationService.tempStore.saveApp(
-                        redacted);
-                    }
-                  })
-                  .catch(function(errResponse) {
-                    console.error('Failed to get function status',
-                      errResponse);
-                  })
-              })
-              .catch(function(errResponse) {
-                console.error('Unable to get deployed apps list',
-                  errResponse);
-              });
           }).
           catch(function(errResponse) {
             console.error(errResponse.data);
@@ -1562,8 +1520,26 @@ angular
           });
         }
 
+        var settings = $scope.appModel.settings;
+        if (JSON.stringify(appModel.settings) !== JSON.stringify(
+            settings)) {
+          ApplicationService.public.updateSettings($scope.appModel).
+          then(function(response) {
+              appModel.settings = settings;
+              ApplicationService.server.showWarningAlert(
+                'Settings changed successfully'
+              );
+            })
+            .catch(function(errResponse) {
+              ApplicationService.server.showErrorAlert(
+                'Changes cannot be saved. ' + errResponse.data
+                .description);
+            })
+        }
+
         closeDialog('ok');
       };
+
       self.cancelEdit = function(dismissDialog) {
         // TODO : Consider using appModel.clone()
         $scope.appModel = JSON.parse(JSON.stringify(appModel));
@@ -1614,6 +1590,10 @@ angular
         self.metadataCollections = self.getCollection(bucketName, scopeName,
           snapshot.data.write_permission);
       };
+
+      Object.assign(appModel.depcfg, ApplicationService
+        .convertBindingToConfig(self
+          .bindings));
     }
   ])
   // Controller for editing handler code.
@@ -2162,7 +2142,7 @@ angular
             return $http({
               url: encodeURI(
                 `/_p/event/api/v1/functions/${appModel.appname}/settings?bucket=${appModel.function_scope.bucket}&scope=${appModel.function_scope.scope}`
-                ),
+              ),
               method: 'POST',
               mnHttp: {
                 isNotForm: true
@@ -2177,7 +2157,7 @@ angular
             return $http({
               url: encodeURI(
                 `/_p/event/api/v1/functions/${appModel.appname}/deploy?bucket=${appModel.function_scope.bucket}&scope=${appModel.function_scope.scope}`
-                ),
+              ),
               method: 'POST',
               mnHttp: {
                 isNotForm: true
@@ -2191,7 +2171,7 @@ angular
             return $http({
               url: encodeURI(
                 `/_p/event/api/v1/functions/${appModel.appname}/resume?bucket=${appModel.function_scope.bucket}&scope=${appModel.function_scope.scope}`
-                ),
+              ),
               method: 'POST',
               mnHttp: {
                 isNotForm: true
@@ -2205,7 +2185,7 @@ angular
             return $http({
               url: encodeURI(
                 `/_p/event/api/v1/functions/${appModel.appname}/pause?bucket=${appModel.function_scope.bucket}&scope=${appModel.function_scope.scope}`
-                ),
+              ),
               method: 'POST',
               mnHttp: {
                 isNotForm: true
@@ -2219,7 +2199,7 @@ angular
             return $http({
               url: encodeURI(
                 `/_p/event/api/v1/functions/${appName}/undeploy?bucket=${function_scope.bucket}&scope=${function_scope.scope}`
-                ),
+              ),
               method: 'POST',
               mnHttp: {
                 isNotForm: true
@@ -2233,7 +2213,7 @@ angular
             return $http({
               url: encodeURI(
                 `/_p/event/api/v1/functions/${appName}/?bucket=${function_scope.bucket}&scope=${function_scope.scope}`
-                ),
+              ),
               method: 'DELETE',
               mnHttp: {
                 isNotForm: true
@@ -2275,7 +2255,7 @@ angular
             return $http({
               url: encodeURI(
                 `/_p/event/saveAppTempStore/?name=${app.appname}&bucket=${app.function_scope.bucket}&scope=${app.function_scope.scope}`
-                ),
+              ),
               method: 'POST',
               mnHttp: {
                 isNotForm: true
@@ -2290,7 +2270,7 @@ angular
             return $http({
               url: encodeURI(
                 `/_p/event/api/v1/functions/${app.appname}/appcode?bucket=${app.function_scope.bucket}&scope=${app.function_scope.scope}`
-                ),
+              ),
               method: 'POST',
               headers: {
                 'Content-Type': 'application/javascript'
@@ -2302,7 +2282,7 @@ angular
             return $http({
               url: encodeURI(
                 `/_p/event/api/v1/functions/${app.appname}/config?bucket=${app.function_scope.bucket}&scope=${app.function_scope.scope}`
-                ),
+              ),
               method: 'POST',
               mnHttp: {
                 isNotForm: true
@@ -2371,7 +2351,7 @@ angular
             return $http({
               url: encodeURI(
                 `/_p/event/startDebugger/?name=${appName}&bucket=${function_scope.bucket}&scope=${function_scope.scope}`
-                ),
+              ),
               method: 'POST',
               mnHttp: {
                 isNotForm: true
@@ -2386,7 +2366,7 @@ angular
             return $http({
               url: encodeURI(
                 `/_p/event/getDebuggerUrl/?name=${appName}&bucket=${function_scope.bucket}&scope=${function_scope.scope}`
-                ),
+              ),
               method: 'POST',
               mnHttp: {
                 isNotForm: true
@@ -2401,7 +2381,7 @@ angular
             return $http({
               url: encodeURI(
                 `/_p/event/stopDebugger/?name=${appName}&bucket=${function_scope.bucket}&scope=${function_scope.scope}`
-                ),
+              ),
               method: 'POST',
               mnHttp: {
                 isNotForm: true
@@ -2582,7 +2562,7 @@ angular
           getAppLog: function(appname, function_scope) {
             return $http.get(encodeURI(
               `/_p/event/getAppLog?aggregate=true&name=${appname}&bucket=${function_scope.bucket}&scope=${function_scope.scope}`
-              )).then(
+            )).then(
               function(response) {
                 return response.data;
               }).catch(function(response) {
@@ -2593,7 +2573,7 @@ angular
           getInsight: function(appname, function_scope) {
             return $http.get(encodeURI(
               `/_p/event/getInsight?aggregate=true&name=${appname}&bucket=${function_scope.bucket}&scope=${function_scope.scope}`
-              )).then(
+            )).then(
               function(response) {
                 var applocation = getAppLocation(appname,
                   function_scope);
@@ -2822,8 +2802,11 @@ angular
 
           // Check whether the appname exists in the list of apps.
           if (form.appname.$viewValue && form.appname.$viewValue !== '') {
-            var function_scope = { "bucket": form.function_bucket
-                .$viewValue, "scope": form.function_scope.$viewValue };
+            var function_scope = {
+              "bucket": form.function_bucket
+                .$viewValue,
+              "scope": form.function_scope.$viewValue
+            };
             var app_location = getAppLocation(form.appname.$viewValue,
               function_scope);
             form.appname.$error.appExists = app_location in formCtrl
