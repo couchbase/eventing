@@ -147,31 +147,33 @@ type Consumer struct {
 	debugListener         net.Listener
 	diagDir               string // Location that will house minidumps from from crashed cpp workers
 
-	aggDCPFeed                    chan *cb.DcpEvent
-	aggDCPFeedMem                 int64
-	aggDCPFeedMemCap              int64
-	cbBucket                      *couchbase.Bucket
-	checkpointInterval            time.Duration
-	cleanupTimers                 bool
-	compileInfo                   *common.CompileStatus
-	controlRoutineWg              *sync.WaitGroup
-	dcpEventsRemaining            uint64
-	fetchingdcpEventsRemaining    uint32
-	dcpFeedsClosed                bool
-	dcpFeedVbMap                  map[*couchbase.DcpFeed][]uint16 // Access controlled by default lock
-	debuggerPort                  string
-	ejectNodesUUIDs               []string
-	eventingAdminPort             string
-	eventingDir                   string
-	eventingSSLPort               string
-	eventingNodeAddrs             []string
-	eventingNodeUUIDs             []string
-	executeTimerRoutineCount      int
-	executionTimeout              int
-	lcbRetryCount                 int
-	filterVbEvents                map[uint16]struct{} // Access controlled by filterVbEventsRWMutex
-	filterVbEventsRWMutex         *sync.RWMutex
-	filterDataCh                  chan *vbSeqNo
+	aggDCPFeed                 chan *cb.DcpEvent
+	aggDCPFeedMem              int64
+	aggDCPFeedMemCap           int64
+	cbBucket                   *couchbase.Bucket
+	checkpointInterval         time.Duration
+	cleanupTimers              bool
+	compileInfo                *common.CompileStatus
+	controlRoutineWg           *sync.WaitGroup
+	dcpEventsRemaining         uint64
+	fetchingdcpEventsRemaining uint32
+	dcpFeedsClosed             bool
+	dcpFeedVbMap               map[*couchbase.DcpFeed][]uint16 // Access controlled by default lock
+	debuggerPort               string
+	ejectNodesUUIDs            []string
+	eventingAdminPort          string
+	eventingDir                string
+	eventingSSLPort            string
+	eventingNodeAddrs          []string
+	eventingNodeUUIDs          []string
+	executeTimerRoutineCount   int
+	executionTimeout           int
+	lcbRetryCount              int
+	filterVbEvents             map[uint16]struct{} // Access controlled by filterVbEventsRWMutex
+	filterVbEventsRWMutex      *sync.RWMutex
+	filterDataCh               chan *vbSeqNo
+	initCPPWorkerCh            chan struct{}
+
 	gocbMetaHandleMutex           *sync.RWMutex
 	gocbMetaHandle                *gocb.Bucket
 	idleCheckpointInterval        time.Duration

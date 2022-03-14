@@ -66,6 +66,7 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		filterVbEvents:                  make(map[uint16]struct{}),
 		filterVbEventsRWMutex:           &sync.RWMutex{},
 		filterDataCh:                    make(chan *vbSeqNo, numVbuckets),
+		initCPPWorkerCh:                 make(chan struct{}),
 		gracefulShutdownChan:            make(chan struct{}, 1),
 		gocbMetaHandleMutex:             &sync.RWMutex{},
 		handlerFooters:                  hConfig.HandlerFooters,
@@ -229,6 +230,9 @@ checkIfPlannerRunning:
 		return
 	}
 
+	// Ensure cpp worker is running and initialised before starting with any stream processing
+	<-c.initCPPWorkerCh
+
 	c.controlRoutineWg.Add(1)
 	go c.controlRoutine()
 
@@ -301,7 +305,7 @@ func (c *Consumer) HandleV8Worker() error {
 	c.workerExited = false
 
 	c.SendAssignedVbs()
-
+	c.initCPPWorkerCh <- struct{}{}
 	go c.processDCPEvents()
 	go c.processFilterEvents()
 	go c.processStatsEvents()
