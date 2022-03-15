@@ -74,7 +74,7 @@ func (instance *serviceNotifierInstance) getNotifyCallback(t NotificationType) f
 			switch (msg).(type) {
 			case *couchbase.Bucket:
 				bucket := (msg).(*couchbase.Bucket)
-				logging.Infof("serviceChangeNotifier: received %s for bucket: %s", notifMsg, bucket.Name)
+				logging.Debugf("serviceChangeNotifier: received %s for bucket: %s", notifMsg, bucket.Name)
 
 				if _, ok := instance.manifestWaiters[bucket.Name]; !ok {
 					return nil
@@ -86,7 +86,7 @@ func (instance *serviceNotifierInstance) getNotifyCallback(t NotificationType) f
 				return errors.New(errMsg)
 			}
 		} else {
-			logging.Infof("serviceChangeNotifier: received %s", notifMsg)
+			logging.Debugf("serviceChangeNotifier: received %s", notifMsg)
 		}
 
 		for id, w := range instance.waiters {
