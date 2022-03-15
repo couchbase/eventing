@@ -348,7 +348,7 @@ func (c *Consumer) startDcp() error {
 			vbs = append(vbs, vb)
 			switch c.dcpStreamBoundary {
 			case common.DcpEverything, common.DcpFromPrior:
-				logging.Infof("%s [%s:%s:%d] vb: %d Sending streamRequestInfo size: %d",
+				logging.Debugf("%s [%s:%s:%d] vb: %d Sending streamRequestInfo size: %d",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, len(c.reqStreamCh))
 
 				c.reqStreamCh <- &streamRequestInfo{
@@ -362,7 +362,7 @@ func (c *Consumer) startDcp() error {
 				c.vbProcessingStats.updateVbStat(vb, "timestamp", time.Now().Format(time.RFC3339))
 
 			case common.DcpFromNow:
-				logging.Infof("%s [%s:%s:%d] vb: %d Sending streamRequestInfo size: %d",
+				logging.Debugf("%s [%s:%s:%d] vb: %d Sending streamRequestInfo size: %d",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, len(c.reqStreamCh))
 
 				c.reqStreamCh <- &streamRequestInfo{
@@ -397,7 +397,7 @@ func (c *Consumer) startDcp() error {
 
 					vbs = append(vbs, vb)
 
-					logging.Infof("%s [%s:%s:%d] vb: %d Sending streamRequestInfo size: %d",
+					logging.Debugf("%s [%s:%s:%d] vb: %d Sending streamRequestInfo size: %d",
 						logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, len(c.reqStreamCh))
 
 					sentToReqStream = true
@@ -871,7 +871,7 @@ func (c *Consumer) dcpRequestStreamHandle(vb uint16, vbBlob *vbucketKVBlob, star
 	c.vbsStreamRRWMutex.Lock()
 	if _, ok := c.vbStreamRequested[vb]; !ok {
 		c.vbStreamRequested[vb] = start
-		logging.Infof("%s [%s:%s:%d] vb: %v Going to make DcpRequestStream call",
+		logging.Debugf("%s [%s:%s:%d] vb: %v Going to make DcpRequestStream call",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
 	} else {
 		c.vbsStreamRRWMutex.Unlock()
@@ -1043,7 +1043,7 @@ func (c *Consumer) handleFailoverLog() {
 						continue
 					}
 
-					logging.Infof("%s [%s:%s:%d] vb: %d Sending streamRequestInfo size: %d",
+					logging.Debugf("%s [%s:%s:%d] vb: %d Sending streamRequestInfo size: %d",
 						logPrefix, c.workerName, c.tcpPort, c.Pid(), vbFlog.vb, len(c.reqStreamCh))
 
 					// Reason for sending this message at the time of sending STREAMREQ request
@@ -1096,7 +1096,7 @@ func (c *Consumer) handleFailoverLog() {
 						continue
 					}
 
-					logging.Infof("%s [%s:%s:%d] vb: %d Sending streamRequestInfo size: %d",
+					logging.Debugf("%s [%s:%s:%d] vb: %d Sending streamRequestInfo size: %d",
 						logPrefix, c.workerName, c.tcpPort, c.Pid(), vbFlog.vb, len(c.reqStreamCh))
 					streamInfo := &streamRequestInfo{
 						vb:          vbFlog.vb,

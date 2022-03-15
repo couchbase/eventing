@@ -22,7 +22,7 @@ func (c *Consumer) checkIfAlreadyEnqueued(vb uint16) bool {
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
 		return true
 	}
-	logging.Infof("%s [%s:%s:%d] vb: %d enqueuing",
+	logging.Debugf("%s [%s:%s:%d] vb: %d enqueuing",
 		logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
 	return false
 }
@@ -41,7 +41,7 @@ func (c *Consumer) checkAndAddToEnqueueMap(vb uint16) bool {
 		return true
 	}
 	c.vbEnqueuedForStreamReq[vb] = struct{}{}
-	logging.Infof("%s [%s:%s:%d] vb: %d enqueuing",
+	logging.Tracef("%s [%s:%s:%d] vb: %d enqueuing",
 		logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
 	return false
 }
@@ -49,7 +49,7 @@ func (c *Consumer) checkAndAddToEnqueueMap(vb uint16) bool {
 func (c *Consumer) deleteFromEnqueueMap(vb uint16) {
 	logPrefix := "Consumer::deleteFromEnqueueMap"
 
-	logging.Infof("%s [%s:%s:%d] vb: %d deleting from enqueue list",
+	logging.Debugf("%s [%s:%s:%d] vb: %d deleting from enqueue list",
 		logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
 
 	c.vbEnqueuedForStreamReqRWMutex.Lock()
@@ -106,7 +106,7 @@ func (c *Consumer) purgeVbStreamRequested(logPrefix string, vb uint16) {
 	c.vbsStreamRRWMutex.Lock()
 	if _, ok := c.vbStreamRequested[vb]; ok {
 		delete(c.vbStreamRequested, vb)
-		logging.Infof("%s [%s:%s:%d] vb: %d purging entry from vbStreamRequested",
+		logging.Debugf("%s [%s:%s:%d] vb: %d purging entry from vbStreamRequested",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
 	}
 	c.vbsStreamRRWMutex.Unlock()
