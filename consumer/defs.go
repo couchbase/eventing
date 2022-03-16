@@ -397,6 +397,8 @@ type Consumer struct {
 
 	binaryDocAllowed bool
 	featureMatrix    uint32
+
+	dcpStatsLogger DcpStatsLog
 }
 
 // For V8 worker spawned for debugging purpose
