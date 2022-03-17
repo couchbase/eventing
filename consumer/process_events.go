@@ -120,7 +120,8 @@ func (c *Consumer) processDCPEvents() {
 				c.dcpExpiryCounter++
 
 			case mcd.DCP_STREAMEND:
-				logging.Infof("%s [%s:%s:%d] vb: %d got STREAMEND", logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket)
+				c.dcpStatsLogger.AddDcpLog(e.VBucket, LogState, string(StateStreamEnd))
+				logging.Debugf("%s [%s:%s:%d] vb: %d got STREAMEND", logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket)
 				c.vbProcessingStats.updateVbStat(e.VBucket, "vb_stream_request_metadata_updated", false)
 				lastReadSeqNo := c.vbProcessingStats.getVbStat(e.VBucket, "last_read_seq_no").(uint64)
 				c.vbProcessingStats.updateVbStat(e.VBucket, "seq_no_at_stream_end", lastReadSeqNo)
@@ -507,12 +508,13 @@ func (c *Consumer) addToAggChan(dcpFeed *couchbase.DcpFeed) {
 				switch e.Opcode {
 				case mcd.DCP_STREAMREQ:
 					c.updateDcpProcessedMsgs(e.Opcode)
-					logging.Infof("%s [%s:%s:%d] vb: %d got STREAMREQ status: %v",
+					logging.Debugf("%s [%s:%s:%d] vb: %d got STREAMREQ status: %v",
 						logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket, e.Status)
+					c.dcpStatsLogger.AddDcpLog(e.VBucket, StreamResponse, fmt.Sprintf("%s", e.Status))
 
 				retryCheckMetadataUpdated:
 					if metadataUpdated, ok := c.vbProcessingStats.getVbStat(e.VBucket, "vb_stream_request_metadata_updated").(bool); ok {
-						logging.Infof("%s [%s:%s:%d] vb: %d STREAMREQ metadataUpdated: %t",
+						logging.Debugf("%s [%s:%s:%d] vb: %d STREAMREQ metadataUpdated: %t",
 							logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket, metadataUpdated)
 						if metadataUpdated {
 							c.vbProcessingStats.updateVbStat(e.VBucket, "vb_stream_request_metadata_updated", false)
@@ -616,7 +618,7 @@ func (c *Consumer) addToAggChan(dcpFeed *couchbase.DcpFeed) {
 							c.filterVbEventsRWMutex.Unlock()
 						}
 
-						logging.Infof("%s [%s:%s:%d] vb: %d STREAMREQ Inserting entry: %#v to vbFlogChan",
+						logging.Debugf("%s [%s:%s:%d] vb: %d STREAMREQ Inserting entry: %#v to vbFlogChan",
 							logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket, vbFlog)
 						c.vbFlogChan <- vbFlog
 						continue
@@ -625,7 +627,7 @@ func (c *Consumer) addToAggChan(dcpFeed *couchbase.DcpFeed) {
 					if e.Status == mcd.KEY_EEXISTS {
 						vbFlog := &vbFlogEntry{statusCode: e.Status, streamReqRetry: false, vb: e.VBucket}
 
-						logging.Infof("%s [%s:%s:%d] vb: %d STREAMREQ Inserting entry: %#v to vbFlogChan",
+						logging.Debugf("%s [%s:%s:%d] vb: %d STREAMREQ Inserting entry: %#v to vbFlogChan",
 							logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket, vbFlog)
 						c.vbFlogChan <- vbFlog
 						continue
@@ -652,7 +654,7 @@ func (c *Consumer) addToAggChan(dcpFeed *couchbase.DcpFeed) {
 							continue
 						}
 
-						logging.Infof("%s [%s:%s:%d] vb: %d STREAMREQ Failed. Inserting entry: %#v to vbFlogChan",
+						logging.Debugf("%s [%s:%s:%d] vb: %d STREAMREQ Failed. Inserting entry: %#v to vbFlogChan",
 							logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket, vbFlog)
 						c.vbFlogChan <- vbFlog
 						continue
@@ -861,7 +863,7 @@ func (c *Consumer) dcpRequestStreamHandle(vb uint16, vbBlob *vbucketKVBlob, star
 
 	snapStart, snapEnd := start, start
 
-	logging.Infof("%s [%s:%s:%d] vb: %d DCP stream start vbKvAddr: %rs vbuuid: %d startSeq: %d snapshotStart: %d snapshotEnd: %d Manifest id: %s",
+	logging.Debugf("%s [%s:%s:%d] vb: %d DCP stream start vbKvAddr: %rs vbuuid: %d startSeq: %d snapshotStart: %d snapshotEnd: %d Manifest id: %s",
 		logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, vbKvAddr, vbBlob.VBuuid, start, snapStart, snapEnd, mid)
 
 	if c.dcpFeedsClosed {
@@ -875,7 +877,7 @@ func (c *Consumer) dcpRequestStreamHandle(vb uint16, vbBlob *vbucketKVBlob, star
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
 	} else {
 		c.vbsStreamRRWMutex.Unlock()
-		logging.Infof("%s [%s:%s:%d] vb: %v skipping DcpRequestStream call as one is already in-progress",
+		logging.Debugf("%s [%s:%s:%d] vb: %v skipping DcpRequestStream call as one is already in-progress",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
 		return nil
 	}
@@ -887,8 +889,11 @@ func (c *Consumer) dcpRequestStreamHandle(vb uint16, vbBlob *vbucketKVBlob, star
 
 	c.dcpStreamReqCounter++
 	hexColId := common.Uint32ToHex(c.srcCid)
+	requestString := fmt.Sprintf("{seq: %v, uuid: %v, kv_node: %v, mid: %v, cid: %v}", start, vbBlob.VBuuid, vbKvAddr, mid, hexColId)
+	c.dcpStatsLogger.AddDcpLog(vb, LogState, requestString)
 	err = dcpFeed.DcpRequestStream(vb, opaque, flags, vbBlob.VBuuid, start, end, snapStart, snapEnd, mid, hexColId)
 	if err != nil {
+		c.dcpStatsLogger.AddDcpLog(vb, StreamResponse, fmt.Sprintf("%v", err))
 		c.dcpStreamReqErrCounter++
 		logging.Errorf("%s [%s:%s:%d] vb: %d STREAMREQ call failed on dcpFeed: %v, err: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, dcpFeed.GetName(), err)
@@ -919,7 +924,7 @@ func (c *Consumer) dcpRequestStreamHandle(vb uint16, vbBlob *vbucketKVBlob, star
 		c.vbProcessingStats.updateVbStat(vb, "last_processed_seq_no", start)
 		c.vbProcessingStats.updateVbStat(vb, "last_sent_seq_no", uint64(0))
 
-		logging.Infof("%s [%s:%s:%d] vb: %d Adding entry into inflightDcpStreams",
+		logging.Debugf("%s [%s:%s:%d] vb: %d Adding entry into inflightDcpStreams",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
 
 		c.inflightDcpStreamsRWMutex.Lock()
@@ -943,7 +948,7 @@ func (c *Consumer) dcpRequestStreamHandle(vb uint16, vbBlob *vbucketKVBlob, star
 		c.vbProcessingStats.updateVbStat(vb, "dcp_stream_requested_worker", c.ConsumerName())
 		c.vbProcessingStats.updateVbStat(vb, "dcp_stream_requested_node_uuid", c.NodeUUID())
 
-		logging.Infof("%s [%s:%s:%d] vb: %d Updated checkpoint blob to indicate STREAMREQ was issued",
+		logging.Debugf("%s [%s:%s:%d] vb: %d Updated checkpoint blob to indicate STREAMREQ was issued",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vb)
 	}
 
@@ -956,24 +961,24 @@ func (c *Consumer) handleFailoverLog() {
 	for {
 		select {
 		case vbFlog := <-c.vbFlogChan:
-			logging.Infof("%s [%s:%s:%d] vb: %d Got entry from vbFlogChan: %#v",
+			logging.Debugf("%s [%s:%s:%d] vb: %d Got entry from vbFlogChan: %#v",
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), vbFlog.vb, vbFlog)
 
 			c.inflightDcpStreamsRWMutex.Lock()
 			if _, exists := c.inflightDcpStreams[vbFlog.vb]; exists {
-				logging.Infof("%s [%s:%s:%d] vb: %d purging entry from inflightDcpStreams",
+				logging.Debugf("%s [%s:%s:%d] vb: %d purging entry from inflightDcpStreams",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), vbFlog.vb)
 				delete(c.inflightDcpStreams, vbFlog.vb)
 			}
 			c.inflightDcpStreamsRWMutex.Unlock()
 
 			if vbFlog.signalStreamEnd {
-				logging.Infof("%s [%s:%s:%d] vb: %d got STREAMEND", logPrefix, c.workerName, c.tcpPort, c.Pid(), vbFlog.vb)
+				logging.Debugf("%s [%s:%s:%d] vb: %d got STREAMEND", logPrefix, c.workerName, c.tcpPort, c.Pid(), vbFlog.vb)
 				continue
 			}
 
 			if !vbFlog.streamReqRetry && vbFlog.statusCode == mcd.SUCCESS {
-				logging.Infof("%s [%s:%s:%d] vb: %d DCP Stream created", logPrefix, c.workerName, c.tcpPort, c.Pid(), vbFlog.vb)
+				logging.Debugf("%s [%s:%s:%d] vb: %d DCP Stream created", logPrefix, c.workerName, c.tcpPort, c.Pid(), vbFlog.vb)
 				continue
 			}
 
@@ -1019,7 +1024,7 @@ func (c *Consumer) handleFailoverLog() {
 						continue
 					}
 
-					logging.Infof("%s [%s:%s:%d] vb: %d rollback requested by DCP. New vbuuid: %d startSeq: %d flog startSeqNo: %d",
+					logging.Debugf("%s [%s:%s:%d] vb: %d rollback requested by DCP. New vbuuid: %d startSeq: %d flog startSeqNo: %d",
 						logPrefix, c.workerName, c.tcpPort, c.Pid(), vbFlog.vb, vbuuid, vbFlog.seqNo, startSeqNo)
 
 					// update in-memory stats to reflect rollback seqno so that periodicCheckPoint picks up the latest data
@@ -1086,7 +1091,7 @@ func (c *Consumer) handleFailoverLog() {
 						}
 					}
 
-					logging.Infof("%s [%s:%s:%d] vb: %d Retrying DCP stream start vbuuid: %d vbFlog startSeq: %d last processed seq: %d",
+					logging.Debugf("%s [%s:%s:%d] vb: %d Retrying DCP stream start vbuuid: %d vbFlog startSeq: %d last processed seq: %d",
 						logPrefix, c.workerName, c.tcpPort, c.Pid(), vbFlog.vb, vbBlob.VBuuid,
 						vbFlog.seqNo, vbBlob.LastSeqNoProcessed)
 
@@ -1262,7 +1267,7 @@ func (c *Consumer) processReqStreamMessages() {
 						return
 					}
 				} else {
-					logging.Infof("%s [%s:%s:%d] vb: %d DCP stream successfully requested", logPrefix, c.workerName, c.tcpPort, c.Pid(), msg.vb)
+					logging.Debugf("%s [%s:%s:%d] vb: %d DCP stream successfully requested", logPrefix, c.workerName, c.tcpPort, c.Pid(), msg.vb)
 				}
 			}(msg, c, logPrefix, &streamReqWG)
 
@@ -1337,11 +1342,8 @@ func (c *Consumer) handleStreamEnd(vBucket uint16, last_processed_seqno uint64) 
 	c.vbProcessingStats.updateVbStat(vBucket, "vb_filter_ack_received", true)
 
 	if c.checkIfCurrentConsumerShouldOwnVb(vBucket) {
-		logging.Infof("%s [%s:%s:%d] vb: %d got STREAMEND, needs to be reclaimed",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), vBucket)
-
 		vbFlog := &vbFlogEntry{seqNo: last_processed_seqno, signalStreamEnd: true, vb: vBucket}
-		logging.Infof("%s [%s:%s:%d] vb: %d STREAMEND Inserting entry: %#v to vbFlogChan",
+		logging.Infof("%s [%s:%s:%d] vb: %d got STREAMEND, Inserting entry: %#v to vbFlogChan",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vBucket, vbFlog)
 		c.vbFlogChan <- vbFlog
 
@@ -1366,6 +1368,9 @@ func (c *Consumer) handleStreamEnd(vBucket uint16, last_processed_seqno uint64) 
 		c.Lock()
 		c.vbsRemainingToRestream = append(c.vbsRemainingToRestream, vBucket)
 		c.Unlock()
+	} else {
+		logging.Debugf("%s [%s:%s:%d] vb: %d got STREAMEND. Not owned by this node", logPrefix, c.workerName, c.tcpPort, c.Pid(), vBucket)
+		c.dcpStatsLogger.DeletePartition(vBucket)
 	}
 }
 
