@@ -156,6 +156,7 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		featureMatrix:                   featureMatrix,
 	}
 
+	consumer.dcpStatsLogger = NewDcpStatsLog(5*time.Minute, consumer.workerName, consumer.stopConsumerCh)
 	consumer.srcCid = p.GetSourceCid()
 	consumer.binaryDocAllowed = consumer.checkBinaryDocAllowed()
 	consumer.builderPool = &sync.Pool{

@@ -23,6 +23,10 @@ const (
 	Trace
 )
 
+var (
+	LogTimeFormat = "2006-01-02T15:04:05.000-07:00"
+)
+
 type Logger interface {
 	// Warnings, logged by default.
 	Warnf(format string, v ...interface{})
@@ -106,7 +110,7 @@ func init() {
 func printf(at LogLevel, format string, v ...interface{}) {
 	if baselevel >= at {
 		format := RedactFormat(format)
-		ts := time.Now().Format("2006-01-02T15:04:05.000-07:00")
+		ts := time.Now().Format(LogTimeFormat)
 		msg := fmt.Sprintf(ts+" ["+at.String()+"] "+format, v...)
 		if !strings.Contains(msg, "[gocb] Threshold Log:") { // sigh
 			target.Print(msg)
