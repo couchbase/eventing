@@ -1287,3 +1287,25 @@ func getAppLocationFromApp(app *application) string {
 	}
 	return id.ToLocation()
 }
+
+func checkIsLegacyResponseRequired(r *http.Request) bool {
+        // Possible user agent is "libcouchbase/3.2.4 (Darwin-19.6.0; x86_64; AppleClang 11.0.3.11030032)"
+        userAgent := r.Header.Get("User-Agent")
+        userAgent1 := strings.Split(userAgent, " ")
+        if len(userAgent1) == 0 {
+                return false
+        }
+
+        providedLcb, err := common.FrameLcbVersion(userAgent1[0])
+        if err != nil {
+                return false
+        }
+
+        requiredLcb, err := common.FrameLcbVersion("libcouchbase/3.2.5")
+        if err != nil {
+                return false
+        }
+
+        // omit if provided < required
+        return !providedLcb.Compare(requiredLcb)
+}

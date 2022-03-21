@@ -4149,6 +4149,7 @@ func (m *ServiceMgr) statusHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	isLegacyResponse := checkIsLegacyResponseRequired(r)
 	var appLocation string
 
 	if match := singleFuncStatusPattern.FindStringSubmatch(r.URL.Path); len(match) != 0 {
@@ -4163,7 +4164,7 @@ func (m *ServiceMgr) statusHandler(w http.ResponseWriter, r *http.Request) {
 		appLocation = id.ToLocation()
 	}
 
-	status, info := m.statusHandlerImpl(cred, appLocation)
+	status, info := m.statusHandlerImpl(cred, appLocation, isLegacyResponse)
 
 	if info.ErrCode != response.Ok {
 		*runtimeInfo = *info
@@ -4174,7 +4175,7 @@ func (m *ServiceMgr) statusHandler(w http.ResponseWriter, r *http.Request) {
 	runtimeInfo.OnlyDescription = true
 }
 
-func (m *ServiceMgr) statusHandlerImpl(cred cbauth.Creds, appLocation string) (funcStatus interface{}, info *response.RuntimeInfo) {
+func (m *ServiceMgr) statusHandlerImpl(cred cbauth.Creds, appLocation string, isLegacyResponse bool) (funcStatus interface{}, info *response.RuntimeInfo) {
 
 	appDeployedNodesCounter, appBootstrappingNodesCounter, appPausingNodesCounter, numEventingNodes, mhCompat, info := m.getAppList()
 	if info.ErrCode != response.Ok {
@@ -4216,13 +4217,20 @@ func (m *ServiceMgr) statusHandlerImpl(cred cbauth.Creds, appLocation string) (f
 		if err != nil {
 			continue
 		}
-		funcScope := common.FunctionScope{
+
+		funcScope := &common.FunctionScope{
 			BucketName: id.Bucket,
 			ScopeName:  id.Scope,
 		}
+		name := id.AppName
+
+		if isLegacyResponse {
+			name = fnLocation
+			funcScope = nil
+		}
 
 		status := appStatus{
-			Name:             id.AppName,
+			Name:             name,
 			FunctionScope:    funcScope,
 			DeploymentStatus: deploymentStatus,
 			ProcessingStatus: processingStatus,

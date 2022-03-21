@@ -147,3 +147,17 @@ func FrameCouchbaseVerFromNsServerStreamingRestApi(ver string) (CouchbaseVer, er
 
 	return eVer, nil
 }
+
+// libcouchbase/major.minor.mpVersion
+func FrameLcbVersion(ver string) (CouchbaseVer, error) {
+	lcbVer := strings.Split(ver, "/")
+	if len(lcbVer) != 2 {
+		return CouchbaseVer{}, ErrInvalidVersion
+	}
+
+	if lcbVer[0] != "libcouchbase" {
+		return CouchbaseVer{}, ErrInvalidVersion
+	}
+
+	return FrameCouchbaseVersionShort(lcbVer[1])
+}
