@@ -20,20 +20,29 @@ func (c *Consumer) RebalanceTaskProgress() *cm.RebalanceProgress {
 
 	vbsRemainingToCloseStream := c.getVbRemainingToCloseStream()
 	vbsRemainingToStreamReq := c.getVbRemainingToStreamReq()
+	vbsRemainingToOwn := c.getVbRemainingToOwn()
+	vbsRemainingToGiveUp := c.getVbRemainingToGiveUp()
 
-	logging.Infof("%s [%s:%s:%d] isBootstrapping: %t isRebalanceOngoing: %t vbsRemainingToCloseStream len: %d dump: %v vbsRemainingToStreamReq len: %d dump: %v",
-		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.isBootstrapping, c.isRebalanceOngoing, len(vbsRemainingToCloseStream),
-		util.Condense(vbsRemainingToCloseStream), len(vbsRemainingToStreamReq),
-		util.Condense(vbsRemainingToStreamReq))
+	lenVbsRemainingToCloseStream, lenVbsRemainingToGiveUp := len(vbsRemainingToCloseStream), len(vbsRemainingToGiveUp)
+	lenVbsRemainingToStreamReq, lenVbsRemainingToOwn := len(vbsRemainingToStreamReq), len(vbsRemainingToOwn)
 
-	if len(vbsRemainingToCloseStream) > 0 || len(vbsRemainingToStreamReq) > 0 {
+	logging.Infof("%s [%s:%s:%d] isBootstrapping: %t isRebalanceOngoing: %t "+
+		"vbsRemainingToCloseStream len: %d dump: %v vbsRemainingToStreamReq len: %d dump: %v "+
+		"vbsRemainingToOwn len: %d dump: %v vbsRemainingToGiveUp len: %d dump: %v",
+		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.isBootstrapping, c.isRebalanceOngoing,
+		lenVbsRemainingToCloseStream, util.Condense(vbsRemainingToCloseStream),
+		lenVbsRemainingToStreamReq, util.Condense(vbsRemainingToStreamReq),
+		lenVbsRemainingToOwn, util.Condense(vbsRemainingToOwn),
+		lenVbsRemainingToGiveUp, util.Condense(vbsRemainingToGiveUp))
+
+	progress.VbsRemainingToShuffle = lenVbsRemainingToOwn + lenVbsRemainingToGiveUp + lenVbsRemainingToStreamReq + lenVbsRemainingToCloseStream
+	if progress.VbsRemainingToShuffle > 0 {
 		vbsOwnedPerPlan := c.getVbsOwned()
 
-		progress.CloseStreamVbsLen = len(vbsRemainingToCloseStream)
-		progress.StreamReqVbsLen = len(vbsRemainingToStreamReq)
+		progress.CloseStreamVbsLen = lenVbsRemainingToCloseStream
+		progress.StreamReqVbsLen = lenVbsRemainingToStreamReq
 
 		progress.VbsOwnedPerPlan = len(vbsOwnedPerPlan)
-		progress.VbsRemainingToShuffle = len(vbsRemainingToCloseStream) + len(vbsRemainingToStreamReq)
 	}
 
 	logging.Infof("%s [%s:%s:%d] uuid: %s eject node UUIDs: %+v",
