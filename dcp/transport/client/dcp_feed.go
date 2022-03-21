@@ -349,7 +349,7 @@ func (feed *DcpFeed) handlePacket(
 		sendAck = true
 		delete(feed.vbstreams, vb)
 		fmsg := "%v ##%x DCP_STREAMEND for vb %d\n"
-		logging.Infof(fmsg, prefix, stream.AppOpaque, vb)
+		logging.Debugf(fmsg, prefix, stream.AppOpaque, vb)
 		feed.stats.TotalStreamEnd++
 
 	case transport.DCP_SNAPSHOT:
@@ -860,7 +860,7 @@ func (feed *DcpFeed) handleStreamRequest(
 		rollback := binary.BigEndian.Uint64(res.Body)
 		event.Status, event.Seqno = res.Status, rollback
 		fmsg := "%v ##%x STREAMREQ(%v) with rollback %d\n"
-		logging.Warnf(fmsg, prefix, stream.AppOpaque, vb, rollback)
+		logging.Debugf(fmsg, prefix, stream.AppOpaque, vb, rollback)
 		delete(feed.vbstreams, vb)
 
 	case res.Status == transport.SUCCESS:
@@ -873,13 +873,13 @@ func (feed *DcpFeed) handleStreamRequest(
 		event.FailoverLog = flog
 		stream.connected = true
 		fmsg := "%v ##%x STREAMREQ(%d) successful\n"
-		logging.Infof(fmsg, prefix, stream.AppOpaque, vb)
+		logging.Debugf(fmsg, prefix, stream.AppOpaque, vb)
 
 	default:
 		event.Status = res.Status
 		event.VBucket = vb
 		fmsg := "%v ##%x STREAMREQ(%v) unexpected status: %v\n"
-		logging.Errorf(fmsg, prefix, stream.AppOpaque, vb, res.Status)
+		logging.Debugf(fmsg, prefix, stream.AppOpaque, vb, res.Status)
 		delete(feed.vbstreams, vb)
 	}
 	return

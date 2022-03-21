@@ -1101,22 +1101,12 @@ func (c *Consumer) handleFailoverLog() {
 						continue
 					}
 
-					logging.Debugf("%s [%s:%s:%d] vb: %d Sending streamRequestInfo size: %d",
-						logPrefix, c.workerName, c.tcpPort, c.Pid(), vbFlog.vb, len(c.reqStreamCh))
-					streamInfo := &streamRequestInfo{
-						vb:          vbFlog.vb,
-						vbBlob:      &vbBlob,
-						startSeqNo:  vbBlob.LastSeqNoProcessed,
-						manifestUID: vbBlob.ManifestUID,
-					}
-					select {
-					case c.reqStreamCh <- streamInfo:
-					case <-c.stopConsumerCh:
-						return
-					}
 					c.vbProcessingStats.updateVbStat(vbFlog.vb, "manifest_id", vbBlob.ManifestUID)
 					c.vbProcessingStats.updateVbStat(vbFlog.vb, "start_seq_no", vbBlob.LastSeqNoProcessed)
 					c.vbProcessingStats.updateVbStat(vbFlog.vb, "timestamp", time.Now().Format(time.RFC3339))
+
+					c.deleteFromEnqueueMap(vbFlog.vb)
+					c.addVbForRestreaming(vbFlog.vb)
 				}
 			}
 
