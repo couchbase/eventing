@@ -264,7 +264,7 @@ type retry struct {
 type appStatus struct {
 	CompositeStatus       string               `json:"composite_status"`
 	Name                  string               `json:"name"`
-	FunctionScope         common.FunctionScope `json:"function_scope"`
+	FunctionScope         *common.FunctionScope `json:"function_scope,omitempty"`
 	NumBootstrappingNodes int                  `json:"num_bootstrapping_nodes"`
 	NumDeployedNodes      int                  `json:"num_deployed_nodes"`
 	DeploymentStatus      bool                 `json:"deployment_status"`
