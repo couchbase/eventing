@@ -1134,7 +1134,11 @@ void V8Worker::StartDebugger() {
     comm->WriteDebuggerURL(url);
   };
 
-  agent_ = new inspector::Agent("0.0.0.0", settings_->host_addr,
+  std::string host_addr_ = "0.0.0.0";
+  if (IsIPv6()) {
+    host_addr_ = "::";
+  }
+  agent_ = new inspector::Agent(host_addr_, settings_->host_addr,
                                 settings_->eventing_dir + "/" + app_name_ +
                                     "_frontend.url",
                                 port, on_connect);

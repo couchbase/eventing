@@ -90,7 +90,6 @@ func (c *Consumer) controlRoutine() error {
 
 		case <-c.restartVbDcpStreamTicker.C:
 
-		retryVbsRemainingToRestream:
 			c.RLock()
 			vbsToRestream := make([]uint16, len(c.vbsRemainingToRestream))
 			copy(vbsToRestream, c.vbsRemainingToRestream)
@@ -261,16 +260,7 @@ func (c *Consumer) controlRoutine() error {
 			diff = util.VbsSliceDiff(vbsToRestream, c.vbsRemainingToRestream)
 			c.vbsRemainingToRestream = make([]uint16, len(diff))
 			copy(c.vbsRemainingToRestream, diff)
-			vbsRemainingToRestream := len(c.vbsRemainingToRestream)
 			c.Unlock()
-
-			sort.Sort(util.Uint16Slice(diff))
-
-			if vbsRemainingToRestream > 0 {
-				logging.Infof("%s [%s:%s:%d] Retrying vbsToRestream, remaining len: %v dump: %v",
-					logPrefix, c.workerName, c.tcpPort, c.Pid(), vbsRemainingToRestream, util.Condense(diff))
-				goto retryVbsRemainingToRestream
-			}
 
 		case <-c.stopConsumerCh:
 			logging.Infof("%s [%s:%s:%d] Exiting control routine", logPrefix, c.workerName, c.tcpPort, c.Pid())
