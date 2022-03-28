@@ -1291,15 +1291,23 @@ func (c *Consumer) processReqStreamMessages() {
 func (c *Consumer) handleStreamEnd(vBucket uint16, last_processed_seqno uint64) {
 	logPrefix := "Consumer::handleStreamEnd"
 
-	c.purgeVbStreamRequested(logPrefix, vBucket)
-
-	c.inflightDcpStreamsRWMutex.Lock()
-	if _, exists := c.inflightDcpStreams[vBucket]; exists {
-		logging.Infof("%s [%s:%s:%d] vb: %d purging entry from inflightDcpStreams",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), vBucket)
-		delete(c.inflightDcpStreams, vBucket)
-	}
-	c.inflightDcpStreamsRWMutex.Unlock()
+	shouldOwn := false
+	vbFlog := &vbFlogEntry{signalStreamEnd: true, vb: vBucket}
+	defer func() {
+		c.purgeVbStreamRequested(logPrefix, vBucket)
+		c.inflightDcpStreamsRWMutex.Lock()
+		if _, exists := c.inflightDcpStreams[vbFlog.vb]; exists {
+			logging.Debugf("%s [%s:%s:%d] vb: %d purging entry from inflightDcpStreams",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), vbFlog.vb)
+			delete(c.inflightDcpStreams, vbFlog.vb)
+		}
+		c.inflightDcpStreamsRWMutex.Unlock()
+		if shouldOwn {
+			c.Lock()
+			c.vbsRemainingToRestream = append(c.vbsRemainingToRestream, vBucket)
+			c.Unlock()
+		}
+	}()
 
 	vbKey := common.GetCheckpointKey(c.app, vBucket, common.Checkpoint)
 
@@ -1349,11 +1357,13 @@ func (c *Consumer) handleStreamEnd(vBucket uint16, last_processed_seqno uint64) 
 	c.vbProcessingStats.updateVbStat(vBucket, "dcp_stream_requested_worker", "")
 	c.vbProcessingStats.updateVbStat(vBucket, "vb_filter_ack_received", true)
 
-	if c.checkIfCurrentConsumerShouldOwnVb(vBucket) {
-		vbFlog := &vbFlogEntry{seqNo: last_processed_seqno, signalStreamEnd: true, vb: vBucket}
+	shouldOwn = c.checkIfCurrentConsumerShouldOwnVb(vBucket)
+	if shouldOwn {
+		vbFlog.seqNo = last_processed_seqno
+		c.vbFlogChan <- vbFlog
+
 		logging.Infof("%s [%s:%s:%d] vb: %d got STREAMEND, Inserting entry: %#v to vbFlogChan",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vBucket, vbFlog)
-		c.vbFlogChan <- vbFlog
 
 		err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getOpCallback,
 			c, c.producer.AddMetadataPrefix(vbKey), &vbBlob, &cas, &operr, false)
@@ -1372,10 +1382,6 @@ func (c *Consumer) handleStreamEnd(vBucket uint16, last_processed_seqno uint64) 
 		} else if err == common.ErrEncryptionLevelChanged {
 			return
 		}
-
-		c.Lock()
-		c.vbsRemainingToRestream = append(c.vbsRemainingToRestream, vBucket)
-		c.Unlock()
 	} else {
 		logging.Debugf("%s [%s:%s:%d] vb: %d got STREAMEND. Not owned by this node", logPrefix, c.workerName, c.tcpPort, c.Pid(), vBucket)
 		c.dcpStatsLogger.DeletePartition(vBucket)
