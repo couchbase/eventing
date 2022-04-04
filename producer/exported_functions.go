@@ -1209,6 +1209,12 @@ func (p *Producer) AppendLatencyStats(deltas common.StatsData) {
 	p.latencyStats.Append(deltas)
 }
 
+func (p *Producer) UpdateEncryptionLevel(enforceTLS, encryptOn bool) {
+	for _, c := range p.getConsumers() {
+		go c.UpdateEncryptionLevel(enforceTLS, encryptOn)
+	}
+}
+
 func (p *Producer) UndeployHandler(skipMetadataCleanup bool) {
 	p.undeployHandler <- skipMetadataCleanup
 }
