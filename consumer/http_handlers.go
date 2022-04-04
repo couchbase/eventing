@@ -20,8 +20,15 @@ func (c *Consumer) RebalanceTaskProgress() *cm.RebalanceProgress {
 
 	vbsRemainingToCloseStream := c.getVbRemainingToCloseStream()
 	vbsRemainingToStreamReq := c.getVbRemainingToStreamReq()
-	vbsRemainingToOwn := c.getVbRemainingToOwn()
-	vbsRemainingToGiveUp := c.getVbRemainingToGiveUp()
+	var vbsRemainingToOwn, vbsRemainingToGiveUp []uint16
+
+	// This flag will be false if there is only kv rebalance ongoing
+	// Don't include remaining to own when kv rebalance ongoing since
+	// this node already owns this vbucket
+	if c.isRebalanceOngoing {
+		vbsRemainingToOwn = c.getVbRemainingToOwn()
+		vbsRemainingToGiveUp = c.getVbRemainingToGiveUp()
+	}
 
 	lenVbsRemainingToCloseStream, lenVbsRemainingToGiveUp := len(vbsRemainingToCloseStream), len(vbsRemainingToGiveUp)
 	lenVbsRemainingToStreamReq, lenVbsRemainingToOwn := len(vbsRemainingToStreamReq), len(vbsRemainingToOwn)
