@@ -1456,6 +1456,18 @@ std::unique_lock<std::mutex> V8Worker::GetAndLockBucketOpsLock() {
 
 void V8Worker::StopTimerScan() { stop_timer_scan_.store(true); }
 
+void V8Worker::SetFailFastTimerScans() {
+  if (timer_store_ != nullptr) {
+    timer_store_->SetFailFastTimerScans();
+  }
+}
+
+void V8Worker::ResetFailFastTimerScans() {
+  if (timer_store_ != nullptr) {
+    timer_store_->ResetFailFastTimerScans();
+  }
+}
+
 // TODO : Remove this when stats variables are handled properly
 void AddLcbException(const IsolateData *isolate_data, const int code) {
   auto w = isolate_data->v8worker;

@@ -92,8 +92,9 @@ RetryLcbCommand(lcb_INSTANCE *instance, CmdType &cmd, int max_retry_count,
 
     if ((result.first == LCB_SUCCESS && result.second.rc == LCB_SUCCESS) ||
         (!IsRetriable(result.first) && !IsRetriable(result.second.rc)) ||
-        (max_retry_count && retry_count >= max_retry_count))
-      break;
+        (max_retry_count && retry_count >= max_retry_count)) {
+          break;
+        }
 
     if (max_retry_secs > 0) {
       auto now = GetUnixTime();
