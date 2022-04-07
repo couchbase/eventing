@@ -248,6 +248,8 @@ const (
 	EventGetConsumerPids
 	EventGetUserInfo
 	EventGetRuntimeProfiling
+
+	EventGetAppStats
 )
 
 type log uint8

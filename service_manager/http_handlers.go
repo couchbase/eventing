@@ -2,6 +2,7 @@ package servicemanager
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"expvar"
@@ -36,6 +37,11 @@ import (
 	"github.com/couchbase/eventing/service_manager/response"
 	"github.com/couchbase/eventing/util"
 	"github.com/couchbase/goutils/systemeventlog"
+	//"github.com/couchbase/goutils/systemeventlog"
+)
+
+var (
+	statsFuncRegex = regexp.MustCompile("^/api/v1/stats/(.*[^/])/?$")
 )
 
 func (m *ServiceMgr) startTracing(w http.ResponseWriter, r *http.Request) {
@@ -4331,7 +4337,9 @@ func (m *ServiceMgr) statsHandler(w http.ResponseWriter, r *http.Request) {
 	res := response.NewResponseWriter(w, r, response.EventFetchStats)
 	runtimeInfo := &response.RuntimeInfo{}
 
-	defer res.LogAndSend(runtimeInfo)
+	defer func() {
+		res.LogAndSend(runtimeInfo)
+	}()
 
 	cred, err := rbac.AuthWebCreds(r)
 	if err != nil {
@@ -4354,11 +4362,72 @@ func (m *ServiceMgr) statsHandler(w http.ResponseWriter, r *http.Request) {
 		fullStats = true
 	}
 
+	var appName string
+	var stats stats
+
+	if match := statsFuncRegex.FindStringSubmatch(r.URL.Path); len(match) > 0 {
+		appName = match[1]
+	}
+
+	//logging.Infof("AppName supplied is: %s", appName)
+	if len(appName) > 0 {
+		var appIdentity common.Identity
+		appIdentity, runtimeInfo = getAppIdentity(params, appName)
+		if runtimeInfo.ErrCode != response.Ok {
+			runtimeInfo.ErrCode = runtimeInfo.ErrCode
+			runtimeInfo.Description = runtimeInfo.Description
+			logging.Errorf("error fetching app identity: %s", runtimeInfo.Description)
+			return
+		}
+
+		mode := statsMode(params)
+		stats, runtimeInfo = m.AppStats(cred, appIdentity, mode)
+		if runtimeInfo.ErrCode != response.Ok {
+			runtimeInfo.ErrCode = runtimeInfo.ErrCode
+			runtimeInfo.Description = runtimeInfo.Description
+			logging.Errorf("error fetching stats for %s failed: Error Code: %d, Error Description: %s",
+				appName, runtimeInfo.ErrCode, runtimeInfo.Description)
+			return
+		}
+
+		runtimeInfo.Description = stats
+		runtimeInfo.OnlyDescription = true
+		return
+	}
+
 	// populate stats will validate the permissions
 	statsList := m.populateStats(cred, fullStats)
 	runtimeInfo.Description = statsList
 	runtimeInfo.OnlyDescription = true
-	return
+}
+
+func statsMode(params url.Values) bool {
+	fullStats := false
+	if typeParam, info := CheckAndGetQueryParam(params, "type"); info.ErrCode == response.Ok && typeParam == "full" {
+		fullStats = true
+	}
+	return fullStats
+}
+
+func getAppIdentity(params url.Values, appName string) (common.Identity, *response.RuntimeInfo) {
+	var bucket, scope string
+	var runtimeInfo *response.RuntimeInfo
+	if bucket, runtimeInfo = CheckAndGetQueryParam(params, "bucket"); runtimeInfo.ErrCode != response.Ok {
+		logging.Infof("Query param \"bucket\" not found")
+		return common.Identity{}, runtimeInfo
+	}
+
+	if scope, runtimeInfo = CheckAndGetQueryParam(params, "scope"); runtimeInfo.ErrCode != response.Ok {
+		logging.Infof("Query param \"scope\" not found")
+		return common.Identity{}, runtimeInfo
+	}
+
+	appIdentity := common.Identity{
+		Bucket:  bucket,
+		Scope:   scope,
+		AppName: appName,
+	}
+	return appIdentity, runtimeInfo
 }
 
 func percentileN(latencyStats map[string]uint64, p int) int {
@@ -4399,88 +4468,13 @@ func (m *ServiceMgr) populateStats(cred cbauth.Creds, fullStats bool) []stats {
 			Bucket:  app.FunctionScope.BucketName,
 			Scope:   app.FunctionScope.ScopeName,
 		}
-		appLocation := id.ToLocation()
 
-		if m.checkIfDeployed(appLocation) {
-			info := m.checkPermissionFromCred(cred, appLocation, rbac.HandlerGetPermissions, false)
-			if info.ErrCode != response.Ok {
-				continue
-			}
-
-			stats := stats{}
-			feedBoundary, err := m.superSup.DcpFeedBoundary(appLocation)
-			if err == nil {
-				stats.DCPFeedBoundary = feedBoundary
-			}
-			stats.EventProcessingStats = m.superSup.GetEventProcessingStats(appLocation)
-			stats.EventsRemaining = backlogStat{DcpBacklog: m.superSup.GetDcpEventsRemainingToProcess(appLocation)}
-			stats.ExecutionStats = m.superSup.GetExecutionStats(appLocation)
-			stats.FailureStats = m.superSup.GetFailureStats(appLocation)
-			stats.FunctionName = app.Name
-			stats.FunctionScope = app.FunctionScope
-			stats.GocbCredsRequestCounter = util.GocbCredsRequestCounter
-			stats.FunctionID = app.FunctionID
-			stats.InternalVbDistributionStats = m.superSup.InternalVbDistributionStats(appLocation)
-			stats.LcbCredsRequestCounter = m.lcbCredsCounter
-			stats.LcbExceptionStats = m.superSup.GetLcbExceptionsStats(appLocation)
-			stats.MetastoreStats = m.superSup.GetMetaStoreStats(appLocation)
-			stats.WorkerPids = m.superSup.GetEventingConsumerPids(appLocation)
-			stats.PlannerStats = m.superSup.PlannerStats(appLocation)
-			stats.VbDistributionStatsFromMetadata = m.superSup.VbDistributionStatsFromMetadata(appLocation)
-
-			latencyStats := m.superSup.GetLatencyStats(appLocation)
-			ls := make(map[string]int)
-			ls["50"] = percentileN(latencyStats, 50)
-			ls["80"] = percentileN(latencyStats, 80)
-			ls["90"] = percentileN(latencyStats, 90)
-			ls["95"] = percentileN(latencyStats, 95)
-			ls["99"] = percentileN(latencyStats, 99)
-			ls["100"] = percentileN(latencyStats, 100)
-			stats.LatencyPercentileStats = ls
-
-			m.rebalancerMutex.RLock()
-			if m.rebalancer != nil {
-				rebalanceStats := make(map[string]interface{})
-				rebalanceStats["is_leader"] = true
-				rebalanceStats["node_level_stats"] = m.rebalancer.NodeLevelStats
-				rebalanceStats["rebalance_progress"] = m.rebalancer.RebalanceProgress
-				rebalanceStats["rebalance_progress_counter"] = m.rebalancer.RebProgressCounter
-				rebalanceStats["rebalance_start_ts"] = m.rebalancer.RebalanceStartTs
-				rebalanceStats["total_vbs_to_shuffle"] = m.rebalancer.TotalVbsToShuffle
-				rebalanceStats["vbs_remaining_to_shuffle"] = m.rebalancer.VbsRemainingToShuffle
-
-				stats.RebalanceStats = rebalanceStats
-			}
-			m.rebalancerMutex.RUnlock()
-
-			if fullStats {
-				checkpointBlobDump, err := m.superSup.CheckpointBlobDump(appLocation)
-				if err == nil {
-					stats.CheckpointBlobDump = checkpointBlobDump
-				}
-
-				stats.LatencyStats = m.superSup.GetLatencyStats(appLocation)
-				stats.CurlLatencyStats = m.superSup.GetCurlLatencyStats(appLocation)
-				stats.SeqsProcessed = m.superSup.GetSeqsProcessed(appLocation)
-
-				spanBlobDump, err := m.superSup.SpanBlobDump(appLocation)
-				if err == nil {
-					stats.SpanBlobDump = spanBlobDump
-				}
-
-				stats.VbDcpEventsRemaining = m.superSup.VbDcpEventsRemainingToProcess(appLocation)
-				debugStats, err := m.superSup.TimerDebugStats(appLocation)
-				if err == nil {
-					stats.DocTimerDebugStats = debugStats
-				}
-				vbSeqnoStats, err := m.superSup.VbSeqnoStats(appLocation)
-				if err == nil {
-					stats.VbSeqnoStats = vbSeqnoStats
-				}
-			}
-
-			statsList = append(statsList, stats)
+		stats, runtimeInfo := m.AppStats(cred, id, fullStats)
+		if runtimeInfo.ErrCode != response.Ok {
+			logging.Errorf("error in fetching app stats: %s, %s", runtimeInfo.ErrCode, runtimeInfo.Description)
+			continue
 		}
+		statsList = append(statsList, stats)
 	}
 
 	return statsList
