@@ -2,7 +2,6 @@ package servicemanager
 
 import (
 	"bytes"
-	"context"
 	"crypto/sha256"
 	"encoding/json"
 	"expvar"
