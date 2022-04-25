@@ -17,12 +17,6 @@
 #include "lcb_utils.h"
 #include <v8.h>
 
-struct MetaData {
-  std::string key;
-  uint64_t cas;
-  uint32_t expiry;
-};
-
 struct OptionsData {
   bool cache;
 };
@@ -98,21 +92,21 @@ private:
                       v8::Local<v8::Object> &response_obj);
 
   std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
-  Delete(const std::string &key, uint64_t cas, bool is_source_bucket,
+  Delete(MetaData meta, bool is_source_bucket,
          Bucket *bucket);
 
   std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
-  Counter(const std::string &key, uint64_t cas, lcb_U32 expiry, int64_t delta,
+  Counter(MetaData meta, int64_t delta,
           bool is_source_bucket, Bucket *bucket);
 
   std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
-  Set(const std::string &key, const std::string &value,
-      lcb_STORE_OPERATION op_type, lcb_U32 expiry, uint64_t cas,
+  Set(MetaData meta, const std::string &value,
+      lcb_STORE_OPERATION op_type,
       lcb_U32 doc_type, bool is_source_bucket, Bucket *bucket);
 
   std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
-  BucketSet(const std::string &key, v8::Local<v8::Value> data,
-            lcb_STORE_OPERATION op_type, lcb_U32 expiry, uint64_t cas,
+  BucketSet(MetaData meta, v8::Local<v8::Value> data,
+            lcb_STORE_OPERATION op_type,
             bool is_source_bucket, Bucket *bucket);
 
   void CounterOps(v8::FunctionCallbackInfo<v8::Value> args, int64_t delta);
@@ -128,6 +122,8 @@ private:
   const char *cas_str_;
   const char *key_str_;
   const char *expiry_str_;
+  const char *collection_str_;
+  const char *scope_str_;
   const char *data_type_str_;
   const char *key_not_found_str_;
   const char *cas_mismatch_str_;

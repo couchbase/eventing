@@ -840,6 +840,10 @@ func (c *ClusterInfoCache) GetNodeCompatVersion() (uint32, uint32) {
 	return c.version, c.minorVersion
 }
 
+func (c *ClusterInfoCache) GetCollectionManifest(bucketName string) *collections.CollectionManifest {
+	return c.pool.GetCollectionManifest(bucketName)
+}
+
 func (c *ClusterInfoCache) FetchManifestInfo(bucketName string) error {
 	c.Lock()
 	defer c.Unlock()

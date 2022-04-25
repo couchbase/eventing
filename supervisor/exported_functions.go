@@ -640,25 +640,41 @@ func (s *SuperSupervisor) GetCurrentManifestId(bucketName string) (string, error
 
 // Empty collectionName returns collection id as 0
 // Caller of this functions should take care of it
-func (s *SuperSupervisor) GetScopeAndCollectionID(bucketName, scopeName, collectionName string) (uint32, uint32, error) {
+func (s *SuperSupervisor) GetKeyspaceID(bucketName, scopeName, collectionName string) (keyspaceID common.KeyspaceID, err error) {
 	s.bucketsRWMutex.RLock()
 	defer s.bucketsRWMutex.RUnlock()
 	bucketWatch, ok := s.buckets[bucketName]
 	if !ok {
-		return 0, 0, common.BucketNotWatched
+		err = common.BucketNotWatched
+		return
 	}
 
+	keyspaceID.Bid = bucketWatch.b.UUID
 	manifest := bucketWatch.b.Manifest
 	if manifest == nil {
-		return 0, 0, nil
+		return
+	}
+
+	if scopeName == "*" && collectionName == "*" {
+		keyspaceID.StreamType = common.STREAM_BUCKET
+		return
+	}
+
+	if collectionName == "*" {
+		collectionName = ""
+		keyspaceID.StreamType = common.STREAM_SCOPE
+	} else {
+		keyspaceID.StreamType = common.STREAM_COLLECTION
 	}
 
 	sid, cid, err := manifest.GetScopeAndCollectionID(scopeName, collectionName)
 	if err != nil {
-		return 0, 0, err
+		return keyspaceID, err
 	}
 
-	return sid, cid, nil
+	keyspaceID.Sid = sid
+	keyspaceID.Cid = cid
+	return keyspaceID, nil
 }
 
 func (s *SuperSupervisor) GetMetadataHandle(bucketName, scopeName, collectionName, appName string) (*gocb.Collection, error) {

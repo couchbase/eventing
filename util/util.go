@@ -57,6 +57,7 @@ const (
 
 var GocbCredsRequestCounter = 0
 var AppNotExist = errors.New("App content doesn't exist or is empty")
+var ErrWildcardNotAllowed = errors.New("Wildcard not allowed")
 
 type securitySettings struct {
 	useTLS         bool
@@ -411,7 +412,33 @@ func LocalEventingServiceHost(auth, hostaddress string) (string, error) {
 }
 
 // empty scope and collection argument will check for bucket existence
-func CheckKeyspaceExist(bucket, scope, collection, hostaddress string) bool {
+func ValidateAndCheckKeyspaceExist(bucket, scope, collection, hostaddress string, wildcardAllowed bool) (bool, error) {
+	exist := CheckBucketExist(bucket, hostaddress)
+	if !exist {
+		return false, nil
+	}
+
+	if scope == "*" || collection == "*" {
+		if wildcardAllowed {
+			return true, nil
+		}
+		return false, ErrWildcardNotAllowed
+	}
+
+	cic, err := FetchClusterInfoClient(hostaddress)
+	if err != nil {
+		return false, err
+	}
+
+	cinfo := cic.GetClusterInfoCache()
+	cinfo.RLock()
+	defer cinfo.RUnlock()
+
+	_, err = cinfo.GetCollectionID(bucket, scope, collection)
+	return !(err == collections.SCOPE_NOT_FOUND || err == collections.COLLECTION_NOT_FOUND), nil
+}
+
+func CheckBucketExist(bucket, hostaddress string) bool {
 	cic, err := FetchClusterInfoClient(hostaddress)
 	if err != nil {
 		return true
@@ -428,15 +455,7 @@ func CheckKeyspaceExist(bucket, scope, collection, hostaddress string) bool {
 		return true
 	}
 
-	if len(kvAddrs) == 0 {
-		return false
-	}
-
-	if scope != "" && collection != "" {
-		_, err = cinfo.GetCollectionID(bucket, scope, collection)
-		return !(err == collections.SCOPE_NOT_FOUND || err == collections.COLLECTION_NOT_FOUND)
-	}
-	return true
+	return (len(kvAddrs) != 0)
 }
 
 func CountActiveKVNodes(bucket, hostaddress string) int {

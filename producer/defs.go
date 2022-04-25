@@ -172,8 +172,10 @@ type Producer struct {
 	workerVbucketMap   map[string][]uint16 // Access controlled by workerVbMapRWMutex
 	workerVbMapRWMutex *sync.RWMutex
 
-	srcCid  uint32
-	metaCid uint32
+	keyspaceIDSync *sync.RWMutex
+	srcKeyspaceID  common.KeyspaceID
+	metaKeyspaceID common.KeyspaceID
+
 	// Supervisor of workers responsible for
 	// pipelining messages to V8
 	workerSupervisor *suptree.Supervisor

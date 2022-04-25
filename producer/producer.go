@@ -92,8 +92,13 @@ func NewProducer(appName, debuggerPort, eventingPort, eventingSSLPort, eventingD
 	p.eventingNodeUUIDs = append(p.eventingNodeUUIDs, uuid)
 	p.parseDepcfg()
 
-	atomic.StoreUint32(&p.srcCid, math.MaxUint32)
-	atomic.StoreUint32(&p.metaCid, math.MaxUint32)
+	p.keyspaceIDSync = &sync.RWMutex{}
+	p.srcKeyspaceID = common.KeyspaceID{
+		StreamType: common.STREAM_UNKNOWN,
+	}
+	p.metaKeyspaceID = common.KeyspaceID{
+		StreamType: common.STREAM_UNKNOWN,
+	}
 	atomic.StoreUint32(&p.funcScopeId, math.MaxUint32)
 
 	return p
@@ -128,7 +133,8 @@ func (p *Producer) Serve() {
 
 	go p.undeployHandlerWait()
 	if p.functionScope.BucketName != "*" {
-		p.funcScopeId, _, err = p.superSup.GetScopeAndCollectionID(p.functionScope.BucketName, p.functionScope.ScopeName, "")
+		var funcScope common.KeyspaceID
+		funcScope, err = p.superSup.GetKeyspaceID(p.functionScope.BucketName, p.functionScope.ScopeName, "")
 		if err != nil {
 			logging.Errorf("%s [%s] Error in getting function manage scope, err: %v", logPrefix, p.appName, err)
 
@@ -137,9 +143,10 @@ func (p *Producer) Serve() {
 			p.UndeployHandler(msg)
 			return
 		}
+		atomic.StoreUint32(&p.funcScopeId, funcScope.Sid)
 	}
 
-	_, srcCid, err := p.superSup.GetScopeAndCollectionID(p.handlerConfig.SourceKeyspace.BucketName,
+	srcKeyspaceID, err := p.superSup.GetKeyspaceID(p.handlerConfig.SourceKeyspace.BucketName,
 		p.handlerConfig.SourceKeyspace.ScopeName,
 		p.handlerConfig.SourceKeyspace.CollectionName)
 	if err == common.BucketNotWatched || err == collections.SCOPE_NOT_FOUND || err == collections.COLLECTION_NOT_FOUND {
@@ -153,9 +160,9 @@ func (p *Producer) Serve() {
 		logging.Errorf("%s [%s] Error in getting source collection Id: %v", logPrefix, p.appName, err)
 		return
 	}
-	atomic.StoreUint32(&p.srcCid, srcCid)
+	p.setSrcKeyspaceID(srcKeyspaceID)
 
-	_, metaCid, err := p.superSup.GetScopeAndCollectionID(p.metadataKeyspace.BucketName, p.metadataKeyspace.ScopeName, p.metadataKeyspace.CollectionName)
+	metaKeyspaceID, err := p.superSup.GetKeyspaceID(p.metadataKeyspace.BucketName, p.metadataKeyspace.ScopeName, p.metadataKeyspace.CollectionName)
 	if err == common.BucketNotWatched || err == collections.SCOPE_NOT_FOUND || err == collections.COLLECTION_NOT_FOUND {
 		msg := common.DefaultUndeployAction()
 		msg.SkipMetadataCleanup = true
@@ -168,7 +175,7 @@ func (p *Producer) Serve() {
 		logging.Errorf("%s [%s] Error in getting metadata collection Id: %v", logPrefix, p.appName, err)
 		return
 	}
-	atomic.StoreUint32(&p.metaCid, metaCid)
+	p.setMetaKeyspaceID(metaKeyspaceID)
 
 	n1qlParams := "{ 'consistency': '" + p.handlerConfig.N1qlConsistency + "' }"
 	p.app.ParsedAppCode, _ = parser.TranspileQueries(p.app.AppCode, n1qlParams)
@@ -980,8 +987,8 @@ func (p *Producer) undeployHandlerWait() {
 				deleteFunction := false
 				if p.functionScope.BucketName != "*" {
 					_, sid := p.GetFuncScopeDetails()
-					scopeId, _, err := p.superSup.GetScopeAndCollectionID(p.functionScope.BucketName, p.functionScope.ScopeName, "")
-					if err != nil || scopeId != sid {
+					internal, err := p.superSup.GetKeyspaceID(p.functionScope.BucketName, p.functionScope.ScopeName, "")
+					if err != nil || internal.Sid != sid {
 						deleteFunction = true
 					}
 				}
@@ -1149,4 +1156,16 @@ func (p *Producer) encryptionChangedDuringLifecycle() bool {
 func checkPermError(err error) bool {
 	return (err == rbac.ErrAuthorisation) ||
 		(err == rbac.ErrUserDeleted)
+}
+
+func (p *Producer) setSrcKeyspaceID(srcKeyspaceID common.KeyspaceID) {
+	p.keyspaceIDSync.Lock()
+	defer p.keyspaceIDSync.Unlock()
+	p.srcKeyspaceID = srcKeyspaceID
+}
+
+func (p *Producer) setMetaKeyspaceID(metaKeyspaceID common.KeyspaceID) {
+	p.keyspaceIDSync.Lock()
+	defer p.keyspaceIDSync.Unlock()
+	p.metaKeyspaceID = metaKeyspaceID
 }

@@ -124,15 +124,29 @@ func (s *SuperSupervisor) isDeployable(appName string) (common.UndeployAction, e
 		return msg, err
 	}
 
+	allowWildcards := true
 	hostAddress := net.JoinHostPort(util.Localhost(), s.restPort)
-	sourceExist := util.CheckKeyspaceExist(depCfg.SourceBucket, depCfg.SourceScope,
-		depCfg.SourceCollection, hostAddress)
+	sourceExist, err := util.ValidateAndCheckKeyspaceExist(depCfg.SourceBucket, depCfg.SourceScope,
+		depCfg.SourceCollection, hostAddress, allowWildcards)
+	if err != nil {
+		return msg, nil
+	}
+
 	if !sourceExist {
 		return msg, fmt.Errorf("Source Keyspace doesn't exist")
 	}
 
-	metaExist := util.CheckKeyspaceExist(depCfg.MetadataBucket, depCfg.MetadataScope,
-		depCfg.MetadataCollection, hostAddress)
+	metaExist, err := util.ValidateAndCheckKeyspaceExist(depCfg.MetadataBucket, depCfg.MetadataScope,
+		depCfg.MetadataCollection, hostAddress, !allowWildcards)
+	if err == util.ErrWildcardNotAllowed {
+		return msg, err
+	}
+
+	// Allow it for now. Undeploy routine will check later
+	if err != nil {
+		return msg, nil
+	}
+
 	if !metaExist {
 		msg.SkipMetadataCleanup = true
 		return msg, fmt.Errorf("Meta Keyspace doesn't exist")
@@ -424,32 +438,33 @@ func (s *SuperSupervisor) checkDeletedCid(bucketName string) {
 
 		_, sid := p.GetFuncScopeDetails()
 		if sid != math.MaxUint32 {
-			currentSid, _, err := s.GetScopeAndCollectionID(p.FunctionManageBucket(), p.FunctionManageScope(), "")
-			if err != nil || sid != currentSid {
+			funcKeyspaceID, err := s.GetKeyspaceID(p.FunctionManageBucket(), p.FunctionManageScope(), "")
+			if err != nil || sid != funcKeyspaceID.Sid {
 				logging.Infof("%s Undeploying %s Reason: function manage scope delete err: %v", logPrefix, appName, err)
 				msg.DeleteFunction = true
 				p.UndeployHandler(msg)
 			}
 		}
 
-		mCid := p.GetMetadataCid()
-		if mCid == math.MaxUint32 {
+		mKeyspaceID, updated := p.GetMetadataKeyspaceID()
+		if !updated {
 			continue
 		}
-		_, cid, err := s.GetScopeAndCollectionID(p.MetadataBucket(), p.MetadataScope(), p.MetadataCollection())
-		if err != nil || cid != mCid {
+
+		mKeyspaceID2, err := s.GetKeyspaceID(p.MetadataBucket(), p.MetadataScope(), p.MetadataCollection())
+		if err != nil || !mKeyspaceID.Equals(mKeyspaceID2) {
 			logging.Infof("%s Undeploying %s Reason: metadata collection delete err: %v", logPrefix, appName, err)
 			msg.SkipMetadataCleanup = true
 			p.UndeployHandler(msg)
 			continue
 		}
 
-		sCid := p.GetSourceCid()
-		if sCid == math.MaxUint32 {
+		sKeyspaceID, updated := p.GetSourceKeyspaceID()
+		if !updated {
 			continue
 		}
-		_, cid, err = s.GetScopeAndCollectionID(p.SourceBucket(), p.SourceScope(), p.SourceCollection())
-		if err != nil || cid != sCid {
+		sKeyspaceID2, err := s.GetKeyspaceID(p.SourceBucket(), p.SourceScope(), p.SourceCollection())
+		if err != nil || !sKeyspaceID.Equals(sKeyspaceID2) {
 			logging.Infof("%s Undeploying %s Reason: source collection delete err: %v", logPrefix, appName, err)
 			p.UndeployHandler(msg)
 		}
@@ -474,7 +489,7 @@ func (s *SuperSupervisor) checkAppNeedsUndeployment(bucketName, appName string, 
 	for keyspace, mType := range watchers {
 		// Check for collection existence only when bucket is not deleted
 		if !bucketDeleted {
-			_, _, err := s.GetScopeAndCollectionID(keyspace.BucketName, keyspace.ScopeName, keyspace.CollectionName)
+			_, err := s.GetKeyspaceID(keyspace.BucketName, keyspace.ScopeName, keyspace.CollectionName)
 			if err == nil {
 				continue
 			}

@@ -51,6 +51,45 @@ func (k Keyspace) ToFunctionScope() *FunctionScope {
 	}
 }
 
+type StreamType uint8
+
+const (
+	STREAM_BUCKET StreamType = iota
+	STREAM_SCOPE
+	STREAM_COLLECTION
+	STREAM_UNKNOWN
+)
+
+type KeyspaceID struct {
+	Bid        string
+	Cid        uint32
+	Sid        uint32
+	StreamType StreamType
+}
+
+func (keyspaceID KeyspaceID) Equals(keyspaceID2 KeyspaceID) bool {
+	if keyspaceID.StreamType != keyspaceID2.StreamType {
+		return false
+	}
+
+	switch keyspaceID.StreamType {
+	case STREAM_BUCKET:
+		return keyspaceID.Bid == keyspaceID2.Bid
+	case STREAM_SCOPE:
+		return ((keyspaceID.Sid == keyspaceID2.Sid) && (keyspaceID.Bid == keyspaceID2.Bid))
+	case STREAM_COLLECTION:
+		return ((keyspaceID.Bid == keyspaceID2.Bid) && (keyspaceID.Sid == keyspaceID2.Sid) && (keyspaceID.Cid == keyspaceID2.Cid))
+	}
+
+	return true
+}
+
+type KeyspaceName struct {
+	Bucket     string `json:"bucket_name"`
+	Scope      string `json:"scope_name"`
+	Collection string `json:"collection_name"`
+}
+
 type Insight struct {
 	Script string              `json:"script"`
 	Lines  map[int]InsightLine `json:"lines"`
@@ -267,8 +306,8 @@ type EventingProducer interface {
 	SourceBucket() string
 	SourceScope() string
 	SourceCollection() string
-	GetSourceCid() uint32
-	GetMetadataCid() uint32
+	GetSourceKeyspaceID() (KeyspaceID, bool)
+	GetMetadataKeyspaceID() (KeyspaceID, bool)
 	SrcMutation() bool
 	Stop(context string)
 	StopProducer()
@@ -383,7 +422,7 @@ type EventingSuperSup interface {
 	GetMetaStoreStats(appName string) map[string]uint64
 	GetBucket(bucketName, appName string) (*couchbase.Bucket, error)
 	GetMetadataHandle(bucketName, scopeName, collectionName, appName string) (*gocb.Collection, error)
-	GetScopeAndCollectionID(bucketName, scopeName, collectionName string) (uint32, uint32, error)
+	GetKeyspaceID(bucketName, scopeName, collectionName string) (keyspaceID KeyspaceID, err error)
 	GetCurrentManifestId(bucketName string) (string, error)
 	GetRegisteredPool() string
 	GetSeqsProcessed(appName string) map[int]int64

@@ -104,6 +104,7 @@ func (c *Consumer) vbsStateUpdate() {
 		return
 	}
 
+	c.cidToKeyspaceCache.refreshManifestFromClusterInfo()
 	vbsOwned := c.getCurrentlyOwnedVbs()
 	sort.Sort(util.Uint16Slice(vbsOwned))
 

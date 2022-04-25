@@ -139,13 +139,13 @@ func (feed *DcpFeed) DcpGetSeqnos() (map[uint16]uint64, error) {
 // DcpRequestStream for a single vbucket.
 func (feed *DcpFeed) DcpRequestStream(vbno, opaqueMSB uint16, flags uint32,
 	vuuid, startSequence, endSequence, snapStart, snapEnd uint64,
-	manifestUID, collectionId string) error {
+	manifestUID, scopeId, collectionId string) error {
 
 	respch := make(chan []interface{}, 1)
 	cmd := []interface{}{
 		dfCmdRequestStream, vbno, opaqueMSB, flags, vuuid,
 		startSequence, endSequence, snapStart, snapEnd,
-		manifestUID, collectionId,
+		manifestUID, scopeId, collectionId,
 		respch}
 	resp, err := failsafeOp(feed.reqch, respch, cmd, feed.finch)
 	return opError(err, resp, 0)
@@ -264,13 +264,14 @@ func (feed *DcpFeed) handleControlRequest(
 		snapStart, snapEnd := msg[7].(uint64), msg[8].(uint64)
 
 		manifestUID := msg[9].(string)
-		collectionId := msg[10].(string)
+		scopeId := msg[10].(string)
+		collectionId := msg[11].(string)
 
-		respch := msg[11].(chan []interface{})
+		respch := msg[12].(chan []interface{})
 		err := feed.doDcpRequestStream(
 			vbno, opaqueMSB, flags, vuuid,
 			startSequence, endSequence, snapStart, snapEnd,
-			manifestUID, collectionId)
+			manifestUID, scopeId, collectionId)
 		respch <- []interface{}{err}
 
 	case dfCmdCloseStream:
@@ -404,7 +405,7 @@ func (feed *DcpFeed) handlePacket(
 
 	case transport.DCP_SYSTEM_EVENT:
 		event = newDcpEvent(pkt, stream)
-		feed.handleSystemEvent(pkt, event)
+		feed.handleDCPSystemEvent(pkt, event)
 		stream.Seqno = event.Seqno
 		sendAck = true
 
@@ -430,12 +431,35 @@ func (feed *DcpFeed) handlePacket(
 	return "ok"
 }
 
-func (feed *DcpFeed) handleSystemEvent(pkt *transport.MCRequest, dcpEvent *DcpEvent) {
+func (feed *DcpFeed) handleDCPSystemEvent(pkt *transport.MCRequest, dcpEvent *DcpEvent) {
 	extras := pkt.Extras
 	dcpEvent.Seqno = binary.BigEndian.Uint64(extras[0:8])
 	uid := binary.BigEndian.Uint64(pkt.Body[0:8]) //8 byte Manifest UID
 	uidstr := strconv.FormatUint(uid, 16)         //convert to base 16 encoded string
 	dcpEvent.ManifestUID = []byte(uidstr)
+
+	systemEventType := transport.CollectionEvent(binary.BigEndian.Uint32(extras[8:12]))
+	dcpEvent.EventType = systemEventType
+
+	switch systemEventType {
+
+	case transport.COLLECTION_CREATE:
+		dcpEvent.ScopeID = binary.BigEndian.Uint32(pkt.Body[8:12])
+		dcpEvent.CollectionID = binary.BigEndian.Uint32(pkt.Body[12:16])
+
+	case transport.COLLECTION_DROP, transport.COLLECTION_FLUSH:
+		dcpEvent.ScopeID = binary.BigEndian.Uint32(pkt.Body[8:12])
+		dcpEvent.CollectionID = binary.BigEndian.Uint32(pkt.Body[12:16])
+
+	case transport.SCOPE_CREATE, transport.SCOPE_DROP:
+		dcpEvent.ScopeID = binary.BigEndian.Uint32(pkt.Body[8:12])
+
+	case transport.COLLECTION_CHANGED:
+		dcpEvent.CollectionID = binary.BigEndian.Uint32(pkt.Body[8:12])
+
+	default:
+	}
+
 }
 
 func (feed *DcpFeed) doDcpGetFailoverLog(
@@ -720,7 +744,7 @@ func (feed *DcpFeed) doControlRequest(opaque uint16, key string, value []byte, r
 func (feed *DcpFeed) doDcpRequestStream(
 	vbno, opaqueMSB uint16, flags uint32,
 	vuuid, startSequence, endSequence, snapStart, snapEnd uint64,
-	manifestUID, collectionId string) error {
+	manifestUID, scopeId, collectionId string) error {
 
 	rq := &transport.MCRequest{
 		Opcode:  transport.DCP_STREAMREQ,
@@ -740,10 +764,13 @@ func (feed *DcpFeed) doDcpRequestStream(
 
 	requestValue := &StreamRequestValue{}
 	if feed.collectionAware {
-		requestValue.ManifestUID = manifestUID
 		if collectionId != "" {
 			requestValue.CollectionIDs = []string{collectionId}
+		} else if scopeId != "" {
+			requestValue.ScopeID = scopeId
 		}
+
+		requestValue.ManifestUID = manifestUID
 		body, _ := json.Marshal(requestValue)
 		rq.Body = body
 	}
@@ -933,6 +960,7 @@ func vbOpaque(opq32 uint32) uint16 {
 type StreamRequestValue struct {
 	ManifestUID   string   `json:"uid,omitempty"`
 	CollectionIDs []string `json:"collections,omitempty"`
+	ScopeID       string   `json:"scope,omitempty"`
 }
 
 // DcpStream is per stream data structure over an DCP Connection.
@@ -963,6 +991,9 @@ type DcpEvent struct {
 	OldValue     []byte                // TODO: TBD: old document value
 	Cas          uint64                // CAS value of the item
 	CollectionID uint32                // Collection Id
+	ScopeID      uint32
+
+	EventType transport.CollectionEvent // For DCP_SYSTEM_EVENT, DCP_OSO_SNAPSHOT types
 	// meta fields
 	Seqno uint64 // seqno. of the mutation, doubles as rollback-seqno
 	// https://issues.couchbase.com/browse/MB-15333,

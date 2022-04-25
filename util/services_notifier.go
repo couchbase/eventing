@@ -156,7 +156,7 @@ func (instance *serviceNotifierInstance) RunObserveCollectionManifestChanges(buc
 			return
 		}
 
-		if !CheckKeyspaceExist(bucket, "", "", instance.clusterUrl) {
+		if !CheckBucketExist(bucket, instance.clusterUrl) {
 			logging.Infof("servicesChangeNotifier: bucket: %s does not exist. Stopping manifest listener", bucket)
 			return
 		}

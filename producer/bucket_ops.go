@@ -193,17 +193,25 @@ var openDcpStreamFromZero = func(args ...interface{}) error {
 	id := args[4].(int)
 	endSeqNumber := args[5].(uint64)
 	keyspaceExist := args[6].(*bool)
-	metaCid := p.GetMetadataCid()
-	hexCid := common.Uint32ToHex(metaCid)
+	metaKeyspaceID, _ := p.GetMetadataKeyspaceID()
+	hexCid := common.Uint32ToHex(metaKeyspaceID.Cid)
 
 	err := dcpFeed.DcpRequestStream(vb, uint16(vb), uint32(0), vbuuid, uint64(0),
-		endSeqNumber, uint64(0), uint64(0), "0", hexCid)
+		endSeqNumber, uint64(0), uint64(0), "0", "", hexCid)
 	if err != nil {
 		logging.Errorf("%s [%s:%d:id_%d] vb: %d failed to request stream error: %v",
 			logPrefix, p.appName, p.LenRunningConsumers(), id, vb, err)
 
 		hostAddress := net.JoinHostPort(util.Localhost(), p.GetNsServerPort())
-		*keyspaceExist = util.CheckKeyspaceExist(p.MetadataBucket(), p.MetadataScope(), p.MetadataCollection(), hostAddress)
+		*keyspaceExist, err = util.ValidateAndCheckKeyspaceExist(p.MetadataBucket(), p.MetadataScope(), p.MetadataCollection(), hostAddress, false)
+		if err == util.ErrWildcardNotAllowed {
+			return nil
+		}
+
+		if err != nil {
+			return err
+		}
+
 		if !(*keyspaceExist) {
 			return nil
 		}
