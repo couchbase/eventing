@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/common/collections"
 	couchbase "github.com/couchbase/eventing/dcp"
 	memcached "github.com/couchbase/eventing/dcp/transport/client"
@@ -106,7 +107,7 @@ func (r *vbSeqnosReader) GetBucketLevelSeqnos() (seqs []uint64, err error) {
 	return
 }
 
-func (r *vbSeqnosReader) GetCollectionSeqnos(cid uint32) (seqs []uint64, err error) {
+func (r *vbSeqnosReader) GetScopeOrCollectionSeqnos(cid uint32) (seqs []uint64, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			err = errConnClosed
@@ -290,8 +291,8 @@ func BucketSeqnos(cluster, pooln, bucketn string) (l_seqnos []uint64, err error)
 	return
 }
 
-func CollectionSeqnos(cluster, pooln, bucketn string,
-	cid uint32) (l_seqnos []uint64, collection_found bool, err error) {
+func ScopeOrCollectionSeqnos(cluster, pooln, bucketn string,
+	id uint32) (l_seqnos []uint64, locationFound bool, err error) {
 
 	// any type of error will cleanup the bucket and its kvfeeds.
 	defer func() {
@@ -323,12 +324,12 @@ func CollectionSeqnos(cluster, pooln, bucketn string,
 		return reader, nil
 	}()
 
-	collection_found = true
+	locationFound = true
 	if err != nil {
 		return nil, false, err
 	}
 
-	l_seqnos, err = reader.GetCollectionSeqnos(cid)
+	l_seqnos, err = reader.GetScopeOrCollectionSeqnos(id)
 	if err != nil && strings.Contains(err.Error(), "Unknown scope or collection") {
 		return nil, false, nil
 	}
@@ -339,13 +340,19 @@ func GetSeqnos(args ...interface{}) error {
 	cluster := args[0].(string)
 	pool := args[1].(string)
 	bucket := args[2].(string)
-	cid := args[3].(uint32)
+	streamKeyspace := args[3].(common.KeyspaceID)
 	l_seqnos := args[4].(*[]uint64)
+	bucketLevel := args[5].(bool)
 
-	if cid != collections.CID_FOR_BUCKET {
-		seqnos, collection_found, err := CollectionSeqnos(cluster, pool, bucket, cid)
-		if !collection_found {
-			logging.Infof("No collection with cid: %v found", cid)
+	id := streamKeyspace.Cid
+	if streamKeyspace.StreamType == common.STREAM_SCOPE {
+		id = streamKeyspace.Sid
+	}
+
+	if streamKeyspace.StreamType != common.STREAM_BUCKET && !bucketLevel {
+		seqnos, locationFound, err := ScopeOrCollectionSeqnos(cluster, pool, bucket, id)
+		if !locationFound {
+			logging.Infof("No Location exist with id: %v", id)
 			return nil
 		}
 		if err == nil {

@@ -233,7 +233,7 @@ const (
 func (feed *DcpFeed) DcpRequestStream(
 	vb uint16, opaque uint16, flags uint32,
 	vbuuid, startSequence, endSequence, snapStart, snapEnd uint64,
-	manifestUID, collectionId string) error {
+	manifestUID, scopeId, collectionId string) error {
 
 	// only request active vbucket
 	if feed.activeVbOnly {
@@ -244,7 +244,7 @@ func (feed *DcpFeed) DcpRequestStream(
 	cmd := []interface{}{
 		ufCmdRequestStream, vb, opaque, flags, vbuuid,
 		startSequence, endSequence, snapStart, snapEnd,
-		manifestUID, collectionId, respch}
+		manifestUID, scopeId, collectionId, respch}
 	resp, err := failsafeOp(feed.reqch, respch, cmd, feed.finch)
 	return opError(err, resp, 0)
 }
@@ -318,13 +318,14 @@ loop:
 				startSeq, endSeq := msg[5].(uint64), msg[6].(uint64)
 				snapStart, snapEnd := msg[7].(uint64), msg[8].(uint64)
 				manifestUID := msg[9].(string)
-				collectionId := msg[10].(string)
+				scopeId := msg[10].(string)
+				collectionId := msg[11].(string)
 
 				err := feed.dcpRequestStream(
 					vb, opaque, flags, vbuuid, startSeq, endSeq,
 					snapStart, snapEnd,
-					manifestUID, collectionId)
-				respch := msg[11].(chan []interface{})
+					manifestUID, scopeId, collectionId)
+				respch := msg[12].(chan []interface{})
 				respch <- []interface{}{err}
 
 			case ufCmdCloseStream:
@@ -447,7 +448,7 @@ func (feed *DcpFeed) reConnectToNodes(
 func (feed *DcpFeed) dcpRequestStream(
 	vb uint16, opaque uint16, flags uint32,
 	vbuuid, startSequence, endSequence, snapStart, snapEnd uint64,
-	manifestUID, collectionId string) error {
+	manifestUID, scopeId, collectionId string) error {
 
 	prefix := feed.logPrefix
 	master, err := feed.bucket.GetMasterNodeForVb(vb)
@@ -482,7 +483,7 @@ func (feed *DcpFeed) dcpRequestStream(
 		}
 		err = singleFeed.dcpFeed.DcpRequestStream(
 			vb, opaque, flags, vbuuid, startSequence, endSequence,
-			snapStart, snapEnd, manifestUID, collectionId)
+			snapStart, snapEnd, manifestUID, scopeId, collectionId)
 		if err != nil {
 			fmsg := "%v ##%x DcpFeed %v failed, trying next"
 			logging.Errorf(fmsg, prefix, opaque, singleFeed.dcpFeed.Name())

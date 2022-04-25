@@ -5555,10 +5555,49 @@ func (m *ServiceMgr) getUserInfo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for bucketName, scopeMap := range snapShot {
-		for scopeName, collectionList := range scopeMap {
-			k := &common.Keyspace{BucketName: bucketName, ScopeName: scopeName}
+		k := &common.Keyspace{BucketName: bucketName, ScopeName: "*", CollectionName: "*"}
+		manage := rbac.GetPermissions(k, rbac.BucketDcp)
+		if _, err := rbac.IsAllowedCreds(cred, manage, true); err == nil {
+			u.DcpStreamPerm = append(u.DcpStreamPerm, *k)
+		}
 
-			manage := rbac.GetPermissions(k, rbac.EventingManage)
+		manage = rbac.GetPermissions(k, rbac.BucketRead)
+		read := false
+		// checking read permissions
+		if _, err := rbac.IsAllowedCreds(cred, manage, true); err == nil {
+			u.ReadPerm = append(u.ReadPerm, *k)
+			read = true
+		}
+
+		// checking for write permissions
+		manage = rbac.GetPermissions(k, rbac.BucketWrite)
+		if _, err := rbac.IsAllowedCreds(cred, manage, true); err == nil && read {
+			u.ReadWritePerm = append(u.ReadWritePerm, *k)
+		}
+
+		for scopeName, collectionList := range scopeMap {
+			k.ScopeName = scopeName
+			k.CollectionName = "*"
+			manage := rbac.GetPermissions(k, rbac.BucketDcp)
+			if _, err := rbac.IsAllowedCreds(cred, manage, true); err == nil {
+				u.DcpStreamPerm = append(u.DcpStreamPerm, *k)
+			}
+
+			manage = rbac.GetPermissions(k, rbac.BucketRead)
+			read := false
+			// checking read permissions
+			if _, err := rbac.IsAllowedCreds(cred, manage, true); err == nil {
+				u.ReadPerm = append(u.ReadPerm, *k)
+				read = true
+			}
+
+			// checking for write permissions
+			manage = rbac.GetPermissions(k, rbac.BucketWrite)
+			if _, err := rbac.IsAllowedCreds(cred, manage, true); err == nil && read {
+				u.ReadWritePerm = append(u.ReadWritePerm, *k)
+			}
+
+			manage = rbac.GetPermissions(k, rbac.EventingManage)
 			if _, err := rbac.IsAllowedCreds(cred, manage, true); err == nil {
 				u.FuncScope = append(u.FuncScope, *k)
 			}

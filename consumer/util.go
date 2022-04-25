@@ -3,9 +3,13 @@ package consumer
 import (
 	"encoding/json"
 	"hash/crc32"
+	"net"
 	"strconv"
+	"sync"
 
 	"github.com/couchbase/eventing/common"
+	"github.com/couchbase/eventing/common/collections"
+	mcd "github.com/couchbase/eventing/dcp/transport"
 	memcached "github.com/couchbase/eventing/dcp/transport/client"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
@@ -131,4 +135,136 @@ func (c *Consumer) getEncryptionLevelName(enforceTLS, encryptOn bool) string {
 
 func (c *Consumer) getDebuggerConnName() string {
 	return c.app.FunctionInstanceID
+}
+
+type keyspaceRefCount struct {
+	ref      int
+	keyspace common.KeyspaceName
+}
+
+type cidToKeyspaceNameCache struct {
+	sync.RWMutex
+
+	scopeToName           map[uint32]string
+	cidToKeyspaceRefCount map[uint32]*keyspaceRefCount
+	bucketName            string
+	restPort              string
+	ref                   int
+}
+
+func initCidToCol(bucketName, restPort string, num int) *cidToKeyspaceNameCache {
+	c := &cidToKeyspaceNameCache{
+		bucketName:            bucketName,
+		restPort:              restPort,
+		scopeToName:           make(map[uint32]string),
+		cidToKeyspaceRefCount: make(map[uint32]*keyspaceRefCount),
+		ref:                   num,
+	}
+	return c
+}
+
+func (c *cidToKeyspaceNameCache) changeRefCount(ref int) {
+	c.Lock()
+	defer c.Unlock()
+	for _, keyspaceRef := range c.cidToKeyspaceRefCount {
+		if keyspaceRef.ref == c.ref {
+			keyspaceRef.ref = ref
+		}
+	}
+	c.ref = ref
+}
+
+func (c *cidToKeyspaceNameCache) updateManifest(e *memcached.DcpEvent) {
+	c.Lock()
+	defer c.Unlock()
+
+	switch e.EventType {
+
+	case mcd.COLLECTION_CREATE, mcd.COLLECTION_CHANGED:
+		if _, ok := c.cidToKeyspaceRefCount[e.CollectionID]; ok {
+			return
+		}
+
+		scopeName := c.scopeToName[e.ScopeID]
+		c.cidToKeyspaceRefCount[e.CollectionID] = &keyspaceRefCount{
+			ref:      c.ref,
+			keyspace: common.KeyspaceName{Scope: scopeName, Collection: string(e.Key), Bucket: c.bucketName},
+		}
+
+	case mcd.COLLECTION_DROP, mcd.COLLECTION_FLUSH:
+		keyspaceRef, ok := c.cidToKeyspaceRefCount[e.CollectionID]
+		if !ok {
+			return
+		}
+
+		keyspaceRef.ref--
+		if keyspaceRef.ref == 0 {
+			delete(c.cidToKeyspaceRefCount, e.CollectionID)
+		}
+
+	case mcd.SCOPE_CREATE:
+		c.scopeToName[e.ScopeID] = string(e.Key)
+
+	case mcd.SCOPE_DROP:
+		delete(c.scopeToName, e.ScopeID)
+
+	default:
+	}
+}
+
+func (c *cidToKeyspaceNameCache) getKeyspaceName(e *memcached.DcpEvent) common.KeyspaceName {
+	keyspaceRef, ok := c.cidToKeyspaceRefCount[e.CollectionID]
+	if ok {
+		return keyspaceRef.keyspace
+	}
+
+	c.refreshManifestFromClusterInfo()
+	keyspaceRef, ok = c.cidToKeyspaceRefCount[e.CollectionID]
+	// Case for pre collection
+	if !ok {
+		return common.KeyspaceName{
+			Bucket:     c.bucketName,
+			Scope:      "_default",
+			Collection: "_default",
+		}
+	}
+
+	return keyspaceRef.keyspace
+}
+
+func (c *cidToKeyspaceNameCache) refreshManifestFromClusterInfo() {
+	hostAddress := net.JoinHostPort(util.Localhost(), c.restPort)
+	cic, err := util.FetchClusterInfoClient(hostAddress)
+	if err != nil {
+		return
+	}
+	cinfo := cic.GetClusterInfoCache()
+	cinfo.RLock()
+	manifest := cinfo.GetCollectionManifest(c.bucketName)
+	cinfo.RUnlock()
+
+	c.Lock()
+	defer c.Unlock()
+
+	for _, scope := range manifest.Scopes {
+		sid, _ := collections.GetHexToUint32(scope.UID)
+		if _, ok := c.scopeToName[sid]; !ok {
+			c.scopeToName[sid] = scope.Name
+		}
+		for _, col := range scope.Collections {
+			cid, _ := collections.GetHexToUint32(col.UID)
+			if _, ok := c.cidToKeyspaceRefCount[cid]; ok {
+				continue
+			}
+
+			c.cidToKeyspaceRefCount[cid] = &keyspaceRefCount{
+				ref: c.ref,
+				keyspace: common.KeyspaceName{
+					Bucket:     c.bucketName,
+					Scope:      scope.Name,
+					Collection: col.Name,
+				},
+			}
+		}
+	}
 }

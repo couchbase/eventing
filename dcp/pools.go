@@ -1060,6 +1060,40 @@ func (p *Pool) GetScopes(bucketName string) map[string][]string {
 	return nil
 }
 
+func (p *Pool) GetCollectionManifest(bucketName string) *collections.CollectionManifest {
+	cm := &collections.CollectionManifest{}
+	version := p.GetClusterCompatVersion()
+	if version < collections.COLLECTION_SUPPORTED_VERSION {
+		return cm
+	}
+
+	tmpManifest, ok := p.Manifest[bucketName]
+	if !ok {
+		return cm
+	}
+
+	cm.UID = tmpManifest.UID
+	cm.Scopes = make([]collections.CollectionScope, 0, len(tmpManifest.Scopes))
+	for _, scope := range tmpManifest.Scopes {
+		s := collections.CollectionScope{
+			Name:        scope.Name,
+			UID:         scope.UID,
+			Collections: make([]collections.Collection, 0, len(scope.Collections)),
+		}
+
+		for _, col := range scope.Collections {
+			c := collections.Collection{
+				Name: col.Name,
+				UID:  col.UID,
+			}
+
+			s.Collections = append(s.Collections, c)
+		}
+		cm.Scopes = append(cm.Scopes, s)
+	}
+	return cm
+}
+
 func (p *Pool) GetUniqueBSCIds(bucket, scope, collection string) (uint32, uint32, error) {
 	manifest, ok := p.Manifest[bucket]
 	if !ok {

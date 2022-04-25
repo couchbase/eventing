@@ -321,7 +321,7 @@ var gocbConnectBucket = func(args ...interface{}) error {
 			*operr = common.ErrEncryptionLevelChanged
 			return nil
 		}
-		if !util.CheckKeyspaceExist(bucketName, "", "", hostPortAddr) {
+		if !util.CheckBucketExist(bucketName, hostPortAddr) {
 			*bucketNotExist = true
 			return nil
 		}

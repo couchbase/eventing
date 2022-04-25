@@ -275,33 +275,34 @@ func (m *ServiceMgr) validateBoolean(field string, isOptional bool, settings map
 	return
 }
 
-func (m *ServiceMgr) validateKeyspaceExists(bucketName, scopeName, collectionName string) (info *response.RuntimeInfo) {
+func (m *ServiceMgr) validateKeyspaceExists(bucketName, scopeName, collectionName string, wildcardsAllowed bool) (info *response.RuntimeInfo) {
 	info = &response.RuntimeInfo{}
 
+	if scopeName == "*" && collectionName != "*" {
+		info.ErrCode = response.ErrInvalidRequest
+		info.Description = fmt.Sprintf("Invalid keyspace. collection should be '*' when scope is '*'")
+		return
+	}
+
 	nsServerEndpoint := net.JoinHostPort(util.Localhost(), m.restPort)
-	cic, err := util.FetchClusterInfoClient(nsServerEndpoint)
+	found, err := util.ValidateAndCheckKeyspaceExist(bucketName, scopeName, collectionName, nsServerEndpoint, wildcardsAllowed)
+	if err == util.ErrWildcardNotAllowed {
+		info.ErrCode = response.ErrInvalidRequest
+		info.Description = fmt.Sprintf("wildcard keyspace not allowed")
+		return
+	}
+
 	if err != nil {
 		info.ErrCode = response.ErrInternalServer
 		info.Description = fmt.Sprintf("Failed to get cluster info cache, err: %v", err)
 		return
 	}
-	clusterInfo := cic.GetClusterInfoCache()
-	clusterInfo.RLock()
-	defer clusterInfo.RUnlock()
 
-	if clusterInfo.GetBucketUUID(bucketName) == "" {
-		info.ErrCode = response.ErrBucketMissing
-		info.Description = fmt.Sprintf("Bucket %s does not exist", bucketName)
-		return
-	}
-
-	_, err = clusterInfo.GetCollectionID(bucketName, scopeName, collectionName)
-	if err != nil {
+	if !found {
 		info.ErrCode = response.ErrCollectionMissing
 		info.Description = fmt.Sprintf("%s bucket: %s scope: %s collection: %s", err, bucketName, scopeName, collectionName)
 		return
 	}
-
 	return
 }
 
@@ -437,12 +438,13 @@ func (m *ServiceMgr) validateBucketAccess(access string) (info *response.Runtime
 
 func (m *ServiceMgr) validateDeploymentConfig(deploymentConfig *depCfg) (info *response.RuntimeInfo) {
 	info = &response.RuntimeInfo{}
+	allowWildcards := true
 
 	if info = m.validateNonEmpty(deploymentConfig.SourceBucket, "Source bucket name"); info.ErrCode != response.Ok {
 		return
 	}
 
-	if info = m.validateKeyspaceExists(deploymentConfig.SourceBucket, deploymentConfig.SourceScope, deploymentConfig.SourceCollection); info.ErrCode != response.Ok {
+	if info = m.validateKeyspaceExists(deploymentConfig.SourceBucket, deploymentConfig.SourceScope, deploymentConfig.SourceCollection, allowWildcards); info.ErrCode != response.Ok {
 		return
 	}
 
@@ -454,7 +456,7 @@ func (m *ServiceMgr) validateDeploymentConfig(deploymentConfig *depCfg) (info *r
 		return
 	}
 
-	if info = m.validateKeyspaceExists(deploymentConfig.MetadataBucket, deploymentConfig.MetadataScope, deploymentConfig.MetadataCollection); info.ErrCode != response.Ok {
+	if info = m.validateKeyspaceExists(deploymentConfig.MetadataBucket, deploymentConfig.MetadataScope, deploymentConfig.MetadataCollection, !allowWildcards); info.ErrCode != response.Ok {
 		return
 	}
 
@@ -507,6 +509,7 @@ func (m *ServiceMgr) getBSId(fS *common.FunctionScope) (string, uint32, *respons
 
 func (m *ServiceMgr) validateBucketBindings(bindings []bucket, existingAliases map[string]struct{}) (info *response.RuntimeInfo) {
 	info = &response.RuntimeInfo{}
+	allowWildcards := true
 
 	for _, binding := range bindings {
 		if info = m.validateNonEmpty(binding.BucketName, "Bucket name"); info.ErrCode != response.Ok {
@@ -516,7 +519,7 @@ func (m *ServiceMgr) validateBucketBindings(bindings []bucket, existingAliases m
 			return
 		}
 
-		if info = m.validateKeyspaceExists(binding.BucketName, binding.ScopeName, binding.CollectionName); info.ErrCode != response.Ok {
+		if info = m.validateKeyspaceExists(binding.BucketName, binding.ScopeName, binding.CollectionName, allowWildcards); info.ErrCode != response.Ok {
 			info.Description = fmt.Sprintf("Keyspace bucket: %s scope: %s collection: %s used for binding: %s doesn't exist", binding.BucketName, binding.ScopeName, binding.CollectionName, binding.Alias)
 			return
 		}
