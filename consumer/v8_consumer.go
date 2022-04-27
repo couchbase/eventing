@@ -20,12 +20,6 @@ import (
 	flatbuffers "github.com/google/flatbuffers/go"
 )
 
-// Note: Should be a multiple of number of dcpFeeds which we might not know during initialising consumer
-// Hence, assuming 8 KV dcpFeeds for an average of 8 KV nodes.
-const (
-	AggChanSizeMultiplier = 8
-)
-
 // NewConsumer called by producer to create consumer handle
 func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, rConfig *common.RebalanceConfig,
 	index int, uuid, nsServerPort string, eventingNodeUUIDs []string, vbnos []uint16, app *common.AppConfig,
@@ -39,7 +33,7 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		isPausing:                       false,
 		languageCompatibility:           hConfig.LanguageCompatibility,
 		app:                             app,
-		aggDCPFeed:                      make(chan *memcached.DcpEvent, (AggChanSizeMultiplier * dcpConfig["dataChanSize"].(int))),
+		aggDCPFeed:                      make(chan *memcached.DcpEvent, dcpConfig["dataChanSize"].(int)),
 		aggDCPFeedMemCap:                hConfig.AggDCPFeedMemCap,
 		breakpadOn:                      pConfig.BreakpadOn,
 		bucket:                          hConfig.SourceBucket,
@@ -216,6 +210,7 @@ func (c *Consumer) Serve() {
 
 	logging.Infof("%s [%s:%s:%d] Spawning worker corresponding to producer, node addr: %rs",
 		logPrefix, c.workerName, c.tcpPort, c.Pid(), c.HostPortAddr())
+
 
 	if atomic.LoadUint32(&c.isTerminateRunning) == 0 {
 		c.client = newClient(c, c.app.AppName, c.tcpPort, c.feedbackTCPPort, c.workerName, c.eventingAdminPort)
@@ -530,13 +525,4 @@ func (c *Consumer) killAndRespawn() {
 		return
 	}
 	c.producer.KillAndRespawnEventingConsumer(c)
-}
-
-func (c *Consumer) updateDcpProcessedMsgs(code mcd.CommandCode) {
-	c.msgProcessedRWMutex.Lock()
-	if _, ok := c.dcpMessagesProcessed[code]; !ok {
-		c.dcpMessagesProcessed[code] = 0
-	}
-	c.dcpMessagesProcessed[code]++
-	c.msgProcessedRWMutex.Unlock()
 }

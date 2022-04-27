@@ -525,12 +525,6 @@ var addOwnershipHistorySRRCallback = func(args ...interface{}) error {
 	ownershipEntry := args[2].(*OwnershipEntry)
 	operr := args[3].(*error)
 
-	if atomic.LoadUint32(&c.isTerminateRunning) == 1 {
-		logging.Tracef("%s [%s:%s:%d] Exiting as worker is terminating",
-			logPrefix, c.workerName, c.tcpPort, c.Pid())
-		return nil
-	}
-
 retrySRRUpdate:
 	c.gocbMetaHandleMutex.RLock()
 	defer c.gocbMetaHandleMutex.RUnlock()

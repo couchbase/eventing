@@ -63,7 +63,13 @@ func (c *Consumer) processDCPEvents() {
 			}
 
 			atomic.AddInt64(&c.aggDCPFeedMem, -int64(len(e.Value)))
-			c.updateDcpProcessedMsgs(e.Opcode)
+
+			c.msgProcessedRWMutex.Lock()
+			if _, ok := c.dcpMessagesProcessed[e.Opcode]; !ok {
+				c.dcpMessagesProcessed[e.Opcode] = 0
+			}
+			c.dcpMessagesProcessed[e.Opcode]++
+			c.msgProcessedRWMutex.Unlock()
 
 			switch e.Opcode {
 			case mcd.DCP_MUTATION:
@@ -127,6 +133,173 @@ func (c *Consumer) processDCPEvents() {
 				c.processAndSendDcpDelOrExpMessage(e, functionInstanceID, false)
 				c.dcpExpiryCounter++
 
+			case mcd.DCP_STREAMREQ:
+
+				logging.Infof("%s [%s:%s:%d] vb: %d got STREAMREQ status: %v",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket, e.Status)
+
+			retryCheckMetadataUpdated:
+				if metadataUpdated, ok := c.vbProcessingStats.getVbStat(e.VBucket, "vb_stream_request_metadata_updated").(bool); ok {
+					logging.Infof("%s [%s:%s:%d] vb: %d STREAMREQ metadataUpdated: %t",
+						logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket, metadataUpdated)
+					if metadataUpdated {
+						c.vbProcessingStats.updateVbStat(e.VBucket, "vb_stream_request_metadata_updated", false)
+					} else {
+						time.Sleep(time.Second)
+						goto retryCheckMetadataUpdated
+					}
+				} else {
+					logging.Infof("%s [%s:%s:%d] vb: %d STREAMREQ metadataUpdated not found",
+						logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket)
+					time.Sleep(time.Second)
+					goto retryCheckMetadataUpdated
+				}
+
+				if e.Status == mcd.SUCCESS {
+
+					vbFlog := &vbFlogEntry{statusCode: e.Status, streamReqRetry: false, vb: e.VBucket}
+
+					var vbBlob vbucketKVBlob
+					var cas gocb.Cas
+
+					vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppName, e.VBucket)
+					var operr error
+					err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getOpCallback,
+						c, c.producer.AddMetadataPrefix(vbKey), &vbBlob, &cas, &operr, false)
+					if err == common.ErrRetryTimeout {
+						logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+						return
+					} else if operr == common.ErrEncryptionLevelChanged {
+						logging.Errorf("%s [%s:%s:%d] Skipping current STREAMREQ event as change in encryption level was detected during bootstrap", logPrefix, c.workerName, c.tcpPort, c.Pid())
+						continue
+					}
+
+					vbuuid, seqNo, err := e.FailoverLog.Latest()
+					if err != nil {
+						logging.Errorf("%s [%s:%s:%d] vb: %d STREAMREQ Inserting entry: %#v to vbFlogChan."+
+							" Failure to get latest failover log, err: %v",
+							logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket, vbFlog, err)
+						c.vbFlogChan <- vbFlog
+						continue
+					}
+
+					c.vbProcessingStats.updateVbStat(e.VBucket, "vb_uuid", vbuuid)
+
+					// Update metadata with latest vbuuid and rollback seq no
+					vbBlob.AssignedWorker = c.ConsumerName()
+					vbBlob.CurrentVBOwner = c.HostPortAddr()
+					vbBlob.DCPStreamStatus = dcpStreamRunning
+					vbBlob.LastSeqNoProcessed = seqNo
+					vbBlob.NodeUUID = c.uuid
+					vbBlob.VBuuid = vbuuid
+					vbBlob.FailoverLog = *e.FailoverLog
+
+					var startSeqNo uint64
+					if seqNo, ok := c.vbProcessingStats.getVbStat(e.VBucket, "last_processed_seq_no").(uint64); ok {
+						startSeqNo = seqNo
+					}
+
+					c.sendUpdateProcessedSeqNo(e.VBucket, startSeqNo)
+
+					if val, ok := c.vbProcessingStats.getVbStat(e.VBucket, "bootstrap_stream_req_done").(bool); ok && !val {
+						c.vbProcessingStats.updateVbStat(e.VBucket, "bootstrap_stream_req_done", true)
+						vbBlob.BootstrapStreamReqDone = true
+						logging.Infof("%s [%s:%s:%d] vb: %d updated bootstrap done flag to: %t",
+							logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket, vbBlob.BootstrapStreamReqDone)
+					}
+
+					entry := OwnershipEntry{
+						AssignedWorker: c.ConsumerName(),
+						CurrentVBOwner: c.HostPortAddr(),
+						Operation:      dcpStreamRunning,
+						SeqNo:          startSeqNo,
+						Timestamp:      time.Now().String(),
+					}
+
+					err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, addOwnershipHistorySRSCallback,
+						c, c.producer.AddMetadataPrefix(vbKey), &vbBlob, &entry, &operr)
+					if err == common.ErrRetryTimeout {
+						logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+						return
+					} else if operr == common.ErrEncryptionLevelChanged {
+						continue
+					}
+
+					c.vbProcessingStats.updateVbStat(e.VBucket, "assigned_worker", c.ConsumerName())
+					c.vbProcessingStats.updateVbStat(e.VBucket, "current_vb_owner", c.HostPortAddr())
+					c.vbProcessingStats.updateVbStat(e.VBucket, "dcp_stream_status", dcpStreamRunning)
+					c.vbProcessingStats.updateVbStat(e.VBucket, "node_uuid", c.uuid)
+
+					c.vbProcessingStats.updateVbStat(e.VBucket, "ever_owned_vb", true)
+					c.vbProcessingStats.updateVbStat(e.VBucket, "host_name", c.HostPortAddr())
+					c.vbProcessingStats.updateVbStat(e.VBucket, "last_checkpointed_seq_no", startSeqNo)
+					c.vbProcessingStats.updateVbStat(e.VBucket, "timestamp", time.Now().Format(time.RFC3339))
+					c.vbProcessingStats.updateVbStat(e.VBucket, "worker_name", c.ConsumerName())
+
+					c.vbProcessingStats.updateVbStat(e.VBucket, "dcp_stream_requested_node_uuid", c.NodeUUID())
+					c.vbProcessingStats.updateVbStat(e.VBucket, "dcp_stream_requested_worker", c.ConsumerName())
+
+					c.vbProcessingStats.updateVbStat(e.VBucket, "vb_filter_ack_received", false)
+					c.vbProcessingStats.updateVbStat(e.VBucket, "failover_log", vbBlob.FailoverLog)
+
+					if !c.checkIfCurrentConsumerShouldOwnVb(e.VBucket) {
+						c.Lock()
+						c.vbsRemainingToClose = append(c.vbsRemainingToClose, e.VBucket)
+						c.Unlock()
+
+						c.filterVbEventsRWMutex.Lock()
+						c.filterVbEvents[e.VBucket] = struct{}{}
+						c.filterVbEventsRWMutex.Unlock()
+					}
+
+					logging.Infof("%s [%s:%s:%d] vb: %d STREAMREQ Inserting entry: %#v to vbFlogChan",
+						logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket, vbFlog)
+					c.vbFlogChan <- vbFlog
+					continue
+				}
+
+				if e.Status == mcd.KEY_EEXISTS {
+					vbFlog := &vbFlogEntry{statusCode: e.Status, streamReqRetry: false, vb: e.VBucket}
+
+					logging.Infof("%s [%s:%s:%d] vb: %d STREAMREQ Inserting entry: %#v to vbFlogChan",
+						logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket, vbFlog)
+					c.vbFlogChan <- vbFlog
+					continue
+				}
+
+				if e.Status != mcd.SUCCESS {
+
+					vbFlog := &vbFlogEntry{
+						flog:           e.FailoverLog,
+						seqNo:          e.Seqno,
+						statusCode:     e.Status,
+						streamReqRetry: true,
+						vb:             e.VBucket,
+					}
+
+					vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppName, e.VBucket)
+
+					entry := OwnershipEntry{
+						AssignedWorker: c.ConsumerName(),
+						CurrentVBOwner: c.HostPortAddr(),
+						Operation:      dcpStreamRequestFailed,
+						Timestamp:      time.Now().String(),
+					}
+
+					var operr error
+					err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, addOwnershipHistorySRFCallback,
+						c, c.producer.AddMetadataPrefix(vbKey), &entry, &operr)
+					if err == common.ErrRetryTimeout {
+						logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
+						return
+					} else if operr == common.ErrEncryptionLevelChanged {
+						continue
+					}
+
+					logging.Infof("%s [%s:%s:%d] vb: %d STREAMREQ Failed. Inserting entry: %#v to vbFlogChan",
+						logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket, vbFlog)
+					c.vbFlogChan <- vbFlog
+				}
 			case mcd.DCP_STREAMEND:
 				logging.Infof("%s [%s:%s:%d] vb: %d got STREAMEND", logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket)
 
@@ -478,179 +651,6 @@ func (c *Consumer) addToAggChan(dcpFeed *couchbase.DcpFeed) {
 					}
 					c.hostDcpFeedRWMutex.Unlock()
 					return
-				}
-
-				switch e.Opcode {
-				case mcd.DCP_STREAMREQ:
-					c.updateDcpProcessedMsgs(e.Opcode)
-					logging.Infof("%s [%s:%s:%d] vb: %d got STREAMREQ status: %v",
-						logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket, e.Status)
-
-				retryCheckMetadataUpdated:
-					if metadataUpdated, ok := c.vbProcessingStats.getVbStat(e.VBucket, "vb_stream_request_metadata_updated").(bool); ok {
-						logging.Infof("%s [%s:%s:%d] vb: %d STREAMREQ metadataUpdated: %t",
-							logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket, metadataUpdated)
-						if metadataUpdated {
-							c.vbProcessingStats.updateVbStat(e.VBucket, "vb_stream_request_metadata_updated", false)
-						} else {
-							time.Sleep(time.Second)
-							goto retryCheckMetadataUpdated
-						}
-					} else {
-						logging.Infof("%s [%s:%s:%d] vb: %d STREAMREQ metadataUpdated not found",
-							logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket)
-						time.Sleep(time.Second)
-						goto retryCheckMetadataUpdated
-					}
-
-					if e.Status == mcd.SUCCESS {
-
-						vbFlog := &vbFlogEntry{statusCode: e.Status, streamReqRetry: false, vb: e.VBucket}
-
-						var vbBlob vbucketKVBlob
-						var cas gocb.Cas
-
-						vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppName, e.VBucket)
-						var operr error
-						err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getOpCallback,
-							c, c.producer.AddMetadataPrefix(vbKey), &vbBlob, &cas, &operr, false)
-						if err == common.ErrRetryTimeout {
-							logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-							continue
-						} else if operr == common.ErrEncryptionLevelChanged {
-							logging.Errorf("%s [%s:%s:%d] Skipping current STREAMREQ event as change in encryption level was detected during bootstrap", logPrefix, c.workerName, c.tcpPort, c.Pid())
-							continue
-						}
-
-						vbuuid, seqNo, err := e.FailoverLog.Latest()
-						if err != nil {
-							logging.Errorf("%s [%s:%s:%d] vb: %d STREAMREQ Inserting entry: %#v to vbFlogChan."+
-								" Failure to get latest failover log, err: %v",
-								logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket, vbFlog, err)
-							c.vbFlogChan <- vbFlog
-							continue
-						}
-
-						c.vbProcessingStats.updateVbStat(e.VBucket, "vb_uuid", vbuuid)
-
-						// Update metadata with latest vbuuid and rollback seq no
-						vbBlob.AssignedWorker = c.ConsumerName()
-						vbBlob.CurrentVBOwner = c.HostPortAddr()
-						vbBlob.DCPStreamStatus = dcpStreamRunning
-						vbBlob.LastSeqNoProcessed = seqNo
-						vbBlob.NodeUUID = c.uuid
-						vbBlob.VBuuid = vbuuid
-						vbBlob.FailoverLog = *e.FailoverLog
-
-						var startSeqNo uint64
-						if seqNo, ok := c.vbProcessingStats.getVbStat(e.VBucket, "last_processed_seq_no").(uint64); ok {
-							startSeqNo = seqNo
-						}
-
-						c.sendUpdateProcessedSeqNo(e.VBucket, startSeqNo)
-
-						if val, ok := c.vbProcessingStats.getVbStat(e.VBucket, "bootstrap_stream_req_done").(bool); ok && !val {
-							c.vbProcessingStats.updateVbStat(e.VBucket, "bootstrap_stream_req_done", true)
-							vbBlob.BootstrapStreamReqDone = true
-							logging.Infof("%s [%s:%s:%d] vb: %d updated bootstrap done flag to: %t",
-								logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket, vbBlob.BootstrapStreamReqDone)
-						}
-
-						entry := OwnershipEntry{
-							AssignedWorker: c.ConsumerName(),
-							CurrentVBOwner: c.HostPortAddr(),
-							Operation:      dcpStreamRunning,
-							SeqNo:          startSeqNo,
-							Timestamp:      time.Now().String(),
-						}
-
-						err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, addOwnershipHistorySRSCallback,
-							c, c.producer.AddMetadataPrefix(vbKey), &vbBlob, &entry, &operr)
-						if err == common.ErrRetryTimeout {
-							logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-							continue
-						} else if operr == common.ErrEncryptionLevelChanged {
-							continue
-						}
-
-						c.vbProcessingStats.updateVbStat(e.VBucket, "assigned_worker", c.ConsumerName())
-						c.vbProcessingStats.updateVbStat(e.VBucket, "current_vb_owner", c.HostPortAddr())
-						c.vbProcessingStats.updateVbStat(e.VBucket, "dcp_stream_status", dcpStreamRunning)
-						c.vbProcessingStats.updateVbStat(e.VBucket, "node_uuid", c.uuid)
-
-						c.vbProcessingStats.updateVbStat(e.VBucket, "ever_owned_vb", true)
-						c.vbProcessingStats.updateVbStat(e.VBucket, "host_name", c.HostPortAddr())
-						c.vbProcessingStats.updateVbStat(e.VBucket, "last_checkpointed_seq_no", startSeqNo)
-						c.vbProcessingStats.updateVbStat(e.VBucket, "timestamp", time.Now().Format(time.RFC3339))
-						c.vbProcessingStats.updateVbStat(e.VBucket, "worker_name", c.ConsumerName())
-
-						c.vbProcessingStats.updateVbStat(e.VBucket, "dcp_stream_requested_node_uuid", c.NodeUUID())
-						c.vbProcessingStats.updateVbStat(e.VBucket, "dcp_stream_requested_worker", c.ConsumerName())
-
-						c.vbProcessingStats.updateVbStat(e.VBucket, "vb_filter_ack_received", false)
-						c.vbProcessingStats.updateVbStat(e.VBucket, "failover_log", vbBlob.FailoverLog)
-
-						if !c.checkIfCurrentConsumerShouldOwnVb(e.VBucket) {
-							c.Lock()
-							c.vbsRemainingToClose = append(c.vbsRemainingToClose, e.VBucket)
-							c.Unlock()
-
-							c.filterVbEventsRWMutex.Lock()
-							c.filterVbEvents[e.VBucket] = struct{}{}
-							c.filterVbEventsRWMutex.Unlock()
-						}
-
-						logging.Infof("%s [%s:%s:%d] vb: %d STREAMREQ Inserting entry: %#v to vbFlogChan",
-							logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket, vbFlog)
-						c.vbFlogChan <- vbFlog
-						continue
-					}
-
-					if e.Status == mcd.KEY_EEXISTS {
-						vbFlog := &vbFlogEntry{statusCode: e.Status, streamReqRetry: false, vb: e.VBucket}
-
-						logging.Infof("%s [%s:%s:%d] vb: %d STREAMREQ Inserting entry: %#v to vbFlogChan",
-							logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket, vbFlog)
-						c.vbFlogChan <- vbFlog
-						continue
-					}
-
-					if e.Status != mcd.SUCCESS {
-
-						vbFlog := &vbFlogEntry{
-							flog:           e.FailoverLog,
-							seqNo:          e.Seqno,
-							statusCode:     e.Status,
-							streamReqRetry: true,
-							vb:             e.VBucket,
-						}
-
-						vbKey := fmt.Sprintf("%s::vb::%d", c.app.AppName, e.VBucket)
-
-						entry := OwnershipEntry{
-							AssignedWorker: c.ConsumerName(),
-							CurrentVBOwner: c.HostPortAddr(),
-							Operation:      dcpStreamRequestFailed,
-							Timestamp:      time.Now().String(),
-						}
-
-						var operr error
-						err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, addOwnershipHistorySRFCallback,
-							c, c.producer.AddMetadataPrefix(vbKey), &entry, &operr)
-						if err == common.ErrRetryTimeout {
-							logging.Errorf("%s [%s:%s:%d] Exiting due to timeout", logPrefix, c.workerName, c.tcpPort, c.Pid())
-							continue
-						} else if operr == common.ErrEncryptionLevelChanged {
-							continue
-						}
-
-						logging.Infof("%s [%s:%s:%d] vb: %d STREAMREQ Failed. Inserting entry: %#v to vbFlogChan",
-							logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket, vbFlog)
-						c.vbFlogChan <- vbFlog
-						continue
-					}
-					// already processed, no need to push to aggfeed
-					continue
 				}
 
 				if c.aggDCPFeedMem > c.aggDCPFeedMemCap {
@@ -1065,9 +1065,9 @@ func (c *Consumer) handleFailoverLog() {
 					// maintain that information
 					c.sendVbFilterData(vbFlog.vb, vbFlog.seqNo, true)
 					streamInfo := &streamRequestInfo{
-						vb:         vbFlog.vb,
-						vbBlob:     &vbBlob,
-						startSeqNo: startSeqNo,
+						vb:          vbFlog.vb,
+						vbBlob:      &vbBlob,
+						startSeqNo:  startSeqNo,
 					}
 
 					select {
