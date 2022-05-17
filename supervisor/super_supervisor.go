@@ -25,7 +25,7 @@ import (
 )
 
 // NewSuperSupervisor creates the super_supervisor handle
-func NewSuperSupervisor(adminPort AdminPortConfig, eventingDir, kvPort, restPort, uuid, diagDir string, numVbuckets int) *SuperSupervisor {
+func NewSuperSupervisor(adminPort AdminPortConfig, eventingDir, kvPort, restPort, uuid, diagDir string) *SuperSupervisor {
 	logPrefix := "SuperSupervisor::NewSupervisor"
 	s := &SuperSupervisor{
 		adminPort:                  adminPort,
@@ -43,7 +43,6 @@ func NewSuperSupervisor(adminPort AdminPortConfig, eventingDir, kvPort, restPort
 		keepNodes:                  make([]string, 0),
 		kvPort:                     kvPort,
 		locallyDeployedApps:        make(map[string]string),
-		numVbuckets:                numVbuckets,
 		producerSupervisorTokenMap: make(map[common.EventingProducer]suptree.ServiceToken),
 		restPort:                   restPort,
 		retryCount:                 60,
@@ -813,7 +812,7 @@ func (s *SuperSupervisor) spawnApp(appName string) error {
 	metakvAppHostPortsPath := fmt.Sprintf("%s%s/", metakvProducerHostPortsPath, appName)
 
 	p := producer.NewProducer(appName, s.adminPort.DebuggerPort, s.adminPort.HTTPPort, s.adminPort.SslPort, s.eventingDir,
-		s.kvPort, metakvAppHostPortsPath, s.restPort, s.uuid, s.diagDir, s.memoryQuota, s.numVbuckets, atomic.LoadUint32(&s.featureMatrix), s)
+		s.kvPort, metakvAppHostPortsPath, s.restPort, s.uuid, s.diagDir, s.memoryQuota, atomic.LoadUint32(&s.featureMatrix), s)
 
 	sourceKeyspace := common.Keyspace{BucketName: p.SourceBucket(), ScopeName: p.SourceScope(), CollectionName: p.SourceCollection()}
 	err := s.WatchBucket(sourceKeyspace, appName, common.SrcWatch)

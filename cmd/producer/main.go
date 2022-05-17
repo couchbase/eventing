@@ -33,7 +33,7 @@ func main() {
 
 	gocb.SetLogger(&util.GocbLogger{})
 
-	s := supervisor.NewSuperSupervisor(adminPort, flags.eventingDir, flags.kvPort, flags.restPort, flags.uuid, flags.diagDir, flags.numVbuckets)
+	s := supervisor.NewSuperSupervisor(adminPort, flags.eventingDir, flags.kvPort, flags.restPort, flags.uuid, flags.diagDir)
 
 	// For app reloads
 	go func(s *supervisor.SuperSupervisor) {

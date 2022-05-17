@@ -107,7 +107,6 @@ type SuperSupervisor struct {
 	eventingDir string
 	keepNodes   []string
 	kvPort      string
-	numVbuckets int
 	restPort    string
 	retryCount  int64
 	superSup    *suptree.Supervisor

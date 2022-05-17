@@ -110,6 +110,7 @@ func (p *Producer) parseDepcfg() error {
 	}
 
 	p.auth = fmt.Sprintf("%s:%s", user, password)
+	p.numVbuckets = p.superSup.GetNumVbucketsForBucket(p.handlerConfig.SourceKeyspace.BucketName)
 
 	settingsPath := metakvAppSettingsPath + p.appName
 	sData, sErr := util.MetakvGet(settingsPath)
