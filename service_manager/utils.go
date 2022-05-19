@@ -386,7 +386,7 @@ func (m *ServiceMgr) getSourceAndDestinationsFromDepCfg(cfg *depCfg) (src common
 			CollectionName: cfg.Buckets[idx].CollectionName,
 		}
 
-		if binding != src && cfg.Buckets[idx].Access == "rw" {
+		if !binding.Equals(src) && cfg.Buckets[idx].Access == "rw" {
 			dest[binding] = struct{}{}
 		}
 	}
