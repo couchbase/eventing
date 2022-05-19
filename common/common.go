@@ -51,6 +51,42 @@ func (k Keyspace) ToFunctionScope() *FunctionScope {
 	}
 }
 
+func (k1 Keyspace) Equals(k2 Keyspace) bool {
+	if k1.BucketName != k2.BucketName {
+		return false
+	}
+
+	if k1.ScopeName != k2.ScopeName && k1.ScopeName != "*" && k2.ScopeName != "*" {
+		return false
+	}
+
+	if k1.CollectionName != k2.CollectionName && k1.CollectionName != "*" && k2.CollectionName != "*" {
+		return false
+	}
+
+	return true
+}
+
+func (k Keyspace) wildcardMatch(k1 Keyspace) bool {
+	if k.BucketName != k1.BucketName {
+		return false
+	}
+
+	if k.ScopeName != k1.ScopeName || k.ScopeName != "*" {
+		return false
+	}
+
+	if k.CollectionName != k1.CollectionName || k.CollectionName != "*" {
+		return false
+	}
+
+	return true
+}
+
+func (k Keyspace) IsWildcard() bool {
+	return (k.ScopeName == "*" || k.CollectionName == "*")
+}
+
 type StreamType uint8
 
 const (

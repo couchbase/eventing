@@ -90,6 +90,10 @@ func (bg *bucketMultiDiGraph) getOutDegreeEdgeLabels(vertex common.Keyspace) []s
 
 func (bg *bucketMultiDiGraph) insertEdge(label string, source, destination common.Keyspace) {
 	//Update adjaceny list
+	if destination.ScopeName == "*" || destination.CollectionName == "*" {
+		return
+	}
+
 	vertices, ok := bg.adjacenyList[source]
 	if !ok {
 		vertices = make(map[common.Keyspace]int)
@@ -167,7 +171,7 @@ func (bg *bucketMultiDiGraph) getPathFromParentMap(source, destination common.Ke
 	currNode := destination
 
 	//Stack will contain all the nodes except source
-	for currNode != source {
+	for currNode.Equals(source) {
 		st.Push(currNode)
 		currNode = parentMap[currNode]
 	}
@@ -189,7 +193,7 @@ func (bg *bucketMultiDiGraph) getPathFromParentMap(source, destination common.Ke
 }
 
 func (bg *bucketMultiDiGraph) hasPath(source, destination common.Keyspace) (reachable bool, labels []string) {
-	if _, ok := bg.adjacenyList[source]; !ok {
+	if _, possible := bg.getAdjacentChildren(source); !possible {
 		return
 	}
 
@@ -202,7 +206,7 @@ func (bg *bucketMultiDiGraph) hasPath(source, destination common.Keyspace) (reac
 	for st.Size() != 0 {
 		vertex := st.Pop().(common.Keyspace)
 
-		if vertex == destination {
+		if vertex.Equals(destination) {
 			reachable = true
 			labels = bg.getPathFromParentMap(source, destination, parents)
 			return
@@ -211,7 +215,7 @@ func (bg *bucketMultiDiGraph) hasPath(source, destination common.Keyspace) (reac
 		//Mark vertex as visited
 		visited[vertex] = struct{}{}
 
-		children := bg.adjacenyList[vertex]
+		children, _ := bg.getAdjacentChildren(vertex)
 		for child := range children {
 			if _, ok := visited[child]; !ok {
 				st.Push(child)
@@ -220,6 +224,34 @@ func (bg *bucketMultiDiGraph) hasPath(source, destination common.Keyspace) (reac
 		}
 	}
 	return
+}
+
+func (bg *bucketMultiDiGraph) getAdjacentChildren(source common.Keyspace) (map[common.Keyspace]int, bool) {
+	children := make(map[common.Keyspace]int)
+	children2, ok := bg.adjacenyList[source]
+	if ok {
+		for key, val := range children2 {
+			children[key] = val
+		}
+	}
+
+	source.CollectionName = "*"
+	children2, ok = bg.adjacenyList[source]
+	if ok {
+		for key, val := range children2 {
+			children[key] = val
+		}
+	}
+
+	source.ScopeName = "*"
+	children2, ok = bg.adjacenyList[source]
+	if ok {
+		for key, val := range children2 {
+			children[key] = val
+		}
+	}
+
+	return children, (len(children) > 0)
 }
 
 func (bg *bucketMultiDiGraph) insertEdges(label string, source common.Keyspace, destinations map[common.Keyspace]struct{}) {
@@ -272,6 +304,10 @@ func (bg *bucketMultiDiGraph) isAcyclicInsertPossible(label string, source commo
 	}()
 
 	for dest := range destinations {
+		if dest.IsWildcard() {
+			continue
+		}
+
 		if reachable, path := bg.hasPath(dest, source); reachable {
 			possible = false
 			labels = path
@@ -280,8 +316,8 @@ func (bg *bucketMultiDiGraph) isAcyclicInsertPossible(label string, source commo
 		inserted = append(inserted, dest)
 		bg.insertEdge(label, source, dest)
 	}
-        logging.Infof("%s adjacencyList: %v, indegreeMap: %v, outDegreeMap: %v destinations: %v",
-                logPrefix, bg.adjacenyList, bg.inDegreeLabels, bg.outDegreeLabels, destinations)
+	logging.Infof("%s adjacencyList: %v, indegreeMap: %v, outDegreeMap: %v destinations: %v",
+		logPrefix, bg.adjacenyList, bg.inDegreeLabels, bg.outDegreeLabels, destinations)
 	return
 }
 
