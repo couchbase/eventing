@@ -335,18 +335,19 @@ MetaInfo BucketOps::ExtractMetaInfo(v8::Local<v8::Value> meta_object,
       if (keyspace->Has(context, v8Str(isolate_, scope_str_)).FromJust()) {
         if (!TO_LOCAL(keyspace->Get(context, v8Str(isolate_, scope_str_)),
                       &scope)) {
-          return {false, "error in reading keyspace.scope from 2nd argument"};
+          return {false,
+                  "error in reading keyspace.scope_name from 2nd argument"};
         }
         meta.scope = utils->ToCPPString(scope.As<v8::String>());
       }
 
       v8::Local<v8::Value> col;
-      if (keyspace->Has(context, v8Str(isolate_, collection_str_))
-              .FromJust()) {
-        if (!TO_LOCAL(
-                keyspace->Get(context, v8Str(isolate_, collection_str_)),
-                &col)) {
-          return {false, "error in reading keyspace.scope from 2nd argument"};
+      if (keyspace->Has(context, v8Str(isolate_, collection_str_)).FromJust()) {
+        if (!TO_LOCAL(keyspace->Get(context, v8Str(isolate_, collection_str_)),
+                      &col)) {
+          return {
+              false,
+              "error in reading keyspace.collection_name from 2nd argument"};
         }
         meta.collection = utils->ToCPPString(col.As<v8::String>());
       }
@@ -425,17 +426,17 @@ Info BucketOps::VerifyBucketObject(v8::Local<v8::Value> bucket_binding) {
 }
 
 std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
-BucketOps::Delete(MetaData meta, bool is_source_bucket, Bucket *bucket) {
-  if (is_source_bucket) {
+BucketOps::Delete(MetaData meta, bool is_source_mutation, Bucket *bucket) {
+  if (is_source_mutation) {
     return bucket->DeleteWithXattr(meta);
   }
   return bucket->DeleteWithoutXattr(meta);
 }
 
 std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
-BucketOps::Counter(MetaData meta, int64_t delta, bool is_source_bucket,
+BucketOps::Counter(MetaData meta, int64_t delta, bool is_source_mutation,
                    Bucket *bucket) {
-  if (is_source_bucket) {
+  if (is_source_mutation) {
     return bucket->CounterWithXattr(meta, delta);
   }
   return bucket->CounterWithoutXattr(meta, delta);
@@ -444,8 +445,8 @@ BucketOps::Counter(MetaData meta, int64_t delta, bool is_source_bucket,
 std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
 BucketOps::Set(MetaData meta, const std::string &value,
                lcb_STORE_OPERATION op_type, lcb_U32 doc_type,
-               bool is_source_bucket, Bucket *bucket) {
-  if (is_source_bucket) {
+               bool is_source_mutation, Bucket *bucket) {
+  if (is_source_mutation) {
     lcb_SUBDOC_STORE_SEMANTICS cmd_flag = LCB_SUBDOC_STORE_REPLACE;
     if (op_type == LCB_STORE_UPSERT) {
       cmd_flag = LCB_SUBDOC_STORE_UPSERT;
@@ -460,7 +461,7 @@ BucketOps::Set(MetaData meta, const std::string &value,
 
 std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
 BucketOps::BucketSet(MetaData meta, v8::Local<v8::Value> value,
-                     lcb_STORE_OPERATION op_type, bool is_source_bucket,
+                     lcb_STORE_OPERATION op_type, bool is_source_mutation,
                      Bucket *bucket) {
   v8::HandleScope scope(isolate_);
   std::string value_str;
@@ -474,7 +475,7 @@ BucketOps::BucketSet(MetaData meta, v8::Local<v8::Value> value,
     value_str = JSONStringify(isolate_, value);
     doc_type = 0x2000000;
   }
-  return Set(meta, value_str, op_type, doc_type, is_source_bucket, bucket);
+  return Set(meta, value_str, op_type, doc_type, is_source_mutation, bucket);
 }
 
 void BucketOps::CounterOps(v8::FunctionCallbackInfo<v8::Value> args,
@@ -514,10 +515,15 @@ void BucketOps::CounterOps(v8::FunctionCallbackInfo<v8::Value> args,
   auto meta = meta_info.meta;
 
   auto bucket = BucketBinding::GetBucket(isolate_, args[0]);
-  auto is_source_bucket = BucketBinding::IsSourceBucket(isolate_, args[0]);
+  auto [err, is_source_mutation] =
+      BucketBinding::IsSourceMutation(isolate_, args[0], meta);
+  if (err != nullptr) {
+    js_exception->ThrowEventingError(*err);
+    return;
+  }
 
   auto [error, err_code, result] =
-      Counter(meta, delta, is_source_bucket, bucket);
+      Counter(meta, delta, is_source_mutation, bucket);
 
   if (error != nullptr) {
     ++bucket_op_exception_count;
@@ -622,12 +628,17 @@ void BucketOps::GetOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
   }
 
   auto bucket = BucketBinding::GetBucket(isolate, args[0]);
+  auto [err, scope, collection] = bucket->get_scope_and_collection_names(meta);
+  if (err != nullptr) {
+    js_exception->ThrowEventingError(*err);
+    return;
+  }
   v8::Local<v8::Object> response_obj = v8::Object::New(isolate);
 
   if (options.cache) {
     auto result = std::make_unique<Result>();
-    auto idx = BucketCache::MakeKey(bucket->BucketName(), bucket->ScopeName(),
-                                    bucket->CollectionName(), meta.key);
+    auto idx =
+        BucketCache::MakeKey(bucket->BucketName(), scope, collection, meta.key);
     auto found = BucketCache::Fetch().Get(idx, *(result.get()));
     if (found) {
       info = bucket_ops->ResponseSuccessObject(std::move(result), response_obj,
@@ -678,8 +689,8 @@ void BucketOps::GetOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
   result->key = meta.key;
 
   if (options.cache) {
-    auto idx = BucketCache::MakeKey(bucket->BucketName(), bucket->ScopeName(),
-                                    bucket->CollectionName(), meta.key);
+    auto idx =
+        BucketCache::MakeKey(bucket->BucketName(), scope, collection, meta.key);
     BucketCache::Fetch().Set(idx, *result);
   }
 
@@ -745,11 +756,17 @@ void BucketOps::InsertOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
   auto meta = meta_info.meta;
 
-  auto is_source_bucket = BucketBinding::IsSourceBucket(isolate, args[0]);
+  auto [err, is_source_mutation] =
+      BucketBinding::IsSourceMutation(isolate, args[0], meta);
+  if (err != nullptr) {
+    js_exception->ThrowEventingError(*err);
+    return;
+  }
+
   auto bucket = BucketBinding::GetBucket(isolate, args[0]);
 
   auto [error, err_code, result] = bucket_ops->BucketSet(
-      meta, args[2], LCB_STORE_INSERT, is_source_bucket, bucket);
+      meta, args[2], LCB_STORE_INSERT, is_source_mutation, bucket);
 
   if (error != nullptr) {
     ++bucket_op_exception_count;
@@ -848,11 +865,17 @@ void BucketOps::ReplaceOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
     return;
   }
 
-  auto is_source_bucket = BucketBinding::IsSourceBucket(isolate, args[0]);
+  auto [err, is_source_mutation] =
+      BucketBinding::IsSourceMutation(isolate, args[0], meta);
+  if (err != nullptr) {
+    js_exception->ThrowEventingError(*err);
+    return;
+  }
+
   auto bucket = BucketBinding::GetBucket(isolate, args[0]);
 
   auto [error, err_code, result] = bucket_ops->BucketSet(
-      meta, args[2], LCB_STORE_REPLACE, is_source_bucket, bucket);
+      meta, args[2], LCB_STORE_REPLACE, is_source_mutation, bucket);
 
   if (error != nullptr) {
     ++bucket_op_exception_count;
@@ -966,11 +989,17 @@ void BucketOps::UpsertOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
     return;
   }
 
-  auto is_source_bucket = BucketBinding::IsSourceBucket(isolate, args[0]);
+  auto [err, is_source_mutation] =
+      BucketBinding::IsSourceMutation(isolate, args[0], meta);
+  if (err != nullptr) {
+    js_exception->ThrowEventingError(*err);
+    return;
+  }
+
   auto bucket = BucketBinding::GetBucket(isolate, args[0]);
 
   auto [error, err_code, result] = bucket_ops->BucketSet(
-      meta, args[2], LCB_STORE_UPSERT, is_source_bucket, bucket);
+      meta, args[2], LCB_STORE_UPSERT, is_source_mutation, bucket);
 
   if (error != nullptr) {
     ++bucket_op_exception_count;
@@ -1045,10 +1074,15 @@ void BucketOps::DeleteOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
   auto meta = meta_info.meta;
 
   auto bucket = BucketBinding::GetBucket(isolate, args[0]);
-  auto is_source_bucket = BucketBinding::IsSourceBucket(isolate, args[0]);
+  auto [err, is_source_mutation] =
+      BucketBinding::IsSourceMutation(isolate, args[0], meta);
+  if (err != nullptr) {
+    js_exception->ThrowEventingError(*err);
+    return;
+  }
 
   auto [error, err_code, result] =
-      bucket_ops->Delete(meta, is_source_bucket, bucket);
+      bucket_ops->Delete(meta, is_source_mutation, bucket);
   if (error != nullptr) {
     ++bucket_op_exception_count;
     js_exception->ThrowEventingError(*error);

@@ -113,6 +113,9 @@ public:
   const std::string &ScopeName() const { return scope_name_; };
   const std::string &CollectionName() const { return collection_name_; };
 
+  std::tuple<Error, std::string, std::string>
+  get_scope_and_collection_names(MetaData meta);
+
 private:
   Error FormatErrorAndDestroyConn(const std::string &message,
                                   const lcb_STATUS &error) const;
@@ -138,9 +141,6 @@ private:
       return {err_code, result};
     }
   }
-
-  std::tuple<Error, std::string, std::string>
-  get_scope_and_collection_names(MetaData meta);
 
   v8::Isolate *isolate_{nullptr};
   std::string bucket_name_;
@@ -176,8 +176,9 @@ public:
                            const v8::Local<v8::Value> obj);
   static bool GetBlockMutation(v8::Isolate *isolate,
                                const v8::Local<v8::Value> obj);
-  static bool IsSourceBucket(v8::Isolate *isolate,
-                             const v8::Local<v8::Value> obj);
+  static std::tuple<Error, bool>
+  IsSourceMutation(v8::Isolate *isolate, const v8::Local<v8::Value> obj,
+                   MetaData meta);
 
 private:
   static void HandleBucketOpFailure(v8::Isolate *isolate,
@@ -222,8 +223,8 @@ private:
                         const v8::PropertyCallbackInfo<v8::Value> &info);
 
   static std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
-  BucketSet(MetaData metadata, const std::string &value,
-            bool is_source_bucket, Bucket *bucket);
+  BucketSet(MetaData metadata, const std::string &value, bool is_source_bucket,
+            Bucket *bucket);
 
   template <typename>
   static void BucketDelete(const v8::Local<v8::Name> &key,

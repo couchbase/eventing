@@ -190,12 +190,10 @@ void V8Worker::InstallBucketBindings(
     const auto &scope_name = bucket_info[1];
     const auto &collection_name = bucket_info[2];
     const auto &bucket_access = bucket_info[4];
-    auto source_mutation = bucket_name == cb_source_bucket_ &&
-                           scope_name == cb_source_scope_ &&
-                           collection_name == cb_source_collection_;
+    auto is_source_bucket = (bucket_name == cb_source_bucket_);
     bucket_bindings_.emplace_back(
         isolate_, bucket_factory_, bucket_name, scope_name, collection_name,
-        bucket_alias, bucket_access == "r", source_mutation, user_, domain_);
+        bucket_alias, bucket_access == "r", is_source_bucket, user_, domain_);
   }
 }
 

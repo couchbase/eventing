@@ -218,10 +218,17 @@ bool Bucket::MaybeRecreateConnOnAuthErr(const lcb_STATUS &status,
 
 std::tuple<Error, std::string, std::string>
 Bucket::get_scope_and_collection_names(MetaData meta) {
-  if ((scope_name_ == "*" && meta.scope == "") ||
-      (collection_name_ == "*" && meta.collection == "")) {
-    return {std::make_unique<std::string>("Inconsistent wildcard usage"), "",
-            ""};
+  if ((scope_name_ == "*") && (meta.scope == "")) {
+    return {
+        std::make_unique<std::string>("Inconsistent wildcard usage. scope_name "
+                                      "should be provided in the meta object"),
+        "", ""};
+  }
+  if ((collection_name_ == "*") && (meta.collection == "")) {
+    return {std::make_unique<std::string>(
+                "Inconsistent wildcard usage. collection_name should be "
+                "provided in the meta object"),
+            "", ""};
   }
 
   std::string scope = scope_name_, collection = collection_name_;
@@ -741,6 +748,15 @@ void BucketBinding::BucketGet<v8::Local<v8::Name>>(
   auto bucket = UnwrapInternalField<Bucket>(info.Holder(),
                                             InternalFields::kBucketInstance);
   metadata.key = key;
+  auto [err, scope, collection] =
+      bucket->get_scope_and_collection_names(metadata);
+  if (err != nullptr) {
+    js_exception->ThrowEventingError(
+        "Map accessor is not allowed for wild card keyspace binding. Please "
+        "use advance keyspace accessor");
+    return;
+  }
+
   auto [error, err_code, result] = bucket->Get(metadata);
   if (error != nullptr) {
     js_exception->ThrowEventingError(*error);
@@ -820,12 +836,18 @@ void BucketBinding::BucketSet<v8::Local<v8::Name>>(
 
   auto bucket = UnwrapInternalField<Bucket>(info.Holder(),
                                             InternalFields::kBucketInstance);
-  auto is_source_bucket =
-      UnwrapInternalField<bool>(info.Holder(), InternalFields::kIsSourceBucket);
+  auto [err, is_source_mutation] =
+      IsSourceMutation(isolate, info.Holder(), metadata);
+  if (err != nullptr) {
+    js_exception->ThrowEventingError(
+        "Map accessor is not allowed for wild card keyspace binding. Please "
+        "use advance keyspace accessor");
+    return;
+  }
 
   metadata.key = key;
   auto [error, err_code, result] =
-      BucketSet(metadata, value_str, *is_source_bucket, bucket);
+      BucketSet(metadata, value_str, is_source_mutation, bucket);
   if (error != nullptr) {
     js_exception->ThrowEventingError(*error);
     return;
@@ -872,13 +894,20 @@ void BucketBinding::BucketDelete<v8::Local<v8::Name>>(
   v8::String::Utf8Value utf8_key(isolate, name.As<v8::String>());
   std::string key(*utf8_key);
 
-  auto is_source_bucket =
-      UnwrapInternalField<bool>(info.Holder(), InternalFields::kIsSourceBucket);
+  auto [err, is_source_mutation] =
+      IsSourceMutation(isolate, info.Holder(), metadata);
+  if (err != nullptr) {
+    js_exception->ThrowEventingError(
+        "Map accessor is not allowed for wild card keyspace binding. Please "
+        "use advance keyspace accessor");
+    return;
+  }
+
   auto bucket = UnwrapInternalField<Bucket>(info.Holder(),
                                             InternalFields::kBucketInstance);
   metadata.key = key;
   auto [error, err_code, result] =
-      BucketDelete(metadata, *is_source_bucket, bucket);
+      BucketDelete(metadata, is_source_mutation, bucket);
   if (error != nullptr) {
     js_exception->ThrowEventingError(*error);
     return;
@@ -985,17 +1014,17 @@ void BucketBinding::BucketDelete<uint32_t>(
 
 std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
 BucketBinding::BucketSet(MetaData meta, const std::string &value,
-                         bool is_source_bucket, Bucket *bucket) {
-  if (is_source_bucket) {
+                         bool is_source_mutation, Bucket *bucket) {
+  if (is_source_mutation) {
     return bucket->SetWithXattr(meta, value);
   }
   return bucket->SetWithoutXattr(meta, value);
 }
 
 std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
-BucketBinding::BucketDelete(MetaData meta, bool is_source_bucket,
+BucketBinding::BucketDelete(MetaData meta, bool is_source_mutation,
                             Bucket *bucket) {
-  if (is_source_bucket) {
+  if (is_source_mutation) {
     return bucket->DeleteWithXattr(meta);
   }
   return bucket->DeleteWithoutXattr(meta);
@@ -1085,11 +1114,33 @@ bool BucketBinding::GetBlockMutation(v8::Isolate *isolate,
   return *UnwrapInternalField<bool>(local_obj, InternalFields::kBlockMutation);
 }
 
-bool BucketBinding::IsSourceBucket(v8::Isolate *isolate,
-                                   const v8::Local<v8::Value> obj) {
+std::tuple<Error, bool>
+BucketBinding::IsSourceMutation(v8::Isolate *isolate,
+                                const v8::Local<v8::Value> obj, MetaData meta) {
   v8::HandleScope handle_scope(isolate);
   auto context = isolate->GetCurrentContext();
   v8::Local<v8::Object> local_obj;
   TO_LOCAL(obj->ToObject(context), &local_obj);
-  return *UnwrapInternalField<bool>(local_obj, InternalFields::kIsSourceBucket);
+
+  const auto bucket =
+      UnwrapInternalField<Bucket>(local_obj, InternalFields::kBucketInstance);
+
+  auto [err, scope, collection] = bucket->get_scope_and_collection_names(meta);
+  if (err != nullptr) {
+    return {std::move(err), false};
+  }
+  auto isSourceBucket =
+      *UnwrapInternalField<bool>(local_obj, InternalFields::kIsSourceBucket);
+  if (!isSourceBucket) {
+    return {nullptr, false};
+  }
+
+  const auto v8Worker = UnwrapData(isolate)->v8worker;
+  const auto cb_scope = v8Worker->cb_source_scope_;
+  const auto cb_collection = v8Worker->cb_source_collection_;
+
+  auto source_mutation =
+      ((cb_scope == "*") || (cb_scope == scope)) &&
+      ((cb_collection == "*") || (cb_collection == collection));
+  return {nullptr, source_mutation};
 }
