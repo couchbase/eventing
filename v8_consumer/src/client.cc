@@ -198,7 +198,8 @@ std::vector<char> *AppWorker::GetReadBufferFeedback() {
 void AppWorker::InitTcpSock(const std::string &function_name,
                             const std::string &function_id,
                             const std::string &user_prefix,
-                            const std::string &app_location, const std::string &addr,
+                            const std::string &app_location,
+                            const std::string &addr,
                             const std::string &worker_id, int bsize, int fbsize,
                             int feedback_port, int port) {
   uv_tcp_init(&feedback_loop_, &feedback_tcp_sock_);
@@ -249,9 +250,9 @@ void AppWorker::InitTcpSock(const std::string &function_name,
 void AppWorker::InitUDS(const std::string &function_name,
                         const std::string &function_id,
                         const std::string &user_prefix,
-                        const std::string &app_location, const std::string &addr,
-                        const std::string &worker_id, int bsize, int fbsize,
-                        std::string feedback_sock_path,
+                        const std::string &app_location,
+                        const std::string &addr, const std::string &worker_id,
+                        int bsize, int fbsize, std::string feedback_sock_path,
                         std::string uds_sock_path) {
   uv_pipe_init(&feedback_loop_, &feedback_uds_sock_, 0);
   uv_pipe_init(&main_loop_, &uds_sock_, 0);
@@ -721,6 +722,13 @@ void AppWorker::RouteMessageWithResponse(
         workers_[worker_index]->PushBack(std::move(worker_msg));
       }
       break;
+    case oDeleteCid:
+      worker_index = current_partition_thr_map_[worker_msg->header.partition];
+      if (workers_[worker_index] != nullptr) {
+        workers_[worker_index]->UpdateDeletedCid(worker_msg);
+        workers_[worker_index]->PushBack(std::move(worker_msg));
+      }
+      break;
     default:
       LOG(logError) << "Opcode " << getDCPOpcode(worker_msg->header.opcode)
                     << "is not implemented for eDCP" << std::endl;
@@ -738,9 +746,10 @@ void AppWorker::RouteMessageWithResponse(
         auto worker = workers_[worker_index];
         int vb_no = 0, skip_ack = 0;
         uint64_t filter_seq_no = 0;
-        if (kSuccess ==
-            worker->ParseMetadataWithAck(worker_msg->header.metadata, vb_no,
-                                         filter_seq_no, skip_ack, true)) {
+        uint32_t cid = 0;
+        if (kSuccess == worker->ParseMetadataWithAck(
+                            worker_msg->header.metadata, cid, vb_no,
+                            filter_seq_no, skip_ack, true)) {
           auto lck = worker->GetAndLockBucketOpsLock();
           auto last_processed_seq_no = worker->GetBucketopsSeqno(vb_no);
           if (last_processed_seq_no < filter_seq_no) {
@@ -764,8 +773,9 @@ void AppWorker::RouteMessageWithResponse(
         current_partition_thr_map_[worker_msg->header.partition] = worker_index;
         int vb_no = 0;
         uint64_t seq_no = 0;
+        uint32_t cid = 0;
         if (kSuccess == workers_[worker_index]->ParseMetadata(
-                            worker_msg->header.metadata, vb_no, seq_no)) {
+                            worker_msg->header.metadata, cid, vb_no, seq_no)) {
           auto lck = workers_[worker_index]->GetAndLockBucketOpsLock();
           workers_[worker_index]->UpdateBucketopsSeqnoLocked(vb_no, seq_no);
           workers_[worker_index]->AddTimerPartition(vb_no);

@@ -136,7 +136,11 @@ func (c *Consumer) processDCPEvents() {
 
 			case mcd.DCP_SYSTEM_EVENT:
 				c.cidToKeyspaceCache.updateManifest(e)
-				c.SendNoOp(e.Seqno, e.VBucket)
+				if e.EventType == mcd.COLLECTION_DROP || e.EventType == mcd.COLLECTION_FLUSH {
+					c.SendDeleteCidMsg(e.CollectionID, e.VBucket, e.Seqno)
+				} else {
+					c.SendNoOp(e.Seqno, e.VBucket)
+				}
 				c.vbProcessingStats.updateVbStat(e.VBucket, "last_read_seq_no", e.Seqno)
 				c.vbProcessingStats.updateVbStat(e.VBucket, "manifest_id", string(e.ManifestUID))
 
@@ -1148,7 +1152,12 @@ func (c *Consumer) cppWorkerThrPartitionMap() {
 func (c *Consumer) sendEvent(e *cb.DcpEvent) error {
 	logPrefix := "Consumer::processTrappedEvent"
 
-	mKeyspace := c.cidToKeyspaceCache.getKeyspaceName(e)
+	mKeyspace, deleted := c.cidToKeyspaceCache.getKeyspaceName(e)
+	if deleted {
+		// Collection is deleted. Skip this mutation
+		return nil
+	}
+
 	if !c.producer.IsTrapEvent() {
 		c.sendDcpEvent(mKeyspace, e, false)
 		return nil
@@ -1177,6 +1186,12 @@ func (c *Consumer) sendEvent(e *cb.DcpEvent) error {
 func (c *Consumer) SendNoOp(seqNo uint64, partition uint16) {
 	if !c.producer.IsTrapEvent() {
 		c.sendNoOpEvent(seqNo, partition)
+	}
+}
+
+func (c *Consumer) SendDeleteCidMsg(cid uint32, partition uint16, seqNo uint64) {
+	if !c.producer.IsTrapEvent() {
+		c.sendDeleteCidEvent(cid, partition, seqNo)
 	}
 }
 

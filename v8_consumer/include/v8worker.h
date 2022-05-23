@@ -269,6 +269,7 @@ public:
   void GetBucketOpsMessages(std::vector<uv_buf_t> &messages);
 
   void UpdateVbFilter(int vb_no, uint64_t seq_no);
+  void UpdateDeletedCid(const std::unique_ptr<WorkerMessage> &msg);
 
   void SetFeatureList(uint32_t disabled_events);
 
@@ -286,10 +287,10 @@ public:
 
   std::unique_lock<std::mutex> GetAndLockBucketOpsLock();
 
-  int ParseMetadata(const std::string &metadata, int &vb_no,
+  int ParseMetadata(const std::string &metadata, uint32_t &cid, int &vb_no,
                     uint64_t &seq_no) const;
-  int ParseMetadataWithAck(const std::string &metadata_str, int &vb_no,
-                           uint64_t &seq_no, int &skip_ack,
+  int ParseMetadataWithAck(const std::string &metadata_str, uint32_t &cid,
+                           int &vb_no, uint64_t &seq_no, int &skip_ack,
                            bool ack_check) const;
 
   void SetThreadExitFlag();
@@ -362,9 +363,12 @@ private:
   void HandleDeleteEvent(const std::unique_ptr<WorkerMessage> &msg);
   void HandleMutationEvent(const std::unique_ptr<WorkerMessage> &msg);
   void HandleNoOpEvent(const std::unique_ptr<WorkerMessage> &msg);
-  bool IsFilteredEventLocked(int vb, uint64_t seq_num);
-  std::tuple<int, uint64_t, bool>
-  GetVbAndSeqNum(const std::unique_ptr<WorkerMessage> &msg) const;
+  void HandleDeleteCidEvent(const std::unique_ptr<WorkerMessage> &msg);
+  std::tuple<bool, bool> IsFilteredEventLocked(bool skip_cid_check,
+                                               uint32_t cid, int vb,
+                                               uint64_t seq_num);
+  std::tuple<uint32_t, int, uint64_t, bool>
+  GetCidVbAndSeqNum(const std::unique_ptr<WorkerMessage> &msg) const;
   v8::Local<v8::Object> NewCouchbaseNameSpace();
   v8::Local<v8::ObjectTemplate> NewGlobalObj() const;
   void InstallCurlBindings(const std::vector<CurlBinding> &curl_bindings) const;
@@ -398,6 +402,7 @@ private:
   int worker_idx_;
 
   std::vector<std::vector<uint64_t>> vbfilter_map_;
+  std::map<uint32_t, std::map<uint16_t, uint64_t>> vbfilter_map_for_cid_;
   std::vector<uint64_t> *processed_bucketops_;
   std::mutex bucketops_lock_;
 
