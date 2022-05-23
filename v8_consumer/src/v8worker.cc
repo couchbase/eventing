@@ -624,6 +624,10 @@ void V8Worker::RouteMessage() {
         HandleNoOpEvent(msg);
         break;
 
+      case oDeleteCid:
+        HandleDeleteCidEvent(msg);
+        break;
+
       default:
         LOG(logError) << "Received invalid DCP opcode" << std::endl;
         break;
@@ -714,7 +718,7 @@ void V8Worker::UpdateSeqNumLocked(const int vb, const uint64_t seq_num) {
 void V8Worker::HandleDeleteEvent(const std::unique_ptr<WorkerMessage> &msg) {
 
   ++dcp_delete_msg_counter;
-  auto [vb, seq_num, is_valid] = GetVbAndSeqNum(msg);
+  auto [cid, vb, seq_num, is_valid] = GetCidVbAndSeqNum(msg);
   if (!is_valid) {
     ++dcp_delete_parse_failure;
     return;
@@ -722,10 +726,13 @@ void V8Worker::HandleDeleteEvent(const std::unique_ptr<WorkerMessage> &msg) {
 
   {
     std::lock_guard<std::mutex> guard(bucketops_lock_);
-    if (IsFilteredEventLocked(vb, seq_num)) {
+    auto [filter, update] = IsFilteredEventLocked(false, cid, vb, seq_num);
+    if (update) {
+      UpdateSeqNumLocked(vb, seq_num);
+    }
+    if (filter) {
       return;
     }
-    UpdateSeqNumLocked(vb, seq_num);
   }
 
   const auto options = flatbuf::payload::GetPayload(
@@ -736,7 +743,7 @@ void V8Worker::HandleDeleteEvent(const std::unique_ptr<WorkerMessage> &msg) {
 void V8Worker::HandleMutationEvent(const std::unique_ptr<WorkerMessage> &msg) {
 
   ++dcp_mutation_msg_counter;
-  auto [vb, seq_num, is_valid] = GetVbAndSeqNum(msg);
+  auto [cid, vb, seq_num, is_valid] = GetCidVbAndSeqNum(msg);
   if (!is_valid) {
     ++dcp_mutation_parse_failure;
     return;
@@ -744,10 +751,13 @@ void V8Worker::HandleMutationEvent(const std::unique_ptr<WorkerMessage> &msg) {
 
   {
     std::lock_guard<std::mutex> guard(bucketops_lock_);
-    if (IsFilteredEventLocked(vb, seq_num)) {
+    auto [filter, update] = IsFilteredEventLocked(false, cid, vb, seq_num);
+    if (update) {
+      UpdateSeqNumLocked(vb, seq_num);
+    }
+    if (filter) {
       return;
     }
-    UpdateSeqNumLocked(vb, seq_num);
   }
 
   const auto doc = flatbuf::payload::GetPayload(
@@ -756,30 +766,55 @@ void V8Worker::HandleMutationEvent(const std::unique_ptr<WorkerMessage> &msg) {
 }
 
 void V8Worker::HandleNoOpEvent(const std::unique_ptr<WorkerMessage> &msg) {
-  auto [vb, seq_num, is_valid] = GetVbAndSeqNum(msg);
+  auto [cid, vb, seq_num, is_valid] = GetCidVbAndSeqNum(msg);
   if (!is_valid) {
     return;
   }
 
   {
     std::lock_guard<std::mutex> guard(bucketops_lock_);
-    if (IsFilteredEventLocked(vb, seq_num)) {
+    auto [filter, update] = IsFilteredEventLocked(true, cid, vb, seq_num);
+    if (update) {
+      UpdateSeqNumLocked(vb, seq_num);
+    }
+    if (filter) {
       return;
     }
-    UpdateSeqNumLocked(vb, seq_num);
   }
   no_op_counter++;
 }
 
-std::tuple<int, uint64_t, bool>
-V8Worker::GetVbAndSeqNum(const std::unique_ptr<WorkerMessage> &msg) const {
-  auto vb = 0;
-  uint64_t seq_num = 0;
-  auto result = ParseMetadata(msg->header.metadata, vb, seq_num);
-  return {vb, seq_num, result == kSuccess};
+void V8Worker::HandleDeleteCidEvent(const std::unique_ptr<WorkerMessage> &msg) {
+  auto [cid, vb, seq_num, is_valid] = GetCidVbAndSeqNum(msg);
+  if (!is_valid) {
+    return;
+  }
+
+  auto lock = GetAndLockVbLock(vb);
+  auto cidIt = vbfilter_map_for_cid_.find(cid);
+  if (cidIt == vbfilter_map_for_cid_.end()) {
+    return;
+  }
+
+  cidIt->second.erase(vb);
+  if (cidIt->second.size() == 0) {
+    vbfilter_map_for_cid_.erase(cid);
+  }
 }
 
-bool V8Worker::IsFilteredEventLocked(const int vb, const uint64_t seq_num) {
+std::tuple<uint32_t, int, uint64_t, bool>
+V8Worker::GetCidVbAndSeqNum(const std::unique_ptr<WorkerMessage> &msg) const {
+  auto vb = 0;
+  uint64_t seq_num = 0;
+  uint32_t cid = 0;
+  auto result = ParseMetadata(msg->header.metadata, cid, vb, seq_num);
+  return {cid, vb, seq_num, result == kSuccess};
+}
+
+std::tuple<bool, bool> V8Worker::IsFilteredEventLocked(bool skip_cid_check,
+                                                       const uint32_t cid,
+                                                       const int vb,
+                                                       const uint64_t seq_num) {
   const auto filter_seq_no = GetVbFilter(vb);
   if (filter_seq_no > 0 && seq_num <= filter_seq_no) {
     // Skip filtered event
@@ -787,9 +822,25 @@ bool V8Worker::IsFilteredEventLocked(const int vb, const uint64_t seq_num) {
     if (seq_num == filter_seq_no) {
       EraseVbFilter(vb);
     }
-    return true;
+    return {true, false};
   }
-  return false;
+
+  if (skip_cid_check) {
+    return {false, true};
+  }
+
+  auto lock = GetAndLockVbLock(vb);
+  auto cidIt = vbfilter_map_for_cid_.find(cid);
+  if (cidIt == vbfilter_map_for_cid_.end()) {
+    return {false, true};
+  }
+
+  auto vbIt = cidIt->second.find(vb);
+  if (vbIt == cidIt->second.end()) {
+    return {false, true};
+  }
+
+  return {true, true};
 }
 
 bool V8Worker::ExecuteScript(const v8::Local<v8::String> &script) {
@@ -1293,15 +1344,15 @@ std::vector<uv_buf_t> V8Worker::BuildResponse(const std::string &payload,
   return messages;
 }
 
-int V8Worker::ParseMetadata(const std::string &metadata, int &vb_no,
-                            uint64_t &seq_no) const {
+int V8Worker::ParseMetadata(const std::string &metadata, uint32_t &cid,
+                            int &vb_no, uint64_t &seq_no) const {
   int skip_ack;
-  return ParseMetadataWithAck(metadata, vb_no, seq_no, skip_ack, false);
+  return ParseMetadataWithAck(metadata, cid, vb_no, seq_no, skip_ack, false);
 }
 
-int V8Worker::ParseMetadataWithAck(const std::string &metadata_str, int &vb_no,
-                                   uint64_t &seq_no, int &skip_ack,
-                                   const bool ack_check) const {
+int V8Worker::ParseMetadataWithAck(const std::string &metadata_str,
+                                   uint32_t &cid, int &vb_no, uint64_t &seq_no,
+                                   int &skip_ack, const bool ack_check) const {
   auto metadata = nlohmann::json::parse(metadata_str, nullptr, false);
   if (metadata.is_discarded()) {
     return kJSONParseFailed;
@@ -1309,6 +1360,9 @@ int V8Worker::ParseMetadataWithAck(const std::string &metadata_str, int &vb_no,
 
   seq_no = metadata["seq"].get<uint64_t>();
   vb_no = metadata["vb"].get<int>();
+  if (metadata.contains("cid")) {
+    cid = metadata["cid"].get<uint32_t>();
+  }
   if (ack_check) {
     skip_ack = metadata["skip_ack"].get<int>();
   }
@@ -1318,6 +1372,13 @@ int V8Worker::ParseMetadataWithAck(const std::string &metadata_str, int &vb_no,
 void V8Worker::UpdateVbFilter(int vb_no, uint64_t seq_no) {
   auto lock = GetAndLockVbLock(vb_no);
   vbfilter_map_[vb_no].push_back(seq_no);
+  lock.unlock();
+}
+
+void V8Worker::UpdateDeletedCid(const std::unique_ptr<WorkerMessage> &msg) {
+  auto [cid, vb, seq_num, is_valid] = GetCidVbAndSeqNum(msg);
+  auto lock = GetAndLockVbLock(vb);
+  vbfilter_map_for_cid_[cid][vb] = seq_num;
   lock.unlock();
 }
 

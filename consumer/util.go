@@ -137,41 +137,23 @@ func (c *Consumer) getDebuggerConnName() string {
 	return c.app.FunctionInstanceID
 }
 
-type keyspaceRefCount struct {
-	ref      int
-	keyspace common.KeyspaceName
-}
-
 type cidToKeyspaceNameCache struct {
 	sync.RWMutex
 
-	scopeToName           map[uint32]string
-	cidToKeyspaceRefCount map[uint32]*keyspaceRefCount
-	bucketName            string
-	restPort              string
-	ref                   int
+	scopeToName       map[uint32]string
+	cidToKeyspaceName map[uint32]common.KeyspaceName
+	bucketName        string
+	restPort          string
 }
 
-func initCidToCol(bucketName, restPort string, num int) *cidToKeyspaceNameCache {
+func initCidToCol(bucketName, restPort string) *cidToKeyspaceNameCache {
 	c := &cidToKeyspaceNameCache{
-		bucketName:            bucketName,
-		restPort:              restPort,
-		scopeToName:           make(map[uint32]string),
-		cidToKeyspaceRefCount: make(map[uint32]*keyspaceRefCount),
-		ref:                   num,
+		bucketName:        bucketName,
+		restPort:          restPort,
+		scopeToName:       make(map[uint32]string),
+		cidToKeyspaceName: make(map[uint32]common.KeyspaceName),
 	}
 	return c
-}
-
-func (c *cidToKeyspaceNameCache) changeRefCount(ref int) {
-	c.Lock()
-	defer c.Unlock()
-	for _, keyspaceRef := range c.cidToKeyspaceRefCount {
-		if keyspaceRef.ref == c.ref {
-			keyspaceRef.ref = ref
-		}
-	}
-	c.ref = ref
 }
 
 func (c *cidToKeyspaceNameCache) updateManifest(e *memcached.DcpEvent) {
@@ -181,26 +163,19 @@ func (c *cidToKeyspaceNameCache) updateManifest(e *memcached.DcpEvent) {
 	switch e.EventType {
 
 	case mcd.COLLECTION_CREATE, mcd.COLLECTION_CHANGED:
-		if _, ok := c.cidToKeyspaceRefCount[e.CollectionID]; ok {
+		if _, ok := c.cidToKeyspaceName[e.CollectionID]; ok {
 			return
 		}
 
 		scopeName := c.scopeToName[e.ScopeID]
-		c.cidToKeyspaceRefCount[e.CollectionID] = &keyspaceRefCount{
-			ref:      c.ref,
-			keyspace: common.KeyspaceName{Scope: scopeName, Collection: string(e.Key), Bucket: c.bucketName},
+		c.cidToKeyspaceName[e.CollectionID] = common.KeyspaceName{
+			Scope:      scopeName,
+			Collection: string(e.Key),
+			Bucket:     c.bucketName,
 		}
 
 	case mcd.COLLECTION_DROP, mcd.COLLECTION_FLUSH:
-		keyspaceRef, ok := c.cidToKeyspaceRefCount[e.CollectionID]
-		if !ok {
-			return
-		}
-
-		keyspaceRef.ref--
-		if keyspaceRef.ref == 0 {
-			delete(c.cidToKeyspaceRefCount, e.CollectionID)
-		}
+		delete(c.cidToKeyspaceName, e.CollectionID)
 
 	case mcd.SCOPE_CREATE:
 		c.scopeToName[e.ScopeID] = string(e.Key)
@@ -212,24 +187,16 @@ func (c *cidToKeyspaceNameCache) updateManifest(e *memcached.DcpEvent) {
 	}
 }
 
-func (c *cidToKeyspaceNameCache) getKeyspaceName(e *memcached.DcpEvent) common.KeyspaceName {
-	keyspaceRef, ok := c.cidToKeyspaceRefCount[e.CollectionID]
-	if ok {
-		return keyspaceRef.keyspace
-	}
+func (c *cidToKeyspaceNameCache) getKeyspaceName(e *memcached.DcpEvent) (common.KeyspaceName, bool) {
+	c.Lock()
+	defer c.Unlock()
 
-	c.refreshManifestFromClusterInfo()
-	keyspaceRef, ok = c.cidToKeyspaceRefCount[e.CollectionID]
-	// Case for pre collection
+	keyspace, ok := c.cidToKeyspaceName[e.CollectionID]
 	if !ok {
-		return common.KeyspaceName{
-			Bucket:     c.bucketName,
-			Scope:      "_default",
-			Collection: "_default",
-		}
+		return common.KeyspaceName{}, true
 	}
 
-	return keyspaceRef.keyspace
+	return keyspace, false
 }
 
 func (c *cidToKeyspaceNameCache) refreshManifestFromClusterInfo() {
@@ -253,17 +220,14 @@ func (c *cidToKeyspaceNameCache) refreshManifestFromClusterInfo() {
 		}
 		for _, col := range scope.Collections {
 			cid, _ := collections.GetHexToUint32(col.UID)
-			if _, ok := c.cidToKeyspaceRefCount[cid]; ok {
+			if _, ok := c.cidToKeyspaceName[cid]; ok {
 				continue
 			}
 
-			c.cidToKeyspaceRefCount[cid] = &keyspaceRefCount{
-				ref: c.ref,
-				keyspace: common.KeyspaceName{
-					Bucket:     c.bucketName,
-					Scope:      scope.Name,
-					Collection: col.Name,
-				},
+			c.cidToKeyspaceName[cid] = common.KeyspaceName{
+				Bucket:     c.bucketName,
+				Scope:      scope.Name,
+				Collection: col.Name,
 			}
 		}
 	}

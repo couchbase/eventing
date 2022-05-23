@@ -46,7 +46,7 @@ enum v8_worker_opcode {
   V8_Worker_Opcode_Unknown
 };
 
-enum dcp_opcode { oDelete, oMutation, oNoOp, DCP_Opcode_Unknown };
+enum dcp_opcode { oDelete, oMutation, oNoOp, oDeleteCid, DCP_Opcode_Unknown };
 
 enum filter_opcode { oVbFilter, oProcessedSeqNo, Filter_Opcode_Unknown };
 
@@ -71,7 +71,11 @@ enum timer_opcode { oTimer, oCronTimer, Timer_Opcode_Unknown };
 
 enum debugger_opcode { oDebuggerStart, oDebuggerStop, Debugger_Opcode_Unknown };
 
-enum config_opcode { oUpdateDisableFeatureList, oUpdateEncryptionLevel, Config_Opcode_Unknown };
+enum config_opcode {
+  oUpdateDisableFeatureList,
+  oUpdateEncryptionLevel,
+  Config_Opcode_Unknown
+};
 
 event_type getEvent(int8_t event);
 v8_worker_opcode getV8WorkerOpcode(int8_t opcode);

@@ -458,6 +458,35 @@ func (c *Consumer) sendNoOpEvent(seqNo uint64, partition uint16) {
 	c.sendMessage(msg)
 }
 
+func (c *Consumer) sendDeleteCidEvent(cid uint32, partition uint16, seqNo uint64) {
+	logPrefix := "Consumer::sendDeleteCidEvent"
+
+	m := dcpMetadata{
+		Vbucket: partition,
+		SeqNo:   seqNo,
+		Cid:     cid,
+	}
+
+	metadata, err := json.Marshal(m)
+	if err != nil {
+		logging.Errorf("%s [%s:%s:%s:%d] Failed to marshal delete cid metadata. msg: %v",
+			logPrefix, c.app.AppLocation, c.workerName, c.tcpPort, c.Pid(), m)
+		return
+	}
+
+	dcpHeader, hBuilder := c.makeDcpDeleteCidEvent(int16(partition), string(metadata))
+
+	msg := &msgToTransmit{
+		msg: &message{
+			Header: dcpHeader,
+		},
+		prioritize:    true,
+		headerBuilder: hBuilder,
+	}
+
+	c.sendMessage(msg)
+}
+
 func (c *Consumer) sendDcpEvent(mKeyspace common.KeyspaceName, e *memcached.DcpEvent, sendToDebugger bool) {
 	m := dcpMetadata{
 		Cas:      strconv.FormatUint(e.Cas, 10),
@@ -467,6 +496,7 @@ func (c *Consumer) sendDcpEvent(mKeyspace common.KeyspaceName, e *memcached.DcpE
 		Vbucket:  e.VBucket,
 		SeqNo:    e.Seqno,
 		Keyspace: mKeyspace,
+		Cid:      e.CollectionID,
 	}
 
 	isBinary := e.Datatype == dcpDatatypeBinary || e.Datatype == dcpDatatypeBinXattr
