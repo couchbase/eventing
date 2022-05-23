@@ -150,7 +150,7 @@ func (c *Consumer) dcpEventsRemainingToProcess() error {
 	var seqNos []uint64
 	err := util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), c.retryCount, util.GetSeqnos,
 		c.producer.NsServerHostPort(), "default",
-		c.sourceKeyspace.BucketName, c.srcCid, &seqNos)
+		c.sourceKeyspace.BucketName, c.srcKeyspaceID, &seqNos, false)
 	if err != nil {
 		logging.Errorf("%s [%s:%s:%d] Failed to fetch get_all_vb_seqnos, err: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), err)

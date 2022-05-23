@@ -157,7 +157,8 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 	}
 
 	consumer.dcpStatsLogger = NewDcpStatsLog(5*time.Minute, consumer.workerName, consumer.stopConsumerCh)
-	consumer.srcCid = p.GetSourceCid()
+	consumer.srcKeyspaceID, _ = p.GetSourceKeyspaceID()
+	consumer.cidToKeyspaceCache = initCidToCol(hConfig.SourceKeyspace.BucketName, nsServerPort, len(vbnos))
 	consumer.binaryDocAllowed = consumer.checkBinaryDocAllowed()
 	consumer.builderPool = &sync.Pool{
 		New: func() interface{} {

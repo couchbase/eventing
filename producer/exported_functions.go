@@ -221,12 +221,26 @@ func (p *Producer) SourceBucket() string {
 	return p.handlerConfig.SourceKeyspace.BucketName
 }
 
-func (p *Producer) GetSourceCid() uint32 {
-	return atomic.LoadUint32(&p.srcCid)
+func (p *Producer) GetSourceKeyspaceID() (common.KeyspaceID, bool) {
+	p.keyspaceIDSync.RLock()
+	defer p.keyspaceIDSync.RUnlock()
+
+	if p.srcKeyspaceID.StreamType == common.STREAM_UNKNOWN {
+		return p.srcKeyspaceID, false
+	}
+
+	return p.srcKeyspaceID, true
 }
 
-func (p *Producer) GetMetadataCid() uint32 {
-	return atomic.LoadUint32(&p.metaCid)
+func (p *Producer) GetMetadataKeyspaceID() (common.KeyspaceID, bool) {
+	p.keyspaceIDSync.RLock()
+	defer p.keyspaceIDSync.RUnlock()
+
+	if p.metaKeyspaceID.StreamType == common.STREAM_UNKNOWN {
+		return p.metaKeyspaceID, false
+	}
+
+	return p.metaKeyspaceID, true
 }
 
 // SourceScope returns the source scope for event handler
@@ -674,7 +688,8 @@ func (p *Producer) cleanupMetadataImpl(id int, vbsToCleanup []uint16, undeployWG
 
 	var vbSeqnos []uint64
 	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &p.retryCount, util.GetSeqnos, p.nsServerHostPort,
-		"default", p.metadataKeyspace.BucketName, p.metaCid, &vbSeqnos)
+		// No need to protect metaKeyspaceID since its updated only once
+		"default", p.metadataKeyspace.BucketName, p.metaKeyspaceID, &vbSeqnos, false)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s:%d:id_%d] Exiting due to timeout", logPrefix, p.appName, p.LenRunningConsumers(), id)
 		return err

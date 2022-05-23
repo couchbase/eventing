@@ -1059,9 +1059,9 @@ angular
       self.srcMetaSameBucket = function(appModel) {
         return appModel.depcfg.source_bucket === appModel.depcfg
           .metadata_bucket &&
-          appModel.depcfg.source_scope === appModel.depcfg.metadata_scope &&
-          appModel.depcfg.source_collection === appModel.depcfg
-          .metadata_collection;
+          ((appModel.depcfg.source_scope === appModel.depcfg.metadata_scope) || (appModel.depcfg.source_scope == "*")) &&
+          ((appModel.depcfg.source_collection === appModel.depcfg
+          .metadata_collection) || (appModel.depcfg.source_collection == "*"));
       };
 
       self.srcBindingSameBucket = function(appModel, binding) {
@@ -1072,22 +1072,26 @@ angular
         return appModel.settings.execution_timeout > 60;
       };
 
-      self.getScopes = function(bucketName, bucketList) {
+      self.getScopes = function(bucketName, bucketList, wildcard_allowed) {
         var scope = new Set();
         for (var index in bucketList) {
           if (bucketList[index].BucketName == bucketName) {
-            scope.add(bucketList[index].ScopeName);
+            if(wildcard_allowed || (bucketList[index].ScopeName != "*" && bucketList[index].CollectionName != "*")) {
+              scope.add(bucketList[index].ScopeName);
+            }
           }
         }
         return Array.from(scope);
       };
 
-      self.getCollection = function(bucketName, scopeName, bucketList) {
+      self.getCollection = function(bucketName, scopeName, bucketList, wildcard_allowed) {
         var collection = [];
         for (var index in bucketList) {
           if (bucketList[index].BucketName == bucketName && bucketList[
               index].ScopeName == scopeName) {
-            collection.push(bucketList[index].CollectionName);
+            if(wildcard_allowed || bucketList[index].CollectionName != "*") {
+              collection.push(bucketList[index].CollectionName);
+            }
           }
         }
         return collection;
@@ -1131,7 +1135,7 @@ angular
       };
 
       self.populatefunctionScopes = function(bucketName) {
-        var scopes = self.getScopes(bucketName, snapshot.data.func_scope);
+        var scopes = self.getScopes(bucketName, snapshot.data.func_scope, true);
         self.functionScopes = scopes;
       };
 
@@ -1149,7 +1153,7 @@ angular
         if ($scope.bindings[index].access === "r") {
           list = snapshot.data.read_permission;
         }
-        var scopes = self.getScopes(bucketName, list);
+        var scopes = self.getScopes(bucketName, list, true);
         self.scopes[index] = scopes;
         self.populateCollections(bucketName, $scope.bindings[index].scope,
           index);
@@ -1160,21 +1164,20 @@ angular
         if ($scope.bindings[index].access === "r") {
           list = snapshot.data.read_permission;
         }
-        var collections = self.getCollection(bucketName, scopeName, list);
+        var collections = self.getCollection(bucketName, scopeName, list, true);
         self.collections[index] = collections;
       };
 
       self.populateSourceScopes = function(bucketName) {
-        console.log(bucketName);
         self.sourceScopes = self.getScopes(bucketName, snapshot.data
-          .dcp_stream_permission);
+          .dcp_stream_permission, true);
         self.populateSourceCollections(bucketName, $scope.appModel.depcfg
           .source_scope);
       };
 
       self.populateSourceCollections = function(bucketName, scopeName) {
         self.sourceCollections = self.getCollection(bucketName, scopeName,
-          snapshot.data.dcp_stream_permission);;
+          snapshot.data.dcp_stream_permission, true);;
       };
 
       self.Initialize = function() {
@@ -1207,14 +1210,14 @@ angular
 
       self.populateMetadataScopes = function(bucketName) {
         self.metadataScopes = self.getScopes(bucketName, snapshot.data
-          .read_write_permission);
+          .read_write_permission, false);
         self.populateMetadataCollections(bucketName, $scope.appModel.depcfg
           .metadata_scope);
       };
 
       self.populateMetadataCollections = function(bucketName, scopeName) {
         self.metadataCollections = self.getCollection(bucketName, scopeName,
-          snapshot.data.read_write_permission);
+          snapshot.data.read_write_permission, false);
       };
 
       self.isFormInvalid = function() {
@@ -1325,22 +1328,26 @@ angular
         }
       }
 
-      self.getScopes = function(bucketName, bucketList) {
+      self.getScopes = function(bucketName, bucketList, wildcard_allowed) {
         var scope = new Set();
         for (var index in bucketList) {
           if (bucketList[index].BucketName == bucketName) {
-            scope.add(bucketList[index].ScopeName);
+            if(wildcard_allowed || (bucketList[index].ScopeName != "*" && bucketList[index].CollectionName != "*")) {
+              scope.add(bucketList[index].ScopeName);
+            }
           }
         }
         return Array.from(scope);
       };
 
-      self.getCollection = function(bucketName, scopeName, bucketList) {
+      self.getCollection = function(bucketName, scopeName, bucketList, wildcard_allowed) {
         var collection = [];
         for (var index in bucketList) {
           if (bucketList[index].BucketName == bucketName && bucketList[
               index].ScopeName == scopeName) {
-            collection.push(bucketList[index].CollectionName);
+            if(wildcard_allowed || bucketList[index].CollectionName != "*") {
+              collection.push(bucketList[index].CollectionName);
+            }
           }
         }
         return collection;
@@ -1385,7 +1392,7 @@ angular
 
       self.functionBuckets = self.getLatestBuckets(snapshot.data.func_scope);
       self.functionScopes = self.getScopes(appModel.function_scope.bucket,
-        snapshot.data.func_scope);
+        snapshot.data.func_scope, true);
       self.sourceBuckets = self.getLatestBuckets(snapshot.data
         .read_permission);
       self.metadataBuckets = self.getLatestBuckets(snapshot.data
@@ -1438,7 +1445,7 @@ angular
         if (self.bindings[index].access === "r") {
           list = snapshot.data.read_permission;
         }
-        var scopes = self.getScopes(bucketName, list);
+        var scopes = self.getScopes(bucketName, list, true);
         console.log(scopes, index);
         self.scopes[index] = scopes;
         self.populateCollections(bucketName, self.bindings[index].scope,
@@ -1450,7 +1457,7 @@ angular
         if (self.bindings[index].access === "r") {
           list = snapshot.data.read_permission;
         }
-        var collections = self.getCollection(bucketName, scopeName, list);
+        var collections = self.getCollection(bucketName, scopeName, list, true);
         self.collections[index] = collections;
       };
 
@@ -1562,33 +1569,33 @@ angular
       self.srcMetaSameBucket = function(appModel) {
         return appModel.depcfg.source_bucket === appModel.depcfg
           .metadata_bucket &&
-          appModel.depcfg.source_scope === appModel.depcfg.metadata_scope &&
-          appModel.depcfg.source_collection === appModel.depcfg
-          .metadata_collection;
+          ((appModel.depcfg.source_scope === appModel.depcfg.metadata_scope) || (appModel.depcfg.source_scope == "*")) &&
+          ((appModel.depcfg.source_collection === appModel.depcfg
+          .metadata_collection) || (appModel.depcfg.source_scope == "*"));
       };
 
       self.populateSourceScopes = function(bucketName) {
         self.sourceScopes = self.getScopes(bucketName, snapshot.data
-          .read_permission);
+          .read_permission, true);
         self.populateSourceCollections(bucketName, $scope.appModel.depcfg
           .source_scope);
       };
 
       self.populateSourceCollections = function(bucketName, scopeName) {
         self.sourceCollections = self.getCollection(bucketName, scopeName,
-          snapshot.data.read_permission);;
+          snapshot.data.read_permission, true);;
       };
 
       self.populateMetadataScopes = function(bucketName) {
         self.metadataScopes = self.getScopes(bucketName, snapshot.data
-          .write_permission);
+          .write_permission, false);
         self.populateMetadataCollections(bucketName, $scope.appModel.depcfg
           .metadata_scope);
       };
 
       self.populateMetadataCollections = function(bucketName, scopeName) {
         self.metadataCollections = self.getCollection(bucketName, scopeName,
-          snapshot.data.write_permission);
+          snapshot.data.write_permission, false);
       };
 
       Object.assign(appModel.depcfg, ApplicationService

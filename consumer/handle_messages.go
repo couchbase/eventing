@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"sync/atomic"
 
+	"github.com/couchbase/eventing/common"
 	mcd "github.com/couchbase/eventing/dcp/transport"
 	memcached "github.com/couchbase/eventing/dcp/transport/client"
 	"github.com/couchbase/eventing/logging"
@@ -457,14 +458,15 @@ func (c *Consumer) sendNoOpEvent(seqNo uint64, partition uint16) {
 	c.sendMessage(msg)
 }
 
-func (c *Consumer) sendDcpEvent(e *memcached.DcpEvent, sendToDebugger bool) {
+func (c *Consumer) sendDcpEvent(mKeyspace common.KeyspaceName, e *memcached.DcpEvent, sendToDebugger bool) {
 	m := dcpMetadata{
-		Cas:     strconv.FormatUint(e.Cas, 10),
-		DocID:   string(e.Key),
-		Expiry:  e.Expiry,
-		Flag:    e.Flags,
-		Vbucket: e.VBucket,
-		SeqNo:   e.Seqno,
+		Cas:      strconv.FormatUint(e.Cas, 10),
+		DocID:    string(e.Key),
+		Expiry:   e.Expiry,
+		Flag:     e.Flags,
+		Vbucket:  e.VBucket,
+		SeqNo:    e.Seqno,
+		Keyspace: mKeyspace,
 	}
 
 	isBinary := e.Datatype == dcpDatatypeBinary || e.Datatype == dcpDatatypeBinXattr

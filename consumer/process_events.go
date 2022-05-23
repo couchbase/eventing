@@ -135,6 +135,7 @@ func (c *Consumer) processDCPEvents() {
 				}
 
 			case mcd.DCP_SYSTEM_EVENT:
+				c.cidToKeyspaceCache.updateManifest(e)
 				c.SendNoOp(e.Seqno, e.VBucket)
 				c.vbProcessingStats.updateVbStat(e.VBucket, "last_read_seq_no", e.Seqno)
 				c.vbProcessingStats.updateVbStat(e.VBucket, "manifest_id", string(e.ManifestUID))
@@ -248,7 +249,7 @@ func (c *Consumer) startDcp() error {
 	// Fetch high seq number only if dcp stream boundary is from now
 	if c.dcpStreamBoundary == common.DcpFromNow {
 		err = util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), c.retryCount, util.GetSeqnos, c.producer.NsServerHostPort(),
-			"default", c.sourceKeyspace.BucketName, c.srcCid, &vbSeqnos)
+			"default", c.sourceKeyspace.BucketName, c.srcKeyspaceID, &vbSeqnos, true)
 		if err != nil && c.dcpStreamBoundary != common.DcpEverything {
 			logging.Errorf("%s [%s:%s:%d] Failed to fetch vb seqnos, err: %v", logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
 			return nil
@@ -257,6 +258,7 @@ func (c *Consumer) startDcp() error {
 		vbSeqnos = make([]uint64, c.numVbuckets)
 	}
 
+	c.cidToKeyspaceCache.refreshManifestFromClusterInfo()
 	currentManifestUID := "0"
 	if c.dcpStreamBoundary == common.DcpFromNow {
 		currentManifestUID, _ = c.getManifestUID(c.sourceKeyspace.BucketName)
@@ -888,10 +890,10 @@ func (c *Consumer) dcpRequestStreamHandle(vb uint16, vbBlob *vbucketKVBlob, star
 	}
 
 	c.dcpStreamReqCounter++
-	hexColId := common.Uint32ToHex(c.srcCid)
-	requestString := fmt.Sprintf("{seq: %v, uuid: %v, kv_node: %v, mid: %v, cid: %v}", start, vbBlob.VBuuid, vbKvAddr, mid, hexColId)
+	hexScopeId, hexColId := getHexKeyspaceIDs(c.srcKeyspaceID)
+	requestString := fmt.Sprintf("{seq: %v, uuid: %v, kv_node: %v, mid: %v, scopeID: %v, cid: %v}", start, vbBlob.VBuuid, vbKvAddr, mid, hexScopeId, hexColId)
 	c.dcpStatsLogger.AddDcpLog(vb, LogState, requestString)
-	err = dcpFeed.DcpRequestStream(vb, opaque, flags, vbBlob.VBuuid, start, end, snapStart, snapEnd, mid, hexColId)
+	err = dcpFeed.DcpRequestStream(vb, opaque, flags, vbBlob.VBuuid, start, end, snapStart, snapEnd, mid, hexScopeId, hexColId)
 	if err != nil {
 		c.dcpStatsLogger.AddDcpLog(vb, StreamResponse, fmt.Sprintf("%v", err))
 		c.dcpStreamReqErrCounter++
@@ -1082,7 +1084,7 @@ func (c *Consumer) handleFailoverLog() {
 							var vbSeqNos []uint64
 							err := util.Retry(util.NewFixedBackoff(clusterOpRetryInterval), c.retryCount,
 								util.GetSeqnos, c.producer.NsServerHostPort(), "default",
-								c.sourceKeyspace.BucketName, c.srcCid, &vbSeqNos)
+								c.sourceKeyspace.BucketName, c.srcKeyspaceID, &vbSeqNos, true)
 							if err == nil {
 								break vbLabel
 							}
@@ -1146,8 +1148,9 @@ func (c *Consumer) cppWorkerThrPartitionMap() {
 func (c *Consumer) sendEvent(e *cb.DcpEvent) error {
 	logPrefix := "Consumer::processTrappedEvent"
 
+	mKeyspace := c.cidToKeyspaceCache.getKeyspaceName(e)
 	if !c.producer.IsTrapEvent() {
-		c.sendDcpEvent(e, false)
+		c.sendDcpEvent(mKeyspace, e, false)
 		return nil
 	}
 
@@ -1164,9 +1167,9 @@ func (c *Consumer) sendEvent(e *cb.DcpEvent) error {
 	}
 
 	if success {
-		c.startDebugger(e, instance)
+		c.startDebugger(mKeyspace, e, instance)
 	} else {
-		c.sendDcpEvent(e, false)
+		c.sendDcpEvent(mKeyspace, e, false)
 	}
 	return nil
 }
@@ -1463,4 +1466,15 @@ func (c *Consumer) addVbForRestreaming(vb uint16) {
 	c.vbsRemainingToRestream = append(c.vbsRemainingToRestream, vb)
 	c.Unlock()
 	c.purgeVbStreamRequested(logPrefix, vb)
+}
+
+func getHexKeyspaceIDs(internal common.KeyspaceID) (scope, collection string) {
+	switch internal.StreamType {
+	case common.STREAM_BUCKET:
+	case common.STREAM_SCOPE:
+		scope = common.Uint32ToHex(internal.Sid)
+	case common.STREAM_COLLECTION:
+		collection = common.Uint32ToHex(internal.Cid)
+	}
+	return
 }

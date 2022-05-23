@@ -110,13 +110,14 @@ type vbFlogEntry struct {
 }
 
 type dcpMetadata struct {
-	Cas     string `json:"cas"`
-	DocID   string `json:"id"`
-	Expiry  uint32 `json:"expiration"`
-	Flag    uint32 `json:"flags"`
-	Vbucket uint16 `json:"vb"`
-	SeqNo   uint64 `json:"seq"`
-	Type    string `json:"datatype,omitempty"`
+	Cas      string              `json:"cas"`
+	DocID    string              `json:"id"`
+	Expiry   uint32              `json:"expiration"`
+	Flag     uint32              `json:"flags"`
+	Vbucket  uint16              `json:"vb"`
+	SeqNo    uint64              `json:"seq"`
+	Type     string              `json:"datatype,omitempty"`
+	Keyspace common.KeyspaceName `json:"keyspace"`
 }
 
 type vbSeqNo struct {
@@ -127,13 +128,15 @@ type vbSeqNo struct {
 
 // Consumer is responsible interacting with c++ v8 worker over local tcp port
 type Consumer struct {
+	cidToKeyspaceCache *cidToKeyspaceNameCache
+
 	n1qlPrepareAll bool
 	app            *common.AppConfig
 	sourceKeyspace *common.Keyspace // source bucket
 	builderPool    *sync.Pool
 	breakpadOn     bool
 	uuid           string
-	srcCid         uint32
+	srcKeyspaceID  common.KeyspaceID
 	retryCount     *int64
 
 	handlerFooters []string

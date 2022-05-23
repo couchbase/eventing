@@ -93,6 +93,20 @@ const (
 )
 
 const FEATURE_COLLECTIONS byte = 0x12
+type CollectionEvent uint32
+
+const (
+        COLLECTION_CREATE  = CollectionEvent(0x00) // Collection has been created
+        COLLECTION_DROP    = CollectionEvent(0x01) // Collection has been dropped
+        COLLECTION_FLUSH   = CollectionEvent(0x02) // Collection has been flushed
+        SCOPE_CREATE       = CollectionEvent(0x03) // Scope has been created
+        SCOPE_DROP         = CollectionEvent(0x04) // Scope has been dropped
+        COLLECTION_CHANGED = CollectionEvent(0x05) // Collection has changed
+
+        OSO_SNAPSHOT_START = CollectionEvent(0x06) // OSO snapshot start
+        OSO_SNAPSHOT_END   = CollectionEvent(0x07) // OSO snapshot end
+)
+
 
 // Status field for memcached response.
 type Status uint16
@@ -128,6 +142,9 @@ var CommandNames map[CommandCode]string
 
 // StatusNames human readable names for memcached response.
 var StatusNames map[Status]string
+
+// Human readable names for memcached collection events
+var CollectionEventNames map[CollectionEvent]string
 
 func init() {
 	CommandNames = make(map[CommandCode]string)
@@ -218,6 +235,15 @@ func init() {
 	StatusNames[ENOMEM] = "ENOMEM"
 	StatusNames[TMPFAIL] = "TMPFAIL"
 
+CollectionEventNames = make(map[CollectionEvent]string)
+        CollectionEventNames[COLLECTION_CREATE] = "COLLECTION_CREATE"
+        CollectionEventNames[COLLECTION_DROP] = "COLLECTION_DROP"
+        CollectionEventNames[COLLECTION_FLUSH] = "COLLECTION_FLUSH"
+        CollectionEventNames[SCOPE_CREATE] = "SCOPE_CREATE"
+        CollectionEventNames[SCOPE_DROP] = "SCOPE_DROP"
+        CollectionEventNames[COLLECTION_CHANGED] = "COLLECTION_CHANGED"
+        CollectionEventNames[OSO_SNAPSHOT_START] = "OSO_SNAPSHOT_START"
+        CollectionEventNames[OSO_SNAPSHOT_END] = "OSO_SNAPSHOT_END"
 }
 
 // String an op code.

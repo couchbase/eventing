@@ -185,17 +185,18 @@ Error Bucket::FormatErrorAndDestroyConn(const std::string &message,
   return std::make_unique<std::string>(err_msg.str());
 }
 
-// returns true if status is auth_failure or cert_verification err AND we were able to recreate
-// connection false if either status is not auth failure OR status was failure
-// but couldn't recreate
+// returns true if status is auth_failure or cert_verification err AND we were
+// able to recreate connection false if either status is not auth failure OR
+// status was failure but couldn't recreate
 bool Bucket::MaybeRecreateConnOnAuthErr(const lcb_STATUS &status,
                                         bool should_check_autherr) {
   lcb_INSTANCE *tmp_instance = nullptr;
-  if ((status == LCB_ERR_AUTHENTICATION_FAILURE || status == LCB_ERR_SSL_CANTVERIFY)
-      && should_check_autherr) {
+  if ((status == LCB_ERR_AUTHENTICATION_FAILURE ||
+       status == LCB_ERR_SSL_CANTVERIFY) &&
+      should_check_autherr) {
     if (is_connected_) {
-      LOG(logError) << "Got " << status << " for bucket: "
-                    << bucket_name_ << " Recreating lcb instance" << std::endl;
+      LOG(logError) << "Got " << status << " for bucket: " << bucket_name_
+                    << " Recreating lcb instance" << std::endl;
       tmp_instance = connection_;
       is_connected_ = false;
       connection_ = nullptr;
@@ -208,28 +209,61 @@ bool Bucket::MaybeRecreateConnOnAuthErr(const lcb_STATUS &status,
       return false;
     }
     if (tmp_instance != nullptr) {
-        lcb_destroy(tmp_instance);
+      lcb_destroy(tmp_instance);
     }
     return true;
   }
   return false;
 }
 
+std::tuple<Error, std::string, std::string>
+Bucket::get_scope_and_collection_names(MetaData meta) {
+  if ((scope_name_ == "*") && (meta.scope == "")) {
+    return {
+        std::make_unique<std::string>("Inconsistent wildcard usage. scope_name "
+                                      "should be provided in the meta object"),
+        "", ""};
+  }
+  if ((collection_name_ == "*") && (meta.collection == "")) {
+    return {std::make_unique<std::string>(
+                "Inconsistent wildcard usage. collection_name should be "
+                "provided in the meta object"),
+            "", ""};
+  }
+
+  std::string scope = scope_name_, collection = collection_name_;
+  if (scope == "*") {
+    scope = meta.scope;
+  }
+
+  if (collection == "*") {
+    collection = meta.collection;
+  }
+
+  return {nullptr, scope, collection};
+}
+
 std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
-Bucket::Get(const std::string &key) {
+Bucket::Get(MetaData meta) {
   if (!is_connected_) {
     return {std::make_unique<std::string>("Connection is not initialized"),
             nullptr, nullptr};
   }
+
+  auto [error, scope, collection] = get_scope_and_collection_names(meta);
+  if (error != nullptr) {
+    return {std::move(error), nullptr, nullptr};
+  }
+
   const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
   const auto lcb_timeout = UnwrapData(isolate_)->lcb_timeout;
   const auto max_timeout = UnwrapData(isolate_)->op_timeout;
 
   lcb_CMDGET *cmd;
   lcb_cmdget_create(&cmd);
-  lcb_cmdget_collection(cmd, scope_name_.c_str(), scope_length_,
-                        collection_name_.c_str(), collection_length_);
-  lcb_cmdget_key(cmd, key.c_str(), key.length());
+  lcb_cmdget_collection(cmd, scope.c_str(), scope.size(), collection.c_str(),
+                        collection.size());
+  lcb_cmdget_key(cmd, meta.key.c_str(), meta.key.length());
   lcb_cmdget_timeout(cmd, lcb_timeout);
 
   if (on_behalf_of_.size() != 0) {
@@ -244,18 +278,22 @@ Bucket::Get(const std::string &key) {
     return {nullptr, std::make_unique<lcb_STATUS>(err_code), nullptr};
   }
   BucketCache::Fetch().Change(
-      BucketCache::MakeKey(bucket_name_, scope_name_, collection_name_, key),
-      result);
+      BucketCache::MakeKey(bucket_name_, scope, collection, meta.key), result);
 
   return {nullptr, std::make_unique<lcb_STATUS>(err_code),
           std::make_unique<Result>(std::move(result))};
 }
 
 std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
-Bucket::GetWithMeta(const std::string &key) {
+Bucket::GetWithMeta(MetaData meta) {
   if (!is_connected_) {
     return {std::make_unique<std::string>("Connection is not initialized"),
             nullptr, nullptr};
+  }
+
+  auto [error, scope, collection] = get_scope_and_collection_names(meta);
+  if (error != nullptr) {
+    return {std::move(error), nullptr, nullptr};
   }
 
   const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
@@ -278,9 +316,9 @@ Bucket::GetWithMeta(const std::string &key) {
   lcb_CMDSUBDOC *cmd;
   lcb_cmdsubdoc_create(&cmd);
   lcb_cmdsubdoc_specs(cmd, specs);
-  lcb_cmdsubdoc_collection(cmd, scope_name_.c_str(), scope_length_,
-                           collection_name_.c_str(), collection_length_);
-  lcb_cmdsubdoc_key(cmd, key.c_str(), key.length());
+  lcb_cmdsubdoc_collection(cmd, scope.c_str(), scope.size(), collection.c_str(),
+                           collection.size());
+  lcb_cmdsubdoc_key(cmd, meta.key.c_str(), meta.key.length());
   lcb_cmdsubdoc_specs(cmd, specs);
   lcb_cmdsubdoc_timeout(cmd, lcb_timeout);
 
@@ -299,19 +337,22 @@ Bucket::GetWithMeta(const std::string &key) {
   }
 
   BucketCache::Fetch().Change(
-      BucketCache::MakeKey(bucket_name_, scope_name_, collection_name_, key),
-      result);
+      BucketCache::MakeKey(bucket_name_, scope, collection, meta.key), result);
 
   return {nullptr, std::make_unique<lcb_STATUS>(err_code),
           std::make_unique<Result>(std::move(result))};
 }
 
 std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
-Bucket::CounterWithoutXattr(const std::string &key, uint64_t cas,
-                            lcb_U32 expiry, int64_t delta) {
+Bucket::CounterWithoutXattr(MetaData meta, int64_t delta) {
   if (!is_connected_) {
     return {std::make_unique<std::string>("Connection is not initialized"),
             nullptr, nullptr};
+  }
+
+  auto [error, scope, collection] = get_scope_and_collection_names(meta);
+  if (error != nullptr) {
+    return {std::move(error), nullptr, nullptr};
   }
 
   const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
@@ -326,11 +367,11 @@ Bucket::CounterWithoutXattr(const std::string &key, uint64_t cas,
   lcb_cmdsubdoc_create(&cmd);
   lcb_cmdsubdoc_store_semantics(cmd, LCB_SUBDOC_STORE_UPSERT);
   lcb_cmdsubdoc_specs(cmd, spec);
-  lcb_cmdsubdoc_cas(cmd, cas);
-  lcb_cmdsubdoc_expiry(cmd, expiry);
-  lcb_cmdsubdoc_collection(cmd, scope_name_.c_str(), scope_length_,
-                           collection_name_.c_str(), collection_length_);
-  lcb_cmdsubdoc_key(cmd, key.c_str(), key.length());
+  lcb_cmdsubdoc_cas(cmd, meta.cas);
+  lcb_cmdsubdoc_expiry(cmd, meta.expiry);
+  lcb_cmdsubdoc_collection(cmd, scope.c_str(), scope.size(), collection.c_str(),
+                           collection.size());
+  lcb_cmdsubdoc_key(cmd, meta.key.c_str(), meta.key.length());
   lcb_cmdsubdoc_timeout(cmd, lcb_timeout);
 
   if (on_behalf_of_.size() != 0) {
@@ -352,11 +393,15 @@ Bucket::CounterWithoutXattr(const std::string &key, uint64_t cas,
 }
 
 std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
-Bucket::CounterWithXattr(const std::string &key, uint64_t cas, lcb_U32 expiry,
-                         int64_t delta) {
+Bucket::CounterWithXattr(MetaData meta, int64_t delta) {
   if (!is_connected_) {
     return {std::make_unique<std::string>("Connection is not initialized"),
             nullptr, nullptr};
+  }
+
+  auto [error, scope, collection] = get_scope_and_collection_names(meta);
+  if (error != nullptr) {
+    return {std::move(error), nullptr, nullptr};
   }
 
   lcb_SUBDOCSPECS *specs;
@@ -395,12 +440,12 @@ Bucket::CounterWithXattr(const std::string &key, uint64_t cas, lcb_U32 expiry,
   lcb_cmdsubdoc_create(&cmd);
   lcb_cmdsubdoc_specs(cmd, specs);
   lcb_cmdsubdoc_store_semantics(cmd, LCB_SUBDOC_STORE_UPSERT);
-  lcb_cmdsubdoc_cas(cmd, cas);
-  lcb_cmdsubdoc_expiry(cmd, expiry);
-  lcb_cmdsubdoc_collection(cmd, scope_name_.c_str(), scope_length_,
-                           collection_name_.c_str(), collection_length_);
+  lcb_cmdsubdoc_cas(cmd, meta.cas);
+  lcb_cmdsubdoc_expiry(cmd, meta.expiry);
+  lcb_cmdsubdoc_collection(cmd, scope.c_str(), scope.size(), collection.c_str(),
+                           collection.size());
 
-  lcb_cmdsubdoc_key(cmd, key.c_str(), key.length());
+  lcb_cmdsubdoc_key(cmd, meta.key.c_str(), meta.key.length());
   lcb_cmdsubdoc_timeout(cmd, lcb_timeout);
 
   if (on_behalf_of_.size() != 0) {
@@ -424,16 +469,20 @@ Bucket::CounterWithXattr(const std::string &key, uint64_t cas, lcb_U32 expiry,
 }
 
 std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
-Bucket::SetWithXattr(const std::string &key, const std::string &value,
-                     lcb_SUBDOC_STORE_SEMANTICS op_type, lcb_U32 expiry,
-                     uint64_t cas) {
+Bucket::SetWithXattr(MetaData meta, const std::string &value,
+                     lcb_SUBDOC_STORE_SEMANTICS op_type) {
   if (!is_connected_) {
     return {std::make_unique<std::string>("Connection is not initialized"),
             nullptr, nullptr};
   }
 
+  auto [error, scope, collection] = get_scope_and_collection_names(meta);
+  if (error != nullptr) {
+    return {std::move(error), nullptr, nullptr};
+  }
+
   BucketCache::Fetch().Invalidate(
-      BucketCache::MakeKey(bucket_name_, scope_name_, collection_name_, key));
+      BucketCache::MakeKey(bucket_name_, scope, collection, meta.key));
 
   lcb_SUBDOCSPECS *specs;
   lcb_subdocspecs_create(&specs, 4);
@@ -469,11 +518,11 @@ Bucket::SetWithXattr(const std::string &key, const std::string &value,
   lcb_CMDSUBDOC *cmd;
   lcb_cmdsubdoc_create(&cmd);
   lcb_cmdsubdoc_specs(cmd, specs);
-  lcb_cmdsubdoc_cas(cmd, cas);
-  lcb_cmdsubdoc_expiry(cmd, expiry);
-  lcb_cmdsubdoc_collection(cmd, scope_name_.c_str(), scope_length_,
-                           collection_name_.c_str(), collection_length_);
-  lcb_cmdsubdoc_key(cmd, key.data(), key.size());
+  lcb_cmdsubdoc_cas(cmd, meta.cas);
+  lcb_cmdsubdoc_expiry(cmd, meta.expiry);
+  lcb_cmdsubdoc_collection(cmd, scope.c_str(), scope.size(), collection.c_str(),
+                           collection.size());
+  lcb_cmdsubdoc_key(cmd, meta.key.data(), meta.key.size());
   lcb_cmdsubdoc_store_semantics(cmd, op_type);
   lcb_cmdsubdoc_timeout(cmd, lcb_timeout);
 
@@ -498,16 +547,20 @@ Bucket::SetWithXattr(const std::string &key, const std::string &value,
 }
 
 std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
-Bucket::SetWithoutXattr(const std::string &key, const std::string &value,
-                        lcb_STORE_OPERATION op_type, lcb_U32 expiry,
-                        uint64_t cas, lcb_U32 doc_type) {
+Bucket::SetWithoutXattr(MetaData meta, const std::string &value,
+                        lcb_STORE_OPERATION op_type, lcb_U32 doc_type) {
   if (!is_connected_) {
     return {std::make_unique<std::string>("Connection is not initialized"),
             nullptr, nullptr};
   }
 
+  auto [error, scope, collection] = get_scope_and_collection_names(meta);
+  if (error != nullptr) {
+    return {std::move(error), nullptr, nullptr};
+  }
+
   BucketCache::Fetch().Invalidate(
-      BucketCache::MakeKey(bucket_name_, scope_name_, collection_name_, key));
+      BucketCache::MakeKey(bucket_name_, scope, collection, meta.key));
 
   const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
   const auto lcb_timeout = UnwrapData(isolate_)->lcb_timeout;
@@ -515,12 +568,13 @@ Bucket::SetWithoutXattr(const std::string &key, const std::string &value,
 
   lcb_CMDSTORE *cmd;
   lcb_cmdstore_create(&cmd, op_type);
-  lcb_cmdstore_expiry(cmd, expiry);
-  lcb_cmdstore_cas(cmd, cas);
-  lcb_cmdstore_collection(cmd, scope_name_.c_str(), scope_length_,
-                          collection_name_.c_str(), collection_length_);
+  lcb_cmdstore_expiry(cmd, meta.expiry);
+  lcb_cmdstore_cas(cmd, meta.cas);
 
-  lcb_cmdstore_key(cmd, key.data(), key.size());
+  lcb_cmdstore_collection(cmd, scope.c_str(), scope.size(), collection.c_str(),
+                          collection.size());
+
+  lcb_cmdstore_key(cmd, meta.key.data(), meta.key.size());
   lcb_cmdstore_value(cmd, value.data(), value.size());
   lcb_cmdstore_timeout(cmd, lcb_timeout);
 
@@ -541,14 +595,19 @@ Bucket::SetWithoutXattr(const std::string &key, const std::string &value,
 }
 
 std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
-Bucket::DeleteWithXattr(const std::string &key, uint64_t cas) {
+Bucket::DeleteWithXattr(MetaData meta) {
   if (!is_connected_) {
     return {std::make_unique<std::string>("Connection is not initialized"),
             nullptr, nullptr};
   }
 
+  auto [error, scope, collection] = get_scope_and_collection_names(meta);
+  if (error != nullptr) {
+    return {std::move(error), nullptr, nullptr};
+  }
+
   BucketCache::Fetch().Invalidate(
-      BucketCache::MakeKey(bucket_name_, scope_name_, collection_name_, key));
+      BucketCache::MakeKey(bucket_name_, scope, collection, meta.key));
 
   lcb_SUBDOCSPECS *specs;
   lcb_subdocspecs_create(&specs, 4);
@@ -585,12 +644,12 @@ Bucket::DeleteWithXattr(const std::string &key, uint64_t cas) {
   lcb_CMDSUBDOC *cmd;
   lcb_cmdsubdoc_create(&cmd);
   lcb_cmdsubdoc_specs(cmd, specs);
-  lcb_cmdsubdoc_cas(cmd, cas);
+  lcb_cmdsubdoc_cas(cmd, meta.cas);
   lcb_cmdsubdoc_store_semantics(cmd, LCB_SUBDOC_STORE_REPLACE);
 
-  lcb_cmdsubdoc_collection(cmd, scope_name_.c_str(), scope_length_,
-                           collection_name_.c_str(), collection_length_);
-  lcb_cmdsubdoc_key(cmd, key.c_str(), key.length());
+  lcb_cmdsubdoc_collection(cmd, scope.c_str(), scope.size(), collection.c_str(),
+                           collection.size());
+  lcb_cmdsubdoc_key(cmd, meta.key.c_str(), meta.key.length());
   lcb_cmdsubdoc_timeout(cmd, lcb_timeout);
 
   if (on_behalf_of_.size() != 0) {
@@ -614,14 +673,19 @@ Bucket::DeleteWithXattr(const std::string &key, uint64_t cas) {
 }
 
 std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
-Bucket::DeleteWithoutXattr(const std::string &key, uint64_t cas) {
+Bucket::DeleteWithoutXattr(MetaData meta) {
   if (!is_connected_) {
     return {std::make_unique<std::string>("Connection is not initialized"),
             nullptr, nullptr};
   }
 
+  auto [error, scope, collection] = get_scope_and_collection_names(meta);
+  if (error != nullptr) {
+    return {std::move(error), nullptr, nullptr};
+  }
+
   BucketCache::Fetch().Invalidate(
-      BucketCache::MakeKey(bucket_name_, scope_name_, collection_name_, key));
+      BucketCache::MakeKey(bucket_name_, scope, collection, meta.key));
 
   const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
   const auto lcb_timeout = UnwrapData(isolate_)->lcb_timeout;
@@ -629,11 +693,11 @@ Bucket::DeleteWithoutXattr(const std::string &key, uint64_t cas) {
 
   lcb_CMDREMOVE *cmd;
   lcb_cmdremove_create(&cmd);
-  lcb_cmdremove_cas(cmd, cas);
-  lcb_cmdremove_collection(cmd, scope_name_.c_str(), scope_length_,
-                           collection_name_.c_str(), collection_length_);
+  lcb_cmdremove_cas(cmd, meta.cas);
+  lcb_cmdremove_collection(cmd, scope.c_str(), scope.size(), collection.c_str(),
+                           collection.size());
 
-  lcb_cmdremove_key(cmd, key.c_str(), key.length());
+  lcb_cmdremove_key(cmd, meta.key.c_str(), meta.key.length());
   lcb_cmdremove_timeout(cmd, lcb_timeout);
 
   if (on_behalf_of_.size() != 0) {
@@ -667,6 +731,7 @@ void BucketBinding::BucketGet<v8::Local<v8::Name>>(
     return;
   }
 
+  MetaData metadata;
   auto validate_info = ValidateKey(name);
   if (validate_info.is_fatal) {
     js_exception->ThrowEventingError(validate_info.msg);
@@ -682,7 +747,17 @@ void BucketBinding::BucketGet<v8::Local<v8::Name>>(
 
   auto bucket = UnwrapInternalField<Bucket>(info.Holder(),
                                             InternalFields::kBucketInstance);
-  auto [error, err_code, result] = bucket->Get(key);
+  metadata.key = key;
+  auto [err, scope, collection] =
+      bucket->get_scope_and_collection_names(metadata);
+  if (err != nullptr) {
+    js_exception->ThrowEventingError(
+        "Map accessor is not allowed for wild card keyspace binding. Please "
+        "use advance keyspace accessor");
+    return;
+  }
+
+  auto [error, err_code, result] = bucket->Get(metadata);
   if (error != nullptr) {
     js_exception->ThrowEventingError(*error);
     return;
@@ -731,6 +806,7 @@ void BucketBinding::BucketSet<v8::Local<v8::Name>>(
     return;
   }
 
+  MetaData metadata;
   auto validate_info = ValidateKeyValue(name, value_obj);
   if (validate_info.is_fatal) {
     js_exception->ThrowEventingError(validate_info.msg);
@@ -760,11 +836,18 @@ void BucketBinding::BucketSet<v8::Local<v8::Name>>(
 
   auto bucket = UnwrapInternalField<Bucket>(info.Holder(),
                                             InternalFields::kBucketInstance);
-  auto is_source_bucket =
-      UnwrapInternalField<bool>(info.Holder(), InternalFields::kIsSourceBucket);
+  auto [err, is_source_mutation] =
+      IsSourceMutation(isolate, info.Holder(), metadata);
+  if (err != nullptr) {
+    js_exception->ThrowEventingError(
+        "Map accessor is not allowed for wild card keyspace binding. Please "
+        "use advance keyspace accessor");
+    return;
+  }
 
+  metadata.key = key;
   auto [error, err_code, result] =
-      BucketSet(key, value_str, *is_source_bucket, bucket);
+      BucketSet(metadata, value_str, is_source_mutation, bucket);
   if (error != nullptr) {
     js_exception->ThrowEventingError(*error);
     return;
@@ -792,6 +875,7 @@ void BucketBinding::BucketDelete<v8::Local<v8::Name>>(
     return;
   }
 
+  MetaData metadata;
   auto validate_info = ValidateKey(name);
   if (validate_info.is_fatal) {
     js_exception->ThrowKVError(validate_info.msg);
@@ -810,11 +894,20 @@ void BucketBinding::BucketDelete<v8::Local<v8::Name>>(
   v8::String::Utf8Value utf8_key(isolate, name.As<v8::String>());
   std::string key(*utf8_key);
 
-  auto is_source_bucket =
-      UnwrapInternalField<bool>(info.Holder(), InternalFields::kIsSourceBucket);
+  auto [err, is_source_mutation] =
+      IsSourceMutation(isolate, info.Holder(), metadata);
+  if (err != nullptr) {
+    js_exception->ThrowEventingError(
+        "Map accessor is not allowed for wild card keyspace binding. Please "
+        "use advance keyspace accessor");
+    return;
+  }
+
   auto bucket = UnwrapInternalField<Bucket>(info.Holder(),
                                             InternalFields::kBucketInstance);
-  auto [error, err_code, result] = BucketDelete(key, *is_source_bucket, bucket);
+  metadata.key = key;
+  auto [error, err_code, result] =
+      BucketDelete(metadata, is_source_mutation, bucket);
   if (error != nullptr) {
     js_exception->ThrowEventingError(*error);
     return;
@@ -920,21 +1013,21 @@ void BucketBinding::BucketDelete<uint32_t>(
 }
 
 std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
-BucketBinding::BucketSet(const std::string &key, const std::string &value,
-                         bool is_source_bucket, Bucket *bucket) {
-  if (is_source_bucket) {
-    return bucket->SetWithXattr(key, value);
+BucketBinding::BucketSet(MetaData meta, const std::string &value,
+                         bool is_source_mutation, Bucket *bucket) {
+  if (is_source_mutation) {
+    return bucket->SetWithXattr(meta, value);
   }
-  return bucket->SetWithoutXattr(key, value);
+  return bucket->SetWithoutXattr(meta, value);
 }
 
 std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
-BucketBinding::BucketDelete(const std::string &key, bool is_source_bucket,
+BucketBinding::BucketDelete(MetaData meta, bool is_source_mutation,
                             Bucket *bucket) {
-  if (is_source_bucket) {
-    return bucket->DeleteWithXattr(key);
+  if (is_source_mutation) {
+    return bucket->DeleteWithXattr(meta);
   }
-  return bucket->DeleteWithoutXattr(key);
+  return bucket->DeleteWithoutXattr(meta);
 }
 
 void BucketBinding::HandleEnoEnt(
@@ -1021,11 +1114,33 @@ bool BucketBinding::GetBlockMutation(v8::Isolate *isolate,
   return *UnwrapInternalField<bool>(local_obj, InternalFields::kBlockMutation);
 }
 
-bool BucketBinding::IsSourceBucket(v8::Isolate *isolate,
-                                   const v8::Local<v8::Value> obj) {
+std::tuple<Error, bool>
+BucketBinding::IsSourceMutation(v8::Isolate *isolate,
+                                const v8::Local<v8::Value> obj, MetaData meta) {
   v8::HandleScope handle_scope(isolate);
   auto context = isolate->GetCurrentContext();
   v8::Local<v8::Object> local_obj;
   TO_LOCAL(obj->ToObject(context), &local_obj);
-  return *UnwrapInternalField<bool>(local_obj, InternalFields::kIsSourceBucket);
+
+  const auto bucket =
+      UnwrapInternalField<Bucket>(local_obj, InternalFields::kBucketInstance);
+
+  auto [err, scope, collection] = bucket->get_scope_and_collection_names(meta);
+  if (err != nullptr) {
+    return {std::move(err), false};
+  }
+  auto isSourceBucket =
+      *UnwrapInternalField<bool>(local_obj, InternalFields::kIsSourceBucket);
+  if (!isSourceBucket) {
+    return {nullptr, false};
+  }
+
+  const auto v8Worker = UnwrapData(isolate)->v8worker;
+  const auto cb_scope = v8Worker->cb_source_scope_;
+  const auto cb_collection = v8Worker->cb_source_collection_;
+
+  auto source_mutation =
+      ((cb_scope == "*") || (cb_scope == scope)) &&
+      ((cb_collection == "*") || (cb_collection == collection));
+  return {nullptr, source_mutation};
 }

@@ -25,6 +25,17 @@
 #include "isolate_data.h"
 #include "lcb_utils.h"
 
+struct MetaData {
+  std::string key;
+  uint64_t cas;
+  uint32_t expiry;
+
+  std::string collection;
+  std::string scope;
+
+  MetaData() : key(""), cas(0), expiry(0), collection(""), scope("") {}
+};
+
 class BucketFactory {
 public:
   BucketFactory(v8::Isolate *isolate, const v8::Local<v8::Context> &context);
@@ -51,8 +62,6 @@ public:
       : isolate_(isolate), bucket_name_(std::move(bucket_name)),
         scope_name_(std::move(scope_name)),
         collection_name_(std::move(collection_name)) {
-    scope_length_ = scope_name_.size();
-    collection_length_ = collection_name_.size();
 
     on_behalf_of_privilege_ = "SystemXattrWrite";
 
@@ -72,41 +81,40 @@ public:
   Error Connect();
 
   std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
-  Get(const std::string &key);
+  Get(MetaData meta);
 
   std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
-  SetWithXattr(const std::string &key, const std::string &value,
-               lcb_SUBDOC_STORE_SEMANTICS op_type = LCB_SUBDOC_STORE_UPSERT,
-               lcb_U32 expiry = 0, uint64_t cas = 0);
+  SetWithXattr(MetaData meta, const std::string &value,
+               lcb_SUBDOC_STORE_SEMANTICS op_type = LCB_SUBDOC_STORE_UPSERT);
 
   std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
-  SetWithoutXattr(const std::string &key, const std::string &value,
+  SetWithoutXattr(MetaData meta, const std::string &value,
                   lcb_STORE_OPERATION op_type = LCB_STORE_UPSERT,
-                  lcb_U32 expiry = 0, uint64_t cas = 0,
                   lcb_U32 doc_type = 0x2000000);
 
   std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
-  DeleteWithXattr(const std::string &key, uint64_t cas = 0);
+  DeleteWithXattr(MetaData meta);
 
   std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
-  DeleteWithoutXattr(const std::string &key, uint64_t cas = 0);
+  DeleteWithoutXattr(MetaData meta);
 
   std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
-  GetWithMeta(const std::string &key);
+  GetWithMeta(MetaData meta);
 
   std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
-  CounterWithXattr(const std::string &key, uint64_t cas, lcb_U32 expiry,
-                   int64_t delta);
+  CounterWithXattr(MetaData meta, int64_t delta);
 
   std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
-  CounterWithoutXattr(const std::string &key, uint64_t cas, lcb_U32 expiry,
-                      int64_t delta);
+  CounterWithoutXattr(MetaData meta, int64_t delta);
 
   lcb_INSTANCE *GetConnection() const { return connection_; }
 
   const std::string &BucketName() const { return bucket_name_; };
   const std::string &ScopeName() const { return scope_name_; };
   const std::string &CollectionName() const { return collection_name_; };
+
+  std::tuple<Error, std::string, std::string>
+  get_scope_and_collection_names(MetaData meta);
 
 private:
   Error FormatErrorAndDestroyConn(const std::string &message,
@@ -138,7 +146,6 @@ private:
   std::string bucket_name_;
   std::string scope_name_;
   std::string collection_name_;
-  size_t scope_length_, collection_length_;
   lcb_INSTANCE *connection_{nullptr};
   bool is_connected_{false};
   std::string on_behalf_of_;
@@ -169,8 +176,9 @@ public:
                            const v8::Local<v8::Value> obj);
   static bool GetBlockMutation(v8::Isolate *isolate,
                                const v8::Local<v8::Value> obj);
-  static bool IsSourceBucket(v8::Isolate *isolate,
-                             const v8::Local<v8::Value> obj);
+  static std::tuple<Error, bool>
+  IsSourceMutation(v8::Isolate *isolate, const v8::Local<v8::Value> obj,
+                   MetaData meta);
 
 private:
   static void HandleBucketOpFailure(v8::Isolate *isolate,
@@ -215,8 +223,8 @@ private:
                         const v8::PropertyCallbackInfo<v8::Value> &info);
 
   static std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
-  BucketSet(const std::string &key, const std::string &value,
-            bool is_source_bucket, Bucket *bucket);
+  BucketSet(MetaData metadata, const std::string &value, bool is_source_bucket,
+            Bucket *bucket);
 
   template <typename>
   static void BucketDelete(const v8::Local<v8::Name> &key,
@@ -226,7 +234,7 @@ private:
                            const v8::PropertyCallbackInfo<v8::Boolean> &info);
 
   static std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
-  BucketDelete(const std::string &key, bool is_source_bucket, Bucket *bucket);
+  BucketDelete(MetaData meta, bool is_source_bucket, Bucket *bucket);
 
   static void
   BucketDeleteWithXattr(const v8::Local<v8::Name> &key,
