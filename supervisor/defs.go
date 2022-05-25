@@ -43,6 +43,8 @@ const (
 
 const (
 	numVbuckets = 1024
+
+	cgroupMemQuotaThreshold = 0.85
 )
 
 //TODO: move it to common package
@@ -166,4 +168,7 @@ type SuperSupervisor struct {
 	initLifecycleEncryptData bool
 
 	featureMatrix uint32
+
+	// -1 means cgroup is not supported
+	cgroupMemLimit float64
 }
