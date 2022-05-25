@@ -65,5 +65,5 @@ GoInstall(TARGET cbevent PACKAGE github.com/couchbase/eventing/cmd/cbevent
   LDFLAGS "${LDFLAGS}"
   GOVERSION ${GOVERSION})
 
-ADD_DEPENDENCIES(eventing-producer eventing-generated cbq-engine indexer jseval)
+ADD_DEPENDENCIES(eventing-producer sigar eventing-generated cbq-engine indexer jseval)
 ADD_DEPENDENCIES(cbevent eventing-generated)
