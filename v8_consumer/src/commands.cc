@@ -70,6 +70,8 @@ dcp_opcode getDCPOpcode(int8_t opcode) {
     return oMutation;
   if (opcode == 3)
     return oNoOp;
+  if (opcode == 4)
+    return oDeleteCid;
   return DCP_Opcode_Unknown;
 }
 

@@ -724,8 +724,6 @@ func (c *Consumer) WorkerVbMapUpdate(workerVbucketMap map[string][]uint16) {
 	for workerName, assignedVbs := range workerVbucketMap {
 		c.workerVbucketMap[workerName] = assignedVbs
 	}
-	vbs, _ := c.workerVbucketMap[c.ConsumerName()]
-	c.cidToKeyspaceCache.changeRefCount(len(vbs))
 }
 
 func (c *Consumer) GetAssignedVbs(workerName string) ([]uint16, error) {

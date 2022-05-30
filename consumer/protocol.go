@@ -66,6 +66,7 @@ const (
 	dcpDeletion
 	dcpMutation
 	dcpNoOp
+	dcpDeleteCid
 )
 
 const (
@@ -137,6 +138,10 @@ func (c *Consumer) makeDcpDeletionHeader(partition int16, deletionMeta string) (
 
 func (c *Consumer) makeDcpNoOpHeader(partition int16, meta string) ([]byte, *flatbuffers.Builder) {
 	return c.makeDcpHeader(dcpNoOp, partition, meta)
+}
+
+func (c *Consumer) makeDcpDeleteCidEvent(partition int16, meta string) ([]byte, *flatbuffers.Builder) {
+	return c.makeDcpHeader(dcpDeleteCid, partition, meta)
 }
 
 func (c *Consumer) makeDcpHeader(opcode int8, partition int16, meta string) ([]byte, *flatbuffers.Builder) {

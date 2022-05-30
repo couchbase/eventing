@@ -118,6 +118,7 @@ type dcpMetadata struct {
 	SeqNo    uint64              `json:"seq"`
 	Type     string              `json:"datatype,omitempty"`
 	Keyspace common.KeyspaceName `json:"keyspace"`
+	Cid      uint32              `json:"cid"`
 }
 
 type vbSeqNo struct {
