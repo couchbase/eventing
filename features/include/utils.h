@@ -176,6 +176,8 @@ private:
   CURL *curl_handle_; // Used only to perform url encode/decode
   v8::Persistent<v8::Context> context_;
   v8::Persistent<v8::Object> global_;
+  static std::unordered_map<std::string, std::string> enc_to_dec_map;
+  std::string NormalizeEncodedURL(std::string encoded_url);
 };
 
 template <typename T> class AtomicWrapper {
