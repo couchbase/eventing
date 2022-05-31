@@ -59,6 +59,15 @@ func NewSuperSupervisor(adminPort AdminPortConfig, eventingDir, kvPort, restPort
 		initLifecycleEncryptData:   false,
 		featureMatrix:              math.MaxUint32,
 	}
+
+	var err error
+	s.cgroupMemLimit, err = getCgroupMemLimit()
+	if err != nil {
+		logging.Fatalf("Error in getting cgroup mem limit: %v", err)
+		time.Sleep(time.Second)
+		os.Exit(1)
+	}
+
 	s.appRWMutex = &sync.RWMutex{}
 	s.appListRWMutex = &sync.RWMutex{}
 	s.mu = &sync.RWMutex{}
@@ -101,7 +110,6 @@ func NewSuperSupervisor(adminPort AdminPortConfig, eventingDir, kvPort, restPort
 	}()
 
 	go s.watchBucketChanges()
-	var err error
 	s.gocbGlobalConfigHandle, err = initgocbGlobalConfig(s.retryCount, s.restPort)
 	if err != nil {
 		logging.Errorf("%s Terminating due to not being able to initialise gocb config after %v retries error: %v", logPrefix, s.retryCount, err)
@@ -697,8 +705,15 @@ func (s *SuperSupervisor) HandleGlobalConfigChange(config common.Config) error {
 		switch key {
 		case "ram_quota":
 			if quota, ok := value.(float64); ok {
-				s.memoryQuota = int64(quota)
-				s.updateQuotaForRunningFns()
+				if s.cgroupMemLimit > 0 && (quota >= s.cgroupMemLimit) {
+					quota = s.cgroupMemLimit * cgroupMemQuotaThreshold
+				}
+
+				memQuota := int64(quota)
+				if memQuota != s.memoryQuota {
+					s.memoryQuota = memQuota
+					s.updateQuotaForRunningFns()
+				}
 			}
 
 		case "function_size":
@@ -1050,4 +1065,18 @@ func (s *SuperSupervisor) checkAndSwapStatus(appName string, deploymentStatus, p
 	s.appDeploymentStatus[appName] = deploymentStatus
 	s.appProcessingStatus[appName] = processingStatus
 	return true
+}
+
+func getCgroupMemLimit() (float64, error) {
+	sysConfig, err := NewSystemConfig()
+	if err != nil {
+		return -1, err
+	}
+
+	defer sysConfig.Close()
+	memLimit, ok := sysConfig.getCgroupMemLimit()
+	if !ok {
+		return -1, nil
+	}
+	return memLimit, nil
 }
