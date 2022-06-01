@@ -48,7 +48,7 @@ const (
 	indexerURL          = "http://127.0.0.1:9000/settings/indexes"
 	queryURL            = "http://127.0.0.1:9001/_p/query/query/service"
 	configURL           = "http://127.0.0.1:9000/_p/event/api/v1/config"
-	indexStateURL       = "http://127.0.0.1:9108/getIndexStatus"
+	indexStateURL       = "http://127.0.0.1:9102/getIndexStatus"
 )
 
 const (
@@ -71,6 +71,11 @@ const (
 	rbacpass = "asdasd"
 
 	cbBuildEnvString = "WORKSPACE"
+)
+
+const (
+	scopeApi      = "http://127.0.0.1:9000/pools/default/buckets/%s/scopes"
+	collectionApi = "http://127.0.0.1:9000/pools/default/buckets/%s/scopes/%s/collections"
 )
 
 const (
@@ -102,7 +107,7 @@ const (
 
 const (
 	dataDir  = "%2Ftmp%2Fdata"
-	services = "kv%2Ceventing"
+	services = "kv%2Ceventing%2Cn1ql%2Cindex"
 )
 
 const (
@@ -123,11 +128,15 @@ type application struct {
 }
 
 type depCfg struct {
-	Curl           []common.Curl     `json:"curl,omitempty"`
-	Constants      []common.Constant `json:"constants,omitempty"`
-	Buckets        []bucket          `json:"buckets,omitempty"`
-	MetadataBucket string            `json:"metadata_bucket"`
-	SourceBucket   string            `json:"source_bucket"`
+	Curl               []common.Curl     `json:"curl,omitempty"`
+	Constants          []common.Constant `json:"constants,omitempty"`
+	Buckets            []bucket          `json:"buckets,omitempty"`
+	MetadataBucket     string            `json:"metadata_bucket"`
+	SourceBucket       string            `json:"source_bucket"`
+	SourceScope        string            `json:"source_scope"`
+	SourceCollection   string            `json:"source_collection"`
+	MetadataScope      string            `json:"metadata_scope"`
+	MetadataCollection string            `json:"metadata_collection"`
 }
 
 type FunctionScope struct {
@@ -136,14 +145,17 @@ type FunctionScope struct {
 }
 
 type bucket struct {
-	Alias      string `json:"alias"`
-	BucketName string `json:"bucket_name"`
-	Access     string `json:"access"`
+	Alias          string `json:"alias"`
+	BucketName     string `json:"bucket_name"`
+	ScopeName      string `json:"scope_name"`
+	CollectionName string `json:"collection_name"`
+	Access         string `json:"access"`
 }
 
 type commonSettings struct {
 	aliasHandles             []string
 	aliasSources             []string
+	aliasCollection          []common.Keyspace
 	curlBindings             []common.Curl
 	constantBindings         []common.Constant
 	batchSize                int
@@ -152,8 +164,10 @@ type commonSettings struct {
 	lcbInstCap               int
 	logLevel                 string
 	metaBucket               string
+	metaKeyspace             common.Keyspace
 	n1qlConsistency          string
 	sourceBucket             string
+	sourceKeyspace           common.Keyspace
 	streamBoundary           string
 	thrCount                 int
 	undeployedState          bool

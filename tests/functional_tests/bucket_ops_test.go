@@ -1,3 +1,4 @@
+//go:build all || handler
 // +build all handler
 
 package eventing
@@ -6,6 +7,8 @@ import (
 	"log"
 	"testing"
 	"time"
+
+	"github.com/couchbase/eventing/common"
 )
 
 func testPumpDoc(itemCount, expectedCount int, bucket string, deleteDoc bool,
@@ -49,6 +52,35 @@ func testPumpDocExpiry(itemCount, expectedCount int, bucket string,
 	flushFunctionAndBucket(t.Name())
 }
 
+func testPumpDocListenLocation(itemCount, expectedCount int, dstCheck []common.Keyspace,
+	handler string, settings *commonSettings, t *testing.T) {
+
+	createAndDeployFunction(t.Name(), handler, settings)
+	waitForDeployToFinish(t.Name())
+
+	for _, keyspace := range dstCheck {
+		srcKeyspace := common.Keyspace{
+			BucketName:     srcBucket,
+			ScopeName:      keyspace.ScopeName,
+			CollectionName: keyspace.CollectionName,
+		}
+		pumpBucketOpsKeyspace(opsType{count: itemCount}, srcKeyspace, &rateLimit{})
+	}
+
+	for _, keyspace := range dstCheck {
+		eventCount := verifyKeyspaceCount(expectedCount, statsLookupRetryCounter, keyspace)
+		if expectedCount != eventCount {
+			failAndCollectLogs(t, "For", "TestError",
+				"expected", expectedCount,
+				"got", eventCount,
+			)
+		}
+	}
+
+	dumpStats()
+	flushFunctionAndBucket(t.Name())
+}
+
 func TestAdvancedGetOps(t *testing.T) {
 	itemCount := 100
 	setting := &commonSettings{
@@ -62,21 +94,60 @@ func TestAdvancedGetOps(t *testing.T) {
 
 func TestAdvancedInsertOps(t *testing.T) {
 	itemCount := 1024
-	setting := &commonSettings{
-		aliasSources:       []string{dstBucket},
-		aliasHandles:       []string{"dst_bucket"},
-		srcMutationEnabled: true,
+	dstKeyspace := []common.Keyspace{
+		common.Keyspace{
+			BucketName:     dstBucket,
+			ScopeName:      "TestScope",
+			CollectionName: "TestCollection2",
+		},
+		common.Keyspace{
+			BucketName:     dstBucket,
+			ScopeName:      "TestScope",
+			CollectionName: "TestCollection1",
+		},
 	}
-	testPumpDoc(itemCount, itemCount, dstBucket, false,
+
+	setting := &commonSettings{
+		aliasHandles: []string{"dst_bucket"},
+		aliasCollection: []common.Keyspace{
+			common.Keyspace{BucketName: dstBucket,
+				ScopeName:      "*",
+				CollectionName: "*",
+			},
+		},
+
+		sourceKeyspace: common.Keyspace{
+			BucketName:     srcBucket,
+			ScopeName:      "TestScope",
+			CollectionName: "*",
+		},
+	}
+
+	testPumpDocListenLocation(itemCount, itemCount, dstKeyspace,
 		"advanced_bucket_ops_insert", setting, t)
 
 	log.Printf("Testing insert operation on source bucket")
+
 	setting = &commonSettings{
-		aliasSources:       []string{srcBucket},
-		aliasHandles:       []string{"dst_bucket"},
-		srcMutationEnabled: true,
+		aliasHandles: []string{"dst_bucket"},
+		aliasCollection: []common.Keyspace{
+			common.Keyspace{BucketName: srcBucket,
+				ScopeName:      "*",
+				CollectionName: "*",
+			},
+		},
+		sourceKeyspace: common.Keyspace{
+			BucketName:     srcBucket,
+			ScopeName:      "TestScope",
+			CollectionName: "*",
+		},
 	}
-	testPumpDoc(itemCount, itemCount*2, srcBucket, false,
+
+	for index, _ := range dstKeyspace {
+		dstKeyspace[index].BucketName = srcBucket
+	}
+
+	testPumpDocListenLocation(itemCount, itemCount*2, dstKeyspace,
 		"advanced_bucket_ops_insert", setting, t)
 }
 
@@ -103,25 +174,25 @@ func TestAdvancedUpsertOps(t *testing.T) {
 }
 
 func TestAdvancedReplaceOps(t *testing.T) {
-        itemCount := 1024
+	itemCount := 1024
 
-        pumpBucketOpsSrc(opsType{count: itemCount}, dstBucket, &rateLimit{})
-        setting := &commonSettings{
-                aliasSources:       []string{dstBucket},
-                aliasHandles:       []string{"dst_bucket"},
-                srcMutationEnabled: true,
-        }
-        testPumpDoc(itemCount, 0, dstBucket, false,
-                "advanced_bucket_ops_replace", setting, t)
+	pumpBucketOpsSrc(opsType{count: itemCount}, dstBucket, &rateLimit{})
+	setting := &commonSettings{
+		aliasSources:       []string{dstBucket},
+		aliasHandles:       []string{"dst_bucket"},
+		srcMutationEnabled: true,
+	}
+	testPumpDoc(itemCount, 0, dstBucket, false,
+		"advanced_bucket_ops_replace", setting, t)
 
-        log.Printf("Testing upsert operation on source bucket")
-        setting = &commonSettings{
-                aliasSources:       []string{srcBucket},
-                aliasHandles:       []string{"dst_bucket"},
-                srcMutationEnabled: true,
-        }
-        testPumpDoc(itemCount, 0, srcBucket, false,
-                "advanced_bucket_ops_replace", setting, t)
+	log.Printf("Testing upsert operation on source bucket")
+	setting = &commonSettings{
+		aliasSources:       []string{srcBucket},
+		aliasHandles:       []string{"dst_bucket"},
+		srcMutationEnabled: true,
+	}
+	testPumpDoc(itemCount, 0, srcBucket, false,
+		"advanced_bucket_ops_replace", setting, t)
 }
 
 func TestAdvancedDeleteOps(t *testing.T) {
@@ -157,18 +228,18 @@ func TestEnoentAdvancedGet(t *testing.T) {
 }
 
 func TestEnoentAdvancedReplace(t *testing.T) {
-        itemCount := 100
-        testPumpDoc(itemCount, itemCount, dstBucket, false,
-                "advanced_bucket_ops_replace_enoent", &commonSettings{}, t)
+	itemCount := 100
+	testPumpDoc(itemCount, itemCount, dstBucket, false,
+		"advanced_bucket_ops_replace_enoent", &commonSettings{}, t)
 
-        log.Printf("Testing get enoent operation on source bucket")
-        setting := &commonSettings{
-                aliasSources:       []string{srcBucket},
-                aliasHandles:       []string{"dst_bucket"},
-                srcMutationEnabled: true,
-        }
-        testPumpDoc(itemCount, itemCount*2, srcBucket, false,
-                "advanced_bucket_ops_replace_enoent", setting, t)
+	log.Printf("Testing get enoent operation on source bucket")
+	setting := &commonSettings{
+		aliasSources:       []string{srcBucket},
+		aliasHandles:       []string{"dst_bucket"},
+		srcMutationEnabled: true,
+	}
+	testPumpDoc(itemCount, itemCount*2, srcBucket, false,
+		"advanced_bucket_ops_replace_enoent", setting, t)
 }
 
 func TestEnoentAdvancedDelete(t *testing.T) {
@@ -254,25 +325,25 @@ func TestExipryInsert(t *testing.T) {
 }
 
 func TestExipryReplace(t *testing.T) {
-        itemCount := 100
-        setting := &commonSettings{
-                aliasSources:       []string{srcBucket},
-                aliasHandles:       []string{"dst_bucket"},
-                srcMutationEnabled: true,
-        }
+	itemCount := 100
+	setting := &commonSettings{
+		aliasSources:       []string{srcBucket},
+		aliasHandles:       []string{"dst_bucket"},
+		srcMutationEnabled: true,
+	}
 
-        testPumpDocExpiry(itemCount, 0, srcBucket, "advanced_bucket_ops_replace_expiry",
-                setting, t)
+	testPumpDocExpiry(itemCount, 0, srcBucket, "advanced_bucket_ops_replace_expiry",
+		setting, t)
 
-        log.Printf("Testing on the destination bucket for expiry insert")
+	log.Printf("Testing on the destination bucket for expiry insert")
 
-        setting = &commonSettings{
-                aliasSources:       []string{dstBucket},
-                aliasHandles:       []string{"dst_bucket"},
-                srcMutationEnabled: true,
-        }
-        testPumpDocExpiry(itemCount, 0, dstBucket, "advanced_bucket_ops_replace_expiry",
-                setting, t)
+	setting = &commonSettings{
+		aliasSources:       []string{dstBucket},
+		aliasHandles:       []string{"dst_bucket"},
+		srcMutationEnabled: true,
+	}
+	testPumpDocExpiry(itemCount, 0, dstBucket, "advanced_bucket_ops_replace_expiry",
+		setting, t)
 }
 
 func TestExipryUpsert(t *testing.T) {
@@ -403,4 +474,31 @@ func TestCountersDecrement(t *testing.T) {
 
 	testPumpDoc(itemCount, itemCount*2, srcBucket, false,
 		"advanced_bucket_ops_counter_decrement", setting, t)
+}
+
+func TestMultiColErrorCondition(t *testing.T) {
+	itemCount := 2
+	setting := &commonSettings{
+                aliasHandles: []string{"dst_bucket", "dst_bucket1"},
+                aliasCollection: []common.Keyspace{
+                        common.Keyspace{BucketName: dstBucket,
+                                ScopeName:      "*",
+                                CollectionName: "*",
+                        },
+			common.Keyspace{
+				BucketName: dstBucket,
+			},
+                },
+
+                sourceKeyspace: common.Keyspace{
+                        BucketName:     srcBucket,
+                        ScopeName:      "*",
+                        CollectionName: "*",
+                },
+        }
+	testPumpDoc(itemCount, itemCount, dstBucket, false,
+                "multi_col_error_conditions", setting, t)
+
+	testPumpDoc(itemCount, itemCount, dstBucket, true,
+		"multi_col_error_conditions", setting, t)
 }
