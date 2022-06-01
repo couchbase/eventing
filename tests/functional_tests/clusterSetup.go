@@ -86,6 +86,7 @@ func waitForIndexes() {
 			Results []struct {
 				Name       string `json:"name"`
 				Bucket     string `json:"bucket"`
+				Status     string `json:"status"`
 				Completion int    `json:"completion"`
 			} `json:"status"`
 		}
@@ -96,7 +97,7 @@ func waitForIndexes() {
 		}
 		ready := true
 		for _, index := range result.Results {
-			if index.Completion < 100 {
+			if index.Status != "Ready" {
 				ready = false
 			}
 		}
@@ -617,6 +618,10 @@ retryQuotaSetup:
 			fmt.Println("Create bucket:", err)
 			return
 		}
+
+		err = CreateCollection(bucket, "TestScope", "TestCollection1")
+		err = CreateCollection(bucket, "TestScope", "TestCollection2")
+
 	}
 
 	_, err = createRbacUser()

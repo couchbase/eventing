@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"strings"
 	"time"
 
 	"github.com/couchbase/cbauth/metakv"
+	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/gocb/v2"
 )
 
@@ -153,8 +155,20 @@ func purgeCheckpointBlobs(appName, prefix string, start, end int) {
 	log.Printf("Purged checkpoint blobs from start vb: %d to end vb: %d\n", start, end)
 }
 
-func pumpBucketOpsSrc(ops opsType, srcBucket string, rate *rateLimit) {
+func pumpBucketOpsSrc(ops opsType, bucket string, rate *rateLimit) {
+	k := common.Keyspace{
+		BucketName:     bucket,
+		ScopeName:      "_default",
+		CollectionName: "_default",
+	}
+	pumpBucketOpsKeyspace(ops, k, rate)
+}
+
+func pumpBucketOpsKeyspace(ops opsType, srcKeyspace common.Keyspace, rate *rateLimit) {
 	log.Println("Starting bucket ops to source bucket")
+	srcBucket := srcKeyspace.BucketName
+	srcScope := srcKeyspace.ScopeName
+	srcCollection := srcKeyspace.CollectionName
 
 	if ops.count == 0 {
 		ops.count = itemCount
@@ -173,7 +187,8 @@ func pumpBucketOpsSrc(ops opsType, srcBucket string, rate *rateLimit) {
 		fmt.Printf("Error connecting to bucket %s  err: %s \n", srcBucket, err)
 		return
 	}
-	collection := bucket.DefaultCollection()
+	scope := bucket.Scope(srcScope)
+	collection := scope.Collection(srcCollection)
 
 	bin := []byte{1, 2, 3, 4, 0, 5, 6, 0, 7}
 	u := user{
@@ -295,4 +310,32 @@ func pumpBucketOpsSrc(ops opsType, srcBucket string, rate *rateLimit) {
 			}
 		}
 	}
+}
+
+func CreateCollection(bucketName, scopeName, collectionName string) error {
+	reqScopeApi := fmt.Sprintf(scopeApi, bucketName)
+	payload := fmt.Sprintf("name=%s", scopeName)
+	makeRequest("POST", strings.NewReader(payload), reqScopeApi)
+	reqCollectionApi := fmt.Sprintf(collectionApi, bucketName, scopeName)
+	payload = fmt.Sprintf("name=%s", collectionName)
+	makeRequest("POST", strings.NewReader(payload), reqCollectionApi)
+	return nil
+}
+
+func DropCollection(bucketName, scopeName, collectionName string) error {
+	cluster, err := gocb.Connect("couchbase://127.0.0.1:12000", gocb.ClusterOptions{
+		Username: rbacuser,
+		Password: rbacpass,
+	})
+	if err != nil {
+		panic(fmt.Sprintf("Bucket open, err: %s", err))
+	}
+	bucket := cluster.Bucket(bucketName)
+	mgr := bucket.Collections()
+
+	err = mgr.DropCollection(gocb.CollectionSpec{
+		Name:      collectionName,
+		ScopeName: scopeName,
+	}, nil)
+	return err
 }

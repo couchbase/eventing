@@ -2178,8 +2178,8 @@ func TestIncorrectPasswordLcb(t *testing.T) {
 		return
 	}
 
-	if (numCredRequest2 - numCredRequest) > 2 {
-		t.Errorf("creds requested more number of times: %v before: %v", numCredRequest2, numCredRequest)
+	if (numCredRequest2 - numCredRequest) > 4 {
+		t.Errorf("creds requested more number of times: %v before: %v stat: %v", numCredRequest2, numCredRequest, statsResponse)
 		return
 	}
 
@@ -2213,8 +2213,8 @@ func TestIncorrectPasswordLcb(t *testing.T) {
 		return
 	}
 
-	if (numCredRequest3 - numCredRequest2) > 1 {
-		t.Errorf("creds requested more number of times: %v before: %v", numCredRequest3, numCredRequest2)
+	if (numCredRequest3 - numCredRequest2) > 2 {
+		t.Errorf("creds requested more number of times: %v before: %vi stats: %v", numCredRequest3, numCredRequest2, statsResponse)
 		return
 	}
 }
