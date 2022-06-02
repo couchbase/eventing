@@ -2211,3 +2211,46 @@ func TestIncorrectPasswordLcb(t *testing.T) {
 		return
 	}
 }
+
+type response struct {
+	Code int `json:"code"`
+}
+
+func TestAppcodeRestEndpoint(t *testing.T) {
+	functionName := t.Name()
+	handler := "noop"
+
+	setting := &commonSettings{
+		thrCount:        1,
+		workerCount:     1,
+		undeployedState: true,
+	}
+	createAndDeployFunction(functionName, handler, setting)
+	defer flushFunctionAndBucket(functionName)
+	content, err := getHandlerCode(handler)
+
+	funcAppCodeUrl := fmt.Sprintf(appcodeUrlTemplate, t.Name())
+	res, err := makeRequest("GET", strings.NewReader(""), funcAppCodeUrl)
+	if err != nil {
+		t.Fatalf("Got error in request: %v", err)
+	}
+
+	if string(res) != string(content) {
+		t.Fatalf("Content is not same that is stored: %s stored: %s", string(content), string(res))
+	}
+
+	storeResponse := postToEventingEndpoint("Post to main store", funcAppCodeUrl, res)
+	if storeResponse.err != nil {
+		t.Fatalf("Error in sending response")
+	}
+
+	var serverRes response
+	err = json.Unmarshal(storeResponse.body, &serverRes)
+	if err != nil {
+		t.Fatalf("Error in unmarshaling response %v", storeResponse)
+	}
+
+	if serverRes.Code != 0 {
+		t.Fatalf("Expected 0 code got %d", serverRes.Code)
+	}
+}

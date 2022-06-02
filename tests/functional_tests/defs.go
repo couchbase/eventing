@@ -60,6 +60,10 @@ const (
 )
 
 const (
+	appcodeUrlTemplate = "http://127.0.0.1:9300/api/v1/functions/%s/appcode"
+)
+
+const (
 	username = "Administrator"
 	password = "asdasd"
 
