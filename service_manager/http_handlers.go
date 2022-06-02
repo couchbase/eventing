@@ -3874,7 +3874,7 @@ func (m *ServiceMgr) functionAppcode(w http.ResponseWriter, r *http.Request, id 
 		}
 
 		runtimeInfo.SendRawDescription = true
-		runtimeInfo.Description = response
+		runtimeInfo.Description = string(response)
 		runtimeInfo.OnlyDescription = true
 
 	case "POST":
