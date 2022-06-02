@@ -1,6 +1,7 @@
 package eventing
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -64,8 +65,35 @@ func setIndexStorageMode() ([]byte, error) {
 
 func fireQuery(query string) ([]byte, error) {
 	waitForIndexes()
-	payload := strings.NewReader(fmt.Sprintf("statement=%s", query))
-	return makeRequest("POST", payload, queryURL)
+	queryMap := map[string]string{
+		"statement": query,
+	}
+
+	payload, err := json.Marshal(queryMap)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL, bytes.NewReader(payload))
+	if err != nil {
+		fmt.Println(err)
+		return nil, err
+	}
+
+	req.Header.Add("content-type", "application/json")
+	req.SetBasicAuth(username, password)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		fmt.Println(err)
+		return nil, err
+	}
+	defer res.Body.Close()
+	data, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		fmt.Println(err)
+		return nil, err
+	}
+	return data, nil
 }
 
 func configChange(configuration string) ([]byte, error) {
