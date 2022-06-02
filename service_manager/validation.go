@@ -300,7 +300,7 @@ func (m *ServiceMgr) validateKeyspaceExists(bucketName, scopeName, collectionNam
 
 	if !found {
 		info.ErrCode = response.ErrCollectionMissing
-		info.Description = fmt.Sprintf("%s bucket: %s scope: %s collection: %s", err, bucketName, scopeName, collectionName)
+		info.Description = fmt.Sprintf("bucket: %s scope: %s collection: %s", bucketName, scopeName, collectionName)
 		return
 	}
 	return

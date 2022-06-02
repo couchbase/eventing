@@ -419,10 +419,17 @@ func ValidateAndCheckKeyspaceExist(bucket, scope, collection, hostaddress string
 	}
 
 	if scope == "*" || collection == "*" {
-		if wildcardAllowed {
+		if !wildcardAllowed {
+			return false, ErrWildcardNotAllowed
+		}
+
+		if scope == "*" && collection == "*" {
 			return true, nil
 		}
-		return false, ErrWildcardNotAllowed
+
+		if scope != "*" && collection == "*" {
+			collection = ""
+		}
 	}
 
 	cic, err := FetchClusterInfoClient(hostaddress)
@@ -434,7 +441,7 @@ func ValidateAndCheckKeyspaceExist(bucket, scope, collection, hostaddress string
 	cinfo.RLock()
 	defer cinfo.RUnlock()
 
-	_, err = cinfo.GetCollectionID(bucket, scope, collection)
+	_, _, _, err = cinfo.GetUniqueBSCIds(bucket, scope, collection)
 	return !(err == collections.SCOPE_NOT_FOUND || err == collections.COLLECTION_NOT_FOUND), nil
 }
 
