@@ -462,6 +462,7 @@ type EventingSuperSup interface {
 	GetCurrentManifestId(bucketName string) (string, error)
 	GetRegisteredPool() string
 	GetSeqsProcessed(appName string) map[int]int64
+	GetNumVbucketsForBucket(bucketName string) int
 	InternalVbDistributionStats(appName string) map[string]string
 	KillAllConsumers()
 	NotifyPrepareTopologyChange(ejectNodes, keepNodes []string, changeType service.TopologyChangeType)

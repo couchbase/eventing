@@ -29,7 +29,7 @@ import (
 // NewProducer creates a new producer instance using parameters supplied by super_supervisor
 func NewProducer(appName, debuggerPort, eventingPort, eventingSSLPort, eventingDir, kvPort,
 	metakvAppHostPortsPath, nsServerPort, uuid, diagDir string, memoryQuota int64,
-	numVbuckets int, featureMatrix uint32, superSup common.EventingSuperSup) *Producer {
+	featureMatrix uint32, superSup common.EventingSuperSup) *Producer {
 	p := &Producer{
 		appName:                      appName,
 		bootstrapFinishCh:            make(chan struct{}, 1),
@@ -46,7 +46,6 @@ func NewProducer(appName, debuggerPort, eventingPort, eventingSSLPort, eventingD
 		notifySettingsChangeCh:       make(chan struct{}, 1),
 		notifySupervisorCh:           make(chan struct{}),
 		nsServerPort:                 nsServerPort,
-		numVbuckets:                  numVbuckets,
 		isPausing:                    false,
 		stateChangeCh:                make(chan state, 1),
 		plannerNodeMappingsRWMutex:   &sync.RWMutex{},

@@ -773,6 +773,19 @@ func (s *SuperSupervisor) GetBSCSnapshot() (map[string]map[string][]string, erro
 	return snapshot, nil
 }
 
+func (s *SuperSupervisor) GetNumVbucketsForBucket(bucketName string) int {
+	hostAddress := net.JoinHostPort(util.Localhost(), s.restPort)
+	cic, err := util.FetchClusterInfoClient(hostAddress)
+	if err != nil {
+		return 1024
+	}
+	cinfo := cic.GetClusterInfoCache()
+	cinfo.RLock()
+	defer cinfo.RUnlock()
+
+	return cinfo.GetNumVbucketsForBucket(bucketName)
+}
+
 func (s *SuperSupervisor) UpdateEncryptionLevel(enforceTLS, encryptOn bool) {
 	for _, p := range s.runningFns() {
 		p.UpdateEncryptionLevel(enforceTLS, encryptOn)

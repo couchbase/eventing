@@ -556,6 +556,10 @@ func (c *ClusterInfoCache) GetLocalHostname() (string, error) {
 
 }
 
+func (c *ClusterInfoCache) GetNumVbucketsForBucket(bucketName string) int {
+	return c.pool.GetNumVbuckets(bucketName)
+}
+
 func (c *ClusterInfoCache) validateCache() bool {
 
 	if len(c.nodes) != len(c.nodesvs) {
