@@ -22,6 +22,9 @@ const uint8_t JSON_DOC = 1;
 const uint8_t XATTR_DOC = 4;
 const uint8_t UNKNOWN_TYPE = 8;
 
+const uint16_t UNKNOWN_SCOPE = 0x8C;
+const uint16_t UNKNOWN_COLLECTION = 0x88;
+
 struct Result {
   std::string key;
   uint64_t cas{0};
@@ -31,7 +34,7 @@ struct Result {
   uint32_t exptime{0};
   int64_t subdoc_counter{0};
   uint64_t counter{0};
-  uint16_t error_code{0};
+  uint16_t kv_err_code{0};
 };
 
 constexpr int def_lcb_retry_count = 6;
@@ -77,6 +80,7 @@ std::pair<lcb_STATUS, Result> LcbGetCounter(lcb_INSTANCE *instance,
 std::pair<lcb_STATUS, Result> LcbUnlock(lcb_INSTANCE *instance,
                                         lcb_CMDUNLOCK &cmd);
 
+bool IsErrCodeRetriable(lcb_STATUS error, uint16_t err_code);
 bool IsRetriable(lcb_STATUS error);
 
 template <typename CmdType, typename Callable>
@@ -89,10 +93,11 @@ RetryLcbCommand(lcb_INSTANCE *instance, CmdType &cmd, int max_retry_count,
   while (true) {
     result = callable(instance, cmd);
     if ((result.first == LCB_SUCCESS && result.second.rc == LCB_SUCCESS) ||
-        (!IsRetriable(result.first) && !IsRetriable(result.second.rc)) ||
+        (!IsRetriable(result.first) &&
+         !IsErrCodeRetriable(result.second.rc, result.second.kv_err_code)) ||
         (max_retry_count && retry_count >= max_retry_count)) {
-          break;
-        }
+      break;
+    }
 
     if (max_retry_secs > 0) {
       auto now = GetUnixTime();
