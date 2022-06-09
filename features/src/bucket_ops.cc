@@ -540,7 +540,7 @@ void BucketOps::CounterOps(v8::FunctionCallbackInfo<v8::Value> args,
   if (result->rc == LCB_ERR_SUBDOC_PATH_MISMATCH) {
     info = SetErrorObject(response_obj, "LCB_DELTA_BADVAL",
                           "counter value cannot be parsed as a number",
-                          result->error_code, invalid_counter_str_, true);
+                          result->kv_err_code, invalid_counter_str_, true);
 
     if (info.is_fatal) {
       ++bucket_op_exception_count;
@@ -555,7 +555,7 @@ void BucketOps::CounterOps(v8::FunctionCallbackInfo<v8::Value> args,
     info = SetErrorObject(
         response_obj, "LCB_KEY_EEXISTS",
         "The document key exists with a CAS value different than specified",
-        result->error_code, cas_mismatch_str_, true);
+        result->kv_err_code, cas_mismatch_str_, true);
     if (info.is_fatal) {
       ++bucket_op_exception_count;
       js_exception->ThrowEventingError(info.msg);
@@ -669,7 +669,7 @@ void BucketOps::GetOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
   if (result->rc == LCB_ERR_DOCUMENT_NOT_FOUND) {
     info = bucket_ops->SetErrorObject(
         response_obj, "LCB_KEY_ENOENT",
-        "The document key does not exist on the server", result->error_code,
+        "The document key does not exist on the server", result->kv_err_code,
         bucket_ops->key_not_found_str_, true);
 
     if (info.is_fatal) {
@@ -785,7 +785,7 @@ void BucketOps::InsertOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
       result->rc == LCB_ERR_CAS_MISMATCH) {
     info = bucket_ops->SetErrorObject(
         response_obj, "LCB_KEY_EEXISTS",
-        "The document key already exists in the server.", result->error_code,
+        "The document key already exists in the server.", result->kv_err_code,
         bucket_ops->key_exist_str_, true);
 
     if (info.is_fatal) {
@@ -894,7 +894,7 @@ void BucketOps::ReplaceOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
     info = bucket_ops->SetErrorObject(
         response_obj, "LCB_KEY_EEXISTS",
         "The document key exists with a CAS value different than specified",
-        result->error_code, bucket_ops->cas_mismatch_str_, true);
+        result->kv_err_code, bucket_ops->cas_mismatch_str_, true);
 
     if (info.is_fatal) {
       ++bucket_op_exception_count;
@@ -909,7 +909,7 @@ void BucketOps::ReplaceOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
   if (result->rc == LCB_ERR_DOCUMENT_NOT_FOUND) {
     info = bucket_ops->SetErrorObject(
         response_obj, "LCB_KEY_ENOENT",
-        "The document key does not exist on the server", result->error_code,
+        "The document key does not exist on the server", result->kv_err_code,
         bucket_ops->key_not_found_str_, true);
 
     if (info.is_fatal) {
@@ -1099,7 +1099,7 @@ void BucketOps::DeleteOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
     info = bucket_ops->SetErrorObject(
         response_obj, "LCB_KEY_EEXISTS",
         "The document key exists with a CAS value different than specified",
-        result->error_code, bucket_ops->cas_mismatch_str_, true);
+        result->kv_err_code, bucket_ops->cas_mismatch_str_, true);
 
     if (info.is_fatal) {
       ++bucket_op_exception_count;
@@ -1114,7 +1114,7 @@ void BucketOps::DeleteOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
   if (result->rc == LCB_ERR_DOCUMENT_NOT_FOUND) {
     info = bucket_ops->SetErrorObject(
         response_obj, "LCB_KEY_ENOENT",
-        "The document key does not exist on the server", result->error_code,
+        "The document key does not exist on the server", result->kv_err_code,
         bucket_ops->key_not_found_str_, true);
 
     if (info.is_fatal) {

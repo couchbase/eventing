@@ -73,7 +73,7 @@ void GetCallback(lcb_INSTANCE *instance, int, const lcb_RESPBASE *rb) {
   if (result->rc != LCB_SUCCESS) {
     const lcb_KEY_VALUE_ERROR_CONTEXT *ctx = nullptr;
     lcb_respget_error_context(resp, &ctx);
-    lcb_errctx_kv_status_code(ctx, &result->error_code);
+    lcb_errctx_kv_status_code(ctx, &result->kv_err_code);
     return;
   }
 
@@ -103,7 +103,7 @@ void SetCallback(lcb_INSTANCE *instance, int cbtype, const lcb_RESPBASE *rb) {
   if (result->rc != LCB_SUCCESS) {
     const lcb_KEY_VALUE_ERROR_CONTEXT *ctx = nullptr;
     lcb_respstore_error_context(resp, &ctx);
-    lcb_errctx_kv_status_code(ctx, &result->error_code);
+    lcb_errctx_kv_status_code(ctx, &result->kv_err_code);
     return;
   }
 
@@ -128,7 +128,7 @@ void SubDocumentCallback(lcb_INSTANCE *instance, int cbtype,
   if (result->rc != LCB_SUCCESS) {
     const lcb_KEY_VALUE_ERROR_CONTEXT *ctx = nullptr;
     lcb_respsubdoc_error_context(resp, &ctx);
-    lcb_errctx_kv_status_code(ctx, &result->error_code);
+    lcb_errctx_kv_status_code(ctx, &result->kv_err_code);
     return;
   }
 
@@ -171,7 +171,7 @@ void SubDocumentLookupCallback(lcb_INSTANCE *instance, int cbtype,
   if (result->rc != LCB_SUCCESS) {
     const lcb_KEY_VALUE_ERROR_CONTEXT *ctx = nullptr;
     lcb_respsubdoc_error_context(resp, &ctx);
-    lcb_errctx_kv_status_code(ctx, &result->error_code);
+    lcb_errctx_kv_status_code(ctx, &result->kv_err_code);
     return;
   }
 
@@ -229,7 +229,7 @@ void DeleteCallback(lcb_INSTANCE *instance, int cbtype,
   if (result->rc != LCB_SUCCESS) {
     const lcb_KEY_VALUE_ERROR_CONTEXT *ctx = nullptr;
     lcb_respremove_error_context(resp, &ctx);
-    lcb_errctx_kv_status_code(ctx, &result->error_code);
+    lcb_errctx_kv_status_code(ctx, &result->kv_err_code);
     return;
   }
 
@@ -254,7 +254,7 @@ void counter_callback(lcb_INSTANCE *instance, int cbtype,
   if (result->rc != LCB_SUCCESS) {
     const lcb_KEY_VALUE_ERROR_CONTEXT *ctx = nullptr;
     lcb_respcounter_error_context(resp, &ctx);
-    lcb_errctx_kv_status_code(ctx, &result->error_code);
+    lcb_errctx_kv_status_code(ctx, &result->kv_err_code);
     return;
   }
 
@@ -405,6 +405,14 @@ std::pair<lcb_STATUS, Result> LcbUnlock(lcb_INSTANCE *instance,
                   << lcb_strerror_short(err) << std::endl;
   }
   return {err, result};
+}
+
+bool IsErrCodeRetriable(lcb_STATUS error, uint16_t err_code) {
+  if (err_code == UNKNOWN_SCOPE || err_code == UNKNOWN_COLLECTION) {
+    return false;
+  }
+
+  return LCB_ERROR_IS_TRANSIENT(error);
 }
 
 bool IsRetriable(lcb_STATUS error) { return LCB_ERROR_IS_TRANSIENT(error); }

@@ -270,9 +270,12 @@ Bucket::Get(MetaData meta) {
     lcb_cmdget_on_behalf_of(cmd, on_behalf_of_.c_str(), on_behalf_of_.size());
   }
 
-  auto [err_code, result] =
+  auto [err, err_code, result] =
       TryLcbCmdWithRefreshConnIfNecessary(*cmd, max_retry, max_timeout, LcbGet);
   lcb_cmdget_destroy(cmd);
+  if (err != nullptr) {
+    return {std::move(err), nullptr, nullptr};
+  }
   if (err_code != LCB_SUCCESS) {
     ++lcb_retry_failure;
     return {nullptr, std::make_unique<lcb_STATUS>(err_code), nullptr};
@@ -327,10 +330,13 @@ Bucket::GetWithMeta(MetaData meta) {
                                on_behalf_of_.size());
   }
 
-  auto [err_code, result] = TryLcbCmdWithRefreshConnIfNecessary(
+  auto [err, err_code, result] = TryLcbCmdWithRefreshConnIfNecessary(
       *cmd, max_retry, max_timeout, LcbSubdocSet);
   lcb_cmdsubdoc_destroy(cmd);
   lcb_subdocspecs_destroy(specs);
+  if (err != nullptr) {
+    return {std::move(err), nullptr, nullptr};
+  }
   if (err_code != LCB_SUCCESS) {
     ++lcb_retry_failure;
     return {nullptr, std::make_unique<lcb_STATUS>(err_code), nullptr};
@@ -379,10 +385,13 @@ Bucket::CounterWithoutXattr(MetaData meta, int64_t delta) {
                                on_behalf_of_.size());
   }
 
-  auto [err_code, result] = TryLcbCmdWithRefreshConnIfNecessary(
+  auto [err, err_code, result] = TryLcbCmdWithRefreshConnIfNecessary(
       *cmd, max_retry, max_timeout, LcbSubdocSet);
   lcb_cmdsubdoc_destroy(cmd);
   lcb_subdocspecs_destroy(spec);
+  if (err != nullptr) {
+    return {std::move(err), nullptr, nullptr};
+  }
   if (err_code != LCB_SUCCESS) {
     ++lcb_retry_failure;
     return {nullptr, std::make_unique<lcb_STATUS>(err_code), nullptr};
@@ -455,10 +464,13 @@ Bucket::CounterWithXattr(MetaData meta, int64_t delta) {
         cmd, on_behalf_of_privilege_.c_str(), on_behalf_of_privilege_.size());
   }
 
-  auto [err_code, result] = TryLcbCmdWithRefreshConnIfNecessary(
+  auto [err, err_code, result] = TryLcbCmdWithRefreshConnIfNecessary(
       *cmd, max_retry, max_timeout, LcbSubdocSet);
   lcb_cmdsubdoc_destroy(cmd);
   lcb_subdocspecs_destroy(specs);
+  if (err != nullptr) {
+    return {std::move(err), nullptr, nullptr};
+  }
   if (err_code != LCB_SUCCESS) {
     ++lcb_retry_failure;
     return {nullptr, std::make_unique<lcb_STATUS>(err_code), nullptr};
@@ -533,10 +545,14 @@ Bucket::SetWithXattr(MetaData meta, const std::string &value,
         cmd, on_behalf_of_privilege_.c_str(), on_behalf_of_privilege_.size());
   }
 
-  auto [err_code, result] = TryLcbCmdWithRefreshConnIfNecessary(
+  auto [err, err_code, result] = TryLcbCmdWithRefreshConnIfNecessary(
       *cmd, max_retry, max_timeout, LcbSubdocSet);
   lcb_cmdsubdoc_destroy(cmd);
   lcb_subdocspecs_destroy(specs);
+
+  if (err != nullptr) {
+    return {std::move(err), nullptr, nullptr};
+  }
   if (err_code != LCB_SUCCESS) {
     ++lcb_retry_failure;
     return {nullptr, std::make_unique<lcb_STATUS>(err_code), nullptr};
@@ -582,9 +598,13 @@ Bucket::SetWithoutXattr(MetaData meta, const std::string &value,
     lcb_cmdstore_on_behalf_of(cmd, on_behalf_of_.c_str(), on_behalf_of_.size());
   }
 
-  auto [err_code, result] =
+  auto [err, err_code, result] =
       TryLcbCmdWithRefreshConnIfNecessary(*cmd, max_retry, max_timeout, LcbSet);
   lcb_cmdstore_destroy(cmd);
+  if (err != nullptr) {
+    return {std::move(err), nullptr, nullptr};
+  }
+
   if (err_code != LCB_SUCCESS) {
     ++lcb_retry_failure;
     return {nullptr, std::make_unique<lcb_STATUS>(err_code), nullptr};
@@ -659,10 +679,14 @@ Bucket::DeleteWithXattr(MetaData meta) {
         cmd, on_behalf_of_privilege_.c_str(), on_behalf_of_privilege_.size());
   }
 
-  auto [err_code, result] = TryLcbCmdWithRefreshConnIfNecessary(
+  auto [err, err_code, result] = TryLcbCmdWithRefreshConnIfNecessary(
       *cmd, max_retry, max_timeout, LcbSubdocDelete);
   lcb_cmdsubdoc_destroy(cmd);
   lcb_subdocspecs_destroy(specs);
+
+  if (err != nullptr) {
+    return {std::move(err), nullptr, nullptr};
+  }
   if (err_code != LCB_SUCCESS) {
     ++lcb_retry_failure;
     return {nullptr, std::make_unique<lcb_STATUS>(err_code), nullptr};
@@ -705,9 +729,12 @@ Bucket::DeleteWithoutXattr(MetaData meta) {
                                on_behalf_of_.size());
   }
 
-  auto [err_code, result] = TryLcbCmdWithRefreshConnIfNecessary(
+  auto [err, err_code, result] = TryLcbCmdWithRefreshConnIfNecessary(
       *cmd, max_retry, max_timeout, LcbDelete);
   lcb_cmdremove_destroy(cmd);
+  if (err != nullptr) {
+    return {std::move(err), nullptr, nullptr};
+  }
   if (err_code != LCB_SUCCESS) {
     ++lcb_retry_failure;
     return {nullptr, std::make_unique<lcb_STATUS>(err_code), nullptr};
