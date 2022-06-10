@@ -171,7 +171,7 @@ func (bg *bucketMultiDiGraph) getPathFromParentMap(source, destination common.Ke
 	currNode := destination
 
 	//Stack will contain all the nodes except source
-	for currNode.Equals(source) {
+	for !currNode.Equals(source) {
 		st.Push(currNode)
 		currNode = parentMap[currNode]
 	}
@@ -208,7 +208,7 @@ func (bg *bucketMultiDiGraph) hasPath(source, destination common.Keyspace) (reac
 
 		if vertex.Equals(destination) {
 			reachable = true
-			labels = bg.getPathFromParentMap(source, destination, parents)
+			labels = bg.getPathFromParentMap(source, vertex, parents)
 			return
 		}
 
