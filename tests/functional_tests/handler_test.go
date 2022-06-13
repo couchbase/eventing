@@ -1394,6 +1394,13 @@ func TestInterBucketRecursion(t *testing.T) {
 		failAndCollectLogs(t, "Deployment must fail")
 		return
 	}
+
+	description := response["description"].(string)
+	str1 := strings.Split(description, ": ")
+	funcName := strings.Split(str1[2], ",")
+	if funcName[0] != "[TestInterBucketRecursion_function1]" {
+		failAndCollectLogs(t, fmt.Sprintf("Function name was incorrect in the description: %s", description))
+	}
 }
 
 func TestLargeHandler(t *testing.T) {

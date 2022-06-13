@@ -124,22 +124,48 @@ private:
                                   bool should_check_autherr);
 
   template <typename CmdType, typename Callable>
-  std::pair<lcb_STATUS, Result>
+  std::tuple<Error, lcb_STATUS, Result>
   TryLcbCmdWithRefreshConnIfNecessary(CmdType &cmd, int max_retry_count,
                                       uint32_t max_retry_secs,
                                       Callable &&callable) {
-    auto [err_code, result] = RetryLcbCommand(connection_, cmd, max_retry_count,
-                                              max_retry_secs, callable);
+    auto [internal_err, err_code, result] =
+        TryLcbCmd(cmd, max_retry_count, max_retry_secs, callable);
+    if (internal_err != nullptr) {
+      return {std::move(internal_err), err_code, result};
+    }
 
     if (err_code != LCB_SUCCESS) {
-      return {err_code, result};
-    } else if (MaybeRecreateConnOnAuthErr(result.rc, true)) {
-      auto [err_code, result] = RetryLcbCommand(
-          connection_, cmd, max_retry_count, max_retry_secs, callable);
-      return {err_code, result};
-    } else {
-      return {err_code, result};
+      return {nullptr, err_code, result};
     }
+
+    if (!MaybeRecreateConnOnAuthErr(result.rc, true)) {
+      return {nullptr, err_code, result};
+    }
+
+    return TryLcbCmd(cmd, max_retry_count, max_retry_secs, callable);
+  }
+
+  template <typename CmdType, typename Callable>
+  std::tuple<Error, lcb_STATUS, Result>
+  TryLcbCmd(CmdType &cmd, int max_retry_count, uint32_t max_retry_secs,
+            Callable &&callable) {
+    auto [err_code, result] = RetryLcbCommand(connection_, cmd, max_retry_count,
+                                              max_retry_secs, callable);
+    if (err_code != LCB_SUCCESS) {
+      return {nullptr, err_code, result};
+    }
+
+    if (result.kv_err_code == UNKNOWN_SCOPE) {
+      return {std::make_unique<std::string>("Scope doesn't exist"), err_code,
+              result};
+    }
+
+    if (result.kv_err_code == UNKNOWN_COLLECTION) {
+      return {std::make_unique<std::string>("Collection doesn't exist"),
+              err_code, result};
+    }
+
+    return {nullptr, err_code, result};
   }
 
   v8::Isolate *isolate_{nullptr};

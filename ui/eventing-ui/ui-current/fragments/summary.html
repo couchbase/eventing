@@ -37,8 +37,8 @@
       <div class="cbui-table-header" ng-if="!summaryCtrl.isAppListEmpty()">
         <span class="cbui-table-cell flex-grow-2">function name</span>
         <span class="cbui-table-cell flex-grow-2">Function scope</span>
-        <span class="cbui-table-cell flex-grow-2">Source Keyspace</span>
-        <span class="cbui-table-cell flex-grow-half">status</span>
+        <span class="cbui-table-cell flex-grow-2-5">Source Keyspace</span>
+        <span class="cbui-table-cell text-left">status</span>
         <span class="cbui-table-cell"></span>
       </div>
       <section class="has-hover"
@@ -51,8 +51,8 @@
           <span
             class="cbui-table-cell flex-grow-2">{{app.function_scope.bucket}}.{{app.function_scope.scope}}</span>
           <span
-            class="cbui-table-cell flex-grow-2">{{app.depcfg.source_bucket}}.{{app.depcfg.source_scope}}.{{app.depcfg.source_collection}}</span>
-          <span class="cbui-table-cell flex-grow-half">
+            class="cbui-table-cell flex-grow-2-5">{{app.depcfg.source_bucket}}.{{app.depcfg.source_scope}}.{{app.depcfg.source_collection}}</span>
+          <span class="cbui-table-cell text-left">
             {{app.status === 'deployed' || app.status === 'undeployed' || app.status === 'paused' ? app.status : app.status + '...'}}
             <span class="icon fa-warning orange-3"
                ng-show="app.status === 'deployed' && (!!app.failed_count || !!app.timeout_count)"></span>
