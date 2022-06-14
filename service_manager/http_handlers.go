@@ -165,6 +165,7 @@ func (m *ServiceMgr) deletePrimaryStoreHandler(w http.ResponseWriter, r *http.Re
 		return
 	}
 	appLocation := id.ToLocation()
+	res.AddRequestData(common.AppLocationTag, appLocation)
 
 	if info = m.deletePrimaryStore(cred, appLocation); info.ErrCode != response.Ok {
 		*runtimeInfo = *info
@@ -172,7 +173,7 @@ func (m *ServiceMgr) deletePrimaryStoreHandler(w http.ResponseWriter, r *http.Re
 	}
 
 	runtimeInfo.Description = fmt.Sprintf("Function: %s deleting in the background", appLocation)
-	runtimeInfo.ExtraAttributes = map[string]interface{}{"appLocation": appLocation}
+	runtimeInfo.ExtraAttributes = map[string]interface{}{common.AppLocationTag: appLocation}
 }
 
 // Deletes application from primary store and returns the appropriate success/error code
@@ -242,6 +243,7 @@ func (m *ServiceMgr) deleteTempStoreHandler(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	appLocation := id.ToLocation()
+	res.AddRequestData(common.AppLocationTag, appLocation)
 
 	logging.Infof("%s REST Call: %v %v", logPrefix, r.URL.Path, r.Method)
 	if info = m.deleteTempStore(cred, appLocation); info.ErrCode != response.Ok {
@@ -250,7 +252,7 @@ func (m *ServiceMgr) deleteTempStoreHandler(w http.ResponseWriter, r *http.Reque
 	}
 
 	runtimeInfo.Description = fmt.Sprintf("Function: %s deleting in the background", appLocation)
-	runtimeInfo.ExtraAttributes = map[string]interface{}{"appLocation": appLocation}
+	runtimeInfo.ExtraAttributes = map[string]interface{}{common.AppLocationTag: appLocation}
 }
 
 // Deletes application from temporary store and returns the appropriate success/error code
@@ -328,6 +330,7 @@ func (m *ServiceMgr) getAppLog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	appLocation := id.ToLocation()
+	res.AddRequestData(common.AppLocationTag, appLocation)
 
 	if info := m.checkAuthAndPermissionWithApp(w, r, appLocation, rbac.HandlerGetPermissions, false); info.ErrCode != response.Ok {
 		*runtimeInfo = *info
@@ -569,6 +572,7 @@ func (m *ServiceMgr) getDebuggerURL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	appLocation := id.ToLocation()
+	res.AddRequestData(common.AppLocationTag, appLocation)
 
 	if info := m.checkAuthAndPermissionWithApp(w, r, appLocation, rbac.HandlerGetPermissions, false); info.ErrCode != response.Ok {
 		*runtimeInfo = *info
@@ -612,6 +616,7 @@ func (m *ServiceMgr) getLocalDebugURL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	appLocation := id.ToLocation()
+	res.AddRequestData(common.AppLocationTag, appLocation)
 
 	if info := m.checkAuthAndPermissionWithApp(w, r, appLocation, rbac.HandlerGetPermissions, false); info.ErrCode != response.Ok {
 		*runtimeInfo = *info
@@ -703,6 +708,7 @@ func (m *ServiceMgr) startDebugger(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	appLocation := id.ToLocation()
+	res.AddRequestData(common.AppLocationTag, appLocation)
 
 	if info := m.checkAuthAndPermissionWithApp(w, r, appLocation, rbac.HandlerManagePermissions, false); info.ErrCode != response.Ok {
 		*runtimeInfo = *info
@@ -785,6 +791,7 @@ func (m *ServiceMgr) stopDebugger(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	appLocation := id.ToLocation()
+	res.AddRequestData(common.AppLocationTag, appLocation)
 
 	if info := m.checkAuthAndPermissionWithApp(w, r, appLocation, rbac.HandlerManagePermissions, false); info.ErrCode != response.Ok {
 		*runtimeInfo = *info
@@ -835,6 +842,8 @@ func (m *ServiceMgr) writeDebuggerURLHandler(w http.ResponseWriter, r *http.Requ
 	}
 
 	appLocation := id.ToLocation()
+	res.AddRequestData(common.AppLocationTag, appLocation)
+
 	data, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		runtimeInfo.ErrCode = response.ErrReadReq
@@ -863,6 +872,7 @@ func (m *ServiceMgr) getEventProcessingStats(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	appLocation := id.ToLocation()
+	res.AddRequestData(common.AppLocationTag, appLocation)
 
 	if info := m.checkAuthAndPermissionWithApp(w, r, appLocation, rbac.HandlerGetPermissions, false); info.ErrCode != response.Ok {
 		*runtimeInfo = *info
@@ -1155,6 +1165,7 @@ func (m *ServiceMgr) getBootstrapAppStatus(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	appLocation := id.ToLocation()
+	res.AddRequestData(common.AppLocationTag, appLocation)
 
 	info = m.checkAuthAndPermissionWithApp(w, r, appLocation, rbac.HandlerGetPermissions, false)
 	if info.ErrCode == response.ErrAppNotFound {
@@ -1201,6 +1212,8 @@ func (m *ServiceMgr) getAggEventProcessingStats(w http.ResponseWriter, r *http.R
 		*runtimeInfo = *info
 		return
 	}
+
+	res.AddRequestData(common.AppLocationTag, id.ToLocation())
 
 	util.Retry(util.NewFixedBackoff(time.Second), nil, getEventingNodesAddressesOpCallback, m)
 	query := fmt.Sprintf("/getEventProcessingStats?name=%s&bucket=%s&scope=%s", url.QueryEscape(id.AppName), url.QueryEscape(id.Bucket), url.QueryEscape(id.Scope))
@@ -1320,6 +1333,7 @@ func (m *ServiceMgr) getAggBootstrapAppStatus(w http.ResponseWriter, r *http.Req
 		return
 	}
 	appLocation := id.ToLocation()
+	res.AddRequestData(common.AppLocationTag, appLocation)
 
 	if info := m.checkAuthAndPermissionWithApp(w, r, appLocation, rbac.HandlerGetPermissions, false); info.ErrCode != response.Ok {
 		*runtimeInfo = *info
@@ -1355,6 +1369,7 @@ func (m *ServiceMgr) getLatencyStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	appLocation := id.ToLocation()
+	res.AddRequestData(common.AppLocationTag, appLocation)
 
 	if info := m.checkAuthAndPermissionWithApp(w, r, appLocation, rbac.HandlerGetPermissions, false); info.ErrCode != response.Ok {
 		*runtimeInfo = *info
@@ -1386,6 +1401,7 @@ func (m *ServiceMgr) getExecutionStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	appLocation := id.ToLocation()
+	res.AddRequestData(common.AppLocationTag, appLocation)
 
 	if info := m.checkAuthAndPermissionWithApp(w, r, appLocation, rbac.HandlerGetPermissions, false); info.ErrCode != response.Ok {
 		*runtimeInfo = *info
@@ -1417,6 +1433,7 @@ func (m *ServiceMgr) getFailureStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	appLocation := id.ToLocation()
+	res.AddRequestData(common.AppLocationTag, appLocation)
 
 	if info := m.checkAuthAndPermissionWithApp(w, r, appLocation, rbac.HandlerGetPermissions, false); info.ErrCode != response.Ok {
 		*runtimeInfo = *info
@@ -1448,6 +1465,7 @@ func (m *ServiceMgr) getSeqsProcessed(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	appLocation := id.ToLocation()
+	res.AddRequestData(common.AppLocationTag, appLocation)
 
 	if info := m.checkAuthAndPermissionWithApp(w, r, appLocation, rbac.HandlerGetPermissions, false); info.ErrCode != response.Ok {
 		*runtimeInfo = *info
@@ -1480,6 +1498,7 @@ func (m *ServiceMgr) setSettingsHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	appLocation := id.ToLocation()
+	res.AddRequestData(common.AppLocationTag, appLocation)
 
 	force := false
 	forceVal, tmpInfo := CheckAndGetQueryParam(params, "force")
@@ -2102,6 +2121,7 @@ func (m *ServiceMgr) saveTempStoreHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 	appLocation := id.ToLocation()
+	res.AddRequestData(common.AppLocationTag, appLocation)
 
 	if info := m.checkAuthAndPermissionWithApp(w, r, appLocation, rbac.HandlerManagePermissions, false); info.ErrCode != response.Ok {
 		*runtimeInfo = *info
@@ -2261,6 +2281,7 @@ func (m *ServiceMgr) savePrimaryStoreHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	appLocation := id.ToLocation()
+	res.AddRequestData(common.AppLocationTag, appLocation)
 
 	if info := m.checkAuthAndPermissionWithApp(w, r, appLocation, rbac.HandlerManagePermissions, false); info.ErrCode != response.Ok {
 		*runtimeInfo = *info
@@ -2608,6 +2629,7 @@ func (m *ServiceMgr) getDcpEventsRemaining(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	appLocation := id.ToLocation()
+	res.AddRequestData(common.AppLocationTag, appLocation)
 
 	if info := m.checkAuthAndPermissionWithApp(w, r, appLocation, rbac.HandlerGetPermissions, false); info.ErrCode != response.Ok {
 		*runtimeInfo = *info
@@ -2754,6 +2776,7 @@ func (m *ServiceMgr) getEventingConsumerPids(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	appLocation := id.ToLocation()
+	res.AddRequestData(common.AppLocationTag, appLocation)
 
 	if info := m.checkAuthAndPermissionWithApp(w, r, appLocation, rbac.HandlerGetPermissions, false); info.ErrCode != response.Ok {
 		*runtimeInfo = *info
@@ -2857,7 +2880,7 @@ func (m *ServiceMgr) clearEventStats(w http.ResponseWriter, r *http.Request) {
 	logging.Infof("%s Got request to clear event stats from host: %rs", logPrefix, r.Host)
 	appNames := m.superSup.ClearEventStats()
 
-	runtimeInfo.ExtraAttributes = map[string]interface{}{"appNames": appNames}
+	runtimeInfo.ExtraAttributes = map[string]interface{}{common.AppLocationsTag: appNames}
 	runtimeInfo.Description = "Stats cleared"
 }
 
@@ -3144,6 +3167,7 @@ func (m *ServiceMgr) functionNameRetry(w http.ResponseWriter, r *http.Request, i
 
 	defer res.LogAndSend(runtimeInfo)
 	appLocation := id.ToLocation()
+	res.AddRequestData(common.AppLocationTag, appLocation)
 
 	if r.Method != "POST" {
 		runtimeInfo.ErrCode = response.ErrMethodNotAllowed
@@ -3187,6 +3211,7 @@ func (m *ServiceMgr) functionNameSettings(w http.ResponseWriter, r *http.Request
 
 	defer res.LogAndSend(runtimeInfo)
 	appLocation := id.ToLocation()
+	res.AddRequestData(common.AppLocationTag, appLocation)
 
 	rPerm, wPerm, info := m.getReadAndWritePermission(appLocation)
 	if info.ErrCode != response.Ok {
@@ -3265,6 +3290,7 @@ func (m *ServiceMgr) functionName(w http.ResponseWriter, r *http.Request, id com
 
 	defer res.LogAndSend(runtimeInfo)
 	appLocation := id.ToLocation()
+	res.AddRequestData(common.AppLocationTag, appLocation)
 
 	cred, err := rbac.AuthWebCreds(r)
 	if err != nil {
@@ -3399,7 +3425,7 @@ func (m *ServiceMgr) functionName(w http.ResponseWriter, r *http.Request, id com
 			return
 		}
 		*runtimeInfo = *info
-		runtimeInfo.ExtraAttributes = map[string]interface{}{"appLocation": appLocation}
+		runtimeInfo.ExtraAttributes = map[string]interface{}{common.AppLocationTag: appLocation}
 
 	case "DELETE":
 		res.SetRequestEvent(response.EventDeleteFunction)
@@ -3446,7 +3472,7 @@ func (m *ServiceMgr) functionName(w http.ResponseWriter, r *http.Request, id com
 		}
 
 		runtimeInfo.Description = fmt.Sprintf("Function: %s deleting in background", id)
-		runtimeInfo.ExtraAttributes = map[string]interface{}{"appLocation": appLocation}
+		runtimeInfo.ExtraAttributes = map[string]interface{}{common.AppLocationTag: appLocation}
 
 	default:
 		runtimeInfo.ErrCode = response.ErrMethodNotAllowed
@@ -3578,7 +3604,10 @@ func (m *ServiceMgr) functions(w http.ResponseWriter, r *http.Request) {
 		}
 
 		infoList, importedFns := m.createApplications(cred, appList, false)
-		runtimeInfo.ExtraAttributes = map[string]interface{}{"appNames": importedFns}
+
+		res.AddRequestData(common.AppLocationsTag, importedFns)
+
+		runtimeInfo.ExtraAttributes = map[string]interface{}{common.AppLocationsTag: importedFns}
 		runtimeInfo.Description = infoList
 		runtimeInfo.OnlyDescription = true
 
@@ -3619,6 +3648,7 @@ func (m *ServiceMgr) functionUndeploy(w http.ResponseWriter, r *http.Request, id
 
 	defer res.LogAndSend(runtimeInfo)
 	appLocation := id.ToLocation()
+	res.AddRequestData(common.AppLocationTag, appLocation)
 
 	if r.Method != "POST" {
 		runtimeInfo.ErrCode = response.ErrMethodNotAllowed
@@ -3667,6 +3697,7 @@ func (m *ServiceMgr) functionDeploy(w http.ResponseWriter, r *http.Request, id c
 
 	defer res.LogAndSend(runtimeInfo)
 	appLocation := id.ToLocation()
+	res.AddRequestData(common.AppLocationTag, appLocation)
 
 	if r.Method != "POST" {
 		runtimeInfo.ErrCode = response.ErrMethodNotAllowed
@@ -3759,6 +3790,7 @@ func (m *ServiceMgr) functionPause(w http.ResponseWriter, r *http.Request, id co
 
 	defer res.LogAndSend(runtimeInfo)
 	appLocation := id.ToLocation()
+	res.AddRequestData(common.AppLocationTag, appLocation)
 
 	if r.Method != "POST" {
 		runtimeInfo.ErrCode = response.ErrMethodNotAllowed
@@ -3806,6 +3838,7 @@ func (m *ServiceMgr) functionResume(w http.ResponseWriter, r *http.Request, id c
 
 	defer res.LogAndSend(runtimeInfo)
 	appLocation := id.ToLocation()
+	res.AddRequestData(common.AppLocationTag, appLocation)
 
 	if r.Method != "POST" {
 		runtimeInfo.ErrCode = response.ErrMethodNotAllowed
@@ -3860,6 +3893,7 @@ func (m *ServiceMgr) functionAppcode(w http.ResponseWriter, r *http.Request, id 
 
 	defer res.LogAndSend(runtimeInfo)
 	appLocation := id.ToLocation()
+	res.AddRequestData(common.AppLocationTag, appLocation)
 
 	switch r.Method {
 	case "GET":
@@ -3962,6 +3996,7 @@ func (m *ServiceMgr) functionConfig(w http.ResponseWriter, r *http.Request, id c
 
 	defer res.LogAndSend(runtimeInfo)
 	appLocation := id.ToLocation()
+	res.AddRequestData(common.AppLocationTag, appLocation)
 
 	switch r.Method {
 	case "GET":
@@ -4166,6 +4201,7 @@ func (m *ServiceMgr) statusHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		id.AppName = match[1]
 		appLocation = id.ToLocation()
+		res.AddRequestData(common.AppLocationTag, appLocation)
 	}
 
 	status, info := m.statusHandlerImpl(cred, appLocation)
@@ -4379,6 +4415,8 @@ func (m *ServiceMgr) statsHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		res.AddRequestData(common.AppLocationTag, appIdentity.ToLocation())
+
 		mode := statsMode(params)
 		stats, runtimeInfo = m.AppStats(cred, appIdentity, mode)
 		if runtimeInfo.ErrCode != response.Ok {
@@ -4558,7 +4596,7 @@ func (m *ServiceMgr) exportHandler(w http.ResponseWriter, r *http.Request) {
 
 	logging.Infof("%s Exported function list: %+v", logPrefix, exportedFns)
 
-	runtimeInfo.ExtraAttributes = map[string]interface{}{"appNames": exportedFns}
+	runtimeInfo.ExtraAttributes = map[string]interface{}{common.AppLocationsTag: exportedFns}
 	runtimeInfo.Description = exportedFuncs
 	runtimeInfo.OnlyDescription = true
 }
@@ -4615,7 +4653,9 @@ func (m *ServiceMgr) importHandler(w http.ResponseWriter, r *http.Request) {
 
 	infoList, importedFns := m.createApplications(cred, appList, true)
 
-	runtimeInfo.ExtraAttributes = map[string]interface{}{"appNames": importedFns}
+	res.AddRequestData(common.AppLocationsTag, importedFns)
+
+	runtimeInfo.ExtraAttributes = map[string]interface{}{common.AppLocationsTag: importedFns}
 	runtimeInfo.Description = infoList
 
 	if len(importedFns) == 0 {
@@ -4683,7 +4723,7 @@ func (m *ServiceMgr) backupHandler(w http.ResponseWriter, r *http.Request) {
 			appLocation := getAppLocationFromApp(&app)
 			appNames = append(appNames, appLocation)
 		}
-		runtimeInfo.ExtraAttributes = map[string]interface{}{"appNames": appNames}
+		runtimeInfo.ExtraAttributes = map[string]interface{}{common.AppLocationsTag: appNames}
 		runtimeInfo.Description = exportedFun
 		runtimeInfo.OnlyDescription = true
 
@@ -4728,7 +4768,7 @@ func (m *ServiceMgr) backupHandler(w http.ResponseWriter, r *http.Request) {
 		apps := m.restoreAppList(appList, filterMap, remap, filterType)
 		infoList, importedList := m.createApplications(cred, apps, true)
 
-		runtimeInfo.ExtraAttributes = map[string]interface{}{"appNames": importedList}
+		runtimeInfo.ExtraAttributes = map[string]interface{}{common.AppLocationsTag: importedList}
 		runtimeInfo.Description = infoList
 		runtimeInfo.OnlyDescription = true
 
@@ -5406,6 +5446,7 @@ func (m *ServiceMgr) resetStatsCounters(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	appLocation := id.ToLocation()
+	res.AddRequestData(common.AppLocationTag, appLocation)
 
 	if info := m.checkAuthAndPermissionWithApp(w, r, appLocation, rbac.HandlerManagePermissions, false); info.ErrCode != response.Ok {
 		*runtimeInfo = *info
@@ -5424,7 +5465,7 @@ func (m *ServiceMgr) resetStatsCounters(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	runtimeInfo.ExtraAttributes = map[string]interface{}{"appNames": []string{appLocation}}
+	runtimeInfo.ExtraAttributes = map[string]interface{}{common.AppLocationsTag: []string{appLocation}}
 	runtimeInfo.Description = "Done resetting counters"
 }
 
@@ -5442,6 +5483,7 @@ func (m *ServiceMgr) resetNodeStatsCounters(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	appLocation := id.ToLocation()
+	res.AddRequestData(common.AppLocationTag, appLocation)
 
 	if info := m.checkAuthAndPermissionWithApp(w, r, appLocation, rbac.HandlerManagePermissions, false); info.ErrCode != response.Ok {
 		*runtimeInfo = *info
@@ -5460,7 +5502,7 @@ func (m *ServiceMgr) resetNodeStatsCounters(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	runtimeInfo.ExtraAttributes = map[string]interface{}{"appNames": []string{appLocation}}
+	runtimeInfo.ExtraAttributes = map[string]interface{}{common.AppLocationsTag: []string{appLocation}}
 	runtimeInfo.Description = "Done resetting counters"
 }
 
