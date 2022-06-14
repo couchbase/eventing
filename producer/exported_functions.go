@@ -309,25 +309,6 @@ func (p *Producer) ResumeProducer() {
 	p.stateChangeCh <- resume
 }
 
-// StopProducer cleans up resource handles
-func (p *Producer) StopProducer() {
-	logPrefix := "Producer::StopProducer"
-
-	if p.stopProducerCh != nil {
-		p.stopProducerCh <- struct{}{}
-	}
-
-	logging.Infof("%s [%s:%d] Signalled Producer::Serve to exit",
-		logPrefix, p.appName, p.LenRunningConsumers())
-
-	if p.workerSupervisor != nil {
-		p.workerSupervisor.Stop(p.appName)
-	}
-
-	logging.Infof("%s [%s:%d] Stopped supervisor tree",
-		logPrefix, p.appName, p.LenRunningConsumers())
-}
-
 // GetDcpEventsRemainingToProcess returns remaining dcp events to process
 func (p *Producer) GetDcpEventsRemainingToProcess() uint64 {
 	var remainingEvents uint64
