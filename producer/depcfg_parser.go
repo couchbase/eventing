@@ -99,10 +99,17 @@ func (p *Producer) parseDepcfg() error {
 			scopeName := common.CheckAndReturnDefaultForScopeOrCollection(string(binding.ScopeName()))
 			collectionName := common.CheckAndReturnDefaultForScopeOrCollection(string(binding.CollectionName()))
 
-			if string(binding.BucketName()) == p.handlerConfig.SourceKeyspace.BucketName &&
-				scopeName == p.handlerConfig.SourceKeyspace.ScopeName &&
-				collectionName == p.handlerConfig.SourceKeyspace.CollectionName &&
-				string(config.Access(idx)) == "rw" {
+			if string(config.Access(idx)) != "rw" {
+				continue
+			}
+
+			bindingKeyspace := common.Keyspace{
+				BucketName:     string(binding.BucketName()),
+				ScopeName:      scopeName,
+				CollectionName: collectionName,
+			}
+
+			if p.handlerConfig.SourceKeyspace.Equals(bindingKeyspace) {
 				p.isSrcMutation = true
 				break
 			}

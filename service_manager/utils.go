@@ -319,12 +319,13 @@ func (m *ServiceMgr) isSrcMutationEnabled(cfg *depCfg) bool {
 		CollectionName: cfg.SourceCollection,
 	}
 	for _, binding := range cfg.Buckets {
-		bind := common.Keyspace{
+		bindingKeyspace := common.Keyspace{
 			BucketName:     binding.BucketName,
 			ScopeName:      binding.ScopeName,
 			CollectionName: binding.CollectionName,
 		}
-		if bind == sourceKeyspace && binding.Access == "rw" {
+
+		if binding.Access == "rw" && sourceKeyspace.Equals(bindingKeyspace) {
 			return true
 		}
 	}
