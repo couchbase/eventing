@@ -112,13 +112,19 @@ func (p *Producer) Serve() {
 		if err == common.BucketNotWatched || err == collections.SCOPE_NOT_FOUND || err == collections.COLLECTION_NOT_FOUND {
 			p.bootstrapFinishCh <- struct{}{}
 			p.isBootstrapping = false
-			p.notifyInitCh <- struct{}{}
+			for i := len(p.notifyInitCh); i < 2; i++ {
+				p.notifyInitCh <- struct{}{}
+			}
 			p.notifySupervisorCh <- struct{}{}
 		}
 
-		if p.retryCount >= 0 {
-			p.notifyInitCh <- struct{}{}
+		if p.retryCount >= 0 || atomic.LoadInt32(&p.isTerminateRunning) == 1 {
 			p.bootstrapFinishCh <- struct{}{}
+			p.isBootstrapping = false
+			for i := len(p.notifyInitCh); i < 2; i++ {
+				p.notifyInitCh <- struct{}{}
+			}
+			p.notifySupervisorCh <- struct{}{}
 			p.superSup.RemoveProducerToken(p.appName)
 
 			msg := common.DefaultUndeployAction()
@@ -425,7 +431,6 @@ func (p *Producer) Serve() {
 			p.feedbackListeners = make(map[common.EventingConsumer]net.Listener)
 			p.listenerRWMutex.Unlock()
 
-			p.notifySupervisorCh <- struct{}{}
 			return
 		}
 	}
@@ -438,7 +443,7 @@ func (p *Producer) Stop(context string) {
 	logging.Infof("%s [%s:%d] Gracefully shutting down producer routine",
 		logPrefix, p.appName, p.LenRunningConsumers())
 
-	p.isTerminateRunning = true
+	atomic.StoreInt32(&p.isTerminateRunning, 1)
 
 	close(p.stopUndeployWaitCh)
 	p.latencyStats.Close()
@@ -905,6 +910,7 @@ func (p *Producer) GetDebuggerURL() (string, error) {
 
 func (p *Producer) updateStats() {
 	logPrefix := "Producer::updateStats"
+	defer p.updateStatsTicker.Stop()
 
 	for {
 		select {
@@ -912,7 +918,6 @@ func (p *Producer) updateStats() {
 			err := p.vbDistributionStats()
 			if err == common.ErrRetryTimeout {
 				logging.Errorf("%s [%s:%d] Exiting either due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
-				p.updateStatsTicker.Stop()
 				return
 			} else if err == common.ErrEncryptionLevelChanged {
 				continue
@@ -921,7 +926,6 @@ func (p *Producer) updateStats() {
 			err = p.getSeqsProcessed()
 			if err == common.ErrRetryTimeout {
 				logging.Errorf("%s [%s:%d] Exiting either due to timeout", logPrefix, p.appName, p.LenRunningConsumers())
-				p.updateStatsTicker.Stop()
 				return
 			} else if err == common.ErrEncryptionLevelChanged {
 				continue
@@ -929,13 +933,11 @@ func (p *Producer) updateStats() {
 
 		case <-p.stopCh:
 			logging.Infof("%s [%s:%d] Got message on stop chan, exiting", logPrefix, p.appName, p.LenRunningConsumers())
-			p.updateStatsTicker.Stop()
 			return
 
 		default:
-			if p.isTerminateRunning {
+			if atomic.LoadInt32(&p.isTerminateRunning) == 1 {
 				logging.Infof("%s [%s:%d] Terminate running, exiting", logPrefix, p.appName, p.LenRunningConsumers())
-				p.updateStatsTicker.Stop()
 				return
 			}
 			time.Sleep(time.Second)

@@ -346,7 +346,6 @@ type EventingProducer interface {
 	GetMetadataKeyspaceID() (KeyspaceID, bool)
 	SrcMutation() bool
 	Stop(context string)
-	StopProducer()
 	StopRunningConsumers()
 	String() string
 	SetTrapEvent(value bool)

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"sync/atomic"
 
 	"github.com/couchbase/eventing/common"
 	couchbase "github.com/couchbase/eventing/dcp"
@@ -63,7 +64,7 @@ var clearDebuggerInstanceCallback = func(args ...interface{}) error {
 	logPrefix := "Producer::clearDebuggerInstanceCallback"
 
 	p := args[0].(*Producer)
-	if p.isTerminateRunning {
+	if atomic.LoadInt32(&p.isTerminateRunning) == 1 {
 		return nil
 	}
 	p.metadataHandleMutex.RLock()
@@ -105,7 +106,7 @@ var writeDebuggerURLCallback = func(args ...interface{}) error {
 
 	p := args[0].(*Producer)
 	url := args[1].(string)
-	if p.isTerminateRunning {
+	if atomic.LoadInt32(&p.isTerminateRunning) == 1 {
 		return nil
 	}
 	p.metadataHandleMutex.RLock()
@@ -155,7 +156,7 @@ var setOpCallback = func(args ...interface{}) error {
 		operr = args[3].(*error)
 	}
 
-	if p.isTerminateRunning {
+	if atomic.LoadInt32(&p.isTerminateRunning) == 1 {
 		return nil
 	}
 
