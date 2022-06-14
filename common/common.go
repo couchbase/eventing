@@ -25,6 +25,11 @@ const (
 	DcpFromPrior  = DcpStreamBoundary("from_prior")
 )
 
+const (
+	AppLocationTag = "appLocation"
+	AppLocationsTag = "appLocations"
+)
+
 var MetakvMaxRetries int64 = 60
 
 type ChangeType string
