@@ -1394,21 +1394,21 @@ angular
       self.functionScopes = self.getScopes(appModel.function_scope.bucket,
         snapshot.data.func_scope, true);
       self.sourceBuckets = self.getLatestBuckets(snapshot.data
-        .read_permission);
+        .dcp_stream_permission);
       self.metadataBuckets = self.getLatestBuckets(snapshot.data
-        .write_permission);
+        .read_write_permission);
       self.sourceCollections = [appModel.depcfg.source_collection];
       self.metadataCollections = [appModel.depcfg.metadata_collection];
       self.sourceScopes = [appModel.depcfg.source_scope];
       self.metadataScopes = [appModel.depcfg.metadata_scope];
-
       self.sourceBucket = appModel.depcfg.source_bucket;
       self.metadataBucket = appModel.depcfg.metadata_bucket;
       self.sourceScope = appModel.depcfg.source_scope;
       self.sourceCollection = appModel.depcfg.source_collection;
       self.metadataScope = appModel.depcfg.metadata_scope;
       self.metadataCollection = appModel.depcfg.metadata_collection;
-
+      if (!self.sourceBuckets.includes(self.sourceBucket)) self.sourceBuckets.push(self.sourceBucket);
+      if (!self.metadataBuckets.includes(self.metadataBucket)) self.metadataBuckets.push(self.metadataBucket);
       self.savedApps = savedApps;
 
       // Need to pass a deep copy or the changes will be stored locally till refresh.
@@ -1576,26 +1576,30 @@ angular
 
       self.populateSourceScopes = function(bucketName) {
         self.sourceScopes = self.getScopes(bucketName, snapshot.data
-          .read_permission, true);
+          .dcp_stream_permission, true);
+        if(!self.sourceScopes.includes(self.sourceScope)) self.sourceScopes.push(self.sourceScope);
         self.populateSourceCollections(bucketName, $scope.appModel.depcfg
           .source_scope);
       };
 
       self.populateSourceCollections = function(bucketName, scopeName) {
         self.sourceCollections = self.getCollection(bucketName, scopeName,
-          snapshot.data.read_permission, true);;
+          snapshot.data.dcp_stream_permission, true);
+        if(!self.sourceCollections.includes(self.sourceCollection)) self.sourceCollections.push(self.sourceCollection);
       };
 
       self.populateMetadataScopes = function(bucketName) {
         self.metadataScopes = self.getScopes(bucketName, snapshot.data
-          .write_permission, false);
+          .read_write_permission, false);
+        if (!self.metadataScopes.includes(self.metadataScope)) self.metadataScopes.push(self.metadataScope);
         self.populateMetadataCollections(bucketName, $scope.appModel.depcfg
           .metadata_scope);
       };
 
       self.populateMetadataCollections = function(bucketName, scopeName) {
         self.metadataCollections = self.getCollection(bucketName, scopeName,
-          snapshot.data.write_permission, false);
+          snapshot.data.read_write_permission, false);
+        if(!self.metadataCollections.includes(self.metadataCollection)) self.metadataCollections.push(self.metadataCollection);
       };
 
       Object.assign(appModel.depcfg, ApplicationService

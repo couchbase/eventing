@@ -61,7 +61,7 @@ type Producer struct {
 	handleV8ConsumerMutex  *sync.Mutex // controls access to Producer.handleV8Consumer
 	isBootstrapping        bool
 	isPlannerRunning       bool
-	isTerminateRunning     bool
+	isTerminateRunning     int32
 	isRebalanceOngoing     int32
 	isSrcMutation          bool
 	isUsingTimer           bool
