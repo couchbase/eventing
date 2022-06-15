@@ -452,11 +452,19 @@ func (m *ServiceMgr) validateDeploymentConfig(deploymentConfig *depCfg) (info *r
 		return
 	}
 
+	if info = m.validateStorageEngine(deploymentConfig.SourceBucket); info.ErrCode != response.Ok {
+		return
+	}
+
 	if info = m.validateNonEmpty(deploymentConfig.MetadataBucket, "Metadata bucket name"); info.ErrCode != response.Ok {
 		return
 	}
 
 	if info = m.validateKeyspaceExists(deploymentConfig.MetadataBucket, deploymentConfig.MetadataScope, deploymentConfig.MetadataCollection, !allowWildcards); info.ErrCode != response.Ok {
+		return
+	}
+
+	if info = m.validateStorageEngine(deploymentConfig.MetadataBucket); info.ErrCode != response.Ok {
 		return
 	}
 
@@ -504,6 +512,10 @@ func (m *ServiceMgr) getBSId(fS *common.FunctionScope) (string, uint32, *respons
 		return "", 0, info
 	}
 
+	if info = m.validateStorageEngine(fS.BucketName); info.ErrCode != response.Ok {
+		return "", 0, info
+	}
+
 	return bucketUUID, scopeId, info
 }
 
@@ -521,6 +533,10 @@ func (m *ServiceMgr) validateBucketBindings(bindings []bucket, existingAliases m
 
 		if info = m.validateKeyspaceExists(binding.BucketName, binding.ScopeName, binding.CollectionName, allowWildcards); info.ErrCode != response.Ok {
 			info.Description = fmt.Sprintf("Keyspace bucket: %s scope: %s collection: %s used for binding: %s doesn't exist", binding.BucketName, binding.ScopeName, binding.CollectionName, binding.Alias)
+			return
+		}
+
+		if info = m.validateStorageEngine(binding.BucketName); info.ErrCode != response.Ok {
 			return
 		}
 

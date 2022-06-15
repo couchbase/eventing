@@ -1007,8 +1007,10 @@ func (p *Pool) Connect(baseU string) (err error) {
 // Filter out magma buckets
 func (p *Pool) GetBuckets() []string {
 	buckets := make([]string, 0, len(p.BucketMap))
-	for bucketName := range p.BucketMap {
-		buckets = append(buckets, bucketName)
+	for bucketName, b := range p.BucketMap {
+		if b.Storage != "magma" {
+			buckets = append(buckets, bucketName)
+		}
 	}
 	return buckets
 }
