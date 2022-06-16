@@ -304,7 +304,7 @@ func (m *ServiceMgr) getSourceBindingFromFlatBuf(config *cfg.DepCfg, appdata *cf
 				CollectionName: string(binding.CollectionName()),
 			}
 
-			if sourceKeyspace == bind && string(appdata.Access(idx)) == "rw" {
+			if sourceKeyspace.Equals(bind) && string(appdata.Access(idx)) == "rw" {
 				return binding
 			}
 		}
@@ -332,9 +332,9 @@ func (m *ServiceMgr) isSrcMutationEnabled(cfg *depCfg) bool {
 	return false
 }
 
-func (m *ServiceMgr) isAppDeployable(appLocation string, app *application) bool {
+func (m *ServiceMgr) isAppDeployable(appLocation string, app *application) (string, bool) {
 	if !m.isSrcMutationEnabled(&app.DeploymentConfig) {
-		return true
+		return "", true
 	}
 
 	sourceKeyspace := common.Keyspace{BucketName: app.DeploymentConfig.SourceBucket,
@@ -348,7 +348,7 @@ func (m *ServiceMgr) isAppDeployable(appLocation string, app *application) bool 
 		}
 		data, err := util.ReadAppContent(metakvAppsPath, metakvChecksumPath, appName)
 		if err != nil {
-			return false
+			return "", false
 		}
 		appdata := cfg.GetRootAsConfig(data, 0)
 		config := new(cfg.DepCfg)
@@ -359,14 +359,14 @@ func (m *ServiceMgr) isAppDeployable(appLocation string, app *application) bool 
 			CollectionName: string(depcfg.SourceCollection()),
 		}
 
-		if sourceKeyspace == otherKeyspace {
+		if sourceKeyspace.Equals(otherKeyspace) {
 			binding := m.getSourceBindingFromFlatBuf(depcfg, appdata)
 			if binding != nil {
-				return false
+				return appName, false
 			}
 		}
 	}
-	return true
+	return "", true
 }
 
 func (m *ServiceMgr) getSourceAndDestinationsFromDepCfg(cfg *depCfg) (src common.Keyspace, dest map[common.Keyspace]struct{}) {

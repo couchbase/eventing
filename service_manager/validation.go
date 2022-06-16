@@ -48,10 +48,12 @@ func (m *ServiceMgr) validateAppRecursion(app *application) (info *response.Runt
 	}
 
 	appLocation := getAppLocationFromApp(app)
-	if allowInterBucketRecursion == false && m.isAppDeployable(appLocation, app) == false {
-		info.ErrCode = response.ErrInterFunctionRecursion
-		info.Description = fmt.Sprintf("Inter handler recursion error")
-		return
+	if allowInterBucketRecursion == false {
+		if appName, deployable := m.isAppDeployable(appLocation, app); !deployable {
+			info.ErrCode = response.ErrInterFunctionRecursion
+			info.Description = fmt.Sprintf("Inter handler recursion error with app: %s", appName)
+			return
+		}
 	}
 
 	source, destinations := m.getSourceAndDestinationsFromDepCfg(&app.DeploymentConfig)
