@@ -378,7 +378,7 @@ func (s *SuperSupervisor) SettingsChangeCallback(kve metakv.KVEntry) error {
 
 				logging.Infof("%s [%d] Function: %s deployment done", logPrefix, s.runningFnsCount(), appName)
 
-				extraAttributes := map[string]interface{}{"appName": appName}
+				extraAttributes := map[string]interface{}{common.AppLocationTag: appName}
 				sysEventId := util.EVENTID_DEPLOY_FUNCTION
 				if state == common.AppStatePaused {
 					sysEventId = util.EVENTID_RESUME_FUNCTION
@@ -431,7 +431,7 @@ func (s *SuperSupervisor) SettingsChangeCallback(kve metakv.KVEntry) error {
 					}
 				}
 
-				extraAttributes := map[string]interface{}{"appName": appName}
+				extraAttributes := map[string]interface{}{common.AppLocationTag: appName}
 				util.LogSystemEvent(util.EVENTID_PAUSE_FUNCTION, systemeventlog.SEInfo, extraAttributes)
 			}
 
@@ -464,7 +464,7 @@ func (s *SuperSupervisor) SettingsChangeCallback(kve metakv.KVEntry) error {
 				s.updateQuotaForRunningFns()
 				logging.Infof("%s [%d] Function: %s undeployment done", logPrefix, s.runningFnsCount(), appName)
 
-				extraAttributes := map[string]interface{}{"appName": appName}
+				extraAttributes := map[string]interface{}{common.AppLocationTag: appName}
 				util.LogSystemEvent(util.EVENTID_UNDEPLOY_FUNCTION, systemeventlog.SEInfo, extraAttributes)
 			}
 		}
@@ -640,7 +640,7 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(kve metakv.KVEntry) error 
 					s.appListRWMutex.Unlock()
 					logging.Infof("%s [%d] Function: %s deployment done", logPrefix, s.runningFnsCount(), appName)
 
-					extraAttributes := map[string]interface{}{"appName": appName}
+					extraAttributes := map[string]interface{}{common.AppLocationTag: appName}
 					util.LogSystemEvent(util.EVENTID_DEPLOY_FUNCTION, systemeventlog.SEInfo, extraAttributes)
 				} else {
 					s.checkAndSwapStatus(appName, deploymentStatus, processingStatus)
@@ -655,7 +655,7 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(kve metakv.KVEntry) error 
 							s.watchBucketWithGocb(metadata, appName)
 						}
 
-						extraAttributes := map[string]interface{}{"appName": appName}
+						extraAttributes := map[string]interface{}{common.AppLocationTag: appName}
 						util.LogSystemEvent(util.EVENTID_PAUSE_FUNCTION, systemeventlog.SEInfo, extraAttributes)
 					}
 				}
