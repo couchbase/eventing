@@ -2463,8 +2463,7 @@ angular
               .then(function(response) {
                 var buckets = [];
                 for (var bucket of response.data) {
-                  if ((bucket.bucketType !== 'memcached') && (bucket
-                      .storageBackend != "magma")) {
+                  if (bucket.bucketType !== 'memcached') {
                     buckets.push(bucket.name);
                   }
                 }
