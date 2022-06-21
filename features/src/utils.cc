@@ -347,7 +347,6 @@ Utils::Utils(v8::Isolate *isolate, const v8::Local<v8::Context> &context,
 
   context_.Reset(isolate_, context);
   global_.Reset(isolate_, context->Global());
-
 }
 
 Utils::~Utils() {
@@ -355,12 +354,6 @@ Utils::~Utils() {
   context_.Reset();
   global_.Reset();
 }
-
-std::unordered_map<std::string, std::string> Utils::enc_to_dec_map = {
-  {"%3D", "="},
-  {"%26", "&"},
-  {"%2F", "/"}
-};
 
 v8::Local<v8::Value>
 Utils::GetPropertyFromGlobal(const std::string &method_name) {
@@ -521,21 +514,7 @@ UrlEncode Utils::UrlEncodeAsString(const std::string &data) {
 
   std::string encoded(encoded_ptr);
   curl_free(encoded_ptr);
-  std::string enc = NormalizeEncodedURL(encoded);
-  return {enc};
-}
-
-
-std::string Utils::NormalizeEncodedURL(std::string encoded_url) {
-  for (auto itr = Utils::enc_to_dec_map.begin(); itr != Utils::enc_to_dec_map.end(); itr++) {
-        size_t found = encoded_url.find(itr->first);
-        while (found != std::string::npos) {
-            encoded_url.replace(found, itr->first.length(), itr->second);
-            found = encoded_url.find(itr->first, found + (itr->second.length()));
-        }
-    }
-    
-    return encoded_url;
+  return {encoded};
 }
 
 UrlEncode Utils::UrlEncodeAsKeyValue(const v8::Local<v8::Value> &obj_val) {
