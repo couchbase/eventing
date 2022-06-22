@@ -126,30 +126,31 @@ func (s *SuperSupervisor) isDeployable(appName string) (common.UndeployAction, e
 
 	allowWildcards := true
 	hostAddress := net.JoinHostPort(util.Localhost(), s.restPort)
-	sourceExist, err := util.ValidateAndCheckKeyspaceExist(depCfg.SourceBucket, depCfg.SourceScope,
+	err = util.ValidateAndCheckKeyspaceExist(depCfg.SourceBucket, depCfg.SourceScope,
 		depCfg.SourceCollection, hostAddress, allowWildcards)
+	if err == couchbase.ErrBucketNotFound || err == collections.SCOPE_NOT_FOUND || err == collections.COLLECTION_NOT_FOUND {
+		return msg, err
+	}
+
 	if err != nil {
 		return msg, nil
 	}
 
-	if !sourceExist {
-		return msg, fmt.Errorf("Source Keyspace doesn't exist")
-	}
-
-	metaExist, err := util.ValidateAndCheckKeyspaceExist(depCfg.MetadataBucket, depCfg.MetadataScope,
+	err = util.ValidateAndCheckKeyspaceExist(depCfg.MetadataBucket, depCfg.MetadataScope,
 		depCfg.MetadataCollection, hostAddress, !allowWildcards)
 	if err == util.ErrWildcardNotAllowed {
+		msg.SkipMetadataCleanup = true
 		return msg, err
+	}
+
+	if err == couchbase.ErrBucketNotFound || err == collections.SCOPE_NOT_FOUND || err == collections.COLLECTION_NOT_FOUND {
+		msg.SkipMetadataCleanup = true
+		return msg, fmt.Errorf("Meta Keyspace doesn't exist")
 	}
 
 	// Allow it for now. Undeploy routine will check later
 	if err != nil {
 		return msg, nil
-	}
-
-	if !metaExist {
-		msg.SkipMetadataCleanup = true
-		return msg, fmt.Errorf("Meta Keyspace doesn't exist")
 	}
 
 	if (funcScope.BucketName != "" || funcScope.ScopeName != "") && (funcScope.BucketName != "*" || funcScope.ScopeName != "*") {

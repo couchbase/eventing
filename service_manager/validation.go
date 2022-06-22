@@ -287,10 +287,22 @@ func (m *ServiceMgr) validateKeyspaceExists(bucketName, scopeName, collectionNam
 	}
 
 	nsServerEndpoint := net.JoinHostPort(util.Localhost(), m.restPort)
-	found, err := util.ValidateAndCheckKeyspaceExist(bucketName, scopeName, collectionName, nsServerEndpoint, wildcardsAllowed)
+	err := util.ValidateAndCheckKeyspaceExist(bucketName, scopeName, collectionName, nsServerEndpoint, wildcardsAllowed)
 	if err == util.ErrWildcardNotAllowed {
 		info.ErrCode = response.ErrInvalidRequest
 		info.Description = fmt.Sprintf("wildcard keyspace not allowed")
+		return
+	}
+
+	if err == couchbase.ErrBucketNotFound {
+		info.ErrCode = response.ErrBucketMissing
+		info.Description = fmt.Sprintf("Bucket %s does not exist", bucketName)
+		return
+	}
+
+	if err == collections.SCOPE_NOT_FOUND || err == collections.COLLECTION_NOT_FOUND {
+		info.ErrCode = response.ErrCollectionMissing
+		info.Description = fmt.Sprintf("bucket: %s scope: %s collection: %s", bucketName, scopeName, collectionName)
 		return
 	}
 
@@ -300,11 +312,6 @@ func (m *ServiceMgr) validateKeyspaceExists(bucketName, scopeName, collectionNam
 		return
 	}
 
-	if !found {
-		info.ErrCode = response.ErrCollectionMissing
-		info.Description = fmt.Sprintf("bucket: %s scope: %s collection: %s", bucketName, scopeName, collectionName)
-		return
-	}
 	return
 }
 
