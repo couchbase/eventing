@@ -177,6 +177,10 @@ var recreateCheckpointBlobsFromVbStatsCallback = func(args ...interface{}) error
 	}
 
 	vbuuid := c.vbProcessingStats.getVbStat(uint16(vb), "vb_uuid").(uint64)
+	manifestID, ok := c.vbProcessingStats.getVbStat(uint16(vb), "manifest_id").(string)
+	if !ok {
+		manifestID = "0"
+	}
 
 	vbBlob.AssignedWorker = c.ConsumerName()
 	vbBlob.CurrentVBOwner = c.HostPortAddr()
@@ -193,6 +197,7 @@ var recreateCheckpointBlobsFromVbStatsCallback = func(args ...interface{}) error
 	vbBlob.CurrentProcessedDocIDTimer = time.Now().UTC().Format(time.RFC3339)
 	vbBlob.LastProcessedDocIDTimerEvent = time.Now().UTC().Format(time.RFC3339)
 	vbBlob.NextDocIDTimerToProcess = time.Now().UTC().Add(time.Second).Format(time.RFC3339)
+	vbBlob.ManifestUID = manifestID
 
 	vbBlobVer := vbucketKVBlobVer{
 		*vbBlob,
@@ -259,6 +264,7 @@ var recreateCheckpointBlobCallback = func(args ...interface{}) error {
 		vbBlob.CurrentProcessedDocIDTimer = time.Now().UTC().Format(time.RFC3339)
 		vbBlob.LastProcessedDocIDTimerEvent = time.Now().UTC().Format(time.RFC3339)
 		vbBlob.NextDocIDTimerToProcess = time.Now().UTC().Add(time.Second).Format(time.RFC3339)
+		vbBlob.ManifestUID = "0"
 
 		vbBlobVer := vbucketKVBlobVer{
 			*vbBlob,
