@@ -129,6 +129,7 @@ func (p *Producer) Serve() {
 			p.superSup.RemoveProducerToken(p.appName)
 
 			msg := common.DefaultUndeployAction()
+			msg.Reason = "Producer exiting from Serve func"
 			p.UndeployHandler(msg)
 		}
 	}()
@@ -146,6 +147,8 @@ func (p *Producer) Serve() {
 
 			msg := common.DefaultUndeployAction()
 			msg.DeleteFunction = true
+			msg.Reason = fmt.Sprintf("Unable to retrieve function scope (%s:%s), err: %v",
+				p.functionScope.BucketName, p.functionScope.ScopeName, err)
 			p.UndeployHandler(msg)
 			return
 		}
@@ -157,9 +160,16 @@ func (p *Producer) Serve() {
 		p.handlerConfig.SourceKeyspace.CollectionName)
 	if err == common.BucketNotWatched || err == collections.SCOPE_NOT_FOUND || err == collections.COLLECTION_NOT_FOUND {
 		msg := common.DefaultUndeployAction()
+
+		msg.Reason = fmt.Sprintf("Source bucket, scope or collection not found (%s:%s:%s), err: %v",
+			p.handlerConfig.SourceKeyspace.BucketName,
+			p.handlerConfig.SourceKeyspace.ScopeName,
+			p.handlerConfig.SourceKeyspace.CollectionName,
+			err)
+
 		p.UndeployHandler(msg)
 
-		logging.Errorf("%s [%s] source scope or collection not found %v", logPrefix, p.appName, err)
+		logging.Errorf("%s [%s] source bucket, scope or collection not found %v", logPrefix, p.appName, err)
 		return
 	}
 	if err != nil {
@@ -172,9 +182,16 @@ func (p *Producer) Serve() {
 	if err == common.BucketNotWatched || err == collections.SCOPE_NOT_FOUND || err == collections.COLLECTION_NOT_FOUND {
 		msg := common.DefaultUndeployAction()
 		msg.SkipMetadataCleanup = true
+
+		msg.Reason = fmt.Sprintf("Metadata bucket, scope or collection not found (%s:%s:%s), err: %v",
+			p.metadataKeyspace.BucketName,
+			p.metadataKeyspace.ScopeName,
+			p.metadataKeyspace.CollectionName,
+			err)
+
 		p.UndeployHandler(msg)
 
-		logging.Errorf("%s [%s] metadata scope or collection not found %v", logPrefix, p.appName, err)
+		logging.Errorf("%s [%s] metadata bucket, scope or collection not found %v", logPrefix, p.appName, err)
 		return
 	}
 	if err != nil {
@@ -985,19 +1002,36 @@ func (p *Producer) undeployHandlerWait() {
 				continue
 			}
 
+			var undeployReason string
+
+			if len(notAllowed) > 0 {
+				undeployReason = fmt.Sprintf("Undeploying function due to revocation of one or more required permissions. Missing permissions: %v",
+					notAllowed)
+			}
+
 			if atomic.CompareAndSwapInt32(&p.lazyUndeploy, 0, 1) {
 				deleteFunction := false
 				if p.functionScope.BucketName != "*" {
 					_, sid := p.GetFuncScopeDetails()
 					internal, err := p.superSup.GetKeyspaceID(p.functionScope.BucketName, p.functionScope.ScopeName, "")
 					if err != nil || internal.Sid != sid {
+						logging.Errorf("%s [%s] Undeploying function due to due to non-existent function scope, or scope-id mismatch",
+							logPrefix, p.appName)
+
+						undeployReason = fmt.Sprintf("Undeploying function due to non-existent function scope, or scope-id mismatch (%s:%s)",
+							p.functionScope.BucketName, p.functionScope.ScopeName)
+
 						deleteFunction = true
 					}
 				}
 
-				logging.Errorf("%s [%s] Undeploying handler due to handler lost permission. notAllowed: %v", logPrefix, p.appName, notAllowed)
+				if len(notAllowed) > 0 {
+					logging.Errorf("%s [%s] Undeploying function due to lost permission(s). notAllowed: %v", logPrefix, p.appName, notAllowed)
+				}
+
 				msg := common.DefaultUndeployAction()
 				msg.DeleteFunction = deleteFunction
+				msg.Reason = undeployReason
 				p.superSup.StopProducer(p.appName, msg)
 			}
 

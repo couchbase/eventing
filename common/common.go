@@ -26,8 +26,9 @@ const (
 )
 
 const (
-	AppLocationTag = "appLocation"
+	AppLocationTag  = "appLocation"
 	AppLocationsTag = "appLocations"
+	ReasonTag       = "reason"
 )
 
 var MetakvMaxRetries int64 = 60
@@ -848,6 +849,8 @@ type UndeployAction struct {
 	UpdateMetakv        bool
 	SkipMetadataCleanup bool
 	DeleteFunction      bool
+
+	Reason string
 }
 
 func DefaultUndeployAction() UndeployAction {
