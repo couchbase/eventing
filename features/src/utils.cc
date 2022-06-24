@@ -347,7 +347,6 @@ Utils::Utils(v8::Isolate *isolate, const v8::Local<v8::Context> &context,
 
   context_.Reset(isolate_, context);
   global_.Reset(isolate_, context->Global());
-
 }
 
 Utils::~Utils() {
@@ -356,10 +355,20 @@ Utils::~Utils() {
   global_.Reset();
 }
 
+const char* Utils::QUESTION_MARK = "?";
+const char* Utils::EQ = "=";
+const char* Utils::AMP = "&";
+const char* Utils::SLASH = "/";
+const std::string Utils::HEX_QUESTION_MARK = "%3F";
+const std::string Utils::HEX_EQ = "%3D";
+const std::string Utils::HEX_AMP = "%26";
+const std::string Utils::HEX_SLASH = "%2F";
+
 std::unordered_map<std::string, std::string> Utils::enc_to_dec_map = {
-  {"%3D", "="},
-  {"%26", "&"},
-  {"%2F", "/"}
+  {Utils::HEX_EQ, Utils::EQ},
+  {Utils::HEX_AMP, Utils::AMP},
+  {Utils::HEX_SLASH, Utils::SLASH},
+  {Utils::HEX_QUESTION_MARK, Utils::QUESTION_MARK}
 };
 
 v8::Local<v8::Value>
@@ -485,9 +494,9 @@ ConnStrInfo Utils::GetConnectionString(const std::string &bucket) const {
   }
   conn_info.is_valid = true;
   std::string nodes_list;
-  for (std::vector<std::string>::const_iterator nodes_iter = nodes_info.kv_nodes.begin();
-      nodes_iter != nodes_info.kv_nodes.end();
-      ++nodes_iter) {
+  for (std::vector<std::string>::const_iterator nodes_iter =
+           nodes_info.kv_nodes.begin();
+       nodes_iter != nodes_info.kv_nodes.end(); ++nodes_iter) {
     nodes_list += *nodes_iter;
     if (nodes_iter != nodes_info.kv_nodes.end() - 1) {
       nodes_list += ',';
@@ -521,21 +530,28 @@ UrlEncode Utils::UrlEncodeAsString(const std::string &data) {
 
   std::string encoded(encoded_ptr);
   curl_free(encoded_ptr);
-  std::string enc = NormalizeEncodedURL(encoded);
-  return {enc};
+  return {encoded};
 }
 
+UrlEncode Utils::EncodeAndNormalizePath(const std::string& path) {
+  auto path_v8str = v8Str(isolate_, path.c_str());
+  auto encoded_path = UrlEncodeAny(path_v8str);
+  if (encoded_path.is_fatal)
+    return encoded_path;
 
-std::string Utils::NormalizeEncodedURL(std::string encoded_url) {
-  for (auto itr = Utils::enc_to_dec_map.begin(); itr != Utils::enc_to_dec_map.end(); itr++) {
-        size_t found = encoded_url.find(itr->first);
-        while (found != std::string::npos) {
-            encoded_url.replace(found, itr->first.length(), itr->second);
-            found = encoded_url.find(itr->first, found + (itr->second.length()));
-        }
+  std::string encoded_url = encoded_path.encoded;
+  for (auto itr = Utils::enc_to_dec_map.begin();
+       itr != Utils::enc_to_dec_map.end(); itr++) {
+    size_t found = encoded_url.find(itr->first);
+    while (found != std::string::npos) {
+      encoded_url.replace(found, itr->first.length(), itr->second);
+      if (itr->first != Utils::HEX_SLASH)
+        break;
+      else
+        found = encoded_url.find(itr->first, found + (itr->second.length()));
     }
-    
-    return encoded_url;
+  }
+  return {encoded_url};
 }
 
 UrlEncode Utils::UrlEncodeAsKeyValue(const v8::Local<v8::Value> &obj_val) {
@@ -676,6 +692,58 @@ Utils::UrlDecodeAsKeyValue(const std::string &data,
     kv[key_info.decoded] = value_info.decoded;
   }
   return UrlDecode();
+}
+
+std::pair<std::string, std::string> Utils::ExtractPathAndQueryParamsFromURL(const std::string& encoded_url) {
+  size_t qm_pos = encoded_url.find(Utils::QUESTION_MARK);
+  if (qm_pos != std::string::npos) {
+    if (qm_pos == encoded_url.size()-1) {
+      return std::make_pair(encoded_url.substr(0, qm_pos), "");
+    }
+    return std::make_pair(encoded_url.substr(0, qm_pos),encoded_url.substr(qm_pos+1, encoded_url.size()));
+  }
+  return std::make_pair(encoded_url, "");
+}
+
+UrlEncode Utils::EncodeAndNormalizeQueryParams(const std::string& query_params) {
+  if (query_params.size() == 0 || query_params == "") {
+    return {""};
+  }
+
+  std::ostringstream result;
+  size_t start_idx = 0;
+  bool delim_found;
+
+  while(start_idx <= query_params.size()-1){
+    auto delim_pos = query_params.find(Utils::AMP, start_idx);
+    if (delim_pos != std::string::npos) {
+      delim_found = true;
+    } else {
+      delim_found = false;
+      delim_pos = query_params.size();
+    }
+    auto single_query_param = query_params.substr(start_idx, delim_pos);
+    auto single_query_param_v8Str = v8Str(isolate_, single_query_param.c_str());
+    auto encoded_single_query_param = UrlEncodeAny(single_query_param_v8Str);
+    if (encoded_single_query_param.is_fatal)
+      return encoded_single_query_param;
+
+    auto normalized_single_query_param = NormalizeSingleQueryParam(encoded_single_query_param.encoded);
+    result << normalized_single_query_param.c_str();
+    if (delim_found)
+      result << Utils::AMP;
+    start_idx = delim_pos + 1;
+  }
+
+  return {result.str()};
+}
+
+std::string Utils::NormalizeSingleQueryParam(std::string& query_param) {
+  size_t found = query_param.find(Utils::HEX_EQ);
+  if (found != std::string::npos) {
+    query_param.replace(found, Utils::HEX_EQ.size(), Utils::EQ);
+  }
+  return query_param;
 }
 
 void Crc64Function(const v8::FunctionCallbackInfo<v8::Value> &args) {
