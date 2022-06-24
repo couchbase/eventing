@@ -349,6 +349,7 @@ func (s *SuperSupervisor) SettingsChangeCallback(kve metakv.KVEntry) error {
 							msg := common.UndeployAction{
 								SkipMetadataCleanup: true,
 							}
+							msg.Reason = "Detected Cluster Encryption Setting change; triggering Undeployment followed by re-Deployment"
 							s.StopProducer(appName, msg)
 							goto retryAppDeploy
 						}
@@ -453,6 +454,9 @@ func (s *SuperSupervisor) SettingsChangeCallback(kve metakv.KVEntry) error {
 					msg := common.UndeployAction{
 						SkipMetadataCleanup: false,
 					}
+					msg.Reason = fmt.Sprintf("Function: %s enabled, settings change requesting undeployment",
+						appName)
+
 					s.StopProducer(appName, msg)
 					s.appListRWMutex.Lock()
 					delete(s.bootstrappingApps, appName)
@@ -463,9 +467,6 @@ func (s *SuperSupervisor) SettingsChangeCallback(kve metakv.KVEntry) error {
 
 				s.updateQuotaForRunningFns()
 				logging.Infof("%s [%d] Function: %s undeployment done", logPrefix, s.runningFnsCount(), appName)
-
-				extraAttributes := map[string]interface{}{common.AppLocationTag: appName}
-				util.LogSystemEvent(util.EVENTID_UNDEPLOY_FUNCTION, systemeventlog.SEInfo, extraAttributes)
 			}
 		}
 
@@ -617,6 +618,7 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(kve metakv.KVEntry) error 
 							msg := common.UndeployAction{
 								SkipMetadataCleanup: true,
 							}
+							msg.Reason = "Detected Cluster Encryption Setting change; triggering Undeployment followed by re-Deployment"
 							s.StopProducer(appName, msg)
 							goto retryAppDeploy
 						}
@@ -959,6 +961,8 @@ func (s *SuperSupervisor) cleanupProducer(appName string, msg common.UndeployAct
 		if msg.UpdateMetakv || msg.DeleteFunction {
 			util.Retry(util.NewExponentialBackoff(), &s.retryCount, undeployFunctionCallback, s, appName, msg.DeleteFunction)
 		}
+
+		s.logUndeploymentInfo(p, appName, msg)
 	} else {
 		source, metadata, _, err := s.getSourceMetaAndFunctionKeySpaces(appName)
 		if err == nil {
@@ -968,6 +972,23 @@ func (s *SuperSupervisor) cleanupProducer(appName string, msg common.UndeployAct
 	}
 
 	return nil
+}
+
+func (s *SuperSupervisor) logUndeploymentInfo(p common.EventingProducer,
+		appName string, msg common.UndeployAction) {
+
+	logPrefix := "SuperSupervisor::logUndeploymentInfo"
+
+	extraAttributes := map[string]interface{}{common.AppLocationTag: appName,
+		common.ReasonTag: msg.Reason}
+	util.LogSystemEvent(util.EVENTID_UNDEPLOY_FUNCTION, systemeventlog.SEInfo, extraAttributes)
+
+	logMsg := fmt.Sprintf("Function: %s undeployed, reason: %s",
+		appName, msg.Reason)
+
+	logging.Infof("%s %s", logPrefix, logMsg)
+
+	p.WriteAppLog(logMsg)
 }
 
 func (s *SuperSupervisor) stopAndDeleteProducer(p common.EventingProducer) {

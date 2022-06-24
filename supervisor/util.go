@@ -443,7 +443,11 @@ func (s *SuperSupervisor) checkDeletedCid(bucketName string) {
 			if err != nil || sid != funcKeyspaceID.Sid {
 				logging.Infof("%s Undeploying %s Reason: function manage scope delete err: %v", logPrefix, appName, err)
 				msg.DeleteFunction = true
+				msg.Reason = fmt.Sprintf("Undeployment triggered due to function scope deletion or id mismatch (%s:%s)",
+					p.FunctionManageBucket(), p.FunctionManageScope())
 				p.UndeployHandler(msg)
+
+				continue
 			}
 		}
 
@@ -456,6 +460,9 @@ func (s *SuperSupervisor) checkDeletedCid(bucketName string) {
 		if err != nil || !mKeyspaceID.Equals(mKeyspaceID2) {
 			logging.Infof("%s Undeploying %s Reason: metadata collection delete err: %v", logPrefix, appName, err)
 			msg.SkipMetadataCleanup = true
+			msg.Reason = fmt.Sprintf("Undeployment triggered due to metadata keyspace deletion or id mismatch (%s:%s:%s)",
+				p.MetadataBucket(), p.MetadataScope(), p.MetadataCollection())
+
 			p.UndeployHandler(msg)
 			continue
 		}
@@ -467,6 +474,8 @@ func (s *SuperSupervisor) checkDeletedCid(bucketName string) {
 		sKeyspaceID2, err := s.GetKeyspaceID(p.SourceBucket(), p.SourceScope(), p.SourceCollection())
 		if err != nil || !sKeyspaceID.Equals(sKeyspaceID2) {
 			logging.Infof("%s Undeploying %s Reason: source collection delete err: %v", logPrefix, appName, err)
+			msg.Reason = fmt.Sprintf("Undeployment triggered due to source keyspace deletion or id mismatch (%s:%s:%s)",
+				p.SourceBucket(), p.SourceScope(), p.SourceCollection())
 			p.UndeployHandler(msg)
 		}
 	}
@@ -499,6 +508,13 @@ func (s *SuperSupervisor) checkAppNeedsUndeployment(bucketName, appName string, 
 		undeploy = true
 		msg.DeleteFunction = (msg.DeleteFunction || (mType == common.FunctionScopeWatch))
 		msg.SkipMetadataCleanup = (msg.SkipMetadataCleanup || (mType == common.MetaWatch))
+
+		if bucketDeleted {
+			msg.Reason = fmt.Sprintf("Undeployment triggered due to deletion of Bucket (%s)", bucketName)
+		} else {
+			msg.Reason = fmt.Sprintf("Undeployment triggered due to deletion of either scope or collection (%s:%s:%s)",
+				bucketName, keyspace.ScopeName, keyspace.CollectionName)
+		}
 	}
 
 	return
