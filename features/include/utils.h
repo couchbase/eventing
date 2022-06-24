@@ -170,14 +170,25 @@ public:
   static Info ValidateDataType(const v8::Local<v8::Value> &arg);
   ConnStrInfo GetConnectionString(const std::string &bucket) const;
   std::string certFile_;
-
+  UrlEncode EncodeAndNormalizePath(const std::string& path);
+  std::pair<std::string, std::string> ExtractPathAndQueryParamsFromURL(const std::string& encoded_url);
+  UrlEncode EncodeAndNormalizeQueryParams(const std::string& query_params);
+  std::string NormalizeSingleQueryParam(std::string& query_param);
+  
 private:
   v8::Isolate *isolate_;
   CURL *curl_handle_; // Used only to perform url encode/decode
   v8::Persistent<v8::Context> context_;
   v8::Persistent<v8::Object> global_;
   static std::unordered_map<std::string, std::string> enc_to_dec_map;
-  std::string NormalizeEncodedURL(std::string encoded_url);
+  static const char* QUESTION_MARK;
+  static const char* EQ;
+  static const char* AMP;
+  static const char* SLASH;
+  static const std::string HEX_QUESTION_MARK;
+  static const std::string HEX_EQ;
+  static const std::string HEX_AMP;
+  static const std::string HEX_SLASH;
 };
 
 template <typename T> class AtomicWrapper {
