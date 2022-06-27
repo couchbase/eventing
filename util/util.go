@@ -1805,7 +1805,7 @@ func SuperImpose(source, on map[string]interface{}) map[string]interface{} {
 func CPUCount(log bool) int {
 	logPrefix := "util::GetCPUCount"
 
-	cpuCount := runtime.NumCPU()
+	cpuCount := runtime.GOMAXPROCS(-1)
 	if cpuCount == 0 {
 		if log {
 			logging.Errorf("%s CPU count reported as 0", logPrefix)
