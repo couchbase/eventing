@@ -895,6 +895,14 @@ func (c *Consumer) dcpRequestStreamHandle(vb uint16, vbBlob *vbucketKVBlob, star
 
 	c.dcpStreamReqCounter++
 	hexScopeId, hexColId := getHexKeyspaceIDs(c.srcKeyspaceID)
+	if mid == "" {
+		manifestID, ok := c.vbProcessingStats.getVbStat(uint16(vb), "manifest_id").(string)
+		if !ok || manifestID == "" {
+			mid = "0"
+		} else {
+			mid = manifestID
+		}
+	}
 	requestString := fmt.Sprintf("{seq: %v, uuid: %v, kv_node: %v, mid: %v, scopeID: %v, cid: %v}", start, vbBlob.VBuuid, vbKvAddr, mid, hexScopeId, hexColId)
 	c.dcpStatsLogger.AddDcpLog(vb, LogState, requestString)
 	err = dcpFeed.DcpRequestStream(vb, opaque, flags, vbBlob.VBuuid, start, end, snapStart, snapEnd, mid, hexScopeId, hexColId)
