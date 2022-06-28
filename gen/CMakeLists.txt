@@ -116,12 +116,13 @@ ADD_CUSTOM_COMMAND(
 
 ADD_CUSTOM_COMMAND(
         OUTPUT inspector/v8_inspector_protocol_json.h
-        COMMAND python
+        COMMAND ${PYTHON_EXE}
         ARGS
           ../third_party/inspector/compress_json.py
           ../third_party/inspector/js_protocol.json
           inspector/v8_inspector_protocol_json.h
         DEPENDS
+          local-cbpy
           ../third_party/inspector/compress_json.py
           ../third_party/inspector/js_protocol.json
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
