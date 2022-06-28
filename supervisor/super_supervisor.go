@@ -60,9 +60,9 @@ func NewSuperSupervisor(adminPort AdminPortConfig, eventingDir, kvPort, restPort
 	}
 
 	var err error
-	s.cgroupMemLimit, err = getCgroupMemLimit()
+	s.systemMemLimit, err = getMemLimit()
 	if err != nil {
-		logging.Fatalf("Error in getting cgroup mem limit: %v", err)
+		logging.Fatalf("Error in getting memory limit: %v", err)
 		time.Sleep(time.Second)
 		os.Exit(1)
 	}
@@ -706,8 +706,9 @@ func (s *SuperSupervisor) HandleGlobalConfigChange(config common.Config) error {
 		switch key {
 		case "ram_quota":
 			if quota, ok := value.(float64); ok {
-				if s.cgroupMemLimit > 0 && (quota >= s.cgroupMemLimit) {
-					quota = s.cgroupMemLimit * cgroupMemQuotaThreshold
+				sysQuota := s.systemMemLimit * memQuotaThreshold
+				if sysQuota > 0 && (quota >= sysQuota) {
+					quota = sysQuota
 				}
 
 				memQuota := int64(quota)
@@ -975,7 +976,7 @@ func (s *SuperSupervisor) cleanupProducer(appName string, msg common.UndeployAct
 }
 
 func (s *SuperSupervisor) logUndeploymentInfo(p common.EventingProducer,
-		appName string, msg common.UndeployAction) {
+	appName string, msg common.UndeployAction) {
 
 	logPrefix := "SuperSupervisor::logUndeploymentInfo"
 
@@ -1087,16 +1088,22 @@ func (s *SuperSupervisor) checkAndSwapStatus(appName string, deploymentStatus, p
 	return true
 }
 
-func getCgroupMemLimit() (float64, error) {
+func getMemLimit() (float64, error) {
 	sysConfig, err := NewSystemConfig()
 	if err != nil {
 		return -1, err
 	}
 
 	defer sysConfig.Close()
-	memLimit, ok := sysConfig.getCgroupMemLimit()
-	if !ok {
-		return -1, nil
+	totMem, err := sysConfig.SystemTotalMem()
+	if err != nil {
+		return -1, err
 	}
+
+	memLimit, ok := sysConfig.getCgroupMemLimit()
+	if !ok || totMem < memLimit {
+		return totMem, nil
+	}
+
 	return memLimit, nil
 }

@@ -54,6 +54,16 @@ func (stats *systemConfig) getCgroupMemLimit() (float64, bool) {
 	return -1, false
 }
 
+// SystemTotalMem gets the total memory in bytes available to this Go runtime
+// on the bare node's total memory
+func (s *systemConfig) SystemTotalMem() (float64, error) {
+	var mem C.sigar_mem_t
+	if err := C.sigar_mem_get(s.handle, &mem); err != C.SIGAR_OK {
+		return 0, fmt.Errorf("Fail to get total memory.  Err=%v", C.sigar_strerror(s.handle, err))
+	}
+	return float64(mem.total) / BYTES_TO_MB, nil
+}
+
 type sigarControlGroupInfo struct {
 	Supported uint8 // "1" if cgroup info is supprted, "0" otherwise
 	Version   uint8 // "1" for cgroup v1, "2" for cgroup v2
