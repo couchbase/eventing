@@ -7,6 +7,7 @@ import (
 	"sync/atomic"
 
 	"github.com/couchbase/eventing/common"
+	"github.com/couchbase/eventing/common/collections"
 	couchbase "github.com/couchbase/eventing/dcp"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
@@ -197,6 +198,7 @@ var openDcpStreamFromZero = func(args ...interface{}) error {
 	metaKeyspaceID, _ := p.GetMetadataKeyspaceID()
 	hexCid := common.Uint32ToHex(metaKeyspaceID.Cid)
 
+	*keyspaceExist = true
 	err := dcpFeed.DcpRequestStream(vb, uint16(vb), uint32(0), vbuuid, uint64(0),
 		endSeqNumber, uint64(0), uint64(0), "0", "", hexCid)
 	if err != nil {
@@ -204,8 +206,18 @@ var openDcpStreamFromZero = func(args ...interface{}) error {
 			logPrefix, p.appName, p.LenRunningConsumers(), id, vb, err)
 
 		hostAddress := net.JoinHostPort(util.Localhost(), p.GetNsServerPort())
-		*keyspaceExist, err = util.ValidateAndCheckKeyspaceExist(p.MetadataBucket(), p.MetadataScope(), p.MetadataCollection(), hostAddress, false)
-		if err == util.ErrWildcardNotAllowed {
+		cic, err := util.FetchClusterInfoClient(hostAddress)
+		if err != nil {
+			return err
+		}
+
+		cinfo := cic.GetClusterInfoCache()
+		cinfo.RLock()
+		cid, err := cinfo.GetCollectionID(p.MetadataBucket(), p.MetadataScope(), p.MetadataCollection())
+		cinfo.RUnlock()
+
+		if err == couchbase.ErrBucketNotFound || err == collections.SCOPE_NOT_FOUND || err == collections.COLLECTION_NOT_FOUND {
+			*keyspaceExist = false
 			return nil
 		}
 
@@ -213,7 +225,8 @@ var openDcpStreamFromZero = func(args ...interface{}) error {
 			return err
 		}
 
-		if !(*keyspaceExist) {
+		if common.Uint32ToHex(cid) != hexCid {
+			*keyspaceExist = false
 			return nil
 		}
 

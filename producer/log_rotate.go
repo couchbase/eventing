@@ -2,6 +2,7 @@ package producer
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -29,14 +30,18 @@ type appLogCloser struct {
 
 	size int64
 
+	closed uint32
+
 	exitCh chan struct{}
 }
+
+var errApplogFileAlreadyClosed = errors.New("applog already closed")
 
 // Returns locked, Caller must unlock
 func (wc *appLogCloser) lockAndGet() *filePtr {
 	fptr := (*filePtr)(atomic.LoadPointer(&wc.filePtr))
 	fptr.lock.Lock()
-	for fptr.ptr == nil {
+	for fptr.ptr == nil && atomic.LoadUint32(&wc.closed) == 0 {
 		fptr.lock.Unlock()
 		fptr = (*filePtr)(atomic.LoadPointer(&wc.filePtr))
 		fptr.lock.Lock()
@@ -48,6 +53,10 @@ func (wc *appLogCloser) Write(p []byte) (_ int, err error) {
 	fptr := wc.lockAndGet()
 	defer fptr.lock.Unlock()
 
+	if atomic.LoadUint32(&wc.closed) == 1 {
+		return 0, errApplogFileAlreadyClosed
+	}
+
 	bytesWritten, err := fptr.wptr.Write(p)
 	atomic.AddInt64(&wc.size, int64(bytesWritten))
 	return bytesWritten, err
@@ -56,6 +65,10 @@ func (wc *appLogCloser) Write(p []byte) (_ int, err error) {
 func (wc *appLogCloser) Tail(sz int64) ([]byte, error) {
 	fptr := wc.lockAndGet()
 	defer fptr.lock.Unlock()
+
+	if atomic.LoadUint32(&wc.closed) == 1 {
+		return nil, errApplogFileAlreadyClosed
+	}
 
 	buf := make([]byte, sz)
 	stat, err := os.Stat(wc.path)
@@ -76,6 +89,11 @@ func (wc *appLogCloser) Tail(sz int64) ([]byte, error) {
 }
 
 func (wc *appLogCloser) Close() error {
+
+	if !atomic.CompareAndSwapUint32(&wc.closed, 0, 1) {
+		return errApplogFileAlreadyClosed
+	}
+
 	fptr := (*filePtr)(atomic.LoadPointer(&wc.filePtr))
 	wc.exitCh <- struct{}{}
 	fptr.lock.Lock()

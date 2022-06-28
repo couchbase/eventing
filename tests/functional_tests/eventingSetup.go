@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/parser"
 	"github.com/couchbase/eventing/util"
 	"github.com/mitchellh/go-ps"
@@ -131,36 +132,51 @@ func createAndDeployLargeFunction(appName, hFileName string, settings *commonSet
 		return
 	}
 
-	var aliases, bnames []string
+	var aliases []string
+	knames := settings.aliasCollection
+	if len(knames) != 0 {
+		aliases = settings.aliasHandles
+	}
 
-	if len(settings.aliasSources) == 0 {
+	if len(settings.aliasSources) == 0 && len(knames) == 0 {
 		aliases = append(aliases, "dst_bucket")
 
-		bnames = append(bnames, "hello-world")
+		knames = append(knames, common.Keyspace{
+			BucketName: "hello-world",
+		})
 
 		//Source bucket bindings
 		if settings.srcMutationEnabled == true {
 			aliases = append(aliases, "src_bucket")
-			bnames = append(bnames, "default")
+			knames = append(knames, common.Keyspace{
+				BucketName: "default",
+			})
 		}
 	} else {
 		for index, val := range settings.aliasSources {
-			bnames = append(bnames, val)
+			knames = append(knames, common.Keyspace{
+				BucketName: val,
+			})
 			aliases = append(aliases, settings.aliasHandles[index])
 		}
 	}
 
-	var metaBucket, srcBucket string
-	if settings.sourceBucket == "" {
-		srcBucket = "default"
-	} else {
-		srcBucket = settings.sourceBucket
+	srcKeyspace := common.Keyspace{
+		BucketName: "default",
+	}
+	if settings.sourceKeyspace.BucketName != "" {
+		srcKeyspace = settings.sourceKeyspace
+	} else if settings.sourceBucket != "" {
+		srcKeyspace.BucketName = settings.sourceBucket
 	}
 
-	if settings.metaBucket == "" {
-		metaBucket = "eventing"
-	} else {
-		metaBucket = settings.metaBucket
+	metaKeyspace := common.Keyspace{
+		BucketName: "eventing",
+	}
+	if settings.metaKeyspace.BucketName != "" {
+		metaKeyspace = settings.metaKeyspace
+	} else if settings.sourceBucket != "" {
+		metaKeyspace.BucketName = settings.metaBucket
 	}
 
 	// Source bucket bindings disallowed
@@ -170,10 +186,10 @@ func createAndDeployLargeFunction(appName, hFileName string, settings *commonSet
 
 	if settings.undeployedState {
 		data, err = createFunction(false, false, 0, settings, aliases,
-			bnames, appName, content, metaBucket, srcBucket)
+			knames, appName, content, metaKeyspace, srcKeyspace)
 	} else {
 		data, err = createFunction(true, true, 0, settings, aliases,
-			bnames, appName, content, metaBucket, srcBucket)
+			knames, appName, content, metaKeyspace, srcKeyspace)
 	}
 
 	if err != nil {
@@ -202,15 +218,17 @@ func createAndDeployFunctionWithoutChecks(appName, hFileName string, settings *c
 }
 
 func createFunction(deploymentStatus, processingStatus bool, id int, s *commonSettings,
-	bucketAliases, bucketNames []string, appName, handlerCode, metadataBucket, sourceBucket string) ([]byte, error) {
+	bucketAliases []string, keyspace []common.Keyspace, appName, handlerCode string, metadata, source common.Keyspace) ([]byte, error) {
 
 	var aliases []bucket
-	for i, b := range bucketNames {
+	for i, k := range keyspace {
 		var alias bucket
-		alias.BucketName = b
+		alias.BucketName = k.BucketName
+		alias.ScopeName = k.ScopeName
+		alias.CollectionName = k.CollectionName
 		alias.Alias = bucketAliases[i]
 		alias.Access = "rw"
-		if !s.srcMutationEnabled && alias.BucketName == sourceBucket {
+		if !s.srcMutationEnabled && k == source {
 			alias.Access = "r"
 		}
 		aliases = append(aliases, alias)
@@ -219,8 +237,12 @@ func createFunction(deploymentStatus, processingStatus bool, id int, s *commonSe
 	var dcfg depCfg
 	dcfg.Curl = s.curlBindings
 	dcfg.Buckets = aliases
-	dcfg.MetadataBucket = metadataBucket
-	dcfg.SourceBucket = sourceBucket
+	dcfg.MetadataBucket = metadata.BucketName
+	dcfg.MetadataScope = metadata.ScopeName
+	dcfg.MetadataCollection = metadata.CollectionName
+	dcfg.SourceBucket = source.BucketName
+	dcfg.SourceScope = source.ScopeName
+	dcfg.SourceCollection = source.CollectionName
 	dcfg.Constants = s.constantBindings
 
 	var app application
@@ -495,45 +517,50 @@ retrySrcItemCount:
 	}
 }
 
-func getBucketItemCount(bucketName string) (int, error) {
-	bStatsURL := bucketStatsURL + bucketName + "/"
-	req, err := http.NewRequest("GET", bStatsURL, nil)
+func verifyKeyspaceCount(count, retryCount int, keyspace common.Keyspace) int {
+	rCount := 1
+	var itemCount int
+
+retryVerifyBucketOp:
+	if rCount > retryCount {
+		return itemCount
+	}
+
+	itemCount, _ = getKeyspaceItemCount(keyspace)
+	if itemCount == count {
+		log.Printf("src & dst bucket item count matched up. src bucket count: %d dst bucket count: %d\n", count, itemCount)
+		return itemCount
+	}
+	rCount++
+	time.Sleep(time.Second * 5)
+	log.Printf("Waiting for dst bucket item count to get to: %d curr count: %d\n", count, itemCount)
+	goto retryVerifyBucketOp
+}
+
+func getBucketItemCount(bucket string) (int, error) {
+	k := common.Keyspace{
+		BucketName:     bucket,
+		ScopeName:      "_default",
+		CollectionName: "_default",
+	}
+	return getKeyspaceItemCount(k)
+}
+
+func getKeyspaceItemCount(keyspace common.Keyspace) (int, error) {
+	sizeCount := fmt.Sprintf("SELECT COUNT(*) AS count FROM `%s`.%s.%s", keyspace.BucketName, keyspace.ScopeName, keyspace.CollectionName)
+	b, err := fireQuery(sizeCount)
 	if err != nil {
-		log.Println("Bucket stats get request:", err)
 		return 0, err
 	}
 
-	req.SetBasicAuth(username, password)
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		log.Println("Bucket stats:", err)
-		return 0, err
+	n1qlResp, nErr := parseN1qlResponse(b)
+	if nErr != nil {
+		return 0, nErr
 	}
 
-	defer resp.Body.Close()
-
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		log.Println("Bucket stats read:", err)
-		return 0, err
-	}
-
-	var stats map[string]interface{}
-	err = json.Unmarshal(body, &stats)
-	if err != nil {
-		log.Println("Stats unmarshal:", err)
-		return 0, err
-	}
-
-	if _, bOk := stats["basicStats"]; bOk {
-		bStats := stats["basicStats"].(map[string]interface{})
-		if _, iOk := bStats["itemCount"]; iOk {
-			return int(bStats["itemCount"].(float64)), nil
-		}
-	}
-
-	return 0, fmt.Errorf("Stat not found")
+	rows := n1qlResp["results"].([]interface{})
+	countMap := rows[0].(map[string]interface{})
+	return int(countMap["count"].(float64)), nil
 }
 
 func bucketFlush(bucketName string) {

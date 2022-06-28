@@ -412,19 +412,19 @@ func LocalEventingServiceHost(auth, hostaddress string) (string, error) {
 }
 
 // empty scope and collection argument will check for bucket existence
-func ValidateAndCheckKeyspaceExist(bucket, scope, collection, hostaddress string, wildcardAllowed bool) (bool, error) {
+func ValidateAndCheckKeyspaceExist(bucket, scope, collection, hostaddress string, wildcardAllowed bool) error {
 	exist := CheckBucketExist(bucket, hostaddress)
 	if !exist {
-		return false, nil
+		return couchbase.ErrBucketNotFound
 	}
 
 	if scope == "*" || collection == "*" {
 		if !wildcardAllowed {
-			return false, ErrWildcardNotAllowed
+			return ErrWildcardNotAllowed
 		}
 
 		if scope == "*" && collection == "*" {
-			return true, nil
+			return nil
 		}
 
 		if scope != "*" && collection == "*" {
@@ -434,7 +434,7 @@ func ValidateAndCheckKeyspaceExist(bucket, scope, collection, hostaddress string
 
 	cic, err := FetchClusterInfoClient(hostaddress)
 	if err != nil {
-		return false, err
+		return err
 	}
 
 	cinfo := cic.GetClusterInfoCache()
@@ -442,7 +442,7 @@ func ValidateAndCheckKeyspaceExist(bucket, scope, collection, hostaddress string
 	defer cinfo.RUnlock()
 
 	_, _, _, err = cinfo.GetUniqueBSCIds(bucket, scope, collection)
-	return !(err == collections.SCOPE_NOT_FOUND || err == collections.COLLECTION_NOT_FOUND), nil
+	return err
 }
 
 func CheckBucketExist(bucket, hostaddress string) bool {
@@ -1805,7 +1805,7 @@ func SuperImpose(source, on map[string]interface{}) map[string]interface{} {
 func CPUCount(log bool) int {
 	logPrefix := "util::GetCPUCount"
 
-	cpuCount := runtime.NumCPU()
+	cpuCount := runtime.GOMAXPROCS(-1)
 	if cpuCount == 0 {
 		if log {
 			logging.Errorf("%s CPU count reported as 0", logPrefix)

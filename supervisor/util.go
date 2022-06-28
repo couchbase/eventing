@@ -126,30 +126,31 @@ func (s *SuperSupervisor) isDeployable(appName string) (common.UndeployAction, e
 
 	allowWildcards := true
 	hostAddress := net.JoinHostPort(util.Localhost(), s.restPort)
-	sourceExist, err := util.ValidateAndCheckKeyspaceExist(depCfg.SourceBucket, depCfg.SourceScope,
+	err = util.ValidateAndCheckKeyspaceExist(depCfg.SourceBucket, depCfg.SourceScope,
 		depCfg.SourceCollection, hostAddress, allowWildcards)
+	if err == couchbase.ErrBucketNotFound || err == collections.SCOPE_NOT_FOUND || err == collections.COLLECTION_NOT_FOUND {
+		return msg, err
+	}
+
 	if err != nil {
 		return msg, nil
 	}
 
-	if !sourceExist {
-		return msg, fmt.Errorf("Source Keyspace doesn't exist")
-	}
-
-	metaExist, err := util.ValidateAndCheckKeyspaceExist(depCfg.MetadataBucket, depCfg.MetadataScope,
+	err = util.ValidateAndCheckKeyspaceExist(depCfg.MetadataBucket, depCfg.MetadataScope,
 		depCfg.MetadataCollection, hostAddress, !allowWildcards)
 	if err == util.ErrWildcardNotAllowed {
+		msg.SkipMetadataCleanup = true
 		return msg, err
+	}
+
+	if err == couchbase.ErrBucketNotFound || err == collections.SCOPE_NOT_FOUND || err == collections.COLLECTION_NOT_FOUND {
+		msg.SkipMetadataCleanup = true
+		return msg, fmt.Errorf("Meta Keyspace doesn't exist")
 	}
 
 	// Allow it for now. Undeploy routine will check later
 	if err != nil {
 		return msg, nil
-	}
-
-	if !metaExist {
-		msg.SkipMetadataCleanup = true
-		return msg, fmt.Errorf("Meta Keyspace doesn't exist")
 	}
 
 	if (funcScope.BucketName != "" || funcScope.ScopeName != "") && (funcScope.BucketName != "*" || funcScope.ScopeName != "*") {
@@ -442,7 +443,11 @@ func (s *SuperSupervisor) checkDeletedCid(bucketName string) {
 			if err != nil || sid != funcKeyspaceID.Sid {
 				logging.Infof("%s Undeploying %s Reason: function manage scope delete err: %v", logPrefix, appName, err)
 				msg.DeleteFunction = true
+				msg.Reason = fmt.Sprintf("Undeployment triggered due to function scope deletion or id mismatch (%s:%s)",
+					p.FunctionManageBucket(), p.FunctionManageScope())
 				p.UndeployHandler(msg)
+
+				continue
 			}
 		}
 
@@ -455,6 +460,9 @@ func (s *SuperSupervisor) checkDeletedCid(bucketName string) {
 		if err != nil || !mKeyspaceID.Equals(mKeyspaceID2) {
 			logging.Infof("%s Undeploying %s Reason: metadata collection delete err: %v", logPrefix, appName, err)
 			msg.SkipMetadataCleanup = true
+			msg.Reason = fmt.Sprintf("Undeployment triggered due to metadata keyspace deletion or id mismatch (%s:%s:%s)",
+				p.MetadataBucket(), p.MetadataScope(), p.MetadataCollection())
+
 			p.UndeployHandler(msg)
 			continue
 		}
@@ -466,6 +474,8 @@ func (s *SuperSupervisor) checkDeletedCid(bucketName string) {
 		sKeyspaceID2, err := s.GetKeyspaceID(p.SourceBucket(), p.SourceScope(), p.SourceCollection())
 		if err != nil || !sKeyspaceID.Equals(sKeyspaceID2) {
 			logging.Infof("%s Undeploying %s Reason: source collection delete err: %v", logPrefix, appName, err)
+			msg.Reason = fmt.Sprintf("Undeployment triggered due to source keyspace deletion or id mismatch (%s:%s:%s)",
+				p.SourceBucket(), p.SourceScope(), p.SourceCollection())
 			p.UndeployHandler(msg)
 		}
 	}
@@ -498,6 +508,13 @@ func (s *SuperSupervisor) checkAppNeedsUndeployment(bucketName, appName string, 
 		undeploy = true
 		msg.DeleteFunction = (msg.DeleteFunction || (mType == common.FunctionScopeWatch))
 		msg.SkipMetadataCleanup = (msg.SkipMetadataCleanup || (mType == common.MetaWatch))
+
+		if bucketDeleted {
+			msg.Reason = fmt.Sprintf("Undeployment triggered due to deletion of Bucket (%s)", bucketName)
+		} else {
+			msg.Reason = fmt.Sprintf("Undeployment triggered due to deletion of either scope or collection (%s:%s:%s)",
+				bucketName, keyspace.ScopeName, keyspace.CollectionName)
+		}
 	}
 
 	return
