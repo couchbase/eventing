@@ -495,6 +495,7 @@ type EventingSuperSup interface {
 	WorkerRespawnedCount() uint32
 	CheckLifeCycleOpsDuringRebalance() bool
 	GetBSCSnapshot() (map[string]map[string][]string, error)
+	GetSystemMemoryQuota() float64
 
 	WatchBucket(keyspace Keyspace, appName string, mType MonitorType) error
 	UnwatchBucket(keyspace Keyspace, appName string)
