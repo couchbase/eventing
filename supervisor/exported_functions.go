@@ -791,3 +791,7 @@ func (s *SuperSupervisor) UpdateEncryptionLevel(enforceTLS, encryptOn bool) {
 		p.UpdateEncryptionLevel(enforceTLS, encryptOn)
 	}
 }
+
+func (s *SuperSupervisor) GetSystemMemoryQuota() float64 {
+	return s.systemMemLimit
+}
