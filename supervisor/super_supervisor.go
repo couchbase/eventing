@@ -1090,6 +1090,7 @@ func (s *SuperSupervisor) checkAndSwapStatus(appName string, deploymentStatus, p
 }
 
 func getMemLimit() (float64, error) {
+	logPrefix := "SuperSupervisor::getMemLimit"
 	sysConfig, err := NewSystemConfig()
 	if err != nil {
 		return -1, err
@@ -1100,11 +1101,12 @@ func getMemLimit() (float64, error) {
 	if err != nil {
 		return -1, err
 	}
+	logging.Infof("%s System total memory: %v MB", logPrefix, totMem)
 
-	memLimit, ok := sysConfig.getCgroupMemLimit()
-	if !ok || totMem < memLimit {
+	cgMemLimit, ok := sysConfig.getCgroupMemLimit()
+	logging.Infof("%s CGroup supported: %v Memory limit: %v MB", logPrefix, ok, cgMemLimit)
+	if !ok || cgMemLimit <= 0 || totMem < cgMemLimit {
 		return totMem, nil
 	}
-
-	return memLimit, nil
+	return cgMemLimit, nil
 }

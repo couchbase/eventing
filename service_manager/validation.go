@@ -337,8 +337,14 @@ func (m *ServiceMgr) validateConfig(c map[string]interface{}) (info *response.Ru
 	}
 
 	memQuota := m.superSup.GetSystemMemoryQuota()
-	if info = m.validateNumberRange("ram_quota", c, 256.0, memQuota); info.ErrCode != response.Ok {
-		return
+	if memQuota < 256.0 {
+		if info = m.validateNumberRange("ram_quota", c, 0, memQuota); info.ErrCode != response.Ok {
+			return
+		}
+	} else {
+		if info = m.validateNumberRange("ram_quota", c, 256.0, memQuota); info.ErrCode != response.Ok {
+			return
+		}
 	}
 
 	if info = m.validatePositiveInteger("function_size", c); info.ErrCode != response.Ok {
