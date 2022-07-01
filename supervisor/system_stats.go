@@ -39,18 +39,22 @@ func (s *systemConfig) Close() {
 }
 
 // Returns cgroup memory limit in MB
+// Returns -1 if cgroups are not supported OR max memory configured is <= 0
 // mem limit will be atleast 1MB if cgroup is defined
 func (stats *systemConfig) getCgroupMemLimit() (float64, bool) {
 	cgroupInfo := stats.GetControlGroupInfo()
 	if cgroupInfo.Supported == SIGAR_CGROUP_SUPPORTED {
 		cGroupTotal := cgroupInfo.MemoryMax
-		memLimitInMB := float64(cGroupTotal) / BYTES_TO_MB
-		if memLimitInMB > 0 {
-			return memLimitInMB, true
+		if cGroupTotal <= 0 {
+			// cgroup is memory max not defined even if cgroup is supported
+			return float64(cGroupTotal), true
 		}
-		return 1, true
+		memLimitInMB := float64(cGroupTotal) / BYTES_TO_MB
+		if memLimitInMB < 1 {
+			memLimitInMB = 1
+		}
+		return memLimitInMB, true
 	}
-
 	return -1, false
 }
 
