@@ -399,7 +399,6 @@ func (s *SuperSupervisor) undeployFunctionsOnDeletedBkts(deletedBuckets []string
 			continue
 		}
 
-		msg := common.DefaultUndeployAction()
 		for _, appName := range appNames {
 			p, ok := s.runningProducers[appName]
 			if !ok {
@@ -410,6 +409,9 @@ func (s *SuperSupervisor) undeployFunctionsOnDeletedBkts(deletedBuckets []string
 				continue
 			}
 
+			msg := common.DefaultUndeployAction()
+			msg.Reason = fmt.Sprintf("Undeployment triggered due to deletion of bucket %s",
+				bucketName)
 			msg.SkipMetadataCleanup = (p.MetadataBucket() == bucketName)
 			msg.DeleteFunction = (p.FunctionManageBucket() == bucketName)
 			p.UndeployHandler(msg)
