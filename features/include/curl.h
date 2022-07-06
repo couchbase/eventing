@@ -431,6 +431,8 @@ private:
 
   v8::Isolate *isolate_;
   v8::Persistent<v8::Context> context_;
+  static const char AMP = '&';
+  static const char QUESTION_MARK = '?';
 };
 
 // TODO : If and when we add green threads, we may need to have one CurlFactory

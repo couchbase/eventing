@@ -997,16 +997,12 @@ func (p *Producer) undeployHandlerWait() {
 			}
 
 			notAllowed, err := rbac.HasPermissions(p.owner, permissions, true)
-			if !checkPermError(err) {
+			if !checkPermError(err) || len(notAllowed) == 0 {
 				continue
 			}
 
-			var undeployReason string
-
-			if len(notAllowed) > 0 {
-				undeployReason = fmt.Sprintf("Undeploying function due to revocation of one or more required permissions. Missing permissions: %v",
-					notAllowed)
-			}
+			undeployReason := fmt.Sprintf("Undeploying function due to revocation of one or more required permissions. Missing permissions: %v",
+			notAllowed)
 
 			if atomic.CompareAndSwapInt32(&p.lazyUndeploy, 0, 1) {
 				deleteFunction := false
