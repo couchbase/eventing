@@ -171,14 +171,14 @@ func HasPermissions(owner *common.Owner, permissions []string, all bool) ([]stri
 	if owner.UUID != "" {
 		uuid, err := cbauth.GetUserUuid(owner.User, owner.Domain)
 		if err == cbauth.ErrNoUuid {
-			return nil, ErrUserDeleted
+			return permissions, ErrUserDeleted
 		}
 		if err != nil {
 			return nil, err
 		}
 
 		if uuid != owner.UUID {
-			return nil, ErrUserDeleted
+			return permissions, ErrUserDeleted
 		}
 	}
 
