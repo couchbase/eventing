@@ -27,7 +27,7 @@ const bufferAckPeriod = 20
 const includeDeleteTime = uint32(0x20)
 const dcpSeqnoAdvExtrasLen = 8
 
-var TransactionMutationPrefix = []byte("_txn")
+var TransactionMutationPrefix = []byte("_txn:")
 
 // error codes
 var ErrorInvalidLog = errors.New("couchbase.errorInvalidLog")
