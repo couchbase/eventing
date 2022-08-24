@@ -854,9 +854,9 @@ void BucketBinding::BucketSet<v8::Local<v8::Name>>(
   std::string key(*utf8_key);
   if (value_obj->IsArrayBuffer()) {
     array_buf = value_obj.As<v8::ArrayBuffer>();
-    auto contents = array_buf->GetContents();
-    value_str.assign(static_cast<const char *>(contents.Data()),
-                     contents.ByteLength());
+    auto store = array_buf->GetBackingStore();
+    value_str.assign(static_cast<const char *>(store->Data()),
+                     store->ByteLength());
   } else {
     value_str = JSONStringify(isolate, value_obj);
   }
