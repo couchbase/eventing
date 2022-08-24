@@ -434,9 +434,9 @@ BucketOps::BucketSet(const std::string &key, v8::Local<v8::Value> value,
   lcb_U32 doc_type = 0x00000000;
   if (value->IsArrayBuffer()) {
     auto array_buf = value.As<v8::ArrayBuffer>();
-    auto contents = array_buf->GetContents();
-    value_str.assign(static_cast<const char *>(contents.Data()),
-                     contents.ByteLength());
+    auto store = array_buf->GetBackingStore();
+    value_str.assign(static_cast<const char *>(store->Data()),
+                     store->ByteLength());
   } else {
     value_str = JSONStringify(isolate_, value);
     doc_type = 0x2000000;
