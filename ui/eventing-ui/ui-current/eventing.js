@@ -517,6 +517,11 @@ angular
                     });
                 }
               ],
+              logFileLocation: ['ApplicationService',
+                function(ApplicationService) {
+                  return ApplicationService.server.getLogFileLocation();
+                }
+              ],
               snapshot: ['ApplicationService',
                 function(ApplicationService) {
                   return ApplicationService.server.getBucketSnapshot();
@@ -830,7 +835,12 @@ angular
                   console.log('Snapshot');
                   return ApplicationService.server.getBucketSnapshot();
                 }
-              ]
+              ],
+              logFileLocation: ['ApplicationService',
+                function(ApplicationService) {
+                  return ApplicationService.server.getLogFileLocation();
+                }
+              ],
             }
           }).result
           .then(function(response) { // Upon continue.
@@ -1032,8 +1042,8 @@ angular
   ])
   // Controller for creating an application.
   .controller('CreateCtrl', ['$scope', 'FormValidationService',
-    'savedApps', 'snapshot',
-    function($scope, FormValidationService, savedApps, snapshot) {
+    'savedApps', 'snapshot', 'logFileLocation',
+    function($scope, FormValidationService, savedApps, snapshot, logFileLocation) {
       var self = this;
       self.isDisable = false;
       self.isDialog = true;
@@ -1050,6 +1060,7 @@ angular
       self.sourceBuckets = [];
       self.metadataBuckets = [];
       self.savedApps = savedApps.getApplications();
+      self.logFileLocation = logFileLocation
 
       self.bindings = [];
       self.scopes = [];
@@ -1300,10 +1311,10 @@ angular
   // Controller for settings.
   .controller('SettingsCtrl', ['$q', '$timeout', '$scope', 'ApplicationService',
     'FormValidationService',
-    'appName', 'savedApps', 'isAppDeployed', 'isAppPaused', 'snapshot',
+    'appName', 'savedApps', 'isAppDeployed', 'isAppPaused', 'snapshot', 'logFileLocation',
     function($q, $timeout, $scope, ApplicationService, FormValidationService,
       appName, savedApps, isAppDeployed, isAppPaused,
-      snapshot) {
+      snapshot, logFileLocation) {
       var self = this;
       var appModel = ApplicationService.local.getAppByName(appName);
 
@@ -1313,6 +1324,7 @@ angular
       self.showWarningAlert = false;
       self.isAppDeployed = isAppDeployed;
       self.isAppPaused = isAppPaused;
+      self.logFileLocation = logFileLocation;
       self.sourceAndBindingSame = false;
 
       // Need to initialize buckets if they are empty,
