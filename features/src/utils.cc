@@ -511,7 +511,7 @@ v8::Local<v8::ArrayBuffer> Utils::ToArrayBuffer(const void *buffer,
   v8::EscapableHandleScope handle_scope(isolate_);
 
   auto arr_buf = v8::ArrayBuffer::New(isolate_, size);
-  memcpy(arr_buf->GetContents().Data(), buffer, size);
+  memcpy(arr_buf->GetBackingStore()->Data(), buffer, size);
   return handle_scope.Escape(arr_buf);
 }
 
@@ -766,9 +766,9 @@ void Crc64Function(const v8::FunctionCallbackInfo<v8::Value> &args) {
   uint64_t len = 0;
   if (args[0]->IsArrayBuffer()) {
     auto array_buf = args[0].As<v8::ArrayBuffer>();
-    auto contents = array_buf->GetContents();
-    data = static_cast<const uint8_t *>(contents.Data());
-    len = contents.ByteLength();
+    auto store = array_buf->GetBackingStore();
+    data = static_cast<const uint8_t *>(store->Data());
+    len = store->ByteLength();
     crc = crc64_iso.Checksum(data, len);
   } else {
     std::string data_str = JSONStringify(isolate, args[0]);

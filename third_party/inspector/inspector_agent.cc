@@ -62,7 +62,7 @@ public:
   explicit ChannelImpl(v8_inspector::V8Inspector *inspector,
                        InspectorSessionDelegate *delegate)
       : delegate_(delegate) {
-    session_ = inspector->connect(1, this, v8_inspector::StringView());
+    session_ = inspector->connect(1, this, v8_inspector::StringView(), v8_inspector::V8Inspector::ClientTrustLevel::kFullyTrusted);
   }
 
   virtual ~ChannelImpl() {}
@@ -168,7 +168,7 @@ public:
   void FatalException(Local<Value> error, Local<Message> message) {
     Local<Context> context = isolate_->GetCurrentContext();
 
-    int script_id = message->GetScriptOrigin().ScriptID()->Value();
+    int script_id = message->GetScriptOrigin().ScriptId();
 
     Local<StackTrace> stack_trace = message->GetStackTrace();
 

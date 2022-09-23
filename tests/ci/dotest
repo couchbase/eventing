@@ -48,9 +48,11 @@ stop_cluster() {
   pkill -f testrunner
   pkill -f $WORKSPACE/install
   pkill -f testrunner
-  killall beam.smp epmd memcached eventing-producer eventing-consumer python memcached.json 1>/dev/null 2>&1
+  killall erl beam.smp epmd memcached eventing-producer eventing-consumer python memcached.json 1>/dev/null 2>&1
   sleep 10
-  killall -9 beam.smp epmd memcached eventing-producer eventing-consumer python memcached.json 1>/dev/null 2>&1
+  killall -9 erl beam.smp epmd memcached eventing-producer eventing-consumer python memcached.json 1>/dev/null 2>&1
+  sleep 10
+  pkill erl
   cd $WORKSPACE/ns_server
   make dataclean 1>/dev/null 2>&1
   sudo rm -f /tmp/core*

@@ -661,6 +661,7 @@ func (m *ServiceMgr) logFileLocation(w http.ResponseWriter, r *http.Request) {
 
 	c := m.config.Load()
 
+	runtimeInfo.SendRawDescription = true
 	runtimeInfo.Description = fmt.Sprintf(`{"log_dir":"%v"}`, c["eventing_dir"])
 	runtimeInfo.OnlyDescription = true
 }
@@ -5461,6 +5462,7 @@ func (m *ServiceMgr) resetStatsCounters(w http.ResponseWriter, r *http.Request) 
 		return
 	} else if err != nil {
 		runtimeInfo.ErrCode = response.ErrInternalServer
+		runtimeInfo.SendRawDescription = true
 		runtimeInfo.Description = fmt.Sprintf(`{"error":"Failed to reset counters error: %v"}`, err)
 		return
 	}
@@ -5498,6 +5500,7 @@ func (m *ServiceMgr) resetNodeStatsCounters(w http.ResponseWriter, r *http.Reque
 
 	if err := m.superSup.ResetCounters(appLocation); err != nil {
 		runtimeInfo.ErrCode = response.ErrInternalServer
+		runtimeInfo.SendRawDescription = true
 		runtimeInfo.Description = fmt.Sprintf(`{"error":"Failed to reset counters error: %v"}`, err)
 		return
 	}
