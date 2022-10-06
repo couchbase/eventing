@@ -1435,6 +1435,10 @@ func (m *ServiceMgr) setSettings(appName string, data []byte, force bool) (info 
 		}
 
 		if deploymentStatus && processingStatus {
+			err = m.assignFunctionInstanceID(appName, &app, info)
+			if err != nil {
+				return
+			}
 			if m.superSup.GetAppState(appName) == common.AppStatePaused {
 				if oldTimerPartitionsPresent {
 					if timerPartitionsPresent && oldTPValue != newTPValue {
@@ -2575,12 +2579,12 @@ func (m *ServiceMgr) assignFunctionID(fnName string, app *application, info *run
 
 func (m *ServiceMgr) assignFunctionInstanceID(functionName string, app *application, info *runtimeInfo) error {
 	logPrefix := "ServiceMgr:assignFunctionInstanceID"
-
-	if m.superSup.GetAppState(functionName) != common.AppStatePaused {
+	appStatus := m.superSup.GetAppState(functionName)
+	if appStatus != common.AppStatePaused && appStatus != common.AppStateEnabled {
 		fiid, err := util.GenerateFunctionInstanceID()
 		if err != nil {
 			info.Code = m.statusCodes.errFunctionInstanceIDGen.Code
-			info.Info = fmt.Sprintf("FunctionInstanceID generation failed")
+			info.Info = fmt.Sprintf("Function: %s Could not assign function instance id. err: %s", app.Name, err.Error())
 
 			logging.Errorf("%s %s", logPrefix, info.Info)
 			return err
