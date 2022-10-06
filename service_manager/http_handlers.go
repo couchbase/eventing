@@ -1723,6 +1723,13 @@ func (m *ServiceMgr) setSettings(appLocation string, data []byte, force bool) (i
 		}
 
 		if deploymentStatus && processingStatus {
+			err = m.assignFunctionInstanceID(appLocation, app)
+			if err != nil {
+				info.ErrCode = response.ErrInternalServer
+				info.Description = "Could not assign function instance id"
+				logging.Errorf("%s %s", logPrefix, info.Description)
+				return
+			}
 
 			if m.superSup.GetAppCompositeState(appLocation) == common.AppStatePaused {
 				if oldTimerPartitionsPresent {
@@ -3044,8 +3051,8 @@ func (m *ServiceMgr) assignFunctionID(fnLocation string, app *application) error
 
 func (m *ServiceMgr) assignFunctionInstanceID(functionLocation string, app *application) error {
 	logPrefix := "ServiceMgr:assignFunctionInstanceID"
-
-	if m.superSup.GetAppCompositeState(functionLocation) != common.AppStatePaused {
+	appStatus := m.superSup.GetAppCompositeState(functionLocation)
+	if appStatus != common.AppStatePaused && appStatus != common.AppStateEnabled {
 		fiid, err := util.GenerateFunctionInstanceID()
 		if err != nil {
 			logging.Errorf("%s err: %v", logPrefix, err)
