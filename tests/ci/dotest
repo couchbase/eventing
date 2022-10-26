@@ -119,7 +119,8 @@ perl -pi -e 's/num_files, 10/num_files, 50/' $WORKSPACE/install/etc/couchbase/st
 cd $WORKSPACE/goproj/src/github.com/couchbase/eventing/
 gover="`grep -A20 'SET(GOVERSION ' CMakeLists.txt  | grep GOVERSION | head -1 | sed 's/^.*\([0-9]\.[0-9]*.[0-9]\).*$/\1/'`"
 mkdir -p "$WORKSPACE/go"
-export GOROOT="$HOME/.cbdepscache/exploded/x86_64/go-$gover/go"
+export GO111MODULE=auto
+export GOROOT=$(find $HOME/.cbdepscache/exploded/x86_64 -type d -name 'go-'$gover'*' | sort | tail -1)/go
 export GOPATH="$WORKSPACE/go:$WORKSPACE/godeps:$WORKSPACE/goproj"
 export PATH="$PATH:$GOROOT/bin"
 export LD_LIBRARY_PATH="$WORKSPACE/install/lib"
