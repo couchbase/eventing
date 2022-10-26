@@ -4,7 +4,8 @@ top:=$(realpath ../../../../..)
 workdir:=$(realpath .)/build
 binaries:=eventing-producer eventing-consumer cbevent
 
-goroot := $(shell find ~/.cbdepscache/exploded/x86_64 -type d -name 'go-1.13.7' -print -quit)/go
+gover := $(shell grep -A20 'SET(GOVERSION ' CMakeLists.txt  | grep GOVERSION | head -1 | sed 's/^.*\([0-9]\.[0-9]*.[0-9]\).*$/\1/')
+goroot := $(shell find ~/.cbdepscache/exploded/x86_64 -type d -name 'go-'$gover'*' | sort | tail -1)/go
 ccache := $(shell which ccache)
 cc_src := $(shell find features/ v8_consumer/ third_party/ gen/ ../eventing-ee/features/ -name '*.cc' -o -name '*.c')
 go_src := $(shell find . ../eventing-ee/ -name '*.go')
