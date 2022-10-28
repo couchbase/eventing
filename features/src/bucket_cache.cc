@@ -63,13 +63,11 @@ void BucketCache::Set(const BucketCache::Key &key, const Result &result) {
     size_ -= BucketCache::SizeOf(iter->second.data);
     auto expiry = std::chrono::steady_clock::now() + max_age_;
     iter->second = {result, expiry};
-    iter->second.data.key = key;
   } else {
     LockedTrim(); // trim first to avoid evicting new item
     size_ += BucketCache::SizeOf(result);
     auto expiry = std::chrono::steady_clock::now() + max_age_;
     Value entry = {result, expiry};
-    entry.data.key = key;
     cache_[key] = entry;
   }
 }
