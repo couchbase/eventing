@@ -1042,21 +1042,94 @@ func populateUint(fmtStr, appName, key string, stats []byte, cStats map[string]u
 	return append(stats, []byte(str)...)
 }
 
-func filterQueryMap(filterString string, include bool) (map[string]bool, error) {
-	filterMap := make(map[string]bool)
-	filters := strings.Split(filterString, ",")
-	for _, keyspace := range filters {
-		key := strings.Split(keyspace, ".")
-		if len(key) > 0 && len(key) < 4 {
-			filterMap[keyspace] = include
-			continue
+func splitKeyspace(filterString string) ([]common.Keyspace, error) {
+	keyspaceSlice := make([]common.Keyspace, 0)
+	var tmpString []rune
+	bucketName, scopeName, collectionName := "", "*", "*"
+
+	escaped := false
+	numDots := 0
+	filterString += ","
+
+	for _, r := range filterString {
+		if escaped {
+			tmpString = append(tmpString, r)
+			escaped = false
+		} else {
+			switch r {
+			case '\\':
+				escaped = true
+
+			case ',':
+				if len(tmpString) == 0 {
+					return nil, fmt.Errorf("Malformed input filter %s", filterString)
+				}
+
+				switch numDots {
+				case 0:
+					bucketName = string(tmpString)
+				case 1:
+					scopeName = string(tmpString)
+				default:
+					collectionName = string(tmpString)
+				}
+				tmpString = tmpString[:0]
+
+				keyspace := common.Keyspace{
+					BucketName:     bucketName,
+					ScopeName:      scopeName,
+					CollectionName: collectionName,
+				}
+
+				keyspaceSlice = append(keyspaceSlice, keyspace)
+				numDots = 0
+				bucketName, scopeName, collectionName = "", "*", "*"
+
+			case '.':
+				if len(tmpString) == 0 {
+					return nil, fmt.Errorf("Malformed input filter %s", filterString)
+				}
+
+				switch numDots {
+				case 0:
+					bucketName = string(tmpString)
+				case 1:
+					scopeName = string(tmpString)
+				default:
+					return nil, fmt.Errorf("Malformed input filter %s", filterString)
+				}
+				tmpString = tmpString[:0]
+				numDots++
+
+			default:
+				tmpString = append(tmpString, r)
+
+			}
 		}
-		return nil, fmt.Errorf("Malformed input filter %s", keyspace)
+	}
+
+	return keyspaceSlice, nil
+}
+
+func filterQueryMap(filterString string, include bool) (map[string]bool, error) {
+	logPrefix := "ServiceMgr::filterQueryMap"
+	keyspaceSlice, err := splitKeyspace(filterString)
+	if err != nil {
+		logging.Infof("%s Error in spliting keyspace: %v", logPrefix, err)
+		return nil, err
+	}
+
+	filterMap := make(map[string]bool)
+	for _, keyspace := range keyspaceSlice {
+		keyspaceString := fmt.Sprintf("%s", keyspace)
+		filterMap[keyspaceString] = include
 	}
 	return filterMap, nil
 }
 
 func getRestoreMap(r *http.Request) (map[string]common.Keyspace, error) {
+	logPrefix := "ServiceMgr::getRestoreMap"
+
 	remap := make(map[string]common.Keyspace)
 	remapStr := r.FormValue("remap")
 	if len(remapStr) == 0 {
@@ -1074,24 +1147,21 @@ func getRestoreMap(r *http.Request) (map[string]common.Keyspace, error) {
 		source := rmp[0]
 		target := rmp[1]
 
-		src := strings.Split(source, ".")
-		tgt := strings.Split(target, ".")
-
-		if len(src) != len(tgt) {
-			return nil, fmt.Errorf("Malformed input. source and target in remap should be at same level %v", remapStr)
+		src, err := splitKeyspace(source)
+		if err != nil {
+			logging.Infof("%s Error in spliting source keyspace: %v", logPrefix, err)
+			return nil, err
 		}
 
-		switch len(src) {
-		case 3:
-			remap[source] = common.Keyspace{BucketName: tgt[0], ScopeName: tgt[1], CollectionName: tgt[2]}
+		tgt, err := splitKeyspace(target)
+		if err != nil {
+			logging.Infof("%s Error in spliting target keyspace: %v", logPrefix, err)
+			return nil, err
+		}
 
-		case 2:
-			remap[source] = common.Keyspace{BucketName: tgt[0], ScopeName: tgt[1]}
-
-		case 1:
-			remap[source] = common.Keyspace{BucketName: tgt[0]}
-		default:
-			return nil, fmt.Errorf("Malformed input remap %v", remapStr)
+		if len(tgt) > 0 && len(src) > 0 {
+			keyspaceString := fmt.Sprintf("%s", src[0])
+			remap[keyspaceString] = tgt[0]
 		}
 	}
 
@@ -1103,7 +1173,7 @@ func applyFilter(app application, filterMap map[string]bool, filterType string) 
 		return true
 	}
 
-	if val, ok := contains(filterMap, app.FunctionScope.BucketName, app.FunctionScope.ScopeName, ""); ok {
+	if val, ok := contains(filterMap, app.FunctionScope.BucketName, app.FunctionScope.ScopeName, "*"); ok {
 		return val
 	}
 
@@ -1132,11 +1202,11 @@ func remapContains(remap map[string]common.Keyspace, bucket, scope, collection s
 	if val, ok := remap[fmt.Sprintf("%s.%s.%s", bucket, scope, collection)]; ok {
 		return val, 3, true
 	}
-	if val, ok := remap[fmt.Sprintf("%s.%s", bucket, scope)]; ok {
+	if val, ok := remap[fmt.Sprintf("%s.%s.*", bucket, scope)]; ok {
 		return val, 2, true
 	}
 
-	if val, ok := remap[fmt.Sprintf("%s", bucket)]; ok {
+	if val, ok := remap[fmt.Sprintf("%s.*.*", bucket)]; ok {
 		return val, 1, true
 	}
 
@@ -1147,11 +1217,11 @@ func contains(filterMap map[string]bool, bucket, scope, collection string) (val,
 	if val, ok = filterMap[fmt.Sprintf("%s.%s.%s", bucket, scope, collection)]; ok {
 		return
 	}
-	if val, ok = filterMap[fmt.Sprintf("%s.%s", bucket, scope)]; ok {
+	if val, ok = filterMap[fmt.Sprintf("%s.%s.*", bucket, scope)]; ok {
 		return
 	}
 
-	if val, ok = filterMap[fmt.Sprintf("%s", bucket)]; ok {
+	if val, ok = filterMap[fmt.Sprintf("%s.*.*", bucket)]; ok {
 		return
 	}
 
