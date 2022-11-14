@@ -3,6 +3,7 @@ package common
 import (
 	"crypto/x509"
 	"errors"
+	"fmt"
 	"net"
 
 	"github.com/couchbase/cbauth/service"
@@ -37,6 +38,10 @@ type Keyspace struct {
 	BucketName     string
 	ScopeName      string
 	CollectionName string
+}
+
+func (k Keyspace) String() string {
+	return fmt.Sprintf("%s.%s.%s", k.BucketName, k.ScopeName, k.CollectionName)
 }
 
 type Insight struct {
