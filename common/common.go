@@ -93,6 +93,10 @@ func (k Keyspace) IsWildcard() bool {
 	return (k.ScopeName == "*" || k.CollectionName == "*")
 }
 
+func (k Keyspace) String() string {
+	return fmt.Sprintf("%s.%s.%s", k.BucketName, k.ScopeName, k.CollectionName)
+}
+
 type StreamType uint8
 
 const (
