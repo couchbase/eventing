@@ -1,11 +1,14 @@
+//go:build all || handler
 // +build all handler
 
 package eventing
 
 import (
 	"fmt"
-	"github.com/couchbase/eventing/parser"
+	"regexp"
 	"testing"
+
+	"github.com/couchbase/eventing/parser"
 )
 
 var snippet_inputs = []string{
@@ -191,11 +194,30 @@ var script_timers = []bool{
 	false,
 }
 
+var esc_lt = regexp.MustCompile(
+	`\\u003C`)
+
+var esc_gt = regexp.MustCompile(
+	`\\u003E`)
+
+var esc_eq = regexp.MustCompile(
+	`\\u003D`)
+
+func normalise(res string) string {
+	res = esc_lt.ReplaceAllString(res, `$1<`)
+	res = esc_gt.ReplaceAllString(res, `$1>`)
+	res = esc_eq.ReplaceAllString(res, `$1=`)
+	return res
+}
+
 func TestParserTransform(t *testing.T) {
 	for i := 0; i < len(snippet_inputs); i++ {
 		result, _ := parser.TranspileQueries(snippet_inputs[i], "")
-		if result != snippet_outputs[i] {
-			t.Errorf("Mismatch: %s\nExpected:\n%s\nGot:\n%s\n", Diff(snippet_outputs[i], result), snippet_outputs[i], result)
+		expectedOutput := snippet_outputs[i]
+		normalisedResult := normalise(result)
+
+		if normalisedResult != expectedOutput {
+			t.Errorf("Mismatch: %s\nExpected:\n%s\nGot:\n%s\n", Diff(expectedOutput, normalisedResult), expectedOutput, normalisedResult)
 		}
 	}
 }
