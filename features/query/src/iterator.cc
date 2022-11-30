@@ -99,7 +99,8 @@ void Query::Iterator::RowCallback(lcb_t connection, int,
   cursor->is_query_error = cursor->is_last && !IsStatusSuccess(cursor->data);
   cursor->is_error = cursor->is_client_error || cursor->is_query_error;
   cursor->is_client_auth_error =
-      cursor->is_error && (resp->rc == LCB_AUTH_ERROR);
+      cursor->is_error && (resp->rc == LCB_AUTH_ERROR ||
+                          resp->rc == LCB_SSL_CANTVERIFY);
 
   if (cursor->is_client_error) {
     cursor->client_error = lcb_strerror(connection, resp->rc);

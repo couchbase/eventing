@@ -187,13 +187,13 @@ Error Bucket::FormatErrorAndDestroyConn(const std::string &message,
   return std::make_unique<std::string>(err_msg.str());
 }
 
-// returns true if status is auth_failure AND we were able to recreate connection
+// returns true if status is auth_failure or cert_verification err AND we were able to recreate connection
 // false if either status is not auth failure OR status was failure but couldn't recreate
 bool Bucket::MaybeRecreateConnOnAuthErr(const lcb_error_t &status, bool should_check_autherr) {
   lcb_t tmp_instance{nullptr};
-  if (status == LCB_AUTH_ERROR && should_check_autherr) {
+  if ((status == LCB_AUTH_ERROR || status == LCB_SSL_CANTVERIFY) && should_check_autherr) {
     if (is_connected_){
-      LOG(logError) << "Got LCB_AUTH_ERROR for bucket: " << bucket_name_
+      LOG(logError) << "Got " << status << " for bucket: " << bucket_name_
                     << " Recreating lcb instance" << std::endl;
       tmp_instance = connection_;
       is_connected_ = false;
