@@ -187,7 +187,6 @@ enum RETURN_CODE {
 };
 
 class BucketBinding;
-class N1QL;
 class ConnectionPool;
 class V8Worker;
 

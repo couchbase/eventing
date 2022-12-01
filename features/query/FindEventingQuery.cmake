@@ -31,7 +31,7 @@ if (NOT EVENTING_QUERY_FOUND)
             ${QUERY_DIR}/src/conn-pool.cc
             ${QUERY_DIR}/src/manager.cc
             ${QUERY_DIR}/src/helper.cc
-            ${QUERY_DIR}/src/builder.cc)
+	    ${QUERY_DIR}/src/n1ql_query.cc)
 
     mark_as_advanced(EVENTING_QUERY_FOUND EVENTING_QUERY_INCLUDE_DIR EVENTING_QUERY_SRC)
 endif ()

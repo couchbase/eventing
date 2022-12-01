@@ -14,12 +14,9 @@
 
 #include "comm.h"
 #include "isolate_data.h"
-#include "js_exception.h"
 #include "query-iterable.h"
 #include "query-row.h"
 #include "utils.h"
-
-std::atomic<int64_t> n1ql_op_exception_count = {0};
 
 Query::IterableBase::IterableBase(v8::Isolate *isolate,
                                   const v8::Local<v8::Context> &context)
@@ -70,15 +67,13 @@ void Query::Iterable::Impl(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
   v8::HandleScope handle_scope(isolate);
   auto iterable_impl = UnwrapData(isolate)->query_iterable_impl;
-  auto js_exception = UnwrapData(isolate)->js_exception;
 
   auto iter_val = args.This()->GetInternalField(InternalField::kIterator);
   auto iterator =
       reinterpret_cast<Iterator *>(iter_val.As<v8::External>()->Value());
 
   if (auto impl_info = iterable_impl->NewObject(iterator); impl_info.is_fatal) {
-    ++n1ql_op_exception_count;
-    js_exception->ThrowN1QLError(impl_info.msg);
+    iterator->ThrowQueryError(impl_info.msg);
     return;
   } else {
     args.GetReturnValue().Set(impl_info.object);
@@ -135,7 +130,6 @@ void Query::IterableImpl::Next(
   }
 
   v8::HandleScope handle_scope(isolate);
-  auto js_exception = UnwrapData(isolate)->js_exception;
   auto helper = UnwrapData(isolate)->query_helper;
   auto iterable_result = UnwrapData(isolate)->query_iterable_result;
 
@@ -147,21 +141,20 @@ void Query::IterableImpl::Next(
   if (next.is_done || next.is_error) {
     // Error reported by lcb_wait (coming from LCB client)
     if (auto it_result = iterator->Wait(); it_result.is_fatal) {
-      ++n1ql_op_exception_count;
-      js_exception->ThrowN1QLError(it_result.msg);
+      iterator->ThrowQueryError(it_result.msg);
       return;
     }
   }
 
   if (next.is_error) {
-    helper->HandleRowError(next);
+    auto err_msg = helper->RowErrorString(next);
+    iterator->ThrowQueryError(err_msg);
     return;
   }
 
   if (auto result_info = iterable_result->NewObject(next);
       result_info.is_fatal) {
-    ++n1ql_op_exception_count;
-    js_exception->ThrowN1QLError(result_info.msg);
+    iterator->ThrowQueryError(result_info.msg);
     return;
   } else {
     args.GetReturnValue().Set(result_info.result);

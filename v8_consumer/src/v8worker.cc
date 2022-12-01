@@ -103,6 +103,8 @@ void V8Worker::SetCouchbaseNamespace() {
   proto_t->Set(
       v8::String::NewFromUtf8(isolate_, "mutateInInternal").ToLocalChecked(),
       v8::FunctionTemplate::New(isolate_, BucketOps::SubdocOp));
+  proto_t->Set(v8::String::NewFromUtf8(isolate_, "n1qlQuery").ToLocalChecked(),
+               v8::FunctionTemplate::New(isolate_, Query::N1qlFunction));
 
   auto context = context_.Get(isolate_);
   v8::Local<v8::Object> cb_obj;
@@ -340,7 +342,7 @@ v8::Local<v8::ObjectTemplate> V8Worker::NewGlobalObj() const {
   global->Set(v8::String::NewFromUtf8(isolate_, "crc64").ToLocalChecked(),
               v8::FunctionTemplate::New(isolate_, Crc64Function));
   global->Set(v8::String::NewFromUtf8(isolate_, "N1QL").ToLocalChecked(),
-              v8::FunctionTemplate::New(isolate_, QueryFunction));
+              v8::FunctionTemplate::New(isolate_, Query::N1qlFunction));
 
   for (const auto &type_name : exception_type_names_) {
     global->Set(
@@ -454,7 +456,7 @@ void V8Worker::InitializeIsolateData(const server_settings_t *server_settings,
   data_.query_helper = new Query::Helper(isolate_, context);
 
   // execution_timeout is in seconds
-  // n1ql_timeout is expected in micro seconds
+  // query_timeout is expected in micro seconds
   // Setting a lower timeout to allow adequate time for the exception
   // to get thrown
   data_.n1ql_timeout =
@@ -465,7 +467,7 @@ void V8Worker::InitializeIsolateData(const server_settings_t *server_settings,
                          ? h_config->execution_timeout
                          : h_config->execution_timeout - 2;
   data_.n1ql_consistency =
-      Query::Helper::GetConsistency(h_config->n1ql_consistency);
+      Query::Helper::GetN1qlConsistency(h_config->n1ql_consistency);
   data_.n1ql_prepare_all = h_config->n1ql_prepare_all;
   data_.lang_compat = new LanguageCompatibility(h_config->lang_compat);
   data_.lcb_retry_count = h_config->lcb_retry_count;
@@ -509,7 +511,7 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
       function_id_(function_id), user_prefix_(user_prefix),
       ns_server_port_(ns_server_port), user_(user), domain_(domain),
       exception_type_names_(
-          {"KVError", "N1QLError", "EventingError", "CurlError", "TypeError"}),
+          {"KVError", "EventingError", "CurlError", "TypeError", "N1QLError"}),
       handler_headers_(h_config->handler_headers) {
   auto config = ParseDeployment(h_config->dep_cfg.c_str());
   cb_source_bucket_.assign(config->source_bucket);

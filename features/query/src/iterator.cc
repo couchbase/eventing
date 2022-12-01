@@ -50,9 +50,7 @@ Query::Row Query::Iterator::Next() {
     return {true, "Unable to start query as it is not in idle state", false};
   }
 
-  auto helper = UnwrapData(isolate_)->query_mgr;
-  if (auto info = builder_.Build(RowCallback, &cursor_); info.is_fatal) {
-    helper->RestoreConnection(connection_);
+  if (auto info = query_controller_->build(&cursor_); info.is_fatal) {
     return {true, info.msg, false};
   }
 
@@ -60,11 +58,7 @@ Query::Row Query::Iterator::Next() {
   std::thread runner([this]() -> void {
     RunnerGuard guard(cursor_);
 
-    auto result = lcb_query(connection_, nullptr, builder_.GetCmd());
-    if (result == LCB_SUCCESS) {
-      result = lcb_wait(connection_, LCB_WAIT_DEFAULT);
-    }
-
+    auto result = query_controller_->run();
     if (result != LCB_SUCCESS) {
       cursor_.is_last = true;
       auto helper = UnwrapData(isolate_)->query_helper;
@@ -74,9 +68,6 @@ Query::Row Query::Iterator::Next() {
       result_info_ = {true, lcb_strerror_short(result), is_retriable,
                       is_lcb_not_supported};
     }
-
-    auto query_mgr = UnwrapData(isolate_)->query_mgr;
-    query_mgr->RestoreConnection(connection_);
   });
   runner_ = std::move(runner);
 
@@ -86,46 +77,6 @@ Query::Row Query::Iterator::Next() {
   return result_info_;
 }
 
-void Query::Iterator::RowCallback(lcb_INSTANCE *connection, int,
-                                  const lcb_RESPQUERY *resp) {
-  auto cursor =
-      static_cast<Cursor *>(const_cast<void *>(lcb_get_cookie(connection)));
-
-  const char *row;
-  size_t nrow;
-  lcb_respquery_row(resp, &row, &nrow);
-
-  cursor->data.assign(row, nrow);
-  cursor->is_last = lcb_respquery_is_final(resp);
-  cursor->client_err_code = lcb_respquery_status(resp);
-  cursor->is_client_error =
-      cursor->is_last && cursor->client_err_code != LCB_SUCCESS;
-  cursor->is_query_error = cursor->is_last && !IsStatusSuccess(cursor->data);
-  cursor->is_error = cursor->is_client_error || cursor->is_query_error;
-  cursor->is_client_auth_error =
-      cursor->is_error &&
-      (cursor->client_err_code == LCB_ERR_AUTHENTICATION_FAILURE ||
-       cursor->client_err_code == LCB_ERR_SSL_CANTVERIFY);
-
-  if (cursor->is_client_error) {
-    cursor->client_error = lcb_strerror_short(cursor->client_err_code);
-  }
-  if (cursor->is_query_error) {
-    cursor->query_error = cursor->data;
-  }
-
-  LOG(logDebug) << "Query::Iterator::RowCallback data : " << RU(cursor->data)
-                << " is_last : " << cursor->is_last
-                << " is_error : " << cursor->is_error
-                << " is_client_auth_error : " << cursor->is_client_auth_error
-                << " resp rc : " << cursor->client_err_code << std::endl;
-
-  cursor->YieldTo(Cursor::ExecutionControl::kV8);
-  if (!cursor->is_last) {
-    cursor->WaitFor(Cursor::ExecutionControl::kSDK);
-  }
-}
-
 void Query::Iterator::Stop() {
   if (state_ != State::kStarted) {
     return;
@@ -133,7 +84,7 @@ void Query::Iterator::Stop() {
 
   if (!cursor_.is_last) {
     // Subsequent RowCallback won't be invoked
-    lcb_query_cancel(connection_, builder_.GetHandle());
+    query_controller_->cancel();
     cursor_.YieldTo(Cursor::ExecutionControl::kSDK);
   }
 
@@ -141,11 +92,6 @@ void Query::Iterator::Stop() {
     runner_.join();
   }
   state_ = State::kStopped;
-}
-
-bool Query::Iterator::IsStatusSuccess(const std::string &row) {
-  std::regex re_status_success(R"("status"\s*:\s*"success")");
-  return std::regex_search(row, re_status_success);
 }
 
 ::Info Query::Iterator::Wait() {

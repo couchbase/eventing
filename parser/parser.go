@@ -178,7 +178,7 @@ func wrapQuery(query string, params string, n1ql_params string) string {
 	result := ""
 	for i, line := range js_lines {
 		if i == 0 {
-			result += "N1QL("
+			result += "couchbase.n1qlQuery("
 		}
 		result += line
 		if i == len(js_lines)-1 {

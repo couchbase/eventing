@@ -43,7 +43,7 @@ public:
   Manager &operator=(const Manager &) = delete;
   Manager &operator=(Manager &&) = delete;
 
-  Iterable::Info NewIterable(Query::Info query_info);
+  Iterable::Info NewIterable(std::unique_ptr<QueryController> query_controller);
   void ClearQueries();
   void RestoreConnection(lcb_INSTANCE *connection) {
     conn_pool_.RestoreConnection(connection);
@@ -56,8 +56,7 @@ private:
   std::unordered_map<lcb_INSTANCE *, std::shared_ptr<Iterator>> iterators_;
   std::string on_behalf_of_;
 };
-} // namespace Query
 
-void QueryFunction(const v8::FunctionCallbackInfo<v8::Value> &args);
+} // namespace Query
 
 #endif
