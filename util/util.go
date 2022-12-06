@@ -456,7 +456,7 @@ func CheckBucketExist(bucket, hostaddress string) bool {
 	defer cinfo.RUnlock()
 	kvAddrs, err := cinfo.GetNodesByBucket(bucket)
 	if err != nil {
-		if err.Error() == fmt.Sprintf("No bucket named "+bucket) {
+		if err.Error() == fmt.Sprintf("No bucket named %s", bucket) {
 			return false
 		}
 		return true
@@ -476,7 +476,7 @@ func CountActiveKVNodes(bucket, hostaddress string) int {
 
 	kvAddrs, err := cinfo.GetNodesByBucket(bucket)
 	if err != nil {
-		if err.Error() == fmt.Sprintf("No bucket named "+bucket) {
+		if err.Error() == fmt.Sprintf("No bucket named %s", bucket) {
 			return 0
 		}
 		return -1
