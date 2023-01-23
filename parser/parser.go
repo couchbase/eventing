@@ -49,8 +49,8 @@ var n1qlQueryUse = regexp.MustCompile(
 	`N1qlQuery([[:space:]]*)\(`)
 
 var functionOverload = regexp.MustCompile(
-	`(function([[:space:]]+)(createTimer|cancelTimer|curl|log|crc64|N1QL|N1qlQuery|couchbase)([[:space:]]*|\()` +
-		`|([[:space:]|\\n|\;|\,]+(createTimer|cancelTimer|curl|log|crc64|N1QL|N1qlQuery|couchbase)([[:space:]]*\.[[:space:]]*[0-9a-zA-Z$_]+)?)[[:space:]]*=)`)
+	`(function[[:space:]]+(createTimer|cancelTimer|curl|log|crc64|N1QL|N1qlQuery|couchbase)[[:space:]]*\(` +
+		`|([[:space:]|\\n|\;|\,|}]+(createTimer|cancelTimer|curl|log|crc64|N1QL|N1qlQuery|couchbase)([[:space:]]*\.[[:space:]]*[0-9a-zA-Z$_]+)?)[[:space:]]*=)`)
 
 func stripComments(str string) string {
 	return cleanse(str,
