@@ -217,7 +217,7 @@ bool Bucket::MaybeRecreateConnOnAuthErr(const lcb_STATUS &status,
 }
 
 std::tuple<Error, std::string, std::string>
-Bucket::get_scope_and_collection_names(MetaData meta) {
+Bucket::get_scope_and_collection_names(const MetaData &meta) {
   if ((scope_name_ == "*") && (meta.scope == "")) {
     return {
         std::make_unique<std::string>("Inconsistent wildcard usage. scope_name "
@@ -243,8 +243,41 @@ Bucket::get_scope_and_collection_names(MetaData meta) {
   return {nullptr, scope, collection};
 }
 
+void Bucket::InvalidateCache(const MetaData &meta) {
+  if (!meta.invalidate_cache_) {
+    return;
+  }
+
+  if (invalidate_cache_func_.IsEmpty()) {
+    return;
+  }
+
+  std::string key;
+  auto sz = bucket_name_.length() + meta.scope.length() +
+            meta.collection.length() + meta.key.length() + 3;
+  key.reserve(sz);
+  key.append(bucket_name_);
+  key.append("/");
+  key.append(meta.scope);
+  key.append("/");
+  key.append(meta.collection);
+  key.append("/");
+  key.append(meta.key);
+
+  v8::Local<v8::Value> args[1];
+
+  args[0] = v8::String::NewFromUtf8(isolate_, key.c_str()).ToLocalChecked();
+  auto func = invalidate_cache_func_.Get(isolate_);
+
+  v8::HandleScope handle_scope(isolate_);
+
+  auto context = isolate_->GetCurrentContext();
+  auto global = context->Global();
+  func->Call(context, global, 1, args);
+}
+
 std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
-Bucket::Get(MetaData meta) {
+Bucket::Get(MetaData &meta) {
   if (!is_connected_) {
     return {std::make_unique<std::string>("Connection is not initialized"),
             nullptr, nullptr};
@@ -254,6 +287,8 @@ Bucket::Get(MetaData meta) {
   if (error != nullptr) {
     return {std::move(error), nullptr, nullptr};
   }
+  meta.scope = scope;
+  meta.collection = collection;
 
   const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
   const auto lcb_timeout = UnwrapData(isolate_)->lcb_timeout;
@@ -280,15 +315,14 @@ Bucket::Get(MetaData meta) {
     ++lcb_retry_failure;
     return {nullptr, std::make_unique<lcb_STATUS>(err_code), nullptr};
   }
-  BucketCache::Fetch().Change(
-      BucketCache::MakeKey(bucket_name_, scope, collection, meta.key), result);
 
+  InvalidateCache(meta);
   return {nullptr, std::make_unique<lcb_STATUS>(err_code),
           std::make_unique<Result>(std::move(result))};
 }
 
 std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
-Bucket::GetWithMeta(MetaData meta) {
+Bucket::GetWithMeta(MetaData &meta) {
   if (!is_connected_) {
     return {std::make_unique<std::string>("Connection is not initialized"),
             nullptr, nullptr};
@@ -298,6 +332,8 @@ Bucket::GetWithMeta(MetaData meta) {
   if (error != nullptr) {
     return {std::move(error), nullptr, nullptr};
   }
+  meta.scope = scope;
+  meta.collection = collection;
 
   const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
   const auto lcb_timeout = UnwrapData(isolate_)->lcb_timeout;
@@ -342,15 +378,12 @@ Bucket::GetWithMeta(MetaData meta) {
     return {nullptr, std::make_unique<lcb_STATUS>(err_code), nullptr};
   }
 
-  BucketCache::Fetch().Change(
-      BucketCache::MakeKey(bucket_name_, scope, collection, meta.key), result);
-
   return {nullptr, std::make_unique<lcb_STATUS>(err_code),
           std::make_unique<Result>(std::move(result))};
 }
 
 std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
-Bucket::CounterWithoutXattr(MetaData meta, int64_t delta) {
+Bucket::CounterWithoutXattr(MetaData &meta, int64_t delta) {
   if (!is_connected_) {
     return {std::make_unique<std::string>("Connection is not initialized"),
             nullptr, nullptr};
@@ -360,6 +393,8 @@ Bucket::CounterWithoutXattr(MetaData meta, int64_t delta) {
   if (error != nullptr) {
     return {std::move(error), nullptr, nullptr};
   }
+  meta.scope = scope;
+  meta.collection = collection;
 
   const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
   const auto lcb_timeout = UnwrapData(isolate_)->lcb_timeout;
@@ -402,7 +437,7 @@ Bucket::CounterWithoutXattr(MetaData meta, int64_t delta) {
 }
 
 std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
-Bucket::CounterWithXattr(MetaData meta, int64_t delta) {
+Bucket::CounterWithXattr(MetaData &meta, int64_t delta) {
   if (!is_connected_) {
     return {std::make_unique<std::string>("Connection is not initialized"),
             nullptr, nullptr};
@@ -412,6 +447,8 @@ Bucket::CounterWithXattr(MetaData meta, int64_t delta) {
   if (error != nullptr) {
     return {std::move(error), nullptr, nullptr};
   }
+  meta.scope = scope;
+  meta.collection = collection;
 
   lcb_SUBDOCSPECS *specs;
   lcb_subdocspecs_create(&specs, 4);
@@ -481,7 +518,7 @@ Bucket::CounterWithXattr(MetaData meta, int64_t delta) {
 }
 
 std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
-Bucket::SetWithXattr(MetaData meta, const std::string &value,
+Bucket::SetWithXattr(MetaData &meta, const std::string &value,
                      lcb_SUBDOC_STORE_SEMANTICS op_type) {
   if (!is_connected_) {
     return {std::make_unique<std::string>("Connection is not initialized"),
@@ -492,9 +529,8 @@ Bucket::SetWithXattr(MetaData meta, const std::string &value,
   if (error != nullptr) {
     return {std::move(error), nullptr, nullptr};
   }
-
-  BucketCache::Fetch().Invalidate(
-      BucketCache::MakeKey(bucket_name_, scope, collection, meta.key));
+  meta.scope = scope;
+  meta.collection = collection;
 
   lcb_SUBDOCSPECS *specs;
   lcb_subdocspecs_create(&specs, 4);
@@ -558,12 +594,13 @@ Bucket::SetWithXattr(MetaData meta, const std::string &value,
     return {nullptr, std::make_unique<lcb_STATUS>(err_code), nullptr};
   }
 
+  InvalidateCache(meta);
   return {nullptr, std::make_unique<lcb_STATUS>(err_code),
           std::make_unique<Result>(std::move(result))};
 }
 
 std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
-Bucket::SetWithoutXattr(MetaData meta, const std::string &value,
+Bucket::SetWithoutXattr(MetaData &meta, const std::string &value,
                         lcb_STORE_OPERATION op_type, lcb_U32 doc_type) {
   if (!is_connected_) {
     return {std::make_unique<std::string>("Connection is not initialized"),
@@ -575,8 +612,8 @@ Bucket::SetWithoutXattr(MetaData meta, const std::string &value,
     return {std::move(error), nullptr, nullptr};
   }
 
-  BucketCache::Fetch().Invalidate(
-      BucketCache::MakeKey(bucket_name_, scope, collection, meta.key));
+  meta.scope = scope;
+  meta.collection = collection;
 
   const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
   const auto lcb_timeout = UnwrapData(isolate_)->lcb_timeout;
@@ -610,12 +647,13 @@ Bucket::SetWithoutXattr(MetaData meta, const std::string &value,
     return {nullptr, std::make_unique<lcb_STATUS>(err_code), nullptr};
   }
 
+  InvalidateCache(meta);
   return {nullptr, std::make_unique<lcb_STATUS>(err_code),
           std::make_unique<Result>(std::move(result))};
 }
 
 std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
-Bucket::DeleteWithXattr(MetaData meta) {
+Bucket::DeleteWithXattr(MetaData &meta) {
   if (!is_connected_) {
     return {std::make_unique<std::string>("Connection is not initialized"),
             nullptr, nullptr};
@@ -625,9 +663,8 @@ Bucket::DeleteWithXattr(MetaData meta) {
   if (error != nullptr) {
     return {std::move(error), nullptr, nullptr};
   }
-
-  BucketCache::Fetch().Invalidate(
-      BucketCache::MakeKey(bucket_name_, scope, collection, meta.key));
+  meta.scope = scope;
+  meta.collection = collection;
 
   lcb_SUBDOCSPECS *specs;
   lcb_subdocspecs_create(&specs, 4);
@@ -692,12 +729,13 @@ Bucket::DeleteWithXattr(MetaData meta) {
     return {nullptr, std::make_unique<lcb_STATUS>(err_code), nullptr};
   }
 
+  InvalidateCache(meta);
   return {nullptr, std::make_unique<lcb_STATUS>(err_code),
           std::make_unique<Result>(std::move(result))};
 }
 
 std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
-Bucket::DeleteWithoutXattr(MetaData meta) {
+Bucket::DeleteWithoutXattr(MetaData &meta) {
   if (!is_connected_) {
     return {std::make_unique<std::string>("Connection is not initialized"),
             nullptr, nullptr};
@@ -707,9 +745,8 @@ Bucket::DeleteWithoutXattr(MetaData meta) {
   if (error != nullptr) {
     return {std::move(error), nullptr, nullptr};
   }
-
-  BucketCache::Fetch().Invalidate(
-      BucketCache::MakeKey(bucket_name_, scope, collection, meta.key));
+  meta.scope = scope;
+  meta.collection = collection;
 
   const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
   const auto lcb_timeout = UnwrapData(isolate_)->lcb_timeout;
@@ -740,6 +777,7 @@ Bucket::DeleteWithoutXattr(MetaData meta) {
     return {nullptr, std::make_unique<lcb_STATUS>(err_code), nullptr};
   }
 
+  InvalidateCache(meta);
   return {nullptr, std::make_unique<lcb_STATUS>(err_code),
           std::make_unique<Result>(std::move(result))};
 }
@@ -758,7 +796,7 @@ void BucketBinding::BucketGet<v8::Local<v8::Name>>(
     return;
   }
 
-  MetaData metadata;
+  MetaData metadata(true);
   auto validate_info = ValidateKey(name);
   if (validate_info.is_fatal) {
     js_exception->ThrowEventingError(validate_info.msg);
@@ -833,7 +871,7 @@ void BucketBinding::BucketSet<v8::Local<v8::Name>>(
     return;
   }
 
-  MetaData metadata;
+  MetaData metadata(true);
   auto validate_info = ValidateKeyValue(name, value_obj);
   if (validate_info.is_fatal) {
     js_exception->ThrowEventingError(validate_info.msg);
@@ -902,7 +940,7 @@ void BucketBinding::BucketDelete<v8::Local<v8::Name>>(
     return;
   }
 
-  MetaData metadata;
+  MetaData metadata(true);
   auto validate_info = ValidateKey(name);
   if (validate_info.is_fatal) {
     js_exception->ThrowKVError(validate_info.msg);
@@ -984,6 +1022,7 @@ Error BucketBinding::InstallBinding(v8::Isolate *isolate,
         "Unable to install bucket binding with alias " + bucket_alias_ +
         " to global scope");
   }
+  bucket_.SetupCacheInvalidateFunc();
   return nullptr;
 }
 
@@ -1040,7 +1079,7 @@ void BucketBinding::BucketDelete<uint32_t>(
 }
 
 std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
-BucketBinding::BucketSet(MetaData meta, const std::string &value,
+BucketBinding::BucketSet(MetaData &meta, const std::string &value,
                          bool is_source_mutation, Bucket *bucket) {
   if (is_source_mutation) {
     return bucket->SetWithXattr(meta, value);
@@ -1049,7 +1088,7 @@ BucketBinding::BucketSet(MetaData meta, const std::string &value,
 }
 
 std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
-BucketBinding::BucketDelete(MetaData meta, bool is_source_mutation,
+BucketBinding::BucketDelete(MetaData &meta, bool is_source_mutation,
                             Bucket *bucket) {
   if (is_source_mutation) {
     return bucket->DeleteWithXattr(meta);
@@ -1143,7 +1182,8 @@ bool BucketBinding::GetBlockMutation(v8::Isolate *isolate,
 
 std::tuple<Error, bool>
 BucketBinding::IsSourceMutation(v8::Isolate *isolate,
-                                const v8::Local<v8::Value> obj, MetaData meta) {
+                                const v8::Local<v8::Value> obj,
+                                const MetaData &meta) {
   v8::HandleScope handle_scope(isolate);
   auto context = isolate->GetCurrentContext();
   v8::Local<v8::Object> local_obj;

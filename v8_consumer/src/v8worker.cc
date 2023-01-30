@@ -64,7 +64,7 @@ std::atomic<int64_t> enqueued_timer_msg_counter = {0};
 
 std::atomic<int64_t> timer_callback_missing_counter = {0};
 
-v8::Local<v8::Object> V8Worker::NewCouchbaseNameSpace() {
+void V8Worker::SetCouchbaseNamespace() {
   v8::EscapableHandleScope handle_scope(isolate_);
 
   v8::Local<v8::FunctionTemplate> function_template =
@@ -75,28 +75,180 @@ v8::Local<v8::Object> V8Worker::NewCouchbaseNameSpace() {
   v8::Local<v8::ObjectTemplate> proto_t =
       function_template->PrototypeTemplate();
 
-  proto_t->Set(v8::String::NewFromUtf8(isolate_, "get").ToLocalChecked(),
-               v8::FunctionTemplate::New(isolate_, BucketOps::GetOp));
-  proto_t->Set(v8::String::NewFromUtf8(isolate_, "insert").ToLocalChecked(),
-               v8::FunctionTemplate::New(isolate_, BucketOps::InsertOp));
-  proto_t->Set(v8::String::NewFromUtf8(isolate_, "upsert").ToLocalChecked(),
-               v8::FunctionTemplate::New(isolate_, BucketOps::UpsertOp));
-  proto_t->Set(v8::String::NewFromUtf8(isolate_, "replace").ToLocalChecked(),
-               v8::FunctionTemplate::New(isolate_, BucketOps::ReplaceOp));
-  proto_t->Set(v8::String::NewFromUtf8(isolate_, "delete").ToLocalChecked(),
-               v8::FunctionTemplate::New(isolate_, BucketOps::DeleteOp));
+  proto_t->Set(
+      v8::String::NewFromUtf8(isolate_, "getInternal").ToLocalChecked(),
+      v8::FunctionTemplate::New(isolate_, BucketOps::GetOp));
+  proto_t->Set(
+      v8::String::NewFromUtf8(isolate_, "insertInternal").ToLocalChecked(),
+      v8::FunctionTemplate::New(isolate_, BucketOps::InsertOp));
+  proto_t->Set(
+      v8::String::NewFromUtf8(isolate_, "upsertInternal").ToLocalChecked(),
+      v8::FunctionTemplate::New(isolate_, BucketOps::UpsertOp));
+  proto_t->Set(
+      v8::String::NewFromUtf8(isolate_, "replaceInternal").ToLocalChecked(),
+      v8::FunctionTemplate::New(isolate_, BucketOps::ReplaceOp));
+  proto_t->Set(
+      v8::String::NewFromUtf8(isolate_, "deleteInternal").ToLocalChecked(),
+      v8::FunctionTemplate::New(isolate_, BucketOps::DeleteOp));
   proto_t->Set(v8::String::NewFromUtf8(isolate_, "increment").ToLocalChecked(),
                v8::FunctionTemplate::New(isolate_, BucketOps::IncrementOp));
   proto_t->Set(v8::String::NewFromUtf8(isolate_, "decrement").ToLocalChecked(),
                v8::FunctionTemplate::New(isolate_, BucketOps::DecrementOp));
+  proto_t->Set(
+      v8::String::NewFromUtf8(isolate_, "bindingDetails").ToLocalChecked(),
+      v8::FunctionTemplate::New(isolate_, BucketOps::BindingDetails));
 
   auto context = context_.Get(isolate_);
   v8::Local<v8::Object> cb_obj;
   if (!TO_LOCAL(proto_t->NewInstance(context), &cb_obj)) {
-    return v8::Local<v8::Object>();
+    return;
   }
 
-  return handle_scope.Escape(cb_obj);
+  auto global_object = context->Global();
+  auto result =
+      global_object->Set(context, v8Str(isolate_, "couchbase"), cb_obj);
+
+  if (!result.FromJust()) {
+    LOG(logError) << "Failed to set the global namespace couchbase"
+                  << std::endl;
+  }
+
+  v8::TryCatch try_catch(isolate_);
+  v8::Local<v8::String> couchbase_script_name = v8Str(isolate_, "couchbase.js");
+  std::string wrapper_function2 = R"(
+    couchbase.mapkeys = new Map();
+    couchbase.map_key_size = 0;
+
+    couchbase.get = function(bucket, meta, options) {
+      if (!options || !options.cache) {
+        return couchbase.getInternal(bucket, meta);
+      }
+
+      // TODO: In serverless Date object will have granularity of 1second.
+      var currentTime = Date.now();
+      var details = couchbase.bindingDetails(bucket, meta);
+      const key = couchbase.getCachedKey(meta.id, details);
+      var res = couchbase.mapkeys.get(key);
+      if (res) {
+        if (currentTime - res.time < couchbase.max_expiry) {
+          return res.data;
+        }
+        couchbase.mapkeys.delete(key);
+        couchbase.map_key_size = couchbase.map_key_size - res.data.res_size;
+      }
+
+      var res = couchbase.getInternal(bucket, meta, options);
+      if (!res.success) {
+        return res;
+      }
+
+      var cache_res = {
+        "data": res,
+        "time": Date.now()
+      };
+      if (couchbase.map_key_size + res.res_size > couchbase.max_size) {
+        couchbase.ejectKeys(res.res_size, currentTime);
+      }
+      couchbase.mapkeys.set(key, cache_res);
+      couchbase.map_key_size += res.res_size;
+      return res;
+    };
+
+    couchbase.insert = function(bucket, meta, doc) {
+      var details = couchbase.bindingDetails(bucket, meta);
+      var key = couchbase.getCachedKey(meta.id, details);
+
+      this.invalidateKey(key);
+      return couchbase.insertInternal(bucket, meta, doc);
+    };
+
+    couchbase.upsert = function(bucket, meta, doc) {
+      var details = couchbase.bindingDetails(bucket, meta);
+      var key = couchbase.getCachedKey(meta.id, details);
+
+      this.invalidateKey(key);
+      return couchbase.upsertInternal(bucket, meta, doc);
+    };
+
+    couchbase.replace = function(bucket, meta, doc) {
+      var details = couchbase.bindingDetails(bucket, meta);
+      var key = couchbase.getCachedKey(meta.id, details);
+
+      this.invalidateKey(key);
+      return couchbase.replaceInternal(bucket, meta, doc);
+    };
+
+    couchbase.delete = function(bucket, meta) {
+      var details = couchbase.bindingDetails(bucket, meta);
+      var key = couchbase.getCachedKey(meta.id, details);
+
+      this.invalidateKey(key);
+      return couchbase.deleteInternal(bucket, meta);
+    };
+
+    couchbase.ejectKeys = function(spaceToFree, currtime) {
+      var freed_size = 0;
+      for (let [key, val] of couchbase.mapkeys) {
+        if (currtime - val.time > couchbase.max_expiry) {
+          couchbase.mapkeys.delete(key);
+          couchbase.map_key_size = couchbase.map_key_size - val.data.res_size;
+          freed_size = freed_size + val.data.res_size;
+          if (freed_size >= spaceToFree) {
+            return;
+          }
+        }
+      }
+
+      for (let [key, val] of couchbase.mapkeys) {
+        couchbase.mapkeys.delete(key);
+        couchbase.map_key_size = couchbase.map_key_size - val.data.res_size;
+        freed_size = freed_size + val.data.res_size;
+        if (freed_size >= spaceToFree) {
+          return;
+        }
+      }
+    };
+
+    couchbase.invalidateKey = function(key) {
+      var result = couchbase.mapkeys.get(key);
+      if (!result) {
+        return;
+      }
+      var size = result.data.res_size;
+      couchbase.mapkeys.delete(key);
+      couchbase.map_key_size = couchbase.map_key_size - size;
+    };
+
+    couchbase.getCachedKey = function(id, details) {
+      return details.keyspace.bucket + "/" + details.keyspace.scope + "/" + details.keyspace.collection + "/" + id;
+    };)"
+                                  R"(couchbase.max_expiry=)";
+
+  wrapper_function2.append(std::to_string(cache_expiry_age_));
+  wrapper_function2.append(";couchbase.max_size=");
+  wrapper_function2.append(std::to_string(cache_size_));
+
+  auto wrapper_source2 =
+      v8::String::NewFromUtf8(isolate_, wrapper_function2.c_str())
+          .ToLocalChecked();
+  v8::ScriptOrigin origin2(isolate_, couchbase_script_name);
+  v8::Local<v8::Script> compiled_script2;
+
+  if (!TO_LOCAL(v8::Script::Compile(context, wrapper_source2, &origin2),
+                &compiled_script2)) {
+    LOG(logError) << "Exception logged:"
+                  << ExceptionString(isolate_, context, &try_catch)
+                  << std::endl;
+  }
+
+  v8::Local<v8::Value> result_wrapper2;
+  if (!TO_LOCAL(compiled_script2->Run(context), &result_wrapper2)) {
+    LOG(logError) << "Unable to run the injected couchbase.js script: "
+                  << ExceptionString(isolate_, context, &try_catch)
+                  << std::endl;
+  }
+
+  return;
 }
 
 v8::Local<v8::ObjectTemplate> V8Worker::NewGlobalObj() const {
@@ -338,9 +490,8 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
 
   timer_context_size = h_config->timer_context_size;
 
-  BucketCache::Fetch().SetMaxSize(h_config->bucket_cache_size);
-  BucketCache::Fetch().SetMaxAge(
-      std::chrono::milliseconds(h_config->bucket_cache_age));
+  cache_size_ = h_config->bucket_cache_size;
+  cache_expiry_age_ = h_config->bucket_cache_age;
 
   LOG(logInfo) << "Initialised V8Worker handle, app_name: "
                << h_config->app_name << " under " << bucket_ << ":" << scope_
@@ -487,16 +638,7 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
   auto context = context_.Get(isolate_);
   v8::Context::Scope context_scope(context);
 
-  auto global_object = context->Global();
-  auto function_template = NewCouchbaseNameSpace();
-  auto result = global_object->Set(context, v8Str(isolate_, "couchbase"),
-                                   function_template);
-
-  if (!result.FromJust()) {
-    LOG(logInfo) << "Failed to set the global namespace couchbase" << std::endl;
-    return kToLocalFailed;
-  }
-
+  SetCouchbaseNamespace();
   for (const auto &type_name : exception_type_names_) {
     DeriveFromError(isolate_, context, type_name);
   }
