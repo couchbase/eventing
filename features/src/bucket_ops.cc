@@ -242,6 +242,14 @@ Info BucketOps::ResponseSuccessObject(std::unique_ptr<Result> const &result,
   }
 
   bool success = false;
+  auto size = sizeof(result) + result->key.length() + result->value.length();
+  if (!TO(response_obj->Set(context, v8Str(isolate_, "res_size"),
+                            v8::Integer::New(isolate_, size)),
+          &success) ||
+      !success) {
+    return {true, "Unable to set size value"};
+  }
+
   if (!TO(response_obj->Set(context, v8Str(isolate_, success_str_),
                             v8::Boolean::New(isolate_, true)),
           &success) ||
@@ -353,7 +361,7 @@ MetaInfo BucketOps::ExtractMetaInfo(v8::Local<v8::Value> meta_object,
       }
     }
   }
-  return {true, meta};
+  return {true, "", meta};
 }
 
 OptionsInfo BucketOps::ExtractOptionsInfo(v8::Local<v8::Value> options_object) {
@@ -426,7 +434,7 @@ Info BucketOps::VerifyBucketObject(v8::Local<v8::Value> bucket_binding) {
 }
 
 std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
-BucketOps::Delete(MetaData meta, bool is_source_mutation, Bucket *bucket) {
+BucketOps::Delete(MetaData &meta, bool is_source_mutation, Bucket *bucket) {
   if (is_source_mutation) {
     return bucket->DeleteWithXattr(meta);
   }
@@ -434,7 +442,7 @@ BucketOps::Delete(MetaData meta, bool is_source_mutation, Bucket *bucket) {
 }
 
 std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
-BucketOps::Counter(MetaData meta, int64_t delta, bool is_source_mutation,
+BucketOps::Counter(MetaData &meta, int64_t delta, bool is_source_mutation,
                    Bucket *bucket) {
   if (is_source_mutation) {
     return bucket->CounterWithXattr(meta, delta);
@@ -443,7 +451,7 @@ BucketOps::Counter(MetaData meta, int64_t delta, bool is_source_mutation,
 }
 
 std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
-BucketOps::Set(MetaData meta, const std::string &value,
+BucketOps::Set(MetaData &meta, const std::string &value,
                lcb_STORE_OPERATION op_type, lcb_U32 doc_type,
                bool is_source_mutation, Bucket *bucket) {
   if (is_source_mutation) {
@@ -460,7 +468,7 @@ BucketOps::Set(MetaData meta, const std::string &value,
 }
 
 std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
-BucketOps::BucketSet(MetaData meta, v8::Local<v8::Value> value,
+BucketOps::BucketSet(MetaData &meta, v8::Local<v8::Value> value,
                      lcb_STORE_OPERATION op_type, bool is_source_mutation,
                      Bucket *bucket) {
   v8::HandleScope scope(isolate_);
@@ -476,6 +484,98 @@ BucketOps::BucketSet(MetaData meta, v8::Local<v8::Value> value,
     doc_type = 0x2000000;
   }
   return Set(meta, value_str, op_type, doc_type, is_source_mutation, bucket);
+}
+
+void BucketOps::Details(v8::FunctionCallbackInfo<v8::Value> args) {
+  v8::HandleScope handle_scope(isolate_);
+  auto context = context_.Get(isolate_);
+
+  auto isolate_data = UnwrapData(isolate_);
+  auto js_exception = isolate_data->js_exception;
+
+  if (args.Length() < 2) {
+    ++bucket_op_exception_count;
+    js_exception->ThrowTypeError(
+        "couchbase.bindingDetails requires at least 2 argument");
+    return;
+  }
+
+  auto info = VerifyBucketObject(args[0]);
+  if (info.is_fatal) {
+    ++bucket_op_exception_count;
+    js_exception->ThrowTypeError(info.msg);
+    return;
+  }
+
+  auto block_mutation = BucketBinding::GetBlockMutation(isolate_, args[0]);
+  auto access = "rw";
+  if (block_mutation) {
+    access = "r";
+  }
+
+  auto meta_info = ExtractMetaInfo(args[1], false, false);
+  if (!meta_info.is_valid) {
+    ++bucket_op_exception_count;
+    js_exception->ThrowTypeError(meta_info.msg);
+    return;
+  }
+  auto meta = meta_info.meta;
+
+  auto bucket = BucketBinding::GetBucket(isolate_, args[0]);
+
+  auto [err, scope, collection] = bucket->get_scope_and_collection_names(meta);
+  if (err != nullptr) {
+    ++bucket_op_exception_count;
+    js_exception->ThrowEventingError("Temp error");
+    return;
+  }
+
+  bool success = false;
+  auto bucket_name = bucket->BucketName();
+
+  v8::Local<v8::Object> response_obj = v8::Object::New(isolate_);
+  v8::Local<v8::Object> meta_obj = v8::Object::New(isolate_);
+
+  if (!TO(meta_obj->Set(context, v8Str(isolate_, "bucket"),
+                        v8Str(isolate_, bucket_name)),
+          &success) ||
+      !success) {
+    ++bucket_op_exception_count;
+    js_exception->ThrowEventingError("Temp error");
+  }
+
+  if (!TO(meta_obj->Set(context, v8Str(isolate_, "scope"),
+                        v8Str(isolate_, scope)),
+          &success) ||
+      !success) {
+    ++bucket_op_exception_count;
+    js_exception->ThrowEventingError("Temp error");
+  }
+
+  if (!TO(meta_obj->Set(context, v8Str(isolate_, "collection"),
+                        v8Str(isolate_, collection)),
+          &success) ||
+      !success) {
+    ++bucket_op_exception_count;
+    js_exception->ThrowEventingError("Temp error");
+  }
+
+  if (!TO(response_obj->Set(context, v8Str(isolate_, "access"),
+                            v8Str(isolate_, access)),
+          &success) ||
+      !success) {
+    ++bucket_op_exception_count;
+    js_exception->ThrowEventingError("Temp error");
+  }
+
+  if (!TO(response_obj->Set(context, v8Str(isolate_, "keyspace"), meta_obj),
+          &success) ||
+      !success) {
+    ++bucket_op_exception_count;
+    js_exception->ThrowEventingError("Temp error");
+  }
+
+  args.GetReturnValue().Set(response_obj);
 }
 
 void BucketOps::CounterOps(v8::FunctionCallbackInfo<v8::Value> args,
@@ -636,21 +736,6 @@ void BucketOps::GetOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
   v8::Local<v8::Object> response_obj = v8::Object::New(isolate);
 
   if (options.cache) {
-    auto result = std::make_unique<Result>();
-    auto idx =
-        BucketCache::MakeKey(bucket->BucketName(), scope, collection, meta.key);
-    auto found = BucketCache::Fetch().Get(idx, *(result.get()));
-    if (found) {
-      info = bucket_ops->ResponseSuccessObject(std::move(result), response_obj,
-                                               true);
-      if (info.is_fatal) {
-        ++bucket_op_exception_count;
-        js_exception->ThrowEventingError(info.msg);
-        return;
-      }
-      args.GetReturnValue().Set(response_obj);
-      return;
-    }
     ++bucket_op_cachemiss_count;
   }
 
@@ -687,12 +772,6 @@ void BucketOps::GetOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
   }
 
   result->key = meta.key;
-
-  if (options.cache) {
-    auto idx =
-        BucketCache::MakeKey(bucket->BucketName(), scope, collection, meta.key);
-    BucketCache::Fetch().Set(idx, *result);
-  }
 
   info =
       bucket_ops->ResponseSuccessObject(std::move(result), response_obj, true);
@@ -1164,4 +1243,17 @@ void BucketOps::DecrementOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
   auto bucket_ops = isolate_data->bucket_ops;
   bucket_ops->CounterOps(args, -1);
+}
+
+void BucketOps::BindingDetails(
+    const v8::FunctionCallbackInfo<v8::Value> &args) {
+  auto isolate = args.GetIsolate();
+  auto isolate_data = UnwrapData(isolate);
+  std::lock_guard<std::mutex> guard(isolate_data->termination_lock_);
+  if (!isolate_data->is_executing_) {
+    return;
+  }
+
+  auto bucket_ops = isolate_data->bucket_ops;
+  bucket_ops->Details(args);
 }

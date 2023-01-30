@@ -369,7 +369,7 @@ private:
                                                uint64_t seq_num);
   std::tuple<uint32_t, int, uint64_t, bool>
   GetCidVbAndSeqNum(const std::unique_ptr<WorkerMessage> &msg) const;
-  v8::Local<v8::Object> NewCouchbaseNameSpace();
+  void SetCouchbaseNamespace();
   v8::Local<v8::ObjectTemplate> NewGlobalObj() const;
   void InstallCurlBindings(const std::vector<CurlBinding> &curl_bindings) const;
   void InstallConstantBindings(
@@ -418,6 +418,8 @@ private:
   std::string ns_server_port_;
   std::string user_;
   std::string domain_;
+  int64_t cache_size_;
+  int64_t cache_expiry_age_;
 
   timer::TimerStore *timer_store_{nullptr};
   std::atomic<bool> thread_exit_cond_;
