@@ -4852,9 +4852,35 @@ func (m *ServiceMgr) restoreAppList(apps *[]application, filterMap map[string]bo
 				}
 			}
 		}
+
+		m.checkAndChangeName(&app)
 		appList = append(appList, app)
 	}
 	return &appList
+}
+
+func (m *ServiceMgr) checkAndChangeName(app *application) {
+	id := common.Identity{
+		Bucket: app.FunctionScope.BucketName,
+		Scope:  app.FunctionScope.ScopeName,
+	}
+
+	name := app.Name
+	for {
+		id.AppName = name
+		appLocation := id.ToLocation()
+		currApp, info := m.checkAppExists(appLocation)
+		if info.ErrCode != response.Ok {
+			break
+		}
+
+		if deployed, dOk := currApp.Settings["deployment_status"].(bool); !dOk || !deployed {
+			break
+		}
+
+		name = fmt.Sprintf("%s_%s", app.Name, util.GenerateRandomNameSuffix())
+	}
+	app.Name = name
 }
 
 func (m *ServiceMgr) filterAppList(apps []application, filterMap map[string]bool, filterType string, backup bool) []application {
@@ -5168,7 +5194,7 @@ func (m *ServiceMgr) freeOSMemory(w http.ResponseWriter, r *http.Request) {
 	runtimeInfo.Description = "Freed up memory to OS"
 }
 
-//expvar handler
+// expvar handler
 func (m *ServiceMgr) expvarHandler(w http.ResponseWriter, r *http.Request) {
 	res := response.NewResponseWriter(w, r, response.EventGetRuntimeProfiling)
 	runtimeInfo := &response.RuntimeInfo{}
@@ -5193,7 +5219,7 @@ func (m *ServiceMgr) expvarHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "\n}\n")
 }
 
-//pprof index handler
+// pprof index handler
 func (m *ServiceMgr) indexHandler(w http.ResponseWriter, r *http.Request) {
 	res := response.NewResponseWriter(w, r, response.EventGetRuntimeProfiling)
 	runtimeInfo := &response.RuntimeInfo{}
@@ -5207,7 +5233,7 @@ func (m *ServiceMgr) indexHandler(w http.ResponseWriter, r *http.Request) {
 	pprof.Index(w, r)
 }
 
-//pprof cmdline handler
+// pprof cmdline handler
 func (m *ServiceMgr) cmdlineHandler(w http.ResponseWriter, r *http.Request) {
 	res := response.NewResponseWriter(w, r, response.EventGetRuntimeProfiling)
 
@@ -5222,7 +5248,7 @@ func (m *ServiceMgr) cmdlineHandler(w http.ResponseWriter, r *http.Request) {
 	pprof.Cmdline(w, r)
 }
 
-//pprof profile handler
+// pprof profile handler
 func (m *ServiceMgr) profileHandler(w http.ResponseWriter, r *http.Request) {
 	res := response.NewResponseWriter(w, r, response.EventGetRuntimeProfiling)
 
@@ -5237,7 +5263,7 @@ func (m *ServiceMgr) profileHandler(w http.ResponseWriter, r *http.Request) {
 	pprof.Profile(w, r)
 }
 
-//pprof symbol handler
+// pprof symbol handler
 func (m *ServiceMgr) symbolHandler(w http.ResponseWriter, r *http.Request) {
 	res := response.NewResponseWriter(w, r, response.EventGetRuntimeProfiling)
 
@@ -5252,7 +5278,7 @@ func (m *ServiceMgr) symbolHandler(w http.ResponseWriter, r *http.Request) {
 	pprof.Symbol(w, r)
 }
 
-//pprof trace handler
+// pprof trace handler
 func (m *ServiceMgr) traceHandler(w http.ResponseWriter, r *http.Request) {
 	res := response.NewResponseWriter(w, r, response.EventGetRuntimeProfiling)
 	runtimeInfo := &response.RuntimeInfo{}
