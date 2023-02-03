@@ -51,8 +51,9 @@ const (
 	MgmtService          = "mgmt"
 	MgmtServiceSSL       = "mgmtSSL"
 
-	EPSILON = 1e-5
-	dict    = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ*&"
+	EPSILON  = 1e-5
+	dict     = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ*&"
+	nameDict = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 )
 
 var GocbCredsRequestCounter = 0
@@ -456,7 +457,7 @@ func CheckBucketExist(bucket, hostaddress string) bool {
 	defer cinfo.RUnlock()
 	kvAddrs, err := cinfo.GetNodesByBucket(bucket)
 	if err != nil {
-		if err.Error() == fmt.Sprintf("No bucket named "+bucket) {
+		if err.Error() == fmt.Sprintf("No bucket named %s", bucket) {
 			return false
 		}
 		return true
@@ -476,7 +477,7 @@ func CountActiveKVNodes(bucket, hostaddress string) int {
 
 	kvAddrs, err := cinfo.GetNodesByBucket(bucket)
 	if err != nil {
-		if err.Error() == fmt.Sprintf("No bucket named "+bucket) {
+		if err.Error() == fmt.Sprintf("No bucket named %s", bucket) {
 			return 0
 		}
 		return -1
@@ -861,7 +862,7 @@ func MetakvRecursiveDelete(dirpath string) error {
 	return Retry(NewFixedBackoff(time.Second), &cm.MetakvMaxRetries, metakvRecDelCallback, dirpath)
 }
 
-//WriteAppContent fragments the payload and store it to metakv
+// WriteAppContent fragments the payload and store it to metakv
 func WriteAppContent(appsPath, checksumPath, appLocation string, payload []byte, compressPayload bool) error {
 	logPrefix := "util::WriteAppContent"
 
@@ -1017,7 +1018,7 @@ func ReadAppContent(appsPath, checksumPath, appLocation string) ([]byte, error) 
 	return payload4, nil
 }
 
-//DeleteAppContent delete handler code
+// DeleteAppContent delete handler code
 func DeleteAppContent(appPath, checksumPath, appLocation string) error {
 	//Delete Checksum path
 	logPrefix := "util::DeleteAppContent"
@@ -1044,7 +1045,7 @@ func DeleteAppContent(appPath, checksumPath, appLocation string) error {
 	return nil
 }
 
-//Delete stale app fragments
+// Delete stale app fragments
 func DeleteStaleAppContent(appPath, appLocation string) error {
 	//Delete Apps Path
 	logPrefix := "util::DeleteStaleAppContent"
@@ -1733,22 +1734,35 @@ func GenerateFunctionID() (uint32, error) {
 }
 
 func GenerateFunctionInstanceID() (string, error) {
+	return randomID(dict)
+}
+
+func GenerateRandomNameSuffix() string {
+	id, err := randomID(nameDict)
+	if err != nil {
+		return "000000"
+	}
+
+	return id
+}
+
+func randomID(dict string) (string, error) {
 	uuid := make([]byte, 16)
 	_, err := rand.Read(uuid)
 	if err != nil {
 		return "", err
 	}
-	instanceId := crc32.ChecksumIEEE(uuid)
-	instanceIdStr := make([]byte, 0, 8)
-	if instanceId == 0 {
-		return "0", nil
+	genId := crc32.ChecksumIEEE(uuid)
+	genIdStr := make([]byte, 0, 8)
+	if genId == 0 {
+		return "", nil
 	}
-	for instanceId > 0 {
-		ch := dict[instanceId%64]
-		instanceIdStr = append(instanceIdStr, byte(ch))
-		instanceId /= 64
+	for genId > 0 {
+		ch := dict[genId%64]
+		genIdStr = append(genIdStr, byte(ch))
+		genId /= 64
 	}
-	return string(instanceIdStr), nil
+	return string(genIdStr), nil
 }
 
 type GocbLogger struct{}
