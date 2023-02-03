@@ -1755,7 +1755,7 @@ func randomID(dict string) (string, error) {
 	genId := crc32.ChecksumIEEE(uuid)
 	genIdStr := make([]byte, 0, 8)
 	if genId == 0 {
-		return "", nil
+		return "0", nil
 	}
 	for genId > 0 {
 		ch := dict[genId%64]
