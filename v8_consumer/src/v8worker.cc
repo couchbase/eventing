@@ -147,7 +147,7 @@ void V8Worker::SetCouchbaseNamespace() {
         "time": Date.now()
       };
       if (couchbase.map_key_size + res.res_size > couchbase.max_size) {
-        couchbase.ejectKeys(res.res_size, currentTime);
+        couchbase.ejectKeys(currentTime);
       }
       couchbase.mapkeys.set(key, cache_res);
       couchbase.map_key_size += res.res_size;
@@ -186,25 +186,12 @@ void V8Worker::SetCouchbaseNamespace() {
       return couchbase.deleteInternal(bucket, meta);
     };
 
-    couchbase.ejectKeys = function(spaceToFree, currtime) {
+    couchbase.ejectKeys = function(currtime) {
       var freed_size = 0;
       for (let [key, val] of couchbase.mapkeys) {
-        if (currtime - val.time > couchbase.max_expiry) {
+        if ((Math.floor(Math.random() * 8) % 3) == 0 || (currtime - val.time) > couchbase.max_expiry) {
           couchbase.mapkeys.delete(key);
           couchbase.map_key_size = couchbase.map_key_size - val.data.res_size;
-          freed_size = freed_size + val.data.res_size;
-          if (freed_size >= spaceToFree) {
-            return;
-          }
-        }
-      }
-
-      for (let [key, val] of couchbase.mapkeys) {
-        couchbase.mapkeys.delete(key);
-        couchbase.map_key_size = couchbase.map_key_size - val.data.res_size;
-        freed_size = freed_size + val.data.res_size;
-        if (freed_size >= spaceToFree) {
-          return;
         }
       }
     };
