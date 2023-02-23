@@ -32,8 +32,14 @@ struct MetaData {
 
   std::string collection;
   std::string scope;
+  bool invalidate_cache_;
 
-  MetaData() : key(""), cas(0), expiry(0), collection(""), scope("") {}
+  MetaData()
+      : key(""), cas(0), expiry(0), collection(""), scope(""),
+        invalidate_cache_(false) {}
+  MetaData(bool invalidate)
+      : key(""), cas(0), expiry(0), collection(""), scope(""),
+        invalidate_cache_(invalidate) {}
 };
 
 class BucketFactory {
@@ -80,32 +86,55 @@ public:
 
   Error Connect();
 
-  std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
-  Get(MetaData meta);
+  void SetupCacheInvalidateFunc() {
+    auto context = isolate_->GetCurrentContext();
+    auto global = context->Global();
+    std::string objString = "couchbase";
+    std::string fnString = "invalidateKey";
+
+    v8::Local<v8::Object> object;
+    v8::Local<v8::Value> obj_val =
+        global->Get(context, v8Str(isolate_, objString)).ToLocalChecked();
+    if (!TO_LOCAL(obj_val->ToObject(context), &object)) {
+      return;
+    }
+
+    v8::Local<v8::Value> invalidate_func;
+    if (!TO_LOCAL(object->Get(context, v8Str(isolate_, fnString)),
+                  &invalidate_func)) {
+      return;
+    }
+
+    auto func = invalidate_func.As<v8::Function>();
+    invalidate_cache_func_.Reset(isolate_, func);
+  }
 
   std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
-  SetWithXattr(MetaData meta, const std::string &value,
+  Get(MetaData &meta);
+
+  std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
+  SetWithXattr(MetaData &meta, const std::string &value,
                lcb_SUBDOC_STORE_SEMANTICS op_type = LCB_SUBDOC_STORE_UPSERT);
 
   std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
-  SetWithoutXattr(MetaData meta, const std::string &value,
+  SetWithoutXattr(MetaData &meta, const std::string &value,
                   lcb_STORE_OPERATION op_type = LCB_STORE_UPSERT,
                   lcb_U32 doc_type = 0x2000000);
 
   std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
-  DeleteWithXattr(MetaData meta);
+  DeleteWithXattr(MetaData &meta);
 
   std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
-  DeleteWithoutXattr(MetaData meta);
+  DeleteWithoutXattr(MetaData &meta);
 
   std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
-  GetWithMeta(MetaData meta);
+  GetWithMeta(MetaData &meta);
 
   std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
-  CounterWithXattr(MetaData meta, int64_t delta);
+  CounterWithXattr(MetaData &meta, int64_t delta);
 
   std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
-  CounterWithoutXattr(MetaData meta, int64_t delta);
+  CounterWithoutXattr(MetaData &meta, int64_t delta);
 
   lcb_INSTANCE *GetConnection() const { return connection_; }
 
@@ -114,7 +143,7 @@ public:
   const std::string &CollectionName() const { return collection_name_; };
 
   std::tuple<Error, std::string, std::string>
-  get_scope_and_collection_names(MetaData meta);
+  get_scope_and_collection_names(const MetaData &meta);
 
 private:
   Error FormatErrorAndDestroyConn(const std::string &message,
@@ -122,7 +151,7 @@ private:
 
   bool MaybeRecreateConnOnAuthErr(const lcb_STATUS &status,
                                   bool should_check_autherr);
-
+  void InvalidateCache(const MetaData &meta);
   template <typename CmdType, typename Callable>
   std::tuple<Error, lcb_STATUS, Result>
   TryLcbCmdWithRefreshConnIfNecessary(CmdType &cmd, int max_retry_count,
@@ -169,6 +198,7 @@ private:
   }
 
   v8::Isolate *isolate_{nullptr};
+  v8::Persistent<v8::Function> invalidate_cache_func_;
   std::string bucket_name_;
   std::string scope_name_;
   std::string collection_name_;
@@ -204,7 +234,7 @@ public:
                                const v8::Local<v8::Value> obj);
   static std::tuple<Error, bool>
   IsSourceMutation(v8::Isolate *isolate, const v8::Local<v8::Value> obj,
-                   MetaData meta);
+                   const MetaData &meta);
 
 private:
   static void HandleBucketOpFailure(v8::Isolate *isolate,
@@ -249,7 +279,7 @@ private:
                         const v8::PropertyCallbackInfo<v8::Value> &info);
 
   static std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
-  BucketSet(MetaData metadata, const std::string &value, bool is_source_bucket,
+  BucketSet(MetaData &metadata, const std::string &value, bool is_source_bucket,
             Bucket *bucket);
 
   template <typename>
@@ -260,7 +290,7 @@ private:
                            const v8::PropertyCallbackInfo<v8::Boolean> &info);
 
   static std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
-  BucketDelete(MetaData meta, bool is_source_bucket, Bucket *bucket);
+  BucketDelete(MetaData &meta, bool is_source_bucket, Bucket *bucket);
 
   static void
   BucketDeleteWithXattr(const v8::Local<v8::Name> &key,
