@@ -23,11 +23,6 @@ import (
 	"github.com/couchbase/eventing/util"
 )
 
-// Auth returns username:password combination for the cluster
-func (p *Producer) Auth() string {
-	return p.auth
-}
-
 // CfgData returns deployment descriptor content
 func (p *Producer) CfgData() string {
 	return p.cfgData
@@ -597,7 +592,7 @@ func (p *Producer) CleanupMetadataBucket(skipCheckpointBlobs bool) error {
 		return err
 	}
 
-	eventingNodeAddr, err := util.CurrentEventingNodeAddress(p.auth, hostAddress)
+	eventingNodeAddr, err := util.CurrentEventingNodeAddress(hostAddress)
 	if err != nil {
 		logging.Errorf("%s [%s:%d] Failed to get address for current eventing node, err: %v",
 			logPrefix, p.appName, p.LenRunningConsumers(), err)

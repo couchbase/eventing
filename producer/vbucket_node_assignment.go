@@ -224,7 +224,7 @@ func (p *Producer) initWorkerVbMap() map[string][]uint16 {
 
 	hostAddress := net.JoinHostPort(util.Localhost(), p.nsServerPort)
 
-	eventingNodeAddr, err := util.CurrentEventingNodeAddress(p.auth, hostAddress)
+	eventingNodeAddr, err := util.CurrentEventingNodeAddress(hostAddress)
 	if err != nil {
 		logging.Errorf("%s [%s:%d] Failed to get address for current eventing node, err: %v",
 			logPrefix, p.appName, p.LenRunningConsumers(), err)

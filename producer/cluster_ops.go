@@ -7,7 +7,6 @@ import (
 	"sync/atomic"
 	"unsafe"
 
-	"github.com/couchbase/cbauth"
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
@@ -38,7 +37,7 @@ var getNsServerNodesAddressesOpCallback = func(args ...interface{}) error {
 
 	hostAddress := net.JoinHostPort(util.Localhost(), p.nsServerPort)
 
-	nsServerNodeAddrs, err := util.NsServerNodesAddresses(p.auth, hostAddress)
+	nsServerNodeAddrs, err := util.NsServerNodesAddresses(hostAddress)
 	if err != nil {
 		logging.Errorf("%s [%s:%d] Failed to get all NS Server nodes, err: %v", logPrefix, p.appName, p.LenRunningConsumers(), err)
 	} else {
@@ -58,7 +57,7 @@ var getKVNodesAddressesOpCallback = func(args ...interface{}) error {
 
 	hostAddress := net.JoinHostPort(util.Localhost(), p.nsServerPort)
 
-	kvNodeAddrs, err := util.KVNodesAddresses(p.auth, hostAddress, bucket)
+	kvNodeAddrs, err := util.KVNodesAddresses(hostAddress, bucket)
 	if err != nil {
 		logging.Errorf("%s [%s:%d] Failed to get all KV nodes, err: %v", logPrefix, p.appName, p.LenRunningConsumers(), err)
 	} else {
@@ -84,7 +83,7 @@ var getEventingNodesAddressesOpCallback = func(args ...interface{}) error {
 
 	hostAddress := net.JoinHostPort(util.Localhost(), p.nsServerPort)
 
-	eventingNodeAddrs, err := util.EventingNodesAddresses(p.auth, hostAddress)
+	eventingNodeAddrs, err := util.EventingNodesAddresses(hostAddress)
 	if err != nil {
 		logging.Errorf("%s [%s:%d] Failed to get all eventing nodes, err: %v", logPrefix, p.appName, p.LenRunningConsumers(), err)
 		return err
@@ -98,22 +97,6 @@ var getEventingNodesAddressesOpCallback = func(args ...interface{}) error {
 		return nil
 	}
 
-}
-
-var getHTTPServiceAuth = func(args ...interface{}) error {
-	logPrefix := "Producer::getHTTPServiceAuth"
-
-	p := args[0].(*Producer)
-	user := args[1].(*string)
-	password := args[2].(*string)
-
-	var err error
-	clusterURL := net.JoinHostPort(util.Localhost(), p.nsServerPort)
-	*user, *password, err = cbauth.GetHTTPServiceAuth(clusterURL)
-	if err != nil {
-		logging.Errorf("%s [%s:%d] Failed to get cluster auth details, err: %v", logPrefix, p.appName, p.LenRunningConsumers(), err)
-	}
-	return err
 }
 
 var metakvGetCallback = func(args ...interface{}) error {
