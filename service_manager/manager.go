@@ -35,7 +35,7 @@ func NewState() state {
 	}
 }
 
-//NewServiceMgr creates handle for ServiceMgr, which implements cbauth service.Manager
+// NewServiceMgr creates handle for ServiceMgr, which implements cbauth service.Manager
 func NewServiceMgr(config util.Config, rebalanceRunning bool,
 	superSup common.EventingSuperSup) *ServiceMgr {
 
@@ -100,8 +100,6 @@ func (m *ServiceMgr) initService() {
 
 	logging.Infof("%s adminHTTPPort: %s adminSSLPort: %s", logPrefix, m.adminHTTPPort, m.adminSSLPort)
 	logging.Infof("%s caFile: %s certFile: %s keyFile: %s", logPrefix, m.caFile, m.certFile, m.keyFile)
-
-	util.Retry(util.NewFixedBackoff(time.Second), nil, getHTTPServiceAuth, m)
 
 	go func(m *ServiceMgr) {
 		for {

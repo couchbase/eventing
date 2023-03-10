@@ -74,7 +74,6 @@ var (
 type ServiceMgr struct {
 	adminHTTPPort           string
 	adminSSLPort            string
-	auth                    string
 	graph                   *bucketMultiDiGraph
 	caFile                  string
 	certFile                string

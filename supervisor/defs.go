@@ -47,7 +47,7 @@ const (
 	memQuotaThreshold = 0.85
 )
 
-//TODO: move it to common package
+// TODO: move it to common package
 const bucketOpRetryInterval = time.Duration(1000) * time.Millisecond
 
 var NoBucket = errors.New("Bucket not found")
@@ -100,7 +100,6 @@ type gocbGlobalConfig struct {
 
 // SuperSupervisor is responsible for managing/supervising all producer instances
 type SuperSupervisor struct {
-	auth        string
 	CancelCh    chan struct{}
 	adminPort   AdminPortConfig
 	ejectNodes  []string

@@ -80,13 +80,13 @@ type ClusterInfoClient struct {
 type NodeId int
 
 func FetchNewClusterInfoCache(clusterUrl string) (*ClusterInfoCache, error) {
-	url, err := ClusterAuthUrl(clusterUrl)
-	if err != nil {
-		return nil, err
+	cUrl := url.URL{
+		Scheme: "http",
+		Host:   clusterUrl,
 	}
 
 	c := &ClusterInfoCache{
-		url:      url,
+		url:      cUrl.String(),
 		poolName: "default",
 		retries:  CLUSTER_INFO_INIT_RETRIES,
 	}
@@ -288,9 +288,7 @@ func (c *ClusterInfoCache) GetBuckets() []string {
 	return buckets
 }
 
-//
 // Return UUID of a given bucket.
-//
 func (c *ClusterInfoCache) GetBucketUUID(bucket string) (uuid string) {
 
 	b, err := c.pool.GetBucket(bucket)
@@ -734,6 +732,7 @@ func (c *ClusterInfoClient) watchClusterChanges() {
 	selfRestart := func() {
 		if c.scn != nil {
 			c.scn.Close()
+			c.scn = nil
 		}
 		time.Sleep(time.Duration(c.servicesNotifierRetryTm) * time.Millisecond)
 		go c.watchClusterChanges()

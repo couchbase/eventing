@@ -57,7 +57,6 @@ type Producer struct {
 	appName                string
 	eventingDir            string
 	app                    *common.AppConfig
-	auth                   string
 	cfgData                string
 	handleV8ConsumerMutex  *sync.Mutex // controls access to Producer.handleV8Consumer
 	isBootstrapping        bool

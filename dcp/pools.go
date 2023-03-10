@@ -24,6 +24,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/couchbase/cbauth"
 	"github.com/couchbase/eventing/common/collections"
 	memcached "github.com/couchbase/eventing/dcp/transport/client"
 	"github.com/couchbase/eventing/logging"
@@ -383,9 +384,6 @@ func (b Bucket) authHandler() (ah AuthHandler) {
 	if b.pool != nil {
 		ah = b.pool.client.ah
 	}
-	if ah == nil {
-		ah = &basicAuth{b.Name, ""}
-	}
 	return
 }
 
@@ -643,23 +641,24 @@ func (b *Bucket) parseURLResponse(path string, out interface{}) error {
 }
 
 type basicAuth struct {
-	u, p string
+	url string
 }
 
 func (b basicAuth) GetCredentials() (string, string) {
-	return b.u, b.p
+	u, err := ParseURL(b.url)
+	if err != nil {
+		return "", ""
+	}
+
+	adminUser, adminPasswd, err := cbauth.GetHTTPServiceAuth(u.Host)
+	if err != nil {
+		return "", ""
+	}
+	return adminUser, adminPasswd
 }
 
 func basicAuthFromURL(us string) (ah AuthHandler) {
-	u, err := ParseURL(us)
-	if err != nil {
-		return
-	}
-	if user := u.User; user != nil {
-		pw, _ := user.Password()
-		ah = basicAuth{user.Username(), pw}
-	}
-	return
+	return basicAuth{url: us}
 }
 
 // ConnectWithAuth connects to a couchbase cluster with the given

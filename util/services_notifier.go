@@ -275,12 +275,12 @@ func NewServicesChangeNotifier(clusterUrl, pool string) (*ServicesChangeNotifier
 	id := clusterUrl + "-" + pool
 
 	if _, ok := SingletonServicesContainer.Notifiers[id]; !ok {
-		clusterAuthUrl, err := ClusterAuthUrl(clusterUrl)
+		clusterUrl, err := ClusterUrl(clusterUrl)
 		if err != nil {
-			logging.Errorf("ClusterInfoClient ClusterAuthUrl(): %v\n", err)
+			logging.Errorf("ClusterInfoClient ClusterUrl(): %v\n", err)
 			return nil, err
 		}
-		client, err := couchbase.Connect(clusterAuthUrl)
+		client, err := couchbase.Connect(clusterUrl)
 		if err != nil {
 			return nil, err
 		}

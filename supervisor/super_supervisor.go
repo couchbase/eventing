@@ -92,11 +92,6 @@ func NewSuperSupervisor(adminPort AdminPortConfig, eventingDir, kvPort, restPort
 	util.LogSystemEvent(util.EVENTID_PRODUCER_STARTUP, systemeventlog.SEInfo, nil)
 
 	s.keepNodes = append(s.keepNodes, uuid)
-
-	var user, password string
-	util.Retry(util.NewFixedBackoff(time.Second), nil, getHTTPServiceAuth, s, &user, &password)
-	s.auth = fmt.Sprintf("%s:%s", user, password)
-
 	go func() {
 		tick := time.NewTicker(time.Minute)
 		defer tick.Stop()

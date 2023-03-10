@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net"
 
-	"github.com/couchbase/cbauth"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/util"
 )
@@ -22,7 +21,7 @@ var getEventingNodesAddressesOpCallback = func(args ...interface{}) error {
 
 	hostAddress := net.JoinHostPort(util.Localhost(), m.restPort)
 
-	eventingNodeAddrs, err := util.EventingNodesAddresses(m.auth, hostAddress)
+	eventingNodeAddrs, err := util.EventingNodesAddresses(hostAddress)
 	if err != nil {
 		logging.Errorf("%s Failed to get all eventing nodes, err: %v", logPrefix, err)
 		return err
@@ -35,22 +34,6 @@ var getEventingNodesAddressesOpCallback = func(args ...interface{}) error {
 		return nil
 	}
 
-}
-
-var getHTTPServiceAuth = func(args ...interface{}) error {
-	logPrefix := "ServiceMgr::getHTTPServiceAuth"
-
-	m := args[0].(*ServiceMgr)
-
-	clusterURL := net.JoinHostPort(util.Localhost(), m.restPort)
-	user, password, err := cbauth.GetHTTPServiceAuth(clusterURL)
-	if err != nil {
-		logging.Errorf("%s Failed to get cluster auth details, err: %v", logPrefix, err)
-		return err
-	}
-
-	m.auth = fmt.Sprintf("%s:%s", user, password)
-	return nil
 }
 
 var storeKeepNodesCallback = func(args ...interface{}) error {

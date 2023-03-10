@@ -2,7 +2,6 @@ package util
 
 import (
 	"bytes"
-	"fmt"
 	"net"
 	"net/url"
 	"strings"
@@ -73,7 +72,7 @@ func (ah *CbAuthHandler) AuthenticateMemcachedConn(host string, conn *memcached.
 	return err
 }
 
-func ClusterAuthUrl(cluster string) (string, error) {
+func ClusterUrl(cluster string) (string, error) {
 
 	if strings.HasPrefix(cluster, "http") {
 		u, err := url.Parse(cluster)
@@ -83,15 +82,9 @@ func ClusterAuthUrl(cluster string) (string, error) {
 		cluster = u.Host
 	}
 
-	adminUser, adminPasswd, err := cbauth.GetHTTPServiceAuth(cluster)
-	if err != nil {
-		return "", err
-	}
-
 	clusterUrl := url.URL{
 		Scheme: "http",
 		Host:   cluster,
-		User:   url.UserPassword(adminUser, adminPasswd),
 	}
 
 	return clusterUrl.String(), nil
@@ -183,14 +176,7 @@ func IsSyncGatewayEnabled(caller string, keySpace *common.Keyspace, restPort str
 
 	addr := net.JoinHostPort(Localhost(), restPort)
 
-	user, password, err := cbauth.GetHTTPServiceAuth(addr)
-	if err != nil {
-		logging.Errorf("%s Failed to get auth creds, err: %v", logPrefix, err)
-		return
-	}
-	auth := fmt.Sprintf("%s:%s", user, password)
-
-	kvVbMap, err := KVVbMap(auth, keySpace.BucketName, addr)
+	kvVbMap, err := KVVbMap(keySpace.BucketName, addr)
 	if err != nil {
 		logging.Errorf("%s Failed to get KVVbMap, err: %v", logPrefix, err)
 		return

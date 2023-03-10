@@ -8,13 +8,11 @@ import (
 	"os"
 	"runtime"
 	"sort"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 	"unsafe"
 
-	"github.com/couchbase/cbauth"
 	"github.com/couchbase/cbauth/service"
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/common/collections"
@@ -250,14 +248,6 @@ func (p *Producer) Serve() {
 	p.clusterStateChange = make(chan struct{})
 	p.consumerSupervisorTokenMap = make(map[common.EventingConsumer]suptree.ServiceToken)
 	p.tokenRWMutex = &sync.RWMutex{}
-
-	if p.auth != "" {
-		up := strings.Split(p.auth, ":")
-		if _, err := cbauth.InternalRetryDefaultInit(p.nsServerHostPort,
-			up[0], up[1]); err != nil {
-			logging.Fatalf("%s [%s:%d] Failed to initialise cbauth, err: %v", logPrefix, p.appName, p.LenRunningConsumers(), err)
-		}
-	}
 
 	spec := suptree.Spec{
 		Timeout: supervisorTimeout,
@@ -1004,7 +994,7 @@ func (p *Producer) undeployHandlerWait() {
 			}
 
 			undeployReason := fmt.Sprintf("Undeploying function due to revocation of one or more required permissions. Missing permissions: %v",
-			notAllowed)
+				notAllowed)
 
 			if atomic.CompareAndSwapInt32(&p.lazyUndeploy, 0, 1) {
 				deleteFunction := false

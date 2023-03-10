@@ -77,8 +77,6 @@ func (p *Producer) parseDepcfg() error {
 	d := new(cfg.DepCfg)
 	depcfg := config.DepCfg(d)
 
-	var user, password string
-	err = util.Retry(util.NewFixedBackoff(time.Second), &p.retryCount, getHTTPServiceAuth, p, &user, &password)
 	if err == common.ErrRetryTimeout {
 		logging.Errorf("%s [%s] Exiting due to timeout", logPrefix, p.appName)
 		return err
@@ -115,8 +113,6 @@ func (p *Producer) parseDepcfg() error {
 			}
 		}
 	}
-
-	p.auth = fmt.Sprintf("%s:%s", user, password)
 
 	settingsPath := metakvAppSettingsPath + p.appName
 	sData, sErr := util.MetakvGet(settingsPath)
@@ -450,14 +446,14 @@ func (p *Producer) parseDepcfg() error {
 
 	p.nsServerHostPort = net.JoinHostPort(util.Localhost(), p.nsServerPort)
 
-	p.kvHostPorts, err = util.KVNodesAddresses(p.auth, p.nsServerHostPort, p.SourceBucket())
+	p.kvHostPorts, err = util.KVNodesAddresses(p.nsServerHostPort, p.SourceBucket())
 	if err != nil {
 		logging.Errorf("%s [%s] Failed to get list of kv nodes in the cluster, err: %v", logPrefix, p.appName, err)
 		return err
 	}
 	logging.Infof("%s [%s] kv nodes from cinfo: %+v", logPrefix, p.appName, p.kvHostPorts)
 
-	p.dcpConfig["collectionAware"], err = util.CollectionAware(p.auth, p.nsServerHostPort)
+	p.dcpConfig["collectionAware"], err = util.CollectionAware(p.nsServerHostPort)
 	if err != nil {
 		logging.Errorf("%s [%s] Failed to cluster collection aware status, err: %v", logPrefix, p.appName, err)
 	}
