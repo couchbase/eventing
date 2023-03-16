@@ -20,7 +20,7 @@ var getEventingNodeAddrOpCallback = func(args ...interface{}) error {
 
 	hostAddress := net.JoinHostPort(util.Localhost(), c.producer.GetNsServerPort())
 
-	hostPortAddr, err := util.CurrentEventingNodeAddress(c.producer.Auth(), hostAddress)
+	hostPortAddr, err := util.CurrentEventingNodeAddress(hostAddress)
 	if err != nil {
 		logging.Errorf("%s [%s:%s:%d] Failed to grab routable interface, err: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), err)

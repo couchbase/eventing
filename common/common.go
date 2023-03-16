@@ -290,7 +290,6 @@ var (
 // EventingProducer interface to export functions from eventing_producer
 type EventingProducer interface {
 	AddMetadataPrefix(key string) Key
-	Auth() string
 	AppendCurlLatencyStats(deltas StatsData)
 	AppendLatencyStats(deltas StatsData)
 	BootstrapStatus() bool
