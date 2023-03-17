@@ -212,6 +212,29 @@ func TestAdvancedDeleteOps(t *testing.T) {
 		"advanced_bucket_ops_delete", setting, t)
 }
 
+func TestTouchOps(t *testing.T) {
+	itemCount := 100
+	setting := &commonSettings{
+		aliasSources:       []string{srcBucket},
+		aliasHandles:       []string{"dst_bucket"},
+		srcMutationEnabled: true,
+	}
+
+	testPumpDocExpiry(itemCount, 0, srcBucket, "advanced_bucket_ops_touch",
+		setting, t)
+
+	log.Printf("Testing Touch operation on destination bucket")
+
+	pumpBucketOpsSrc(opsType{count: itemCount}, dstBucket, &rateLimit{})
+	setting = &commonSettings{
+		aliasSources:       []string{dstBucket},
+		aliasHandles:       []string{"dst_bucket"},
+		srcMutationEnabled: true,
+	}
+	testPumpDocExpiry(itemCount, 0, dstBucket, "advanced_bucket_ops_touch",
+		setting, t)
+}
+
 func TestEnoentAdvancedGet(t *testing.T) {
 	itemCount := 100
 	testPumpDoc(itemCount, itemCount, dstBucket, false,
@@ -479,25 +502,25 @@ func TestCountersDecrement(t *testing.T) {
 func TestMultiColErrorCondition(t *testing.T) {
 	itemCount := 2
 	setting := &commonSettings{
-                aliasHandles: []string{"dst_bucket", "dst_bucket1"},
-                aliasCollection: []common.Keyspace{
-                        common.Keyspace{BucketName: dstBucket,
-                                ScopeName:      "*",
-                                CollectionName: "*",
-                        },
+		aliasHandles: []string{"dst_bucket", "dst_bucket1"},
+		aliasCollection: []common.Keyspace{
+			common.Keyspace{BucketName: dstBucket,
+				ScopeName:      "*",
+				CollectionName: "*",
+			},
 			common.Keyspace{
 				BucketName: dstBucket,
 			},
-                },
+		},
 
-                sourceKeyspace: common.Keyspace{
-                        BucketName:     srcBucket,
-                        ScopeName:      "*",
-                        CollectionName: "*",
-                },
-        }
+		sourceKeyspace: common.Keyspace{
+			BucketName:     srcBucket,
+			ScopeName:      "*",
+			CollectionName: "*",
+		},
+	}
 	testPumpDoc(itemCount, itemCount, dstBucket, false,
-                "multi_col_error_conditions", setting, t)
+		"multi_col_error_conditions", setting, t)
 
 	testPumpDoc(itemCount, itemCount, dstBucket, true,
 		"multi_col_error_conditions", setting, t)

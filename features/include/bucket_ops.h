@@ -68,6 +68,7 @@ public:
   static void DeleteOp(const v8::FunctionCallbackInfo<v8::Value> &args);
   static void IncrementOp(const v8::FunctionCallbackInfo<v8::Value> &args);
   static void DecrementOp(const v8::FunctionCallbackInfo<v8::Value> &args);
+  static void TouchOp(const v8::FunctionCallbackInfo<v8::Value> &args);
   static void BindingDetails(const v8::FunctionCallbackInfo<v8::Value> &args);
 
 private:
@@ -91,6 +92,9 @@ private:
                      v8::Local<v8::Object> &response_obj);
   Info SetCounterData(std::unique_ptr<Result> const &result,
                       v8::Local<v8::Object> &response_obj);
+
+  std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
+  Touch(MetaData &meta, bool is_source_bucket, Bucket *bucket);
 
   std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
   Delete(MetaData &meta, bool is_source_bucket, Bucket *bucket);

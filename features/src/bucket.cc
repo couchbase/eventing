@@ -147,6 +147,7 @@ Error Bucket::Connect() {
   lcb_install_callback(connection_, LCB_CALLBACK_GET, GetCallback);
   lcb_install_callback(connection_, LCB_CALLBACK_STORE, SetCallback);
   lcb_install_callback(connection_, LCB_CALLBACK_SDMUTATE, SubDocumentCallback);
+  lcb_install_callback(connection_, LCB_CALLBACK_TOUCH, TouchCallback);
   lcb_install_callback(connection_, LCB_CALLBACK_REMOVE, DeleteCallback);
   lcb_install_callback(connection_, LCB_CALLBACK_SDLOOKUP,
                        SubDocumentLookupCallback);
@@ -778,6 +779,132 @@ Bucket::DeleteWithoutXattr(MetaData &meta) {
   }
 
   InvalidateCache(meta);
+  return {nullptr, std::make_unique<lcb_STATUS>(err_code),
+          std::make_unique<Result>(std::move(result))};
+}
+
+std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
+Bucket::TouchWithXattr(MetaData &meta) {
+  if (!is_connected_) {
+    return {std::make_unique<std::string>("Connection is not initialized"),
+            nullptr, nullptr};
+  }
+
+  auto [error, scope, collection] = get_scope_and_collection_names(meta);
+  if (error != nullptr) {
+    return {std::move(error), nullptr, nullptr};
+  }
+  meta.scope = scope;
+  meta.collection = collection;
+
+  lcb_SUBDOCSPECS *specs;
+  lcb_subdocspecs_create(&specs, 3);
+
+  auto function_instance_id = GetFunctionInstanceID(isolate_);
+  std::string function_instance_id_path("_eventing.fiid");
+  lcb_subdocspecs_dict_upsert(
+      specs, 0, LCB_SUBDOCSPECS_F_MKINTERMEDIATES | LCB_SUBDOCSPECS_F_XATTRPATH,
+      function_instance_id_path.c_str(), function_instance_id_path.size(),
+      function_instance_id.c_str(), function_instance_id.size());
+
+  std::string dcp_seqno_path("_eventing.seqno");
+  std::string dcp_seqno_macro(R"("${Mutation.seqno}")");
+  lcb_subdocspecs_dict_upsert(specs, 1,
+                              LCB_SUBDOCSPECS_F_MKINTERMEDIATES |
+                                  LCB_SUBDOCSPECS_F_XATTR_MACROVALUES,
+                              dcp_seqno_path.c_str(), dcp_seqno_path.size(),
+                              dcp_seqno_macro.c_str(), dcp_seqno_macro.size());
+
+  std::string value_crc32_path("_eventing.crc");
+  std::string value_crc32_macro(R"("${Mutation.value_crc32c}")");
+  lcb_subdocspecs_dict_upsert(
+      specs, 2,
+      LCB_SUBDOCSPECS_F_MKINTERMEDIATES | LCB_SUBDOCSPECS_F_XATTR_MACROVALUES,
+      value_crc32_path.c_str(), value_crc32_path.size(),
+      value_crc32_macro.c_str(), value_crc32_macro.size());
+
+  const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
+  const auto lcb_timeout = UnwrapData(isolate_)->lcb_timeout;
+  const auto max_timeout = UnwrapData(isolate_)->op_timeout;
+
+  lcb_CMDSUBDOC *cmd;
+  lcb_cmdsubdoc_create(&cmd);
+  lcb_cmdsubdoc_specs(cmd, specs);
+  lcb_cmdsubdoc_collection(cmd, scope.c_str(), scope.size(), collection.c_str(),
+                           collection.size());
+  lcb_cmdsubdoc_expiry(cmd, meta.expiry);
+  lcb_cmdsubdoc_key(cmd, meta.key.c_str(), meta.key.length());
+  lcb_cmdsubdoc_timeout(cmd, lcb_timeout);
+
+  if (on_behalf_of_.size() != 0) {
+    lcb_cmdsubdoc_on_behalf_of(cmd, on_behalf_of_.c_str(),
+                               on_behalf_of_.size());
+    lcb_cmdsubdoc_on_behalf_of_extra_privilege(
+        cmd, on_behalf_of_privilege_.c_str(), on_behalf_of_privilege_.size());
+  }
+
+  auto [err, err_code, result] = TryLcbCmdWithRefreshConnIfNecessary(
+      *cmd, max_retry, max_timeout, LcbSubdocSet);
+  lcb_cmdsubdoc_destroy(cmd);
+  lcb_subdocspecs_destroy(specs);
+
+  if (err != nullptr) {
+    return {std::move(err), nullptr, nullptr};
+  }
+  if (err_code != LCB_SUCCESS) {
+    ++lcb_retry_failure;
+    return {nullptr, std::make_unique<lcb_STATUS>(err_code), nullptr};
+  }
+
+  return {nullptr, std::make_unique<lcb_STATUS>(err_code),
+          std::make_unique<Result>(std::move(result))};
+}
+
+std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
+Bucket::TouchWithoutXattr(MetaData &meta) {
+  if (!is_connected_) {
+    return {std::make_unique<std::string>("Connection is not initialized"),
+            nullptr, nullptr};
+  }
+
+  auto [error, scope, collection] = get_scope_and_collection_names(meta);
+  if (error != nullptr) {
+    return {std::move(error), nullptr, nullptr};
+  }
+
+  meta.scope = scope;
+  meta.collection = collection;
+
+  const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
+  const auto lcb_timeout = UnwrapData(isolate_)->lcb_timeout;
+  const auto max_timeout = UnwrapData(isolate_)->op_timeout;
+
+  lcb_CMDTOUCH *cmd;
+  lcb_cmdtouch_create(&cmd);
+  lcb_cmdtouch_expiry(cmd, meta.expiry);
+
+  lcb_cmdtouch_collection(cmd, scope.c_str(), scope.size(), collection.c_str(),
+                          collection.size());
+
+  lcb_cmdtouch_key(cmd, meta.key.data(), meta.key.size());
+  lcb_cmdtouch_timeout(cmd, lcb_timeout);
+
+  if (on_behalf_of_.size() != 0) {
+    lcb_cmdtouch_on_behalf_of(cmd, on_behalf_of_.c_str(), on_behalf_of_.size());
+  }
+
+  auto [err, err_code, result] = TryLcbCmdWithRefreshConnIfNecessary(
+      *cmd, max_retry, max_timeout, LcbTouch);
+  lcb_cmdtouch_destroy(cmd);
+  if (err != nullptr) {
+    return {std::move(err), nullptr, nullptr};
+  }
+
+  if (err_code != LCB_SUCCESS) {
+    ++lcb_retry_failure;
+    return {nullptr, std::make_unique<lcb_STATUS>(err_code), nullptr};
+  }
+
   return {nullptr, std::make_unique<lcb_STATUS>(err_code),
           std::make_unique<Result>(std::move(result))};
 }

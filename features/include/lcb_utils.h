@@ -55,6 +55,8 @@ void SubDocumentCallback(lcb_INSTANCE *instance, int cbtype,
 
 void DeleteCallback(lcb_INSTANCE *instance, int cbtype, const lcb_RESPBASE *rb);
 
+void TouchCallback(lcb_INSTANCE *instance, int cbtype, const lcb_RESPBASE *rb);
+
 void counter_callback(lcb_INSTANCE *instance, int cbtype,
                       const lcb_RESPBASE *rb);
 
@@ -67,6 +69,9 @@ std::pair<lcb_STATUS, Result> LcbSet(lcb_INSTANCE *instance, lcb_CMDSTORE &cmd);
 
 std::pair<lcb_STATUS, Result> LcbDelete(lcb_INSTANCE *instance,
                                         lcb_CMDREMOVE &cmd);
+
+std::pair<lcb_STATUS, Result> LcbTouch(lcb_INSTANCE *instance,
+                                       lcb_CMDTOUCH &cmd);
 
 std::pair<lcb_STATUS, Result> LcbSubdocSet(lcb_INSTANCE *instance,
                                            lcb_CMDSUBDOC &cmd);

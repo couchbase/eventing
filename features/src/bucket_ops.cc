@@ -434,6 +434,14 @@ Info BucketOps::VerifyBucketObject(v8::Local<v8::Value> bucket_binding) {
 }
 
 std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
+BucketOps::Touch(MetaData &meta, bool is_source_mutation, Bucket *bucket) {
+  if (is_source_mutation) {
+    return bucket->TouchWithXattr(meta);
+  }
+  return bucket->TouchWithoutXattr(meta);
+}
+
+std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
 BucketOps::Delete(MetaData &meta, bool is_source_mutation, Bucket *bucket) {
   if (is_source_mutation) {
     return bucket->DeleteWithXattr(meta);
@@ -1243,6 +1251,99 @@ void BucketOps::DecrementOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
   auto bucket_ops = isolate_data->bucket_ops;
   bucket_ops->CounterOps(args, -1);
+}
+
+void BucketOps::TouchOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
+  auto isolate = args.GetIsolate();
+  auto isolate_data = UnwrapData(isolate);
+  std::lock_guard<std::mutex> guard(isolate_data->termination_lock_);
+  if (!isolate_data->is_executing_) {
+    return;
+  }
+
+  auto bucket_ops = isolate_data->bucket_ops;
+  auto js_exception = isolate_data->js_exception;
+
+  if (args.Length() < 2) {
+    ++bucket_op_exception_count;
+    js_exception->ThrowTypeError(
+        "couchbase.touch requires at least 2 arguments");
+    return;
+  }
+
+  auto info = bucket_ops->VerifyBucketObject(args[0]);
+  if (info.is_fatal) {
+    ++bucket_op_exception_count;
+    js_exception->ThrowTypeError(info.msg);
+    return;
+  }
+
+  auto block_mutation = BucketBinding::GetBlockMutation(isolate, args[0]);
+  if (block_mutation) {
+    ++bucket_op_exception_count;
+    js_exception->ThrowEventingError("Touch operation is forbidden");
+    return;
+  }
+
+  auto meta_info = bucket_ops->ExtractMetaInfo(args[1], false, true);
+  if (!meta_info.is_valid) {
+    ++bucket_op_exception_count;
+    js_exception->ThrowTypeError(meta_info.msg);
+    return;
+  }
+  auto meta = meta_info.meta;
+
+  auto bucket = BucketBinding::GetBucket(isolate, args[0]);
+  auto [err, is_source_mutation] =
+      BucketBinding::IsSourceMutation(isolate, args[0], meta);
+  if (err != nullptr) {
+    js_exception->ThrowEventingError(*err);
+    return;
+  }
+
+  auto [error, err_code, result] =
+      bucket_ops->Touch(meta, is_source_mutation, bucket);
+  if (error != nullptr) {
+    ++bucket_op_exception_count;
+    js_exception->ThrowEventingError(*error);
+    return;
+  }
+
+  result->key = meta.key;
+  if (*err_code != LCB_SUCCESS) {
+    bucket_ops->HandleBucketOpFailure(bucket->GetConnection(), *err_code);
+    return;
+  }
+
+  v8::Local<v8::Object> response_obj = v8::Object::New(isolate);
+  if (result->rc == LCB_ERR_DOCUMENT_NOT_FOUND) {
+    info = bucket_ops->SetErrorObject(
+        response_obj, "LCB_KEY_ENOENT",
+        "The document key does not exist on the server", result->kv_err_code,
+        bucket_ops->key_not_found_str_, true);
+
+    if (info.is_fatal) {
+      ++bucket_op_exception_count;
+      js_exception->ThrowEventingError(info.msg);
+      return;
+    }
+    args.GetReturnValue().Set(response_obj);
+    return;
+  }
+
+  if (result->rc != LCB_SUCCESS) {
+    bucket_ops->HandleBucketOpFailure(bucket->GetConnection(), result->rc);
+    return;
+  }
+
+  info = bucket_ops->ResponseSuccessObject(std::move(result), response_obj);
+  if (info.is_fatal) {
+    ++bucket_op_exception_count;
+    js_exception->ThrowEventingError(info.msg);
+    return;
+  }
+
+  args.GetReturnValue().Set(response_obj);
 }
 
 void BucketOps::BindingDetails(
