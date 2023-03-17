@@ -499,6 +499,19 @@ func TestCountersDecrement(t *testing.T) {
 		"advanced_bucket_ops_counter_decrement", setting, t)
 }
 
+func TestSelfBucketRecursion(t *testing.T) {
+	itemCount := 1
+
+	log.Printf("Testing self_recursion")
+	setting := &commonSettings{
+		aliasSources:       []string{srcBucket},
+		aliasHandles:       []string{"src"},
+		srcMutationEnabled: true,
+	}
+	testPumpDoc(itemCount, 0, srcBucket, false,
+		"advanced_bucket_ops_self_recursion", setting, t)
+}
+
 func TestMultiColErrorCondition(t *testing.T) {
 	itemCount := 2
 	setting := &commonSettings{

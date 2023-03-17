@@ -157,28 +157,37 @@ void V8Worker::SetCouchbaseNamespace() {
       return res;
     };
 
-    couchbase.insert = function(bucket, meta, doc) {
+    couchbase.insert = function(bucket, meta, doc, options) {
       var details = couchbase.bindingDetails(bucket, meta);
       var key = couchbase.getCachedKey(meta.id, details);
 
       this.invalidateKey(key);
-      return couchbase.insertInternal(bucket, meta, doc);
+      if(!options) {
+        options = {};
+      }
+      return couchbase.insertInternal(bucket, meta, doc, options);
     };
 
-    couchbase.upsert = function(bucket, meta, doc) {
+    couchbase.upsert = function(bucket, meta, doc, options) {
       var details = couchbase.bindingDetails(bucket, meta);
       var key = couchbase.getCachedKey(meta.id, details);
 
       this.invalidateKey(key);
-      return couchbase.upsertInternal(bucket, meta, doc);
+      if(!options) {
+        options = {};
+      }
+      return couchbase.upsertInternal(bucket, meta, doc, options);
     };
 
-    couchbase.replace = function(bucket, meta, doc) {
+    couchbase.replace = function(bucket, meta, doc, options) {
       var details = couchbase.bindingDetails(bucket, meta);
       var key = couchbase.getCachedKey(meta.id, details);
 
       this.invalidateKey(key);
-      return couchbase.replaceInternal(bucket, meta, doc);
+      if(!options) {
+        options = {};
+      }
+      return couchbase.replaceInternal(bucket, meta, doc, options);
     };
 
     couchbase.delete = function(bucket, meta) {
