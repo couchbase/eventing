@@ -21,6 +21,7 @@ func curlSetup() {
 	http.HandleFunc("/put/", postOrPutHandler)
 	http.HandleFunc("/head", headHandler)
 	http.HandleFunc("/head/", headHandler)
+	http.HandleFunc("/parseQueryParams/", parseQueryParamsHandler)
 	go func() {
 		err := server.ListenAndServe()
 		if err != nil {

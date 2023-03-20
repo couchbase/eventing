@@ -317,3 +317,19 @@ func getOrDeleteHandler(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, "here comes some body of unknown content type")
 	}
 }
+
+func parseQueryParamsHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	expectedURL := "/parseQueryParams/search?1=2&key1=value1&key2=value2"
+	actualURL := r.URL.String()
+	if actualURL != expectedURL {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(actualURL))
+		return
+	}
+	w.Header().Set("Content-Type", " application/json;charset=UTF-8\r\n")
+	w.WriteHeader(http.StatusOK)
+}

@@ -1087,3 +1087,12 @@ func TestCurlGetLargeJSON(t *testing.T) {
 	}
 	curl.testLargeBody()
 }
+
+func TestCurlParseQueryParamsString(t *testing.T) {
+	curl := curlTester{
+		handler:    "curl_parse_query_params_string",
+		testName:   "TestCurlParseQueryParamsString",
+		testHandle: t,
+	}
+	curl.testParsingQueryParamsString()
+}
