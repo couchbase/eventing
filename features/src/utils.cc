@@ -722,7 +722,7 @@ UrlEncode Utils::EncodeAndNormalizeQueryParams(const std::string& query_params) 
       delim_found = false;
       delim_pos = query_params.size();
     }
-    auto single_query_param = query_params.substr(start_idx, delim_pos);
+    auto single_query_param = query_params.substr(start_idx, (delim_pos - start_idx));
     auto single_query_param_v8Str = v8Str(isolate_, single_query_param.c_str());
     auto encoded_single_query_param = UrlEncodeAny(single_query_param_v8Str);
     if (encoded_single_query_param.is_fatal)

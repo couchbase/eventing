@@ -451,3 +451,16 @@ func (c *curlTester) testLargeBody() {
 	c.settings = &commonSettings{curlBindings: []common.Curl{loBinding}}
 	c.test()
 }
+
+func (c *curlTester) testParsingQueryParamsString() {
+	loBinding := common.Curl{
+		Hostname:               "http://localhost:9090/parseQueryParams",
+		Value:                  "localhost",
+		ValidateSSLCertificate: false,
+		AuthType:               "no-auth",
+		AllowCookies:           true,
+	}
+
+	c.settings = &commonSettings{curlBindings: []common.Curl{loBinding}, executionTimeout: 60}
+	c.test()
+}
