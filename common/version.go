@@ -10,7 +10,7 @@ import (
 var ErrInvalidVersion = errors.New("invalid eventing version")
 
 // missing default is filled by the index 0
-var LanguageCompatibility = []string{"6.6.2", "6.0.0", "6.5.0"}
+var LanguageCompatibility = []string{"6.6.2", "6.0.0", "6.5.0", "7.2.0"}
 
 type CouchbaseVer struct {
 	major        int

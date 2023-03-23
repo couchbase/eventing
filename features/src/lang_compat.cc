@@ -14,7 +14,17 @@
 LanguageCompatibility::LanguageCompatibility(const std::string &version_str) {
   if (version_str == "6.0.0") {
     version = Version::k6_0_0;
-  } else {
+    return;
+  }
+  if (version_str == "6.5.0") {
     version = Version::k6_5_0;
+    return;
+  }
+  if (version_str == "6.6.2") {
+    version = Version::k6_6_2;
+    return;
+  }
+  if (version_str == "7.2.0") {
+    version = Version::k7_2_0;
   }
 }
