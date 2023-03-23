@@ -17,7 +17,7 @@
 struct LanguageCompatibility {
   explicit LanguageCompatibility(const std::string &version_str);
 
-  enum Version { k6_0_0, k6_5_0 };
+  enum Version { k6_0_0, k6_5_0, k6_6_2, k7_2_0 };
   Version version{k6_5_0};
 };
 
