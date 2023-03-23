@@ -1,0 +1,205 @@
+{
+  "eventing_dcp_backlog": {
+    "type": "gauge",
+    "help": "The total number of events not yet processed by eventing function",
+    "added": "7.0.0",
+    "stability": "committed"
+  },
+
+  "eventing_dcp_mutation_sent_to_worker": {
+    "type": "counter",
+    "help": "The total number of insert or update events sent to worker to be processed by OnUpdate function",
+    "added": "7.0.0",
+    "stability": "committed"
+  },
+
+  "eventing_dcp_mutation_suppressed_counter": {
+    "type": "counter",
+    "help": "The total number of suppressed inserts or updates events",
+    "added": "7.0.0",
+    "stability": "committed"
+  },
+
+  "eventing_dcp_deletion_sent_to_worker": {
+    "type": "counter",
+    "help": "The total number of delete events sent to worker to be processed by OnDelete function",
+    "added": "7.0.0",
+    "stability": "committed"
+  },
+
+  "eventing_dcp_expiry_sent_to_worker": {
+    "type": "counter",
+    "help": "The total number of expiry events sent to worker to be processed by OnDelete function",
+    "added": "7.0.0",
+    "stability": "committed"
+  },
+
+  "eventing_dcp_deletion_suppressed_counter": {
+    "type": "counter",
+    "help": "The total number of suppressed delete events",
+    "added": "7.0.0",
+    "stability": "committed"
+  },
+
+  "eventing_worker_spawn_counter": {
+    "type": "counter",
+    "help": "The total number of times worker process respawned",
+    "added": "7.0.0",
+    "stability": "internal"
+  },
+
+  "eventing_agg_queue_memory": {
+    "type": "gauge",
+    "help": "The aggregate memory size of messages across all worker processes",
+    "added": "7.0.0",
+    "unit": "bytes",
+    "stability": "internal"
+  },
+
+  "eventing_agg_queue_size": {
+    "type": "gauge",
+    "help": "The aggregate number of messages across all worker processes",
+    "added": "7.0.0",
+    "stability": "internal"
+  },
+
+  "eventing_on_update_success": {
+    "type": "counter",
+    "help": "The total number of successful OnUpdate calls",
+    "added": "7.0.0",
+    "stability": "committed"
+  },
+
+  "eventing_on_update_failure": {
+    "type": "counter",
+    "help": "The total number of failed OnUpdate calls",
+    "added": "7.0.0",
+    "stability": "committed"
+  },
+
+  "eventing_dcp_delete_msg_counter": {
+    "type": "counter",
+    "help": "The total number of delete events processed by worker",
+    "added": "7.0.0",
+    "stability": "committed"
+  },
+
+  "eventing_dcp_mutations_msg_counter": {
+    "type": "counter",
+    "help": "The total number of insert or update events processed by worker",
+    "added": "7.0.0",
+    "stability": "committed"
+  },
+
+  "eventing_on_delete_success": {
+    "type": "counter",
+    "help": "The total number of successful OnDelete calls",
+    "added": "7.0.0",
+    "stability": "committed"
+  },
+
+  "eventing_on_delete_failure": {
+    "type": "counter",
+    "help": "The total number of failed OnDelete calls",
+    "added": "7.0.0",
+    "stability": "committed"
+  },
+
+  "eventing_timer_cancel_counter": {
+    "type": "counter",
+    "help": "The total number of successful CancelTimer call",
+    "added": "7.0.0",
+    "stability": "committed"
+  },
+
+  "eventing_timer_create_counter": {
+    "type": "counter",
+    "help": "The total number of successful CreateTimer call",
+    "added": "7.0.0",
+    "stability": "committed"
+  },
+
+  "eventing_timer_create_failure": {
+    "type": "counter",
+    "help": "The total number of failed CreateTimer call",
+    "added": "7.0.0",
+    "stability": "committed"
+  },
+
+  "eventing_timer_callback_success": {
+    "type": "counter",
+    "help": "The total number of successful timer callback invocations",
+    "added": "7.0.0",
+    "stability": "committed"
+  },
+
+  "eventing_timer_callback_failure": {
+    "type": "counter",
+    "help": "The total number of failed timer callback invocations",
+    "added": "7.0.0",
+    "stability": "committed"
+  },
+
+  "eventing_timer_msg_counter": {
+    "type": "gauge",
+    "help": "The total number of timer callbacks processed",
+    "added": "7.0.0",
+    "stability": "committed"
+  },
+
+  "eventing_bucket_op_exception_count": {
+    "type": "counter",
+    "help": "The total number of bucket op exception",
+    "added": "7.0.0",
+    "stability": "committed"
+  },
+
+  "eventing_timeout_count": {
+    "type": "counter",
+    "help": "The total number of javascript execution exceeding execution timeout",
+    "added": "7.0.0",
+    "stability": "committed"
+  },
+
+  "eventing_n1ql_op_exception_count": {
+    "type": "counter",
+    "help": "The total number of n1ql op exception",
+    "added": "7.0.0",
+    "stability": "committed"
+  },
+
+  "eventing_timer_context_size_exception_counter": {
+    "type": "counter",
+    "help": "The total number of timer_create_failure due to payload exceeding timer_context_size",
+    "added": "7.0.0",
+    "stability": "committed"
+  },
+
+  "eventing_timer_callback_missing_counter": {
+    "type": "counter",
+    "help": "The total number of undefined timer callback function",
+    "added": "7.0.0",
+    "stability": "committed"
+  },
+
+  "eventing_bkt_ops_cas_mismatch_count": {
+    "type": "counter",
+    "help": "The total number of bucket op cas mismatch",
+    "added": "7.0.0",
+    "stability": "committed"
+  },
+
+  "eventing_checkpoint_failure_count": {
+    "type": "counter",
+    "help": "The total number of failed checkpoint writes",
+    "added": "7.0.0",
+    "stability": "internal"
+  },
+
+  "eventing_worker_restart_count": {
+    "type": "counter",
+    "help": "The total number of time worker is respawned due to worker process crash",
+    "added": "7.0.0",
+    "stability": "internal"
+  }
+}
