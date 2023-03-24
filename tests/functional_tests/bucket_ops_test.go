@@ -82,7 +82,7 @@ func testPumpDocListenLocation(itemCount, expectedCount int, dstCheck []common.K
 }
 
 func TestAdvancedGetOps(t *testing.T) {
-	itemCount := 100
+	const itemCount = 100
 	setting := &commonSettings{
 		aliasSources:       []string{dstBucket, srcBucket},
 		aliasHandles:       []string{"dst_bucket", "src_bucket"},
@@ -93,7 +93,7 @@ func TestAdvancedGetOps(t *testing.T) {
 }
 
 func TestAdvancedInsertOps(t *testing.T) {
-	itemCount := 1024
+	const itemCount = 1024
 	dstKeyspace := []common.Keyspace{
 		common.Keyspace{
 			BucketName:     dstBucket,
@@ -152,7 +152,7 @@ func TestAdvancedInsertOps(t *testing.T) {
 }
 
 func TestAdvancedUpsertOps(t *testing.T) {
-	itemCount := 1024
+	const itemCount = 1024
 
 	pumpBucketOpsSrc(opsType{count: itemCount}, dstBucket, &rateLimit{})
 	setting := &commonSettings{
@@ -174,7 +174,7 @@ func TestAdvancedUpsertOps(t *testing.T) {
 }
 
 func TestAdvancedReplaceOps(t *testing.T) {
-	itemCount := 1024
+	const itemCount = 1024
 
 	pumpBucketOpsSrc(opsType{count: itemCount}, dstBucket, &rateLimit{})
 	setting := &commonSettings{
@@ -196,7 +196,7 @@ func TestAdvancedReplaceOps(t *testing.T) {
 }
 
 func TestAdvancedDeleteOps(t *testing.T) {
-	itemCount := 100
+	const itemCount = 100
 
 	pumpBucketOpsSrc(opsType{count: itemCount}, dstBucket, &rateLimit{})
 	testPumpDoc(itemCount, 0, dstBucket, false,
@@ -213,7 +213,7 @@ func TestAdvancedDeleteOps(t *testing.T) {
 }
 
 func TestTouchOps(t *testing.T) {
-	itemCount := 100
+	const itemCount = 100
 	setting := &commonSettings{
 		aliasSources:       []string{srcBucket},
 		aliasHandles:       []string{"dst_bucket"},
@@ -236,7 +236,7 @@ func TestTouchOps(t *testing.T) {
 }
 
 func TestEnoentAdvancedGet(t *testing.T) {
-	itemCount := 100
+	const itemCount = 100
 	testPumpDoc(itemCount, itemCount, dstBucket, false,
 		"advanced_bucket_ops_get_enoent", &commonSettings{}, t)
 
@@ -251,7 +251,7 @@ func TestEnoentAdvancedGet(t *testing.T) {
 }
 
 func TestEnoentAdvancedReplace(t *testing.T) {
-	itemCount := 100
+	const itemCount = 100
 	testPumpDoc(itemCount, itemCount, dstBucket, false,
 		"advanced_bucket_ops_replace_enoent", &commonSettings{}, t)
 
@@ -266,7 +266,7 @@ func TestEnoentAdvancedReplace(t *testing.T) {
 }
 
 func TestEnoentAdvancedDelete(t *testing.T) {
-	itemCount := 100
+	const itemCount = 100
 	testPumpDoc(itemCount, itemCount, dstBucket, false,
 		"advanced_bucket_ops_delete_enoent", &commonSettings{}, t)
 
@@ -281,7 +281,7 @@ func TestEnoentAdvancedDelete(t *testing.T) {
 }
 
 func TestAdvancedInsertKeyExist(t *testing.T) {
-	itemCount := 100
+	const itemCount = 100
 	setting := &commonSettings{
 		aliasSources:       []string{srcBucket},
 		aliasHandles:       []string{"dst_bucket"},
@@ -303,7 +303,7 @@ func TestAdvancedInsertKeyExist(t *testing.T) {
 }
 
 func TestExpiryGet(t *testing.T) {
-	itemCount := 100
+	const itemCount = 100
 	setting := &commonSettings{
 		aliasSources:       []string{srcBucket},
 		aliasHandles:       []string{"dst_bucket"},
@@ -326,7 +326,7 @@ func TestExpiryGet(t *testing.T) {
 }
 
 func TestExpiryInsert(t *testing.T) {
-	itemCount := 100
+	const itemCount = 100
 	setting := &commonSettings{
 		aliasSources:       []string{srcBucket},
 		aliasHandles:       []string{"dst_bucket"},
@@ -348,7 +348,7 @@ func TestExpiryInsert(t *testing.T) {
 }
 
 func TestExpiryReplace(t *testing.T) {
-	itemCount := 100
+	const itemCount = 100
 	setting := &commonSettings{
 		aliasSources:       []string{srcBucket},
 		aliasHandles:       []string{"dst_bucket"},
@@ -370,7 +370,7 @@ func TestExpiryReplace(t *testing.T) {
 }
 
 func TestExpiryUpsert(t *testing.T) {
-	itemCount := 100
+	const itemCount = 100
 	setting := &commonSettings{
 		aliasSources:       []string{srcBucket},
 		aliasHandles:       []string{"dst_bucket"},
@@ -392,7 +392,7 @@ func TestExpiryUpsert(t *testing.T) {
 }
 
 func TestCasReplace(t *testing.T) {
-	itemCount := 100
+	const itemCount = 100
 	setting := &commonSettings{
 		aliasSources:       []string{srcBucket},
 		aliasHandles:       []string{"dst_bucket"},
@@ -415,7 +415,7 @@ func TestCasReplace(t *testing.T) {
 }
 
 func TestCasDelete(t *testing.T) {
-	itemCount := 100
+	const itemCount = 100
 	setting := &commonSettings{
 		aliasSources:       []string{srcBucket},
 		aliasHandles:       []string{"dst_bucket"},
@@ -438,7 +438,7 @@ func TestCasDelete(t *testing.T) {
 }
 
 func TestCountersIncrement(t *testing.T) {
-	itemCount := 1024
+	const itemCount = 1024
 	addNodeFromRest("https://127.0.0.1:19003", "eventing")
 	addNodeFromRest("https://127.0.0.1:19002", "eventing")
 	rebalanceFromRest([]string{""})
@@ -469,7 +469,7 @@ func TestCountersIncrement(t *testing.T) {
 }
 
 func TestCountersDecrement(t *testing.T) {
-	itemCount := 1024
+	const itemCount = 1024
 	addNodeFromRest("https://127.0.0.1:19003", "eventing")
 	addNodeFromRest("https://127.0.0.1:19002", "eventing")
 	rebalanceFromRest([]string{""})
@@ -500,7 +500,7 @@ func TestCountersDecrement(t *testing.T) {
 }
 
 func TestSelfBucketRecursion(t *testing.T) {
-	itemCount := 1
+	const itemCount = 1
 
 	log.Printf("Testing self_recursion")
 	setting := &commonSettings{
@@ -513,7 +513,7 @@ func TestSelfBucketRecursion(t *testing.T) {
 }
 
 func TestMultiColErrorCondition(t *testing.T) {
-	itemCount := 2
+	const itemCount = 2
 	setting := &commonSettings{
 		aliasHandles: []string{"dst_bucket", "dst_bucket1"},
 		aliasCollection: []common.Keyspace{
