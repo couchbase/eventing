@@ -302,7 +302,7 @@ func TestAdvancedInsertKeyExist(t *testing.T) {
 		"advanced_bucket_ops_insert_key_exist", setting, t)
 }
 
-func TestExipryGet(t *testing.T) {
+func TestExpiryGet(t *testing.T) {
 	itemCount := 100
 	setting := &commonSettings{
 		aliasSources:       []string{srcBucket},
@@ -325,7 +325,7 @@ func TestExipryGet(t *testing.T) {
 		setting, t)
 }
 
-func TestExipryInsert(t *testing.T) {
+func TestExpiryInsert(t *testing.T) {
 	itemCount := 100
 	setting := &commonSettings{
 		aliasSources:       []string{srcBucket},
@@ -347,7 +347,7 @@ func TestExipryInsert(t *testing.T) {
 		setting, t)
 }
 
-func TestExipryReplace(t *testing.T) {
+func TestExpiryReplace(t *testing.T) {
 	itemCount := 100
 	setting := &commonSettings{
 		aliasSources:       []string{srcBucket},
@@ -369,7 +369,7 @@ func TestExipryReplace(t *testing.T) {
 		setting, t)
 }
 
-func TestExipryUpsert(t *testing.T) {
+func TestExpiryUpsert(t *testing.T) {
 	itemCount := 100
 	setting := &commonSettings{
 		aliasSources:       []string{srcBucket},
