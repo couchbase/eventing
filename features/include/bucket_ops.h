@@ -19,6 +19,7 @@
 
 struct OptionsData {
   bool cache;
+  bool self_recursion;
 };
 
 struct MetaInfo {
@@ -68,6 +69,7 @@ public:
   static void DeleteOp(const v8::FunctionCallbackInfo<v8::Value> &args);
   static void IncrementOp(const v8::FunctionCallbackInfo<v8::Value> &args);
   static void DecrementOp(const v8::FunctionCallbackInfo<v8::Value> &args);
+  static void TouchOp(const v8::FunctionCallbackInfo<v8::Value> &args);
   static void BindingDetails(const v8::FunctionCallbackInfo<v8::Value> &args);
 
 private:
@@ -93,18 +95,23 @@ private:
                       v8::Local<v8::Object> &response_obj);
 
   std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
-  Delete(MetaData &meta, bool is_source_bucket, Bucket *bucket);
+  Touch(MetaData &meta, bool suppress_recursion, Bucket *bucket);
 
   std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
-  Counter(MetaData &meta, int64_t delta, bool is_source_bucket, Bucket *bucket);
+  Delete(MetaData &meta, bool suppress_recursion, Bucket *bucket);
+
+  std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
+  Counter(MetaData &meta, int64_t delta, bool suppress_recursion,
+          Bucket *bucket);
 
   std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
   Set(MetaData &meta, const std::string &value, lcb_STORE_OPERATION op_type,
-      lcb_U32 doc_type, bool is_source_bucket, Bucket *bucket);
+      lcb_U32 doc_type, bool suppress_recursion, Bucket *bucket);
 
   std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
   BucketSet(MetaData &meta, v8::Local<v8::Value> data,
-            lcb_STORE_OPERATION op_type, bool is_source_bucket, Bucket *bucket);
+            lcb_STORE_OPERATION op_type, bool suppress_recursion,
+            Bucket *bucket);
 
   void CounterOps(v8::FunctionCallbackInfo<v8::Value> args, int64_t delta);
   void Details(v8::FunctionCallbackInfo<v8::Value> args);
@@ -135,6 +142,7 @@ private:
   const char *binary_str_;
   const char *invalid_counter_str_;
   const char *cache_str_;
+  const char *self_recursion_str_;
 };
 
 #endif

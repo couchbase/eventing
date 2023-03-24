@@ -95,6 +95,9 @@ void V8Worker::SetCouchbaseNamespace() {
   proto_t->Set(v8::String::NewFromUtf8(isolate_, "decrement").ToLocalChecked(),
                v8::FunctionTemplate::New(isolate_, BucketOps::DecrementOp));
   proto_t->Set(
+      v8::String::NewFromUtf8(isolate_, "touchInternal").ToLocalChecked(),
+      v8::FunctionTemplate::New(isolate_, BucketOps::TouchOp));
+  proto_t->Set(
       v8::String::NewFromUtf8(isolate_, "bindingDetails").ToLocalChecked(),
       v8::FunctionTemplate::New(isolate_, BucketOps::BindingDetails));
 
@@ -154,28 +157,37 @@ void V8Worker::SetCouchbaseNamespace() {
       return res;
     };
 
-    couchbase.insert = function(bucket, meta, doc) {
+    couchbase.insert = function(bucket, meta, doc, options) {
       var details = couchbase.bindingDetails(bucket, meta);
       var key = couchbase.getCachedKey(meta.id, details);
 
       this.invalidateKey(key);
-      return couchbase.insertInternal(bucket, meta, doc);
+      if(!options) {
+        options = {};
+      }
+      return couchbase.insertInternal(bucket, meta, doc, options);
     };
 
-    couchbase.upsert = function(bucket, meta, doc) {
+    couchbase.upsert = function(bucket, meta, doc, options) {
       var details = couchbase.bindingDetails(bucket, meta);
       var key = couchbase.getCachedKey(meta.id, details);
 
       this.invalidateKey(key);
-      return couchbase.upsertInternal(bucket, meta, doc);
+      if(!options) {
+        options = {};
+      }
+      return couchbase.upsertInternal(bucket, meta, doc, options);
     };
 
-    couchbase.replace = function(bucket, meta, doc) {
+    couchbase.replace = function(bucket, meta, doc, options) {
       var details = couchbase.bindingDetails(bucket, meta);
       var key = couchbase.getCachedKey(meta.id, details);
 
       this.invalidateKey(key);
-      return couchbase.replaceInternal(bucket, meta, doc);
+      if(!options) {
+        options = {};
+      }
+      return couchbase.replaceInternal(bucket, meta, doc, options);
     };
 
     couchbase.delete = function(bucket, meta) {
@@ -184,6 +196,14 @@ void V8Worker::SetCouchbaseNamespace() {
 
       this.invalidateKey(key);
       return couchbase.deleteInternal(bucket, meta);
+    };
+
+    couchbase.touch = function(bucket, meta) {
+      var details = couchbase.bindingDetails(bucket, meta);
+      var key = couchbase.getCachedKey(meta.id, details);
+
+      this.invalidateKey(key);
+      return couchbase.touchInternal(bucket, meta);
     };
 
     couchbase.ejectKeys = function(currtime) {

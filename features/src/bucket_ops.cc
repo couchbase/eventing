@@ -39,6 +39,7 @@ BucketOps::BucketOps(v8::Isolate *isolate,
   doc_str_ = "doc";
   meta_str_ = "meta";
   cache_str_ = "cache";
+  self_recursion_str_ = "self_recursion";
   counter_str_ = "count";
   error_str_ = "error";
   success_str_ = "success";
@@ -369,10 +370,10 @@ OptionsInfo BucketOps::ExtractOptionsInfo(v8::Local<v8::Value> options_object) {
 
   auto context = context_.Get(isolate_);
 
-  OptionsData options = {false};
+  OptionsData options = {false, false};
 
   if (!options_object->IsObject()) {
-    return {false, "3rd argument, if present, must be object"};
+    return {false, "options argument, if present, must be object"};
   }
 
   v8::Local<v8::Object> req_obj;
@@ -390,6 +391,20 @@ OptionsInfo BucketOps::ExtractOptionsInfo(v8::Local<v8::Value> options_object) {
     }
     auto cache_value = cache.As<v8::Boolean>();
     options.cache = cache_value->Value();
+  }
+
+  if (req_obj->Has(context, v8Str(isolate_, self_recursion_str_)).FromJust()) {
+    v8::Local<v8::Value> recursion;
+    if (!TO_LOCAL(req_obj->Get(context, v8Str(isolate_, self_recursion_str_)),
+                  &recursion)) {
+      return {false, "error reading 'recursion' parameter in options"};
+    }
+    if (!recursion->IsBoolean()) {
+      return {false,
+              "the 'recursion' parameter in options should be a boolean"};
+    }
+    auto recursion_value = recursion.As<v8::Boolean>();
+    options.self_recursion = recursion_value->Value();
   }
 
   return {true, options};
@@ -434,17 +449,25 @@ Info BucketOps::VerifyBucketObject(v8::Local<v8::Value> bucket_binding) {
 }
 
 std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
-BucketOps::Delete(MetaData &meta, bool is_source_mutation, Bucket *bucket) {
-  if (is_source_mutation) {
+BucketOps::Touch(MetaData &meta, bool suppress_recursion, Bucket *bucket) {
+  if (suppress_recursion) {
+    return bucket->TouchWithXattr(meta);
+  }
+  return bucket->TouchWithoutXattr(meta);
+}
+
+std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
+BucketOps::Delete(MetaData &meta, bool suppress_recursion, Bucket *bucket) {
+  if (suppress_recursion) {
     return bucket->DeleteWithXattr(meta);
   }
   return bucket->DeleteWithoutXattr(meta);
 }
 
 std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
-BucketOps::Counter(MetaData &meta, int64_t delta, bool is_source_mutation,
+BucketOps::Counter(MetaData &meta, int64_t delta, bool suppress_recursion,
                    Bucket *bucket) {
-  if (is_source_mutation) {
+  if (suppress_recursion) {
     return bucket->CounterWithXattr(meta, delta);
   }
   return bucket->CounterWithoutXattr(meta, delta);
@@ -453,8 +476,8 @@ BucketOps::Counter(MetaData &meta, int64_t delta, bool is_source_mutation,
 std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
 BucketOps::Set(MetaData &meta, const std::string &value,
                lcb_STORE_OPERATION op_type, lcb_U32 doc_type,
-               bool is_source_mutation, Bucket *bucket) {
-  if (is_source_mutation) {
+               bool suppress_recursion, Bucket *bucket) {
+  if (suppress_recursion) {
     lcb_SUBDOC_STORE_SEMANTICS cmd_flag = LCB_SUBDOC_STORE_REPLACE;
     if (op_type == LCB_STORE_UPSERT) {
       cmd_flag = LCB_SUBDOC_STORE_UPSERT;
@@ -469,7 +492,7 @@ BucketOps::Set(MetaData &meta, const std::string &value,
 
 std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
 BucketOps::BucketSet(MetaData &meta, v8::Local<v8::Value> value,
-                     lcb_STORE_OPERATION op_type, bool is_source_mutation,
+                     lcb_STORE_OPERATION op_type, bool suppress_recursion,
                      Bucket *bucket) {
   v8::HandleScope scope(isolate_);
   std::string value_str;
@@ -483,7 +506,7 @@ BucketOps::BucketSet(MetaData &meta, v8::Local<v8::Value> value,
     value_str = JSONStringify(isolate_, value);
     doc_type = 0x2000000;
   }
-  return Set(meta, value_str, op_type, doc_type, is_source_mutation, bucket);
+  return Set(meta, value_str, op_type, doc_type, suppress_recursion, bucket);
 }
 
 void BucketOps::Details(v8::FunctionCallbackInfo<v8::Value> args) {
@@ -716,7 +739,7 @@ void BucketOps::GetOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
   }
   auto meta = meta_info.meta;
 
-  OptionsData options = {false};
+  OptionsData options = {false, false};
   if (args.Length() > 2) {
     auto options_info = bucket_ops->ExtractOptionsInfo(args[2]);
     if (!options_info.is_valid) {
@@ -833,19 +856,34 @@ void BucketOps::InsertOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
     return;
   }
 
+  OptionsData options = {false, false};
+  if (args.Length() > 3) {
+    auto options_info = bucket_ops->ExtractOptionsInfo(args[3]);
+    if (!options_info.is_valid) {
+      ++bucket_op_exception_count;
+      js_exception->ThrowTypeError(options_info.msg);
+      return;
+    }
+    options = options_info.options;
+  }
+
   auto meta = meta_info.meta;
 
-  auto [err, is_source_mutation] =
-      BucketBinding::IsSourceMutation(isolate, args[0], meta);
-  if (err != nullptr) {
-    js_exception->ThrowEventingError(*err);
-    return;
+  auto suppress_recursion = !options.self_recursion;
+  if (suppress_recursion) {
+    auto [err, is_source_mutation] =
+        BucketBinding::IsSourceMutation(isolate, args[0], meta);
+    if (err != nullptr) {
+      js_exception->ThrowEventingError(*err);
+      return;
+    }
+    suppress_recursion = is_source_mutation;
   }
 
   auto bucket = BucketBinding::GetBucket(isolate, args[0]);
 
   auto [error, err_code, result] = bucket_ops->BucketSet(
-      meta, args[2], LCB_STORE_INSERT, is_source_mutation, bucket);
+      meta, args[2], LCB_STORE_INSERT, suppress_recursion, bucket);
 
   if (error != nullptr) {
     ++bucket_op_exception_count;
@@ -944,17 +982,32 @@ void BucketOps::ReplaceOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
     return;
   }
 
-  auto [err, is_source_mutation] =
-      BucketBinding::IsSourceMutation(isolate, args[0], meta);
-  if (err != nullptr) {
-    js_exception->ThrowEventingError(*err);
-    return;
+  OptionsData options = {false, false};
+  if (args.Length() > 3) {
+    auto options_info = bucket_ops->ExtractOptionsInfo(args[3]);
+    if (!options_info.is_valid) {
+      ++bucket_op_exception_count;
+      js_exception->ThrowTypeError(options_info.msg);
+      return;
+    }
+    options = options_info.options;
+  }
+
+  auto suppress_recursion = !options.self_recursion;
+  if (suppress_recursion) {
+    auto [err, is_source_mutation] =
+        BucketBinding::IsSourceMutation(isolate, args[0], meta);
+    if (err != nullptr) {
+      js_exception->ThrowEventingError(*err);
+      return;
+    }
+    suppress_recursion = is_source_mutation;
   }
 
   auto bucket = BucketBinding::GetBucket(isolate, args[0]);
 
   auto [error, err_code, result] = bucket_ops->BucketSet(
-      meta, args[2], LCB_STORE_REPLACE, is_source_mutation, bucket);
+      meta, args[2], LCB_STORE_REPLACE, suppress_recursion, bucket);
 
   if (error != nullptr) {
     ++bucket_op_exception_count;
@@ -1068,17 +1121,31 @@ void BucketOps::UpsertOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
     return;
   }
 
-  auto [err, is_source_mutation] =
-      BucketBinding::IsSourceMutation(isolate, args[0], meta);
-  if (err != nullptr) {
-    js_exception->ThrowEventingError(*err);
-    return;
+  OptionsData options = {false, false};
+  if (args.Length() > 3) {
+    auto options_info = bucket_ops->ExtractOptionsInfo(args[3]);
+    if (!options_info.is_valid) {
+      ++bucket_op_exception_count;
+      js_exception->ThrowTypeError(options_info.msg);
+      return;
+    }
+    options = options_info.options;
+  }
+
+  auto suppress_recursion = !options.self_recursion;
+  if (suppress_recursion) {
+    auto [err, is_source_mutation] =
+        BucketBinding::IsSourceMutation(isolate, args[0], meta);
+    if (err != nullptr) {
+      js_exception->ThrowEventingError(*err);
+      return;
+    }
+    suppress_recursion = is_source_mutation;
   }
 
   auto bucket = BucketBinding::GetBucket(isolate, args[0]);
-
   auto [error, err_code, result] = bucket_ops->BucketSet(
-      meta, args[2], LCB_STORE_UPSERT, is_source_mutation, bucket);
+      meta, args[2], LCB_STORE_UPSERT, suppress_recursion, bucket);
 
   if (error != nullptr) {
     ++bucket_op_exception_count;
@@ -1243,6 +1310,99 @@ void BucketOps::DecrementOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
   auto bucket_ops = isolate_data->bucket_ops;
   bucket_ops->CounterOps(args, -1);
+}
+
+void BucketOps::TouchOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
+  auto isolate = args.GetIsolate();
+  auto isolate_data = UnwrapData(isolate);
+  std::lock_guard<std::mutex> guard(isolate_data->termination_lock_);
+  if (!isolate_data->is_executing_) {
+    return;
+  }
+
+  auto bucket_ops = isolate_data->bucket_ops;
+  auto js_exception = isolate_data->js_exception;
+
+  if (args.Length() < 2) {
+    ++bucket_op_exception_count;
+    js_exception->ThrowTypeError(
+        "couchbase.touch requires at least 2 arguments");
+    return;
+  }
+
+  auto info = bucket_ops->VerifyBucketObject(args[0]);
+  if (info.is_fatal) {
+    ++bucket_op_exception_count;
+    js_exception->ThrowTypeError(info.msg);
+    return;
+  }
+
+  auto block_mutation = BucketBinding::GetBlockMutation(isolate, args[0]);
+  if (block_mutation) {
+    ++bucket_op_exception_count;
+    js_exception->ThrowEventingError("Touch operation is forbidden");
+    return;
+  }
+
+  auto meta_info = bucket_ops->ExtractMetaInfo(args[1], false, true);
+  if (!meta_info.is_valid) {
+    ++bucket_op_exception_count;
+    js_exception->ThrowTypeError(meta_info.msg);
+    return;
+  }
+  auto meta = meta_info.meta;
+
+  auto bucket = BucketBinding::GetBucket(isolate, args[0]);
+  auto [err, is_source_mutation] =
+      BucketBinding::IsSourceMutation(isolate, args[0], meta);
+  if (err != nullptr) {
+    js_exception->ThrowEventingError(*err);
+    return;
+  }
+
+  auto [error, err_code, result] =
+      bucket_ops->Touch(meta, is_source_mutation, bucket);
+  if (error != nullptr) {
+    ++bucket_op_exception_count;
+    js_exception->ThrowEventingError(*error);
+    return;
+  }
+
+  result->key = meta.key;
+  if (*err_code != LCB_SUCCESS) {
+    bucket_ops->HandleBucketOpFailure(bucket->GetConnection(), *err_code);
+    return;
+  }
+
+  v8::Local<v8::Object> response_obj = v8::Object::New(isolate);
+  if (result->rc == LCB_ERR_DOCUMENT_NOT_FOUND) {
+    info = bucket_ops->SetErrorObject(
+        response_obj, "LCB_KEY_ENOENT",
+        "The document key does not exist on the server", result->kv_err_code,
+        bucket_ops->key_not_found_str_, true);
+
+    if (info.is_fatal) {
+      ++bucket_op_exception_count;
+      js_exception->ThrowEventingError(info.msg);
+      return;
+    }
+    args.GetReturnValue().Set(response_obj);
+    return;
+  }
+
+  if (result->rc != LCB_SUCCESS) {
+    bucket_ops->HandleBucketOpFailure(bucket->GetConnection(), result->rc);
+    return;
+  }
+
+  info = bucket_ops->ResponseSuccessObject(std::move(result), response_obj);
+  if (info.is_fatal) {
+    ++bucket_op_exception_count;
+    js_exception->ThrowEventingError(info.msg);
+    return;
+  }
+
+  args.GetReturnValue().Set(response_obj);
 }
 
 void BucketOps::BindingDetails(

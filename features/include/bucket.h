@@ -122,6 +122,12 @@ public:
                   lcb_U32 doc_type = 0x2000000);
 
   std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
+  TouchWithXattr(MetaData &meta);
+
+  std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
+  TouchWithoutXattr(MetaData &meta);
+
+  std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
   DeleteWithXattr(MetaData &meta);
 
   std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>

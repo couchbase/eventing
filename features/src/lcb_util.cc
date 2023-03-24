@@ -239,6 +239,29 @@ void DeleteCallback(lcb_INSTANCE *instance, int cbtype,
                 << std::endl;
 }
 
+void TouchCallback(lcb_INSTANCE *instance, int cbtype, const lcb_RESPBASE *rb) {
+  auto resp = reinterpret_cast<const lcb_RESPTOUCH *>(rb);
+  Result *result;
+  lcb_resptouch_cookie(resp, reinterpret_cast<void **>(&result));
+  result->rc = lcb_resptouch_status(resp);
+
+  if (result->rc == LCB_ERR_PROTOCOL_ERROR) {
+    LOG(logError) << "Bucket: LCB_TOUCH breaking out" << std::endl;
+    lcb_breakout(instance);
+  }
+
+  if (result->rc != LCB_SUCCESS) {
+    const lcb_KEY_VALUE_ERROR_CONTEXT *ctx = nullptr;
+    lcb_resptouch_error_context(resp, &ctx);
+    lcb_errctx_kv_status_code(ctx, &result->kv_err_code);
+    return;
+  }
+
+  lcb_resptouch_cas(resp, &result->cas);
+  LOG(logInfo) << "Bucket: LCB_TOUCH callback "
+               << lcb_strerror_short(result->rc) << std::endl;
+}
+
 void counter_callback(lcb_INSTANCE *instance, int cbtype,
                       const lcb_RESPBASE *rb) {
   const lcb_RESPCOUNTER *resp = reinterpret_cast<const lcb_RESPCOUNTER *>(rb);
@@ -308,6 +331,25 @@ std::pair<lcb_STATUS, Result> LcbSet(lcb_INSTANCE *instance,
 
   if (err != LCB_SUCCESS) {
     LOG(logTrace) << "Bucket: Unable to schedule LCB_SET: "
+                  << lcb_strerror_short(err) << std::endl;
+  }
+  return {err, result};
+}
+
+std::pair<lcb_STATUS, Result> LcbTouch(lcb_INSTANCE *instance,
+                                       lcb_CMDTOUCH &cmd) {
+  Result result;
+  auto err = lcb_touch(instance, &result, &cmd);
+  if (err != LCB_SUCCESS) {
+    LOG(logTrace) << "Bucket: Unable to set params for LCB_TOUCH: "
+                  << lcb_strerror_short(err) << std::endl;
+    return {err, result};
+  }
+
+  err = lcb_wait(instance, LCB_WAIT_DEFAULT);
+
+  if (err != LCB_SUCCESS) {
+    LOG(logTrace) << "Bucket: Unable to schedule LCB_TOUCH: "
                   << lcb_strerror_short(err) << std::endl;
   }
   return {err, result};
