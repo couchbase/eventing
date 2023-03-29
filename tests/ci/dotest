@@ -156,7 +156,7 @@ if [[ "$MODE" == *"$phase"* ]]; then
   echo "`date +'%Y/%m/%d %H:%M:%S'` Started $phase"
   cd $WORKSPACE/goproj/src/github.com/couchbase/eventing/tests/functional_tests
   startTime=$SECONDS
-  GOMAXPROCS=16 STATSFILE=$WORKSPACE/stats.log $GOROOT/bin/go test -timeout 3h -tags n1ql -v 2>&1 | tee -a $WORKSPACE/test.log
+  GOMAXPROCS=16 STATSFILE=$WORKSPACE/stats.log $GOROOT/bin/go test -timeout 3h -tags "n1ql analytics" -v 2>&1 | tee -a $WORKSPACE/test.log
   duration=$(( SECONDS - startTime ))
   echo "</pre><h2>${phase^} tests took $(($duration / 3600)) hours, $((($duration / 60) % 60)) minutes and $(($duration % 60)) seconds.</h2><pre>"
   collect_logs
