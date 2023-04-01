@@ -1,8 +1,9 @@
 package eventing
 
 import (
-	"github.com/couchbase/eventing/common"
 	"testing"
+
+	"github.com/couchbase/eventing/common"
 )
 
 type curlTester struct {
@@ -462,5 +463,140 @@ func (c *curlTester) testParsingQueryParamsString() {
 	}
 
 	c.settings = &commonSettings{curlBindings: []common.Curl{loBinding}, executionTimeout: 60}
+	c.test()
+}
+
+func (c *curlTester) testCurlURLEncodeInlineQueryParams66X() {
+	loBinding := common.Curl{
+		Hostname:               "http://localhost:9090/curlURLEncodeInlineQueryParams66X",
+		Value:                  "localhost",
+		ValidateSSLCertificate: false,
+		AuthType:               "no-auth",
+		AllowCookies:           true,
+	}
+
+	c.settings = &commonSettings{curlBindings: []common.Curl{loBinding},
+		constantBindings: []common.Constant{common.Constant{Value: "url_encoding_val", Literal: "\"6.6.2\""}},
+		executionTimeout: 60}
+	c.test()
+}
+
+func (c *curlTester) testCurlURLEncodeQueryParamsAttrString66X() {
+	loBinding := common.Curl{
+		Hostname:               "http://localhost:9090/curlURLEncodeQueryParamsAttrString66X",
+		Value:                  "localhost",
+		ValidateSSLCertificate: false,
+		AuthType:               "no-auth",
+		AllowCookies:           true,
+	}
+
+	c.settings = &commonSettings{curlBindings: []common.Curl{loBinding},
+		constantBindings: []common.Constant{common.Constant{Value: "url_encoding_val", Literal: "\"6.6.2\""}},
+		executionTimeout: 60}
+	c.test()
+}
+
+func (c *curlTester) testCurlURLEncodeQueryParamsAttrObject66X() {
+	loBinding := common.Curl{
+		Hostname:               "http://localhost:9090/curlURLEncodeQueryParamsAttrObject66X",
+		Value:                  "localhost",
+		ValidateSSLCertificate: false,
+		AuthType:               "no-auth",
+		AllowCookies:           true,
+	}
+
+	c.settings = &commonSettings{curlBindings: []common.Curl{loBinding},
+		constantBindings: []common.Constant{common.Constant{Value: "url_encoding_val", Literal: "\"6.6.2\""}},
+		executionTimeout: 60}
+	c.test()
+}
+
+func (c *curlTester) testCurlURLEncodeQueryParamsAttrString71X() {
+	loBinding := common.Curl{
+		Hostname:               "http://localhost:9090/curlURLEncodeQueryParamsAttrString71X",
+		Value:                  "localhost",
+		ValidateSSLCertificate: false,
+		AuthType:               "no-auth",
+		AllowCookies:           true,
+	}
+
+	c.settings = &commonSettings{curlBindings: []common.Curl{loBinding},
+		constantBindings: []common.Constant{common.Constant{Value: "url_encoding_val", Literal: "\"7.1.0\""}},
+		executionTimeout: 60}
+	c.test()
+}
+
+func (c *curlTester) testCurlURLEncodeInlineQueryParams71X() {
+	loBinding := common.Curl{
+		Hostname:               "http://localhost:9090/curlURLEncodeInlineQueryParams71X",
+		Value:                  "localhost",
+		ValidateSSLCertificate: false,
+		AuthType:               "no-auth",
+		AllowCookies:           true,
+	}
+
+	c.settings = &commonSettings{curlBindings: []common.Curl{loBinding},
+		constantBindings: []common.Constant{common.Constant{Value: "url_encoding_val", Literal: "\"7.1.0\""}},
+		executionTimeout: 60}
+	c.test()
+}
+
+func (c *curlTester) testCurlURLEncodeQueryParamsAttrObject71X() {
+	loBinding := common.Curl{
+		Hostname:               "http://localhost:9090/curlURLEncodeQueryParamsAttrObject71X",
+		Value:                  "localhost",
+		ValidateSSLCertificate: false,
+		AuthType:               "no-auth",
+		AllowCookies:           true,
+	}
+
+	c.settings = &commonSettings{curlBindings: []common.Curl{loBinding},
+		constantBindings: []common.Constant{common.Constant{Value: "url_encoding_val", Literal: "\"7.1.0\""}},
+		executionTimeout: 60}
+	c.test()
+}
+
+func (c *curlTester) testCurlURLEncodeInlineQueryParams72X() {
+	loBinding := common.Curl{
+		Hostname:               "http://localhost:9090/curlURLEncodeInlineQueryParams72X",
+		Value:                  "localhost",
+		ValidateSSLCertificate: false,
+		AuthType:               "no-auth",
+		AllowCookies:           true,
+	}
+
+	c.settings = &commonSettings{curlBindings: []common.Curl{loBinding},
+		constantBindings: []common.Constant{common.Constant{Value: "url_encoding_val", Literal: "\"7.2.0\""}},
+		executionTimeout: 60}
+	c.test()
+}
+
+func (c *curlTester) testCurlURLEncodeQueryParamsAttrString72X() {
+	loBinding := common.Curl{
+		Hostname:               "http://localhost:9090/curlURLEncodeQueryParamsAttrString72X",
+		Value:                  "localhost",
+		ValidateSSLCertificate: false,
+		AuthType:               "no-auth",
+		AllowCookies:           true,
+	}
+
+	c.settings = &commonSettings{curlBindings: []common.Curl{loBinding},
+		constantBindings: []common.Constant{common.Constant{Value: "url_encoding_val", Literal: "\"7.2.0\""}},
+		executionTimeout: 60}
+	c.test()
+}
+
+func (c *curlTester) testCurlURLEncodeQueryParamsAttrObject72X() {
+	loBinding := common.Curl{
+		Hostname:               "http://localhost:9090/curlURLEncodeQueryParamsAttrObject72X",
+		Value:                  "localhost",
+		ValidateSSLCertificate: false,
+		AuthType:               "no-auth",
+		AllowCookies:           true,
+	}
+
+	c.settings = &commonSettings{curlBindings: []common.Curl{loBinding},
+		constantBindings: []common.Constant{common.Constant{Value: "url_encoding_val", Literal: "\"7.2.0\""}},
+		executionTimeout: 60}
 	c.test()
 }
