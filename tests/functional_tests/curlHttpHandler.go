@@ -333,3 +333,147 @@ func parseQueryParamsHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", " application/json;charset=UTF-8\r\n")
 	w.WriteHeader(http.StatusOK)
 }
+
+func curlURLEncodeInlineQueryParams6_6_XHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	expectedURL := "/curlURLEncodeInlineQueryParams66X/p@thA/p@thB?1=2&key1=value@1&key2=value=2"
+	actualURL := r.URL.String()
+	if actualURL != expectedURL {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(actualURL))
+		return
+	}
+	w.Header().Set("Content-Type", " application/json;charset=UTF-8\r\n")
+	w.WriteHeader(http.StatusOK)
+}
+
+func curlURLEncodeQueryParamsAttrString6_6_XHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	expectedURL := "/curlURLEncodeQueryParamsAttrString66X/p@thA/p@thB?1%3D2%26key1%3Dvalue%401%26key2%3Dvalue%3D2"
+	actualURL := r.URL.String()
+	if actualURL != expectedURL {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(actualURL))
+		return
+	}
+	w.Header().Set("Content-Type", " application/json;charset=UTF-8\r\n")
+	w.WriteHeader(http.StatusOK)
+}
+
+func curlURLEncodeQueryParamsAttrObject6_6_XHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	expectedURL := "/curlURLEncodeQueryParamsAttrObject66X/p@thA/p@thB?1=2&key1=value%401&key2=value%3D2"
+	actualURL := r.URL.String()
+	if actualURL != expectedURL {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(actualURL))
+		return
+	}
+	w.Header().Set("Content-Type", " application/json;charset=UTF-8\r\n")
+	w.WriteHeader(http.StatusOK)
+}
+
+func curlURLEncodeInlineQueryParams7_1_XHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	expectedURL := "/curlURLEncodeInlineQueryParams71X/p%40thA/p%40thB?1=2&key1=value%401&key2=value%3D2"
+	actualURL := r.URL.String()
+	if actualURL != expectedURL {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(actualURL))
+		return
+	}
+	w.Header().Set("Content-Type", " application/json;charset=UTF-8\r\n")
+	w.WriteHeader(http.StatusOK)
+}
+
+func curlURLEncodeQueryParamsAttrString7_1_XHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	expectedURL := "/curlURLEncodeQueryParamsAttrString71X/p%40thA/p%40thB?1=2&key1=value%401&key2=value%3D2"
+	actualURL := r.URL.String()
+	if actualURL != expectedURL {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(actualURL))
+		return
+	}
+	w.Header().Set("Content-Type", " application/json;charset=UTF-8\r\n")
+	w.WriteHeader(http.StatusOK)
+}
+
+func curlURLEncodeQueryParamsAttrObject7_1_XHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	expectedURL := "/curlURLEncodeQueryParamsAttrObject71X/p%40thA/p%40thB?1=2&key1=value%401&key2=value%3D2"
+	actualURL := r.URL.String()
+	if actualURL != expectedURL {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(actualURL))
+		return
+	}
+	w.Header().Set("Content-Type", " application/json;charset=UTF-8\r\n")
+	w.WriteHeader(http.StatusOK)
+}
+
+func curlURLEncodeInlineQueryParams7_2_XHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	expectedURL := "/curlURLEncodeInlineQueryParams72X/p@thA/p@thB?1=2&key1=value@1&key2=value=2"
+	actualURL := r.URL.String()
+	if actualURL != expectedURL {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(actualURL))
+		return
+	}
+	w.Header().Set("Content-Type", " application/json;charset=UTF-8\r\n")
+	w.WriteHeader(http.StatusOK)
+}
+
+func curlURLEncodeQueryParamsAttrString7_2_XHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	expectedURL := "/curlURLEncodeQueryParamsAttrString72X/p@thA/p@thB?1=2&key1=value@1&key2=value=2"
+	actualURL := r.URL.String()
+	if actualURL != expectedURL {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(actualURL))
+		return
+	}
+	w.Header().Set("Content-Type", " application/json;charset=UTF-8\r\n")
+	w.WriteHeader(http.StatusOK)
+}
+
+func curlURLEncodeQueryParamsAttrObject7_2_XHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	expectedURL := "/curlURLEncodeQueryParamsAttrObject72X/p@thA/p@thB?1=2&key1=value@1&key2=value=2"
+	actualURL := r.URL.String()
+	if actualURL != expectedURL {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(actualURL))
+		return
+	}
+	w.Header().Set("Content-Type", " application/json;charset=UTF-8\r\n")
+	w.WriteHeader(http.StatusOK)
+}

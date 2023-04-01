@@ -420,9 +420,9 @@ private:
   Info ExtractBody(const v8::Local<v8::Value> &body_val,
                    const BodyEncoding &encoding, Curl::Buffer &body_out);
   Info ExtractPath(const v8::Local<v8::Value> &path_val,
-                   const CurlBinding &binding, std::string &value_out);
+                   const CurlBinding &binding, std::string &value_out, const std::string& curl_lang_compat, const std::string& app_lang_comp);
   Info ExtractParams(const v8::Local<v8::Value> &params_val,
-                     std::string &value_out);
+                     std::string &value_out,const std::string& curl_lang_compat, const std::string& app_lang_comp);
   Info ExtractHeaders(const v8::Local<v8::Value> &headers_val,
                       Headers &value_out);
   Info ExtractRedirect(const v8::Local<v8::Value> &redirect_val,
