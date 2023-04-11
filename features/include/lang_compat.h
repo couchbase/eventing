@@ -17,8 +17,12 @@
 struct LanguageCompatibility {
   explicit LanguageCompatibility(const std::string &version_str);
 
-  enum Version { k6_0_0, k6_5_0 };
-  Version version{k6_5_0};
+  enum Version { k6_0_0, k6_5_0, k6_6_2, k7_2_0 };
+  Version version{k7_2_0};
+  std::string version_str {"7.2.0"};
+  std::string get_version_as_string() const {
+    return this->version_str;
+  }
 };
 
 #endif

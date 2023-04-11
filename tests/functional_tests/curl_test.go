@@ -1087,3 +1087,84 @@ func TestCurlGetLargeJSON(t *testing.T) {
 	}
 	curl.testLargeBody()
 }
+
+func TestCurlURLEncodeInlineQueryParams66X(t *testing.T) {
+	curl := curlTester{
+		handler:    "curl_url_encode_inline_query_params",
+		testName:   "TestCurlURLEncodeInlineQueryParams66X",
+		testHandle: t,
+	}
+	curl.testCurlURLEncodeInlineQueryParams66X()
+}
+
+func TestCurlURLEncodeQueryParamsAttrString66X(t *testing.T) {
+	curl := curlTester{
+		handler:    "curl_url_encode_query_params_attr_string",
+		testName:   "TestCurlURLEncodeQueryParamsAttrString66X",
+		testHandle: t,
+	}
+	curl.testCurlURLEncodeQueryParamsAttrString66X()
+}
+
+func TestCurlURLEncodeQueryParamsAttrObject66X(t *testing.T) {
+	curl := curlTester{
+		handler:    "curl_url_encode_query_params_attr_object",
+		testName:   "TestCurlURLEncodeQueryParamsAttrObject66X",
+		testHandle: t,
+	}
+	curl.testCurlURLEncodeQueryParamsAttrObject66X()
+}
+
+func TestCurlURLEncodeQueryParamsAttrString71X(t *testing.T) {
+	curl := curlTester{
+		handler:    "curl_url_encode_query_params_attr_string",
+		testName:   "TestCurlURLEncodeQueryParamsAttrString71X",
+		testHandle: t,
+	}
+	curl.testCurlURLEncodeQueryParamsAttrString71X()
+}
+
+func TestCurlURLEncodeInlineQueryParams71X(t *testing.T) {
+	curl := curlTester{
+		handler:    "curl_url_encode_inline_query_params",
+		testName:   "TestCurlURLEncodeInlineQueryParams71X",
+		testHandle: t,
+	}
+	curl.testCurlURLEncodeInlineQueryParams71X()
+}
+
+func TestCurlURLEncodeQueryParamsAttrObject71X(t *testing.T) {
+	curl := curlTester{
+		handler:    "curl_url_encode_query_params_attr_object",
+		testName:   "TestCurlURLEncodeQueryParamsAttrObject71X",
+		testHandle: t,
+	}
+	curl.testCurlURLEncodeQueryParamsAttrObject71X()
+}
+
+func TestCurlURLEncodeQueryParamsAttrObject72X(t *testing.T) {
+	curl := curlTester{
+		handler:    "curl_url_encode_query_params_attr_object",
+		testName:   "TestCurlURLEncodeQueryParamsAttrObject72X",
+		testHandle: t,
+	}
+	curl.testCurlURLEncodeQueryParamsAttrObject72X()
+}
+
+func TestCurlURLEncodeInlineQueryParams72X(t *testing.T) {
+	curl := curlTester{
+		handler:    "curl_url_encode_inline_query_params",
+		testName:   "TestCurlURLEncodeInlineQueryParams72X",
+		testHandle: t,
+	}
+	curl.testCurlURLEncodeInlineQueryParams72X()
+}
+
+func TestCurlURLEncodeQueryParamsAttrString72X(t *testing.T) {
+    curl := curlTester{
+        handler:    "curl_url_encode_query_params_attr_string",
+        testName:   "TestCurlURLEncodeQueryParamsAttrString72X",
+        testHandle: t,
+    }
+    curl.testCurlURLEncodeQueryParamsAttrString72X()
+}
