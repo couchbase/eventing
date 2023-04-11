@@ -863,7 +863,7 @@ std::string GetConnectionStr(const std::string &end_point,
   std::stringstream conn_str;
   if (certFile != "")
     conn_str << "couchbases://" << end_point << '/' << bucket_name
-             << "?select_bucket=true&detailed_errcodes=1&certpath=" << certFile;
+             << "?select_bucket=true&detailed_errcodes=1&truststorepath=" << certFile;
   else
     conn_str << "couchbase://" << end_point << '/' << bucket_name
              << "?select_bucket=true&detailed_errcodes=1";
