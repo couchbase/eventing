@@ -186,6 +186,9 @@ void V8Worker2::SetCouchbaseNamespace() {
       v8::String::NewFromUtf8(isolate_, "base64Float32ArrayDecode")
           .ToLocalChecked(),
       v8::FunctionTemplate::New(isolate_, Base64Float32DecodeFunction));
+  proto_t->Set(
+      v8::String::NewFromUtf8(isolate_, "searchQueryInternal").ToLocalChecked(),
+      v8::FunctionTemplate::New(isolate_, Query::SearchFunction));
 
   auto context = context_.Get(isolate_);
   v8::Local<v8::Object> cb_obj;
@@ -411,6 +414,582 @@ void V8Worker2::SetCouchbaseNamespace() {
       couchbase.map_key_size = couchbase.map_key_size - size;
     };
 
+    couchbase.SearchQuery = {
+      match: function(match) {
+        return new couchbase.SearchQuery.matchObject(match);
+      },
+
+      matchPhrase: function(phrase) {
+        return new couchbase.SearchQuery.matchPhaseObject(phrase);
+      },
+
+      regexp: function(regexp) {
+        return new couchbase.SearchQuery.regexpObject(regexp);
+      },
+
+      queryString: function(query) {
+        return new couchbase.SearchQuery.queryStringObject(query);
+      },
+
+      numericRange: function() {
+        return new couchbase.SearchQuery.rangeObject();
+      },
+
+      dateRange: function() {
+        return new couchbase.SearchQuery.dateRangeObject();
+      },
+
+      termRange: function() {
+        return new couchbase.SearchQuery.rangeObject();
+      },
+
+      conjuncts: function(...queries) {
+        return new couchbase.SearchQuery.conjunctsObject(...queries);
+      },
+
+      disjuncts: function(...queries) {
+        return new couchbase.SearchQuery.disjunctsObject(...queries);
+      },
+
+      boolean: function() {
+        return new couchbase.SearchQuery.booleanObject();
+      },
+
+      wildcard: function(wildcard) {
+        return new couchbase.SearchQuery.wildCardObject(wildcard);
+      },
+
+      docIds: function(...args) {
+        return new couchbase.SearchQuery.docIdsObject(...args);
+      },
+
+      booleanField: function(val) {
+        return new couchbase.SearchQuery.booleanFieldObject(val);
+      },
+
+      term: function(term) {
+        return new couchbase.SearchQuery.termSearchQueryObject(term);
+      },
+
+      phrase: function(...terms) {
+        return new couchbase.SearchQuery.phraseSearchQueryObject(...terms);
+      },
+
+      prefix: function(prefix) {
+        return new couchbase.SearchQuery.prefixObject(prefix);
+      },
+
+      matchAll: function() {
+        return new couchbase.SearchQuery.matchAllObject();
+      },
+
+      matchNone: function() {
+        return new couchbase.SearchQuery.matchNoneObject();
+      },
+
+      geoDistance: function(lon, lat, distance) {
+        return new couchbase.SearchQuery.geoDistanceObject(lon, lat, distance);
+      },
+
+      geoBoundingBox: function(tl_lon, tl_lat, br_lon, br_lat) {
+        return new couchbase.SearchQuery.geoBoundingBoxObject(tl_lon, tl_lat, br_lon, br_lat);
+      },
+
+      geoPolygon: function(points) {
+        // [longitude, latitude, longitude, latitude....]
+        return new couchbase.SearchQuery.geoPolygonObject(points);
+      }
+    };
+
+    couchbase.SearchQuery.matchObject = (function(match) {
+      this._data = { match: match };
+
+      this.operator = function(op) {
+        if (op == "or" || op == "Or") {
+          op = "or";
+        } else if (op == "and" || op == "And") {
+          op = "and";
+        } else {
+          throw "invalid operation specified";
+        }
+
+        this._data.operator = op;
+        return this
+      };
+
+      this.field = function(field) {
+        this._data.field = field;
+        return this;
+      };
+
+      this.analyzer = function(analyzer) {
+        this._data.analyzer = analyzer;
+        return this;
+      };
+
+      this.prefixLength = function(prefixLength) {
+        this._data.prefix_length = prefixLength;
+        return this;
+      };
+
+      this.fuzziness = function(fuzziness) {
+        this._data.fuzziness = fuzziness;
+        return this;
+      };
+
+      this.boost = function(boost) {
+        this._data.boost = boost;
+        return this;
+      };
+
+      this.toJson = function() {
+        return this._data;
+      };
+    });
+
+    couchbase.SearchQuery.regexpObject = (function(regexp) {
+      this._data = { regexp: regexp };
+
+      this.field = function(field) {
+        this._data.field = field;
+        return this;
+      };
+
+      this.boost = function(boost) {
+        this._data.boost = boost;
+        return this;
+      };
+
+      this.toJson = function() {
+        return this._data;
+      };
+    });
+
+    couchbase.SearchQuery.queryStringObject = (function(query) {
+      this._data = { query: query };
+
+      this.boost = function(boost) {
+        this._data.boost = boost;
+        return this;
+      };
+
+      this.toJson = function() {
+        return this._data;
+      };
+    });
+
+    couchbase.SearchQuery.rangeObject = (function() {
+      this._data = {};
+
+      this.field = function(field) {
+        this._data.field = field;
+        return this;
+      };
+
+      this.boost = function(boost) {
+        this._data.boost = boost;
+        return this;
+      };
+
+      this.min = function(min, inclusive) {
+        if (inclusive === undefined) {
+          inclusive = true;
+        }
+
+        this._data.min = min;
+        this._data.inclusive_min = inclusive;
+        return this;
+      }
+
+      this.max = function(max, inclusive) {
+        if (inclusive === undefined) {
+          inclusive = true;
+        }
+
+        this._data.max = max;
+        this._data.inclusive_max = inclusive;
+        return this;
+      }
+
+      this.toJson = function() {
+        return this._data;
+      };
+    });
+
+    couchbase.SearchQuery.dateRangeObject = (function() {
+      this._data = {};
+
+      this.field = function(field) {
+        this._data.field = field;
+        return this;
+      };
+
+      this.boost = function(boost) {
+        this._data.boost = boost;
+        return this;
+      };
+
+      this.start = function(start, inclusive) {
+        if (inclusive === undefined) {
+          inclusive = true
+        }
+
+        if (start instanceof Date) {
+          this._data.start = start.toISOString()
+        } else {
+          this._data.start = start
+        }
+
+        this._data.inclusive_start = inclusive
+        return this
+      }
+
+      this.end = function(end, inclusive) {
+        if (inclusive === undefined) {
+          inclusive = true
+        }
+
+        if (end instanceof Date) {
+          this._data.end = end.toISOString()
+        } else {
+          this._data.end = end
+        }
+
+        this._data.inclusive_end = inclusive
+        return this
+      }
+
+      this.dateTimeParser = function(parser) {
+        this._data.datetime_parser = parser
+        return this
+      }
+
+      this.toJson = function() {
+        return this._data;
+      };
+    });
+
+    couchbase.SearchQuery.conjunctsObject = (function(...queries) {
+      this._data = { conjuncts: [] };
+
+      this.and = function(...queries) {
+        for (var i = 0; i < queries.length; i++) {
+          this._data.conjuncts.push(queries[i].toJson());
+        }
+        return this;
+      };
+
+      this.boost = function(boost) {
+        this._data.boost = boost;
+        return this;
+      };
+
+      this.and(...queries);
+
+      this.toJson = function() {
+        return this._data;
+      };
+    });
+
+    couchbase.SearchQuery.disjunctsObject = (function(...queries) {
+      this._data = { disjuncts: [] };
+
+      this.or = function(...queries) {
+        for (var i = 0; i < queries.length; i++) {
+          this._data.disjuncts.push(queries[i].toJson());
+        }
+        return this;
+      };
+
+      this.boost = function(boost) {
+        this._data.boost = boost;
+        return this;
+      };
+
+      this.or(...queries);
+
+      this.toJson = function() {
+        return this._data;
+      };
+    });
+
+    couchbase.SearchQuery.booleanObject = (function() {
+      this._data = {};
+
+      this.must = function(query) {
+        this._data.must = query.toJson();
+        return this;
+      };
+
+      this.should = function(query) {
+        this._data.should = query.toJson();
+	return this;
+      };
+
+      this.mustNot = function(query) {
+        this._data.must_not = query.toJson();
+	return this;
+      };
+
+      this.shouldMin = function(min) {
+        this._data.shouldMin = min;
+	return this;
+      };
+
+      this.boost = function(boost) {
+        this._data.boost = boost;
+        return this;
+      };
+
+      this.toJson = function() {
+        return this._data;
+      };
+    });
+
+    couchbase.SearchQuery.wildCardObject = (function(wildcard) {
+      this._data = { wildcard: wildcard };
+
+      this.field = function(field) {
+        this._data.field = field;
+        return this;
+      };
+
+      this.boost = function(boost) {
+        this._data.boost = boost;
+        return this;
+      };
+
+      this.toJson = function() {
+        return this._data;
+      };
+    });
+
+    couchbase.SearchQuery.docIdsObject = (function(...args) {
+      this._data = { ids: [] };
+
+      this.addDocIds = function(...args) {
+        for (var i = 0; i < args.length; i++) {
+          this._data.ids.push(args[i]);
+        }
+        return this;
+      };
+
+      this.field = function(field) {
+        this._data.field = field;
+        return this;
+      };
+
+      this.boost = function(boost) {
+        this._data.boost = boost;
+        return this;
+      };
+
+      this.addDocIds(...args);
+
+      this.toJson = function() {
+        return this._data;
+      };
+    });
+
+    couchbase.SearchQuery.booleanFieldObject = (function(val) {
+      this._data = { bool: val };
+
+      this.field = function(field) {
+        this._data.field = field;
+        return this;
+      };
+
+      this.boost = function(boost) {
+        this._data.boost = boost;
+        return this;
+      };
+
+      this.toJson = function() {
+        return this._data;
+      };
+    });
+
+    couchbase.SearchQuery.termSearchQueryObject = (function(term) {
+      this._data = { term: term };
+
+      this.field = function(field) {
+        this._data.field = field;
+        return this;
+      };
+
+      this.prefixLength = function(prefixLength) {
+        this._data.prefix_length = prefixLength;
+        return this;
+      };
+
+      this.fuzziness = function(fuzziness) {
+        this._data.fuzziness = fuzziness;
+        return this;
+      };
+
+      this.boost = function(boost) {
+        this._data.boost = boost;
+        return this;
+      };
+
+      this.toJson = function() {
+        return this._data;
+      };
+    });
+
+    couchbase.SearchQuery.phraseSearchQueryObject = (function(...terms) {
+      this._data = { terms: [] };
+
+      for (var i = 0; i < terms.length; i++) {
+          this._data.terms.push(terms[i]);
+      }
+
+      this.field = function(field) {
+        this._data.field = field;
+        return this;
+      };
+
+      this.boost = function(boost) {
+        this._data.boost = boost;
+        return this;
+      };
+
+      this.toJson = function() {
+        return this._data;
+      };
+    });
+
+    couchbase.SearchQuery.prefixObject = (function(terms) {
+      this._data = { prefix: terms };
+
+      this.field = function(field) {
+        this._data.field = field;
+        return this;
+      };
+
+      this.boost = function(boost) {
+        this._data.boost = boost;
+        return this;
+      };
+
+      this.toJson = function() {
+        return this._data;
+      };
+    });
+
+    couchbase.SearchQuery.matchAllObject = (function() {
+      this._data = { match_all: null };
+
+      this.toJson = function() {
+        return this._data;
+      };
+    });
+
+    couchbase.SearchQuery.matchNoneObject = (function() {
+      this._data = { match_none: true };
+
+      this.toJson = function() {
+        return this._data;
+      };
+    });
+
+    couchbase.SearchQuery.geoDistanceObject = (function(lon, lat, distance) {
+      this._data = { location: {lon: lon, lat: lat}, distance: distance };
+
+      this.field = function(field) {
+        this._data.field = field;
+        return this;
+      };
+
+      this.boost = function(boost) {
+        this._data.boost = boost;
+        return this;
+      };
+
+      this.toJson = function() {
+        return this._data;
+      };
+    });
+
+    couchbase.SearchQuery.geoBoundingBoxObject = (function(tl_lon, tl_lat, br_lon,
+      br_lat) {
+      this._data = {
+        top_left: [tl_lon, tl_lat],
+        bottom_right: {lon: br_lon,
+          lat: br_lat
+        }
+      };
+
+      this.field = function(field) {
+        this._data.field = field;
+        return this;
+      };
+
+      this.boost = function(boost) {
+        this._data.boost = boost;
+        return this;
+      };
+
+      this.toJson = function() {
+        return this._data;
+      };
+    });
+
+    couchbase.SearchQuery.geoPolygonObject = (function(points) {
+      this._data = { polygon_points: points };
+
+      this.field = function(field) {
+        this._data.field = field;
+        return this;
+      };
+
+      this.boost = function(boost) {
+        this._data.boost = boost;
+        return this;
+      };
+
+      this.toJson = function() {
+        return this._data;
+      };
+    });
+
+    couchbase.SearchQuery.matchPhaseObject = (function(phrase) {
+      this._data = { match_phrase: phrase };
+
+      this.field = function(field) {
+        this._data.field = field;
+        return this;
+      };
+
+      this.analyzer = function(analyzer) {
+        this._data.analyzer = analyzer;
+        return this;
+      };
+
+      this.boost = function(boost) {
+        this._data.boost = boost;
+        return this;
+      };
+
+      this.toJson = function() {
+        return this._data;
+      };
+    });
+
+    couchbase.searchQuery = function(indexName, query, options) {
+      var queryJson = {
+            "query": query.toJson(),
+            "indexName": indexName
+          };
+
+      for(var option in options) {
+          queryJson[option] = options[option];
+      }
+
+      var queryJsonString = JSON.stringify(queryJson);
+      return couchbase.searchQueryInternal(queryJsonString);
+    };
+
     couchbase.getCachedKey = function(id, details) {
       return details.keyspace.bucket + "/" + details.keyspace.scope + "/" + details.keyspace.collection + "/" + id;
     };)"
@@ -577,6 +1156,10 @@ void V8Worker2::InitializeIsolateData() {
       app_details_->settings->n1ql_consistency);
   data_.n1ql_prepare_all = app_details_->settings->n1ql_prepare_all;
   data_.analytics_timeout = static_cast<lcb_U32>(
+      app_details_->settings->timeout < 3
+          ? 500000
+          : (app_details_->settings->timeout - 2) * 1000000);
+  data_.search_timeout =  static_cast<lcb_U32>(
       app_details_->settings->timeout < 3
           ? 500000
           : (app_details_->settings->timeout - 2) * 1000000);

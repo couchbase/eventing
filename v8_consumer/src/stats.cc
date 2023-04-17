@@ -28,6 +28,8 @@ std::string RuntimeStats::GetFailureStats() {
       failure_stats_["n1ql_op_exception_count"].load();
   fstats["analytics_op_exception_count"] =
       failure_stats_["analytics_op_exception_count"].load();
+  fstats["search_op_exception_count"] =
+      failure_stats_["search_op_exception_count"].load();
   fstats["timeout_count"] = failure_stats_["timeout_count"].load();
   fstats["debugger_events_lost"] =
       failure_stats_["debugger_events_lost"].load();

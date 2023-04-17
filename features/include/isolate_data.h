@@ -48,6 +48,7 @@ struct IsolateData {
   static const uint32_t index{0};
   lcb_U32 n1ql_timeout{0};
   lcb_U32 analytics_timeout{0};
+  lcb_U32 search_timeout{0};
   long op_timeout{0};
   long cursor_checkpoint_timeout{0};
   lcb_QUERY_CONSISTENCY n1ql_consistency = LCB_QUERY_CONSISTENCY_NONE;

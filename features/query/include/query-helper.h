@@ -26,10 +26,12 @@
 namespace Query {
 class N1qlController;
 class AnalyticsController;
+class SearchQuery;
 
 class Helper {
   friend N1qlController;
   friend AnalyticsController;
+  friend SearchQuery;
 
 public:
   Helper(v8::Isolate *isolate, const v8::Local<v8::Context> &context);

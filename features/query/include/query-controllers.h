@@ -83,6 +83,37 @@ private:
   lcb_QUERY_HANDLE *handle_{nullptr};
 };
 
+class SearchQuery : public QueryController {
+public:
+  explicit SearchQuery(v8::Isolate *isolate, Query::Info query_info_)
+      : QueryController(isolate, std::move(query_info_)) {}
+  ~SearchQuery() {lcb_cmdsearch_destroy(cmd_); };
+
+  static ::Info ValidateQuery(const v8::FunctionCallbackInfo<v8::Value> &args);
+  static Query::Info
+  GetQueryInfo(Query::Helper *helper,
+               const v8::FunctionCallbackInfo<v8::Value> &args);
+
+  ::Info build(void *cookie);
+  lcb_STATUS run();
+  void cancel();
+  void ThrowQueryError(const std::string &err_msg);
+
+private:
+  ::Info ErrorFormat(const std::string &message, lcb_INSTANCE *connection,
+                     lcb_STATUS error) const;
+  ::Info do_build(void *cookie);
+  static void RowCallback(lcb_INSTANCE *connection, int,
+                          const lcb_RESPSEARCH *resp);
+  static bool IsStatusSuccess(const std::string &row);
+
+  lcb_CMDSEARCH *GetCmd() { return cmd_; }
+  lcb_SEARCH_HANDLE *GetHandle() const { return handle_; }
+
+  lcb_CMDSEARCH *cmd_{0};
+  lcb_SEARCH_HANDLE *handle_{nullptr};
+};
+
 class AnalyticsController : public QueryController {
 public:
   explicit AnalyticsController(v8::Isolate *isolate, Query::Info query_info_)
@@ -117,6 +148,7 @@ private:
 
 void N1qlFunction(const v8::FunctionCallbackInfo<v8::Value> &args);
 void AnalyticsFunction(const v8::FunctionCallbackInfo<v8::Value> &args);
+void SearchFunction(const v8::FunctionCallbackInfo<v8::Value> &args);
 } // namespace Query
 
 #endif // QUERY_CONTROLLERS_H

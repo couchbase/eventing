@@ -209,7 +209,6 @@ struct ParsedMetadata {
   int vb{0};
   uint64_t seq_num{0};
   uint32_t cid{0};
-
   std::string scope{""};
   std::string collection{""};
   std::string key{""};

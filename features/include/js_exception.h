@@ -33,6 +33,10 @@ public:
                          v8::Local<v8::Object> &analytics_error_out) {
     return NewCustomError(message_val, analytics_error_out, "AnalyticsError");
   }
+  Info NewSearchError(const v8::Local<v8::Value> &message_val,
+                     v8::Local<v8::Object> &analytics_error_out) {
+    return NewCustomError(message_val, analytics_error_out, "SearchError");
+  }
   Info NewKVError(const v8::Local<v8::Value> &message_val,
                   v8::Local<v8::Object> &kv_error_out) {
     return NewCustomError(message_val, kv_error_out, "KVError");
@@ -72,6 +76,7 @@ public:
   void ThrowKVError(lcb_INSTANCE *instance, lcb_STATUS error);
   void ThrowN1qlError(const std::string &err_msg);
   void ThrowAnalyticsError(const std::string &err_msg);
+  void ThrowSearchError(const std::string &err_msg);
   void ThrowEventingError(const std::string &err_msg);
   void ThrowCurlError(const std::string &err_msg);
   void ThrowTypeError(const std::string &err_msg);
