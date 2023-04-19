@@ -55,6 +55,7 @@ const (
 // Producer handle - one instance per app per eventing node
 type Producer struct {
 	appName                string
+	eventingDir            string
 	app                    *common.AppConfig
 	auth                   string
 	cfgData                string

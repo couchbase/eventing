@@ -80,6 +80,7 @@ func NewProducer(appName, debuggerPort, eventingPort, eventingSSLPort, eventingD
 		curlLatencyStats:             util.NewStats(),
 		featureChangeChan:            make(chan uint32, 5),
 		featureMatrix:                featureMatrix,
+		eventingDir:                  eventingDir,
 	}
 
 	p.handlerConfig.SourceKeyspace = &common.Keyspace{}
