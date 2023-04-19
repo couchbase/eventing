@@ -363,7 +363,7 @@ func (p *Producer) parseDepcfg() error {
 		p.rebalanceConfig.VBOwnershipTakeoverRoutineCount = 3
 	}
 
-	parentDir := p.processConfig.EventingDir
+	parentDir := p.eventingDir
 	// Application logging related configurations
 	if val, ok := settings["app_log_dir"]; ok {
 		parentDir = val.(string)
