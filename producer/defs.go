@@ -55,6 +55,7 @@ const (
 // Producer handle - one instance per app per eventing node
 type Producer struct {
 	appName                string
+	eventingDir            string
 	app                    *common.AppConfig
 	cfgData                string
 	handleV8ConsumerMutex  *sync.Mutex // controls access to Producer.handleV8Consumer
