@@ -209,6 +209,11 @@ func (qs *queryStmt) VisitExplain(stmt *algebra.Explain) (interface{}, error) {
 	return stmt, err
 }
 
+func (qs *queryStmt) VisitExplainFunction(stmt *algebra.ExplainFunction) (interface{}, error) {
+	err := handleStmt(qs, stmt.Expressions())
+	return stmt, err
+}
+
 func (qs *queryStmt) VisitPrepare(stmt *algebra.Prepare) (interface{}, error) {
 	err := handleStmt(qs, stmt.Expressions())
 	return stmt, err
