@@ -121,7 +121,8 @@ ulimit -c 2097152
 sudo bash -c "echo /tmp/core-%e.$TS.%p > /proc/sys/kernel/core_pattern"
 perl -pi -e 's/num_files, 10/num_files, 50/' $WORKSPACE/install/etc/couchbase/static_config
 cd $WORKSPACE/goproj/src/github.com/couchbase/eventing/
-gover="`grep -A20 'SET(GOVERSION ' CMakeLists.txt  | grep GOVERSION | head -1 | sed 's/^.*\([0-9]\.[0-9]*.[0-9]\).*$/\1/'`"
+goverFilename="`grep -A20 'SET(GOVERSION ' CMakeLists.txt  | grep GOVERSION | head -1 | sed -E 's/^.*(SUPPORTED_NEWER|SUPPORTED_OLDER).*$/\1/'`"
+gover="`cat $WORKSPACE/golang/versions/${goverFilename}.txt`"
 mkdir -p "$WORKSPACE/go"
 export GO111MODULE=auto
 export GOROOT=$(find $HOME/.cbdepscache/exploded/x86_64 -type d -name 'go-'$gover'*' | sort | tail -1)/go
