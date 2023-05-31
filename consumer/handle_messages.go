@@ -849,14 +849,14 @@ func (c *Consumer) feedbackReadMessageLoop(feedbackReader *bufio.Reader) {
 		buffer := make([]byte, c.feedbackReadBufferSize)
 		bytesRead, err := feedbackReader.Read(buffer)
 
-		if err == io.EOF || bytesRead == 0 {
-			break
-		}
-
 		if err != nil {
 			logging.Errorf("%s [%s:%s:%d] Read from client socket failed, err: %v",
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
 			return
+		}
+
+		if bytesRead == 0 {
+			continue
 		}
 
 		c.adhocTimerResponsesRecieved++
@@ -913,14 +913,14 @@ func (c *Consumer) readMessageLoop() {
 		buffer := make([]byte, 4096)
 		bytesRead, err := c.sockReader.Read(buffer)
 
-		if err == io.EOF || bytesRead == 0 {
-			break
-		}
-
 		if err != nil {
 			logging.Errorf("%s [%s:%s:%d] Read from client socket failed, err: %v",
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
 			return
+		}
+
+		if bytesRead == 0 {
+			continue
 		}
 
 		if bytesRead < len(buffer) {
