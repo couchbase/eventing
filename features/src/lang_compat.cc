@@ -11,10 +11,16 @@
 
 #include "lang_compat.h"
 
-LanguageCompatibility::LanguageCompatibility(const std::string &version_str) {
-  if (version_str == "6.0.0") {
+LanguageCompatibility::LanguageCompatibility(const std::string &ver_str) : version_str{ver_str} {
+  if (ver_str == "6.0.0") {
     version = Version::k6_0_0;
-  } else {
+    return;
+  }
+  if (ver_str == "6.5.0") {
     version = Version::k6_5_0;
+    return;
+  }
+  if (ver_str == "6.6.2") {
+    version = Version::k6_6_2;
   }
 }

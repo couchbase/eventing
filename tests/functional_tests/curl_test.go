@@ -1,3 +1,4 @@
+//go:build all || curl
 // +build all curl
 
 package eventing
@@ -1086,4 +1087,58 @@ func TestCurlGetLargeJSON(t *testing.T) {
 		testHandle: t,
 	}
 	curl.testLargeBody()
+}
+
+func TestCurlParseQueryParamsString(t *testing.T) {
+	curl := curlTester{
+		handler:    "curl_parse_query_params_string",
+		testName:   "TestCurlParseQueryParamsString",
+		testHandle: t,
+	}
+	curl.testParsingQueryParamsString()
+}
+
+func TestCurlURLEncodeQueryParamsAttrString66X(t *testing.T) {
+	curl := curlTester{
+		handler:    "curl_url_encode_query_params_attr_string",
+		testName:   "TestCurlURLEncodeQueryParamsAttrString66X",
+		testHandle: t,
+	}
+	curl.testCurlURLEncodeQueryParamsAttrString66X()
+}
+
+func TestCurlURLEncodeQueryParamsAttrObject66X(t *testing.T) {
+	curl := curlTester{
+		handler:    "curl_url_encode_query_params_attr_object",
+		testName:   "TestCurlURLEncodeQueryParamsAttrObject66X",
+		testHandle: t,
+	}
+	curl.testCurlURLEncodeQueryParamsAttrObject66X()
+}
+
+func TestCurlURLEncodeQueryParamsAttrString71X(t *testing.T) {
+	curl := curlTester{
+		handler:    "curl_url_encode_query_params_attr_string",
+		testName:   "TestCurlURLEncodeQueryParamsAttrString71X",
+		testHandle: t,
+	}
+	curl.testCurlURLEncodeQueryParamsAttrString71X()
+}
+
+func TestCurlURLEncodeInlineQueryParams71X(t *testing.T) {
+	curl := curlTester{
+		handler:    "curl_url_encode_inline_query_params",
+		testName:   "TestCurlURLEncodeInlineQueryParams71X",
+		testHandle: t,
+	}
+	curl.testCurlURLEncodeInlineQueryParams71X()
+}
+
+func TestCurlURLEncodeQueryParamsAttrObject71X(t *testing.T) {
+	curl := curlTester{
+		handler:    "curl_url_encode_query_params_attr_object",
+		testName:   "TestCurlURLEncodeQueryParamsAttrObject71X",
+		testHandle: t,
+	}
+	curl.testCurlURLEncodeQueryParamsAttrObject71X()
 }

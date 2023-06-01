@@ -21,6 +21,14 @@ func curlSetup() {
 	http.HandleFunc("/put/", postOrPutHandler)
 	http.HandleFunc("/head", headHandler)
 	http.HandleFunc("/head/", headHandler)
+	http.HandleFunc("/parseQueryParams/", parseQueryParamsHandler)
+	http.HandleFunc("/curlURLEncodeInlineQueryParams66X/", curlURLEncodeInlineQueryParams6_6_XHandler)
+	http.HandleFunc("/curlURLEncodeQueryParamsAttrString66X/", curlURLEncodeQueryParamsAttrString6_6_XHandler)
+	http.HandleFunc("/curlURLEncodeQueryParamsAttrObject66X/", curlURLEncodeQueryParamsAttrObject6_6_XHandler)
+	http.HandleFunc("/curlURLEncodeInlineQueryParams71X/", curlURLEncodeInlineQueryParams7_1_XHandler)
+	http.HandleFunc("/curlURLEncodeQueryParamsAttrString71X/", curlURLEncodeQueryParamsAttrString7_1_XHandler)
+	http.HandleFunc("/curlURLEncodeQueryParamsAttrObject71X/", curlURLEncodeQueryParamsAttrObject7_1_XHandler)
+
 	go func() {
 		err := server.ListenAndServe()
 		if err != nil {

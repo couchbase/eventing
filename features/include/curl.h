@@ -283,6 +283,7 @@ struct CurlRequest : public Info {
   std::string host;
   std::string path;
   std::string params_urlencoded;
+  std::string curl_lang_compat;
   Curl::Headers headers;
   Curl::Buffer body;
 };
@@ -419,20 +420,24 @@ private:
   Info ExtractBody(const v8::Local<v8::Value> &body_val,
                    const BodyEncoding &encoding, Curl::Buffer &body_out);
   Info ExtractPath(const v8::Local<v8::Value> &path_val,
-                   const CurlBinding &binding, std::string &value_out);
+                   const CurlBinding &binding, std::string &value_out,
+                   const std::string& curl_lang_compat);
   Info ExtractParams(const v8::Local<v8::Value> &params_val,
-                     std::string &value_out);
+                     std::string &value_out, const std::string& curl_lang_compat);
   Info ExtractHeaders(const v8::Local<v8::Value> &headers_val,
                       Headers &value_out);
   Info ExtractRedirect(const v8::Local<v8::Value> &redirect_val,
                        bool &value_out);
   Info FillContentType(const v8::Local<v8::Value> &body_val,
                        CurlRequest &request, const BodyEncoding &encoding);
+  Info ExtractCurlLangCompat(const v8::Local<v8::Value> &encode, std::string &req_encode);
+  bool IsCurlLangCompatValid(const std::string &encode);
 
   v8::Isolate *isolate_;
   v8::Persistent<v8::Context> context_;
   static const char AMP = '&';
   static const char QUESTION_MARK = '?';
+  inline static const std::string CURL_LANG_COMPAT[] = {"6.6.2", "7.1.0"};
 };
 
 // TODO : If and when we add green threads, we may need to have one CurlFactory

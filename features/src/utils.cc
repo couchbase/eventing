@@ -534,8 +534,7 @@ UrlEncode Utils::UrlEncodeAsString(const std::string &data) {
 }
 
 UrlEncode Utils::EncodeAndNormalizePath(const std::string& path) {
-  auto path_v8str = v8Str(isolate_, path.c_str());
-  auto encoded_path = UrlEncodeAny(path_v8str);
+  auto encoded_path = UrlEncodeAsString(path);
   if (encoded_path.is_fatal)
     return encoded_path;
 
@@ -592,6 +591,7 @@ UrlEncode Utils::UrlEncodeAsKeyValue(const v8::Local<v8::Value> &obj_val) {
     if (info.is_fatal) {
       return info;
     }
+
     if (!encoded.empty()) {
       encoded += "&";
     }
@@ -655,17 +655,6 @@ UrlDecode Utils::UrlDecodeAsKeyValue(const std::string &data,
   return {};
 }
 
-UrlEncode Utils::UrlEncodeAny(const v8::Local<v8::Value> &val) {
-  auto utils = UnwrapData(isolate_)->utils;
-
-  if (val->IsObject()) {
-    return utils->UrlEncodeAsKeyValue(val);
-  }
-
-  v8::String::Utf8Value val_utf8(isolate_, val);
-  return utils->UrlEncodeAsString(*val_utf8);
-}
-
 UrlDecode
 Utils::UrlDecodeAsKeyValue(const std::string &data,
                            std::unordered_map<std::string, std::string> &kv) {
@@ -707,7 +696,7 @@ std::pair<std::string, std::string> Utils::ExtractPathAndQueryParamsFromURL(cons
 
 UrlEncode Utils::EncodeAndNormalizeQueryParams(const std::string& query_params) {
   if (query_params.size() == 0 || query_params == "") {
-    return {""};
+    return {false};
   }
 
   std::ostringstream result;
@@ -722,9 +711,8 @@ UrlEncode Utils::EncodeAndNormalizeQueryParams(const std::string& query_params) 
       delim_found = false;
       delim_pos = query_params.size();
     }
-    auto single_query_param = query_params.substr(start_idx, delim_pos);
-    auto single_query_param_v8Str = v8Str(isolate_, single_query_param.c_str());
-    auto encoded_single_query_param = UrlEncodeAny(single_query_param_v8Str);
+    auto single_query_param = query_params.substr(start_idx, (delim_pos - start_idx));
+    auto encoded_single_query_param = UrlEncodeAsString(single_query_param);
     if (encoded_single_query_param.is_fatal)
       return encoded_single_query_param;
 
@@ -744,6 +732,74 @@ std::string Utils::NormalizeSingleQueryParam(std::string& query_param) {
     query_param.replace(found, Utils::HEX_EQ.size(), Utils::EQ);
   }
   return query_param;
+}
+
+UrlEncode Utils::UrlEncodePath(const std::string& raw_path, const
+std::string& curl_lang_compat) {
+  if(!curl_lang_compat.empty()) {
+    if (curl_lang_compat == "7.1.0") {
+      return UrlEncodePath7_1_0(raw_path);
+    }
+    // 6.x - return raw path
+    return { raw_path };
+  }
+  return { raw_path };
+}
+
+UrlEncode Utils::UrlEncodeStringParams(const std::string& qry_params, const
+std::string& curl_lang_compat) {
+  if(!curl_lang_compat.empty()) {
+    if (curl_lang_compat == "7.1.0") {
+      return EncodeAndNormalizeQueryParams(qry_params);
+    }
+    // curl_lang_compat is < 7.1.0 where params are encoded without normalize
+    return UrlEncodeAsString(qry_params);
+  } else {
+    // app language compatibility is 6.6.2 || 6.5.0 || 6.0.0
+    // where params are encoded without normalize
+    return UrlEncodeAsString(qry_params);
+  }
+}
+
+UrlEncode Utils::UrlEncodeParams(const v8::Local<v8::Value> &params_val, const
+std::string& curl_lang_compat){
+  if (params_val->IsObject()) {
+    auto encoded_query_params = UrlEncodeAsKeyValue(params_val);
+    if (encoded_query_params.is_fatal) {
+      return {encoded_query_params.is_fatal, encoded_query_params.msg};
+    }
+    return {encoded_query_params.encoded};
+  }
+
+  v8::String::Utf8Value query_param_utf8(isolate_, params_val);
+  auto raw_query_params_str = *query_param_utf8;
+  auto encoded_query_params = UrlEncodeStringParams(raw_query_params_str, curl_lang_compat);
+  if (encoded_query_params.is_fatal) {
+    return {encoded_query_params.is_fatal, encoded_query_params.msg};
+  }
+  return {encoded_query_params.encoded};
+}
+
+UrlEncode Utils::UrlEncodePath7_1_0(const std::string& raw_path) {
+  auto query_and_param_pair = ExtractPathAndQueryParamsFromURL(raw_path);
+  auto encoded_path = EncodeAndNormalizePath(query_and_param_pair.first);
+  if (encoded_path.is_fatal) {
+    return {encoded_path.is_fatal, encoded_path.msg};
+  }
+
+  auto encoded_query_params = EncodeAndNormalizeQueryParams(query_and_param_pair.second);
+  if (encoded_query_params.is_fatal) {
+    return {encoded_query_params.is_fatal, encoded_query_params.msg};
+  }
+
+  std::ostringstream oss;
+  if(encoded_query_params.encoded != "") {
+    oss << encoded_path.encoded << QUESTION_MARK << encoded_query_params.encoded;
+  } else {
+    oss << encoded_path.encoded;
+  }
+  auto final_url {oss.str()};
+  return {final_url};
 }
 
 void Crc64Function(const v8::FunctionCallbackInfo<v8::Value> &args) {
