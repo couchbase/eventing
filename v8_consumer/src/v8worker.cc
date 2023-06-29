@@ -100,6 +100,9 @@ void V8Worker::SetCouchbaseNamespace() {
   proto_t->Set(
       v8::String::NewFromUtf8(isolate_, "bindingDetails").ToLocalChecked(),
       v8::FunctionTemplate::New(isolate_, BucketOps::BindingDetails));
+  proto_t->Set(
+      v8::String::NewFromUtf8(isolate_, "mutateInInternal").ToLocalChecked(),
+      v8::FunctionTemplate::New(isolate_, BucketOps::SubdocOp));
 
   auto context = context_.Get(isolate_);
   v8::Local<v8::Object> cb_obj;
@@ -188,6 +191,69 @@ void V8Worker::SetCouchbaseNamespace() {
         options = {};
       }
       return couchbase.replaceInternal(bucket, meta, doc, options);
+    };
+
+    couchbase.MutateInSpec = {};
+
+    Object.defineProperty(couchbase.MutateInSpec, "create", {
+        enumerable: false,
+        value: function(opType, path, value, specOptions) {
+                 var spec = {"op_type": opType};
+                 spec.path = path;
+                 spec.value = JSON.stringify(value);
+
+                 if(specOptions != undefined) {
+                   spec.options = specOptions;
+                 }
+                 return spec;
+               }
+        });
+
+    couchbase.MutateInSpec.insert = function(path, value, specOptions) {
+      return couchbase.MutateInSpec.create(1, path, value, specOptions);
+    };
+
+    couchbase.MutateInSpec.upsert = function(path, value, specOptions) {
+      return couchbase.MutateInSpec.create(2, path, value, specOptions);
+    };
+
+    couchbase.MutateInSpec.replace = function(path, value, specOptions) {
+      return couchbase.MutateInSpec.create(3, path, value, specOptions);
+    };
+
+    couchbase.MutateInSpec.remove = function(path, specOptions) {
+      return couchbase.MutateInSpec.create(4, path, undefined, specOptions);
+    };
+
+    couchbase.MutateInSpec.arrayAppend = function(path, value, specOptions) {
+      return couchbase.MutateInSpec.create(5, path, value, specOptions);
+    };
+
+    couchbase.MutateInSpec.arrayPrepend = function(path, value, specOptions) {
+      return couchbase.MutateInSpec.create(6, path, value, specOptions);
+    };
+
+    couchbase.MutateInSpec.arrayInsert = function(path, value, specOptions) {
+      return couchbase.MutateInSpec.create(7, path, value, specOptions);
+    };
+
+    couchbase.MutateInSpec.arrayAddUnique = function(path, value, specOptions) {
+      return couchbase.MutateInSpec.create(8, path, value, specOptions);
+    };
+
+    couchbase.mutateIn = function(bucket, meta, op_array, options) {
+      if(!op_array) {
+        return {"success": true};
+      }
+
+      var details = couchbase.bindingDetails(bucket, meta);
+      var key = couchbase.getCachedKey(meta.id, details);
+
+      this.invalidateKey(key);
+      if(!options) {
+        options = {};
+      }
+      return couchbase.mutateInInternal(bucket, meta, op_array, options);
     };
 
     couchbase.delete = function(bucket, meta) {

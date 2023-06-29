@@ -36,9 +36,16 @@ BucketOps::BucketOps(v8::Isolate *isolate,
   key_not_found_str_ = "key_not_found";
   cas_mismatch_str_ = "cas_mismatch";
   key_exist_str_ = "key_already_exists";
+  field_not_found_str_ = "field_not_found";
+  field_exist_str_ = "field_already_exists";
   doc_str_ = "doc";
   meta_str_ = "meta";
   cache_str_ = "cache";
+  op_type_str_ = "op_type";
+  key_subdoc_str_ = "path";
+  value_subdoc_str_ = "value";
+  options_subdoc_str_ = "options";
+  create_path_type_str_ = "create_path";
   self_recursion_str_ = "self_recursion";
   counter_str_ = "count";
   error_str_ = "error";
@@ -410,6 +417,118 @@ OptionsInfo BucketOps::ExtractOptionsInfo(v8::Local<v8::Value> options_object) {
   return {true, options};
 }
 
+SubdocInfo BucketOps::ExtractSubdocInfo(v8::Local<v8::Value> subdoc_object) {
+  v8::HandleScope handle_scope(isolate_);
+
+  auto context = context_.Get(isolate_);
+  SubdocOperation operations;
+
+  if (!subdoc_object->IsArray()) {
+    return {false, "the 'subdoc operations' parameter should be an array"};
+  }
+
+  auto req_array = subdoc_object.As<v8::Array>();
+  for (u_int32_t i = 0; i < req_array->Length(); i++) {
+    v8::Local<v8::Value> array_ele;
+    if (!TO_LOCAL(req_array->Get(context, i), &array_ele)) {
+      return {true, "Unable to read array"};
+    }
+
+    if (!array_ele->IsObject()) {
+      return {false, "Array elements should be an object"};
+    }
+
+    v8::Local<v8::Object> obj = array_ele.As<v8::Object>();
+    // Extracting op type
+    if (!obj->Has(context, v8Str(isolate_, op_type_str_)).FromJust()) {
+      return {false, "field not provided"};
+    }
+
+    v8::Local<v8::Value> op_v8val;
+    if (!TO_LOCAL(obj->Get(context, v8Str(isolate_, op_type_str_)),
+                  &op_v8val)) {
+      return {false, "error in casting op_type"};
+    }
+
+    if (!op_v8val->IsNumber()) {
+      return {false, "'op_type' should be an integer"};
+    }
+
+    v8::Local<v8::Integer> op_v8int;
+    if (!TO_LOCAL(op_v8val->ToInteger(context), &op_v8int)) {
+      return {false, "error in casting 'op_type'"};
+    }
+    auto opType = op_v8int->Value();
+
+    // Extracting key
+    if (!obj->Has(context, v8Str(isolate_, key_subdoc_str_)).FromJust()) {
+      return {false, "field not provided"};
+    }
+
+    v8::Local<v8::Value> key_v8val;
+    if (!TO_LOCAL(obj->Get(context, v8Str(isolate_, key_subdoc_str_)),
+                  &key_v8val)) {
+      return {false, "error in casting path"};
+    }
+
+    v8::String::Utf8Value key_utf8(isolate_, key_v8val);
+    std::string key(*key_utf8);
+
+    // Extracting values
+    if (!obj->Has(context, v8Str(isolate_, value_subdoc_str_)).FromJust()) {
+      return {false, "field not provided"};
+    }
+
+    v8::Local<v8::Value> value_v8val;
+    if (!TO_LOCAL(obj->Get(context, v8Str(isolate_, value_subdoc_str_)),
+                  &value_v8val)) {
+      return {false, "error in casting value"};
+    }
+
+    v8::String::Utf8Value value_utf8(isolate_, value_v8val);
+    std::string value(*value_utf8);
+
+    // Extracting options
+    if (!obj->Has(context, v8Str(isolate_, options_subdoc_str_)).FromJust()) {
+      operations.emplace_operation(opType, key, value, false);
+      continue;
+    }
+
+    v8::Local<v8::Value> option_v8val;
+    if (!TO_LOCAL(obj->Get(context, v8Str(isolate_, options_subdoc_str_)),
+                  &option_v8val)) {
+      return {false, "error in casting options"};
+    }
+
+    if (!option_v8val->IsObject()) {
+      return {false, "Option elements should be an object"};
+    }
+
+    v8::Local<v8::Object> options_obj = option_v8val.As<v8::Object>();
+    bool create_path = false;
+    if (options_obj->Has(context, v8Str(isolate_, create_path_type_str_))
+            .FromJust()) {
+      v8::Local<v8::Value> create_path_v8val;
+      if (TO_LOCAL(
+              options_obj->Get(context, v8Str(isolate_, create_path_type_str_)),
+              &create_path_v8val)) {
+        if (!create_path_v8val->IsBoolean()) {
+          return {false, "create_path must be a boolean value"};
+        }
+
+        auto create_path_v8 = create_path_v8val.As<v8::Boolean>();
+        create_path = create_path_v8->Value();
+      }
+    }
+    auto valid = operations.emplace_operation(opType, key, value, create_path);
+    if (!valid) {
+      return {false, "Invalid operations"};
+    }
+  }
+
+  return {true, operations};
+}
+
 EpochInfo BucketOps::Epoch(const v8::Local<v8::Value> &date_val) {
   auto utils = UnwrapData(isolate_)->utils;
   v8::HandleScope handle_scope(isolate_);
@@ -507,6 +626,15 @@ BucketOps::BucketSet(MetaData &meta, v8::Local<v8::Value> value,
     doc_type = 0x2000000;
   }
   return Set(meta, value_str, op_type, doc_type, suppress_recursion, bucket);
+}
+
+std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
+BucketOps::BucketSubdocSet(MetaData &meta, SubdocOperation &value,
+                           bool suppress_recursion, Bucket *bucket) {
+  if (suppress_recursion) {
+    return bucket->SubdocWithXattr(meta, value);
+  }
+  return bucket->SubdocWithoutXattr(meta, value);
 }
 
 void BucketOps::Details(v8::FunctionCallbackInfo<v8::Value> args) {
@@ -1416,4 +1544,178 @@ void BucketOps::BindingDetails(
 
   auto bucket_ops = isolate_data->bucket_ops;
   bucket_ops->Details(args);
+}
+
+void BucketOps::SubdocOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
+  auto isolate = args.GetIsolate();
+  auto isolate_data = UnwrapData(isolate);
+  v8::HandleScope handle_scope(isolate);
+
+  std::lock_guard<std::mutex> guard(isolate_data->termination_lock_);
+  if (!isolate_data->is_executing_) {
+    return;
+  }
+
+  auto js_exception = isolate_data->js_exception;
+  auto bucket_ops = isolate_data->bucket_ops;
+
+  if (args.Length() < 3) {
+    ++bucket_op_exception_count;
+    js_exception->ThrowTypeError(
+        "couchbase.subdoc requires at least 3 arguments");
+    return;
+  }
+
+  auto info = bucket_ops->VerifyBucketObject(args[0]);
+  if (info.is_fatal) {
+    ++bucket_op_exception_count;
+    js_exception->ThrowTypeError(info.msg);
+    return;
+  }
+
+  auto block_mutation = BucketBinding::GetBlockMutation(isolate, args[0]);
+  if (block_mutation) {
+    ++bucket_op_exception_count;
+    js_exception->ThrowEventingError("Writing to source bucket is forbidden");
+    return;
+  }
+
+  auto meta_info = bucket_ops->ExtractMetaInfo(args[1], true, false);
+  if (!meta_info.is_valid) {
+    ++bucket_op_exception_count;
+    js_exception->ThrowTypeError(meta_info.msg);
+    return;
+  }
+  auto meta = meta_info.meta;
+
+  info = Utils::ValidateDataType(args[2]);
+  if (info.is_fatal) {
+    ++bucket_op_exception_count;
+    auto err_msg = "Invalid data type for 3rd argument: " + info.msg;
+    js_exception->ThrowTypeError(err_msg);
+    return;
+  }
+
+  OptionsData options = {false, false};
+  if (args.Length() > 3) {
+    auto options_info = bucket_ops->ExtractOptionsInfo(args[3]);
+    if (!options_info.is_valid) {
+      ++bucket_op_exception_count;
+      js_exception->ThrowTypeError(options_info.msg);
+      return;
+    }
+    options = options_info.options;
+  }
+
+  auto suppress_recursion = !options.self_recursion;
+  if (suppress_recursion) {
+    auto [err, is_source_mutation] =
+        BucketBinding::IsSourceMutation(isolate, args[0], meta);
+    if (err != nullptr) {
+      js_exception->ThrowEventingError(*err);
+      return;
+    }
+    suppress_recursion = is_source_mutation;
+  }
+
+  auto bucket = BucketBinding::GetBucket(isolate, args[0]);
+  auto subdoc_info = bucket_ops->ExtractSubdocInfo(args[2]);
+  if (!subdoc_info.is_valid) {
+    ++bucket_op_exception_count;
+    js_exception->ThrowTypeError(subdoc_info.msg);
+    return;
+  }
+
+  auto [error, err_code, result] = bucket_ops->BucketSubdocSet(
+      meta, subdoc_info.operations, suppress_recursion, bucket);
+
+  if (error != nullptr) {
+    ++bucket_op_exception_count;
+    js_exception->ThrowEventingError(*error);
+    return;
+  }
+
+  if (*err_code != LCB_SUCCESS) {
+    bucket_ops->HandleBucketOpFailure(bucket->GetConnection(), *err_code);
+    return;
+  }
+
+  v8::Local<v8::Object> response_obj = v8::Object::New(isolate);
+  if (result->rc == LCB_ERR_CAS_MISMATCH) {
+    info = bucket_ops->SetErrorObject(
+        response_obj, "LCB_KEY_EEXISTS",
+        "The document key exists with a CAS value different than specified",
+        result->kv_err_code, bucket_ops->cas_mismatch_str_, true);
+
+    if (info.is_fatal) {
+      ++bucket_op_exception_count;
+      js_exception->ThrowEventingError(info.msg);
+      return;
+    }
+    ++bkt_ops_cas_mismatch_count;
+    args.GetReturnValue().Set(response_obj);
+    return;
+  }
+
+  if (result->rc == LCB_ERR_DOCUMENT_NOT_FOUND) {
+    info = bucket_ops->SetErrorObject(
+        response_obj, "LCB_KEY_ENOENT",
+        "The document key does not exist on the server", result->kv_err_code,
+        bucket_ops->key_not_found_str_, true);
+
+    if (info.is_fatal) {
+      ++bucket_op_exception_count;
+      js_exception->ThrowEventingError(info.msg);
+      return;
+    }
+    args.GetReturnValue().Set(response_obj);
+    return;
+  }
+
+  if (result->rc == LCB_ERR_SUBDOC_PATH_EXISTS) {
+    info = bucket_ops->SetErrorObject(
+        response_obj, "LCB_ERR_SUBDOC_PATH_EXISTS",
+        "The document path already exist", result->kv_err_code,
+        bucket_ops->field_exist_str_, true);
+
+    if (info.is_fatal) {
+      ++bucket_op_exception_count;
+      js_exception->ThrowEventingError(info.msg);
+      return;
+    }
+    args.GetReturnValue().Set(response_obj);
+    return;
+  }
+
+  if (result->rc == LCB_ERR_SUBDOC_PATH_NOT_FOUND) {
+    info = bucket_ops->SetErrorObject(
+        response_obj, "LCB_ERR_SUBDOC_PATH_NOT_FOUND",
+        "The document key does not exist on the server", result->kv_err_code,
+        bucket_ops->field_not_found_str_, true);
+
+    if (info.is_fatal) {
+      ++bucket_op_exception_count;
+      js_exception->ThrowEventingError(info.msg);
+      return;
+    }
+    args.GetReturnValue().Set(response_obj);
+    return;
+  }
+
+  if (result->rc != LCB_SUCCESS) {
+    bucket_ops->HandleBucketOpFailure(bucket->GetConnection(), result->rc);
+    return;
+  }
+
+  result->key = meta.key;
+  result->exptime = meta.expiry;
+
+  info = bucket_ops->ResponseSuccessObject(std::move(result), response_obj);
+  if (info.is_fatal) {
+    ++bucket_op_exception_count;
+    js_exception->ThrowEventingError(info.msg);
+    return;
+  }
+
+  args.GetReturnValue().Set(response_obj);
 }

@@ -42,6 +42,104 @@ struct MetaData {
         invalidate_cache_(invalidate) {}
 };
 
+struct SubdocOperation {
+  enum ops {
+    oBaseOp,
+    oInsert,
+    oUpsert,
+    oReplace,
+    oRemove,
+    oArrayAppend,
+    oArrayPrepend,
+    oArrayInsert,
+    oArrayAddUnique,
+    oInvalidOp
+  };
+
+  struct operation {
+    ops opType_;
+    std::string key_;
+    std::string value_;
+    uint32_t flags;
+
+    operation(ops opType, std::string key, std::string value, bool create_path)
+        : opType_(opType), key_(key), value_(value) {
+      if (create_path) {
+        flags |= LCB_SUBDOCSPECS_F_MKINTERMEDIATES;
+      }
+    }
+  };
+
+  std::vector<operation> operations;
+
+  int get_num_fields() const { return operations.size(); }
+
+  bool emplace_operation(int operation, std::string key, std::string value,
+                         bool create_path) {
+    if (operation <= oBaseOp || operation >= oInvalidOp) {
+      return false;
+    }
+    operations.emplace_back(ops(operation), key, value, create_path);
+    return true;
+  }
+
+  void populate_specs(lcb_SUBDOCSPECS *specs, int start_idx) {
+    auto index = start_idx;
+    for (std::vector<operation>::const_iterator it = operations.begin();
+         it != operations.end(); it++) {
+      std::string key = it->key_;
+      std::string value = it->value_;
+
+      switch (it->opType_) {
+      case oInsert: {
+        lcb_subdocspecs_dict_add(specs, index, it->flags, key.c_str(),
+                                 key.size(), value.c_str(), value.size());
+      } break;
+
+      case oUpsert: {
+        lcb_subdocspecs_dict_upsert(specs, index, it->flags, key.c_str(),
+                                    key.size(), value.c_str(), value.size());
+      } break;
+
+      case oReplace: {
+        lcb_subdocspecs_replace(specs, index, 0, key.c_str(), key.size(),
+                                value.c_str(), value.size());
+      } break;
+
+      case oRemove: {
+        lcb_subdocspecs_remove(specs, index, 0, key.c_str(), key.size());
+      } break;
+
+      case oArrayAppend: {
+        lcb_subdocspecs_array_add_last(specs, index, it->flags, key.c_str(),
+                                       key.size(), value.c_str(), value.size());
+      } break;
+
+      case oArrayPrepend: {
+        lcb_subdocspecs_array_add_first(specs, index, it->flags, key.c_str(),
+                                        key.size(), value.c_str(),
+                                        value.size());
+      } break;
+
+      case oArrayInsert: {
+        lcb_subdocspecs_array_insert(specs, index, 0, key.c_str(), key.size(),
+                                     value.c_str(), value.size());
+      } break;
+
+      case oArrayAddUnique: {
+        lcb_subdocspecs_array_add_unique(specs, index, it->flags, key.c_str(),
+                                         key.size(), value.c_str(),
+                                         value.size());
+      } break;
+
+      default:
+        break;
+      }
+      index++;
+    }
+  }
+};
+
 class BucketFactory {
 public:
   BucketFactory(v8::Isolate *isolate, const v8::Local<v8::Context> &context);
@@ -111,6 +209,12 @@ public:
 
   std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
   Get(MetaData &meta);
+
+  std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
+  SubdocWithoutXattr(MetaData &meta, SubdocOperation &operation);
+
+  std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
+  SubdocWithXattr(MetaData &meta, SubdocOperation &operation);
 
   std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
   SetWithXattr(MetaData &meta, const std::string &value,

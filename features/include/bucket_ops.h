@@ -48,6 +48,19 @@ struct OptionsInfo {
   OptionsData options;
 };
 
+struct SubdocInfo {
+  SubdocInfo() : is_valid(false) {}
+  SubdocInfo(bool is_valid) : is_valid(is_valid) {}
+  SubdocInfo(bool is_valid, std::string msg)
+      : is_valid(is_valid), msg(std::move(msg)) {}
+  SubdocInfo(bool is_valid, SubdocOperation operations)
+      : is_valid(is_valid), operations(std::move(operations)) {}
+
+  bool is_valid;
+  std::string msg;
+  SubdocOperation operations;
+};
+
 struct EpochInfo {
   EpochInfo(bool is_valid) : is_valid(is_valid), epoch(0) {}
 
@@ -71,6 +84,7 @@ public:
   static void DecrementOp(const v8::FunctionCallbackInfo<v8::Value> &args);
   static void TouchOp(const v8::FunctionCallbackInfo<v8::Value> &args);
   static void BindingDetails(const v8::FunctionCallbackInfo<v8::Value> &args);
+  static void SubdocOp(const v8::FunctionCallbackInfo<v8::Value> &args);
 
 private:
   EpochInfo Epoch(const v8::Local<v8::Value> &date_val);
@@ -80,6 +94,7 @@ private:
 
   OptionsInfo ExtractOptionsInfo(v8::Local<v8::Value> options_object);
 
+  SubdocInfo ExtractSubdocInfo(v8::Local<v8::Value> options_object);
   Info ResponseSuccessObject(std::unique_ptr<Result> const &result,
                              v8::Local<v8::Object> &response_obj,
                              bool is_doc_needed = false,
@@ -113,6 +128,10 @@ private:
             lcb_STORE_OPERATION op_type, bool suppress_recursion,
             Bucket *bucket);
 
+  std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
+  BucketSubdocSet(MetaData &meta, SubdocOperation &value,
+                  bool suppress_recursion, Bucket *bucket);
+
   void CounterOps(v8::FunctionCallbackInfo<v8::Value> args, int64_t delta);
   void Details(v8::FunctionCallbackInfo<v8::Value> args);
 
@@ -133,6 +152,8 @@ private:
   const char *key_not_found_str_;
   const char *cas_mismatch_str_;
   const char *key_exist_str_;
+  const char *field_not_found_str_;
+  const char *field_exist_str_;
   const char *doc_str_;
   const char *meta_str_;
   const char *counter_str_;
@@ -143,6 +164,11 @@ private:
   const char *invalid_counter_str_;
   const char *cache_str_;
   const char *self_recursion_str_;
+  const char *op_type_str_;
+  const char *key_subdoc_str_;
+  const char *value_subdoc_str_;
+  const char *options_subdoc_str_;
+  const char *create_path_type_str_;
 };
 
 #endif

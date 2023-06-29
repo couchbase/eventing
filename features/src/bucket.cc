@@ -302,7 +302,7 @@ Bucket::Get(MetaData &meta) {
   lcb_cmdget_key(cmd, meta.key.c_str(), meta.key.length());
   lcb_cmdget_timeout(cmd, lcb_timeout);
 
-  if (on_behalf_of_.size() != 0) {
+  if (!on_behalf_of_.empty()) {
     lcb_cmdget_on_behalf_of(cmd, on_behalf_of_.c_str(), on_behalf_of_.size());
   }
 
@@ -362,7 +362,7 @@ Bucket::GetWithMeta(MetaData &meta) {
   lcb_cmdsubdoc_specs(cmd, specs);
   lcb_cmdsubdoc_timeout(cmd, lcb_timeout);
 
-  if (on_behalf_of_.size() != 0) {
+  if (!on_behalf_of_.empty()) {
     lcb_cmdsubdoc_on_behalf_of(cmd, on_behalf_of_.c_str(),
                                on_behalf_of_.size());
   }
@@ -416,7 +416,7 @@ Bucket::CounterWithoutXattr(MetaData &meta, int64_t delta) {
   lcb_cmdsubdoc_key(cmd, meta.key.c_str(), meta.key.length());
   lcb_cmdsubdoc_timeout(cmd, lcb_timeout);
 
-  if (on_behalf_of_.size() != 0) {
+  if (!on_behalf_of_.empty()) {
     lcb_cmdsubdoc_on_behalf_of(cmd, on_behalf_of_.c_str(),
                                on_behalf_of_.size());
   }
@@ -495,7 +495,7 @@ Bucket::CounterWithXattr(MetaData &meta, int64_t delta) {
   lcb_cmdsubdoc_key(cmd, meta.key.c_str(), meta.key.length());
   lcb_cmdsubdoc_timeout(cmd, lcb_timeout);
 
-  if (on_behalf_of_.size() != 0) {
+  if (!on_behalf_of_.empty()) {
     lcb_cmdsubdoc_on_behalf_of(cmd, on_behalf_of_.c_str(),
                                on_behalf_of_.size());
     lcb_cmdsubdoc_on_behalf_of_extra_privilege(
@@ -506,6 +506,141 @@ Bucket::CounterWithXattr(MetaData &meta, int64_t delta) {
       *cmd, max_retry, max_timeout, LcbSubdocSet);
   lcb_cmdsubdoc_destroy(cmd);
   lcb_subdocspecs_destroy(specs);
+  if (err != nullptr) {
+    return {std::move(err), nullptr, nullptr};
+  }
+  if (err_code != LCB_SUCCESS) {
+    ++lcb_retry_failure;
+    return {nullptr, std::make_unique<lcb_STATUS>(err_code), nullptr};
+  }
+
+  return {nullptr, std::make_unique<lcb_STATUS>(err_code),
+          std::make_unique<Result>(std::move(result))};
+}
+
+std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
+Bucket::SubdocWithoutXattr(MetaData &meta, SubdocOperation &operation) {
+  if (!is_connected_) {
+    return {std::make_unique<std::string>("Connection is not initialized"),
+            nullptr, nullptr};
+  }
+
+  auto [error, scope, collection] = get_scope_and_collection_names(meta);
+  if (error != nullptr) {
+    return {std::move(error), nullptr, nullptr};
+  }
+  meta.scope = scope;
+  meta.collection = collection;
+
+  lcb_SUBDOCSPECS *specs;
+  lcb_subdocspecs_create(&specs, operation.get_num_fields());
+
+  operation.populate_specs(specs, 0);
+  const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
+  const auto lcb_timeout = UnwrapData(isolate_)->lcb_timeout;
+  const auto max_timeout = UnwrapData(isolate_)->op_timeout;
+
+  lcb_CMDSUBDOC *cmd;
+  lcb_cmdsubdoc_create(&cmd);
+  lcb_cmdsubdoc_specs(cmd, specs);
+  lcb_cmdsubdoc_cas(cmd, meta.cas);
+  lcb_cmdsubdoc_expiry(cmd, meta.expiry);
+  lcb_cmdsubdoc_collection(cmd, scope.c_str(), scope.size(), collection.c_str(),
+                           collection.size());
+  lcb_cmdsubdoc_key(cmd, meta.key.data(), meta.key.size());
+  lcb_cmdsubdoc_timeout(cmd, lcb_timeout);
+
+  if (!on_behalf_of_.empty()) {
+    lcb_cmdsubdoc_on_behalf_of(cmd, on_behalf_of_.c_str(),
+                               on_behalf_of_.size());
+    lcb_cmdsubdoc_on_behalf_of_extra_privilege(
+        cmd, on_behalf_of_privilege_.c_str(), on_behalf_of_privilege_.size());
+  }
+
+  auto [err, err_code, result] = TryLcbCmdWithRefreshConnIfNecessary(
+      *cmd, max_retry, max_timeout, LcbSubdocSet);
+  lcb_cmdsubdoc_destroy(cmd);
+  lcb_subdocspecs_destroy(specs);
+
+  if (err != nullptr) {
+    return {std::move(err), nullptr, nullptr};
+  }
+  if (err_code != LCB_SUCCESS) {
+    ++lcb_retry_failure;
+    return {nullptr, std::make_unique<lcb_STATUS>(err_code), nullptr};
+  }
+
+  return {nullptr, std::make_unique<lcb_STATUS>(err_code),
+          std::make_unique<Result>(std::move(result))};
+}
+
+std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
+Bucket::SubdocWithXattr(MetaData &meta, SubdocOperation &operation) {
+  if (!is_connected_) {
+    return {std::make_unique<std::string>("Connection is not initialized"),
+            nullptr, nullptr};
+  }
+
+  auto [error, scope, collection] = get_scope_and_collection_names(meta);
+  if (error != nullptr) {
+    return {std::move(error), nullptr, nullptr};
+  }
+  meta.scope = scope;
+  meta.collection = collection;
+
+  lcb_SUBDOCSPECS *specs;
+  lcb_subdocspecs_create(&specs, operation.get_num_fields() + 3);
+  auto function_instance_id = GetFunctionInstanceID(isolate_);
+  std::string function_instance_id_path("_eventing.fiid");
+  lcb_subdocspecs_dict_upsert(
+      specs, 0, LCB_SUBDOCSPECS_F_MKINTERMEDIATES | LCB_SUBDOCSPECS_F_XATTRPATH,
+      function_instance_id_path.c_str(), function_instance_id_path.size(),
+      function_instance_id.c_str(), function_instance_id.size());
+
+  std::string dcp_seqno_path("_eventing.seqno");
+  std::string dcp_seqno_macro(R"("${Mutation.seqno}")");
+  lcb_subdocspecs_dict_upsert(specs, 1,
+                              LCB_SUBDOCSPECS_F_MKINTERMEDIATES |
+                                  LCB_SUBDOCSPECS_F_XATTR_MACROVALUES,
+                              dcp_seqno_path.c_str(), dcp_seqno_path.size(),
+                              dcp_seqno_macro.c_str(), dcp_seqno_macro.size());
+
+  std::string value_crc32_path("_eventing.crc");
+  std::string value_crc32_macro(R"("${Mutation.value_crc32c}")");
+  lcb_subdocspecs_dict_upsert(
+      specs, 2,
+      LCB_SUBDOCSPECS_F_MKINTERMEDIATES | LCB_SUBDOCSPECS_F_XATTR_MACROVALUES,
+      value_crc32_path.c_str(), value_crc32_path.size(),
+      value_crc32_macro.c_str(), value_crc32_macro.size());
+
+  operation.populate_specs(specs, 3);
+
+  const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
+  const auto lcb_timeout = UnwrapData(isolate_)->lcb_timeout;
+  const auto max_timeout = UnwrapData(isolate_)->op_timeout;
+
+  lcb_CMDSUBDOC *cmd;
+  lcb_cmdsubdoc_create(&cmd);
+  lcb_cmdsubdoc_specs(cmd, specs);
+  lcb_cmdsubdoc_cas(cmd, meta.cas);
+  lcb_cmdsubdoc_expiry(cmd, meta.expiry);
+  lcb_cmdsubdoc_collection(cmd, scope.c_str(), scope.size(), collection.c_str(),
+                           collection.size());
+  lcb_cmdsubdoc_key(cmd, meta.key.data(), meta.key.size());
+  lcb_cmdsubdoc_timeout(cmd, lcb_timeout);
+
+  if (!on_behalf_of_.empty()) {
+    lcb_cmdsubdoc_on_behalf_of(cmd, on_behalf_of_.c_str(),
+                               on_behalf_of_.size());
+    lcb_cmdsubdoc_on_behalf_of_extra_privilege(
+        cmd, on_behalf_of_privilege_.c_str(), on_behalf_of_privilege_.size());
+  }
+
+  auto [err, err_code, result] = TryLcbCmdWithRefreshConnIfNecessary(
+      *cmd, max_retry, max_timeout, LcbSubdocSet);
+  lcb_cmdsubdoc_destroy(cmd);
+  lcb_subdocspecs_destroy(specs);
+
   if (err != nullptr) {
     return {std::move(err), nullptr, nullptr};
   }
@@ -575,7 +710,7 @@ Bucket::SetWithXattr(MetaData &meta, const std::string &value,
   lcb_cmdsubdoc_store_semantics(cmd, op_type);
   lcb_cmdsubdoc_timeout(cmd, lcb_timeout);
 
-  if (on_behalf_of_.size() != 0) {
+  if (!on_behalf_of_.empty()) {
     lcb_cmdsubdoc_on_behalf_of(cmd, on_behalf_of_.c_str(),
                                on_behalf_of_.size());
     lcb_cmdsubdoc_on_behalf_of_extra_privilege(
@@ -632,7 +767,7 @@ Bucket::SetWithoutXattr(MetaData &meta, const std::string &value,
   lcb_cmdstore_value(cmd, value.data(), value.size());
   lcb_cmdstore_timeout(cmd, lcb_timeout);
 
-  if (on_behalf_of_.size() != 0) {
+  if (!on_behalf_of_.empty()) {
     lcb_cmdstore_on_behalf_of(cmd, on_behalf_of_.c_str(), on_behalf_of_.size());
   }
 
@@ -710,7 +845,7 @@ Bucket::DeleteWithXattr(MetaData &meta) {
   lcb_cmdsubdoc_key(cmd, meta.key.c_str(), meta.key.length());
   lcb_cmdsubdoc_timeout(cmd, lcb_timeout);
 
-  if (on_behalf_of_.size() != 0) {
+  if (!on_behalf_of_.empty()) {
     lcb_cmdsubdoc_on_behalf_of(cmd, on_behalf_of_.c_str(),
                                on_behalf_of_.size());
     lcb_cmdsubdoc_on_behalf_of_extra_privilege(
@@ -762,7 +897,7 @@ Bucket::DeleteWithoutXattr(MetaData &meta) {
   lcb_cmdremove_key(cmd, meta.key.c_str(), meta.key.length());
   lcb_cmdremove_timeout(cmd, lcb_timeout);
 
-  if (on_behalf_of_.size() != 0) {
+  if (!on_behalf_of_.empty()) {
     lcb_cmdremove_on_behalf_of(cmd, on_behalf_of_.c_str(),
                                on_behalf_of_.size());
   }
@@ -836,7 +971,7 @@ Bucket::TouchWithXattr(MetaData &meta) {
   lcb_cmdsubdoc_key(cmd, meta.key.c_str(), meta.key.length());
   lcb_cmdsubdoc_timeout(cmd, lcb_timeout);
 
-  if (on_behalf_of_.size() != 0) {
+  if (!on_behalf_of_.empty()) {
     lcb_cmdsubdoc_on_behalf_of(cmd, on_behalf_of_.c_str(),
                                on_behalf_of_.size());
     lcb_cmdsubdoc_on_behalf_of_extra_privilege(
@@ -889,7 +1024,7 @@ Bucket::TouchWithoutXattr(MetaData &meta) {
   lcb_cmdtouch_key(cmd, meta.key.data(), meta.key.size());
   lcb_cmdtouch_timeout(cmd, lcb_timeout);
 
-  if (on_behalf_of_.size() != 0) {
+  if (!on_behalf_of_.empty()) {
     lcb_cmdtouch_on_behalf_of(cmd, on_behalf_of_.c_str(), on_behalf_of_.size());
   }
 

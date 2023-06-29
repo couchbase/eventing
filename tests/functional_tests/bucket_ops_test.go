@@ -538,3 +538,25 @@ func TestMultiColErrorCondition(t *testing.T) {
 	testPumpDoc(itemCount, itemCount, dstBucket, true,
 		"multi_col_error_conditions", setting, t)
 }
+
+func TestSubdocOperation(t *testing.T) {
+        const itemCount = 1
+
+        pumpBucketOpsSrc(opsType{count: itemCount}, dstBucket, &rateLimit{})
+        setting := &commonSettings{
+                aliasSources:       []string{dstBucket},
+                aliasHandles:       []string{"dst_bucket"},
+                srcMutationEnabled: true,
+        }
+        testPumpDoc(itemCount, 0, dstBucket, false,
+                "subdoc_ops", setting, t)
+
+        log.Printf("Testing subdoc operation on source bucket")
+        setting = &commonSettings{
+                aliasSources:       []string{srcBucket},
+                aliasHandles:       []string{"dst_bucket"},
+                srcMutationEnabled: true,
+        }
+        testPumpDoc(itemCount, 0, srcBucket, false,
+                "subdoc_ops", setting, t)
+}
