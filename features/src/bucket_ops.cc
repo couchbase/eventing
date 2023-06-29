@@ -428,7 +428,7 @@ SubdocInfo BucketOps::ExtractSubdocInfo(v8::Local<v8::Value> subdoc_object) {
   }
 
   auto req_array = subdoc_object.As<v8::Array>();
-  for (u_int32_t i = 0; i < req_array->Length(); i++) {
+  for (uint32_t i = 0; i < req_array->Length(); i++) {
     v8::Local<v8::Value> array_ele;
     if (!TO_LOCAL(req_array->Get(context, i), &array_ele)) {
       return {true, "Unable to read array"};
