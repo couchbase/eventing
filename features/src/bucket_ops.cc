@@ -1580,7 +1580,7 @@ void BucketOps::SubdocOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
     return;
   }
 
-  auto meta_info = bucket_ops->ExtractMetaInfo(args[1], true, false);
+  auto meta_info = bucket_ops->ExtractMetaInfo(args[1], true, true);
   if (!meta_info.is_valid) {
     ++bucket_op_exception_count;
     js_exception->ThrowTypeError(meta_info.msg);
