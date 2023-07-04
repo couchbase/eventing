@@ -149,21 +149,21 @@
 
   "eventing_bucket_op_exception_count": {
     "type": "counter",
-    "help": "The total number of bucket op exception",
+    "help": "The total number of Key-Value exceptions",
     "added": "7.0.0",
     "stability": "committed"
   },
 
   "eventing_timeout_count": {
     "type": "counter",
-    "help": "The total number of javascript execution exceeding execution timeout",
+    "help": "The total number of JavaScript executions exceeding execution timeout",
     "added": "7.0.0",
     "stability": "committed"
   },
 
   "eventing_n1ql_op_exception_count": {
     "type": "counter",
-    "help": "The total number of n1ql op exception",
+    "help": "The total number of N1QL Query exceptions",
     "added": "7.0.0",
     "stability": "committed"
   },
@@ -177,14 +177,14 @@
 
   "eventing_timer_callback_missing_counter": {
     "type": "counter",
-    "help": "The total number of undefined timer callback function",
+    "help": "The total number of undefined timer callback functions",
     "added": "7.0.0",
     "stability": "committed"
   },
 
   "eventing_bkt_ops_cas_mismatch_count": {
     "type": "counter",
-    "help": "The total number of bucket op cas mismatch",
+    "help": "The total number of Key-Value CAS mismatches",
     "added": "7.0.0",
     "stability": "committed"
   },
@@ -198,7 +198,7 @@
 
   "eventing_worker_restart_count": {
     "type": "counter",
-    "help": "The total number of time worker is respawned due to worker process crash",
+    "help": "The total number of times worker is respawned due to worker process crash",
     "added": "7.0.0",
     "stability": "internal"
   }
