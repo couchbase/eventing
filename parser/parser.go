@@ -40,7 +40,7 @@ var printable_stmt = regexp.MustCompile(
 	`^[[:print:]]*$`)
 
 var function_name = regexp.MustCompile(
-	`^function[[:space:]]+([A-Za-z]+)[[:space:]]*\(`)
+	`^function[[:space:]]+([_$a-zA-Z\xA0-\x{FFFF}][_$a-zA-Z0-9\xA0-\x{FFFF}]*)[[:space:]]*\(`)
 
 var requiredFunctions = map[string]struct{}{"OnUpdate": struct{}{},
 	"OnDelete": struct{}{}}
