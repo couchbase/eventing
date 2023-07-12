@@ -6,7 +6,7 @@ cat > ~/.cienv <<EOF
     export WORKSPACE=/opt/build
     export RELEASE=6.5.0
     export MANIFEST="couchbase-server/mad-hatter/6.5.0.xml"
-    export MODE="rebalance,functional,integration,n1ql"
+    export MODE="rebalance,functional,integration,query"
     export WATCHERS="siri@couchbase.com"
     export PEGGED=0
     # use below if gerrit patchsets need to be ordered

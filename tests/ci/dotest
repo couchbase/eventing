@@ -154,8 +154,8 @@ stop_cluster
 
 start_cluster
 
-# N1QL tests
-export phase=n1ql
+# Query tests
+export phase=query
 if [[ "$MODE" == *"$phase"* ]]; then
   echo "</pre><h4>${phase^} tests</h4><pre>"
   echo "`date +'%Y/%m/%d %H:%M:%S'` Started $phase"

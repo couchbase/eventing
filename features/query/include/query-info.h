@@ -39,10 +39,15 @@ struct Options {
 
     ::Info ExtractN1qlOptions(const v8::Local<v8::Value> &arg,
                               Options &opt_out) const;
+    ::Info ExtractAnalyticsOptions(const v8::Local<v8::Value> &arg,
+                                   Options &opt_out) const;
 
   private:
     ::Info ExtractN1qlConsistency(const v8::Local<v8::Object> &options_obj,
                                   Options &opt_out) const;
+    ::Info ExtractAnalyticsConsistency(const v8::Local<v8::Object> &options_obj,
+                                       Options &opt_out) const;
+
     ::Info ExtractIsPrepared(const v8::Local<v8::Object> &options_obj,
                              std::unique_ptr<bool> &is_prepared_out) const;
     ::Info
@@ -62,6 +67,8 @@ struct Options {
 
   // TODO: make it string abstract class can handle it correctly
   std::unique_ptr<lcb_QUERY_CONSISTENCY> consistency;
+  lcb_ANALYTICS_CONSISTENCY analytics_consistency =
+      LCB_ANALYTICS_CONSISTENCY_NOT_BOUNDED;
   std::unique_ptr<std::string> client_context_id;
   std::unique_ptr<bool> is_prepared;
 };

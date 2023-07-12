@@ -47,6 +47,7 @@ const (
 	bucketStatsURL      = "http://127.0.0.1:9000/pools/default/buckets/"
 	indexerURL          = "http://127.0.0.1:9000/settings/indexes"
 	queryURL            = "http://127.0.0.1:9001/_p/query/query/service"
+	analyticsURL        = "http://127.0.0.1:9003/_p/cbas/query/service"
 	configURL           = "http://127.0.0.1:9000/_p/event/api/v1/config"
 	indexStateURL       = "http://127.0.0.1:9102/getIndexStatus"
 )

@@ -30,6 +30,7 @@ class Manager;
 
 class Iterator {
   friend N1qlController;
+  friend AnalyticsController;
   friend QueryController;
 
 public:

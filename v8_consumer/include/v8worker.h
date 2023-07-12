@@ -193,6 +193,7 @@ class V8Worker;
 extern std::atomic<int64_t> bucket_op_exception_count;
 extern std::atomic<int64_t> bucket_op_cachemiss_count;
 extern std::atomic<int64_t> n1ql_op_exception_count;
+extern std::atomic<int64_t> analytics_op_exception_count;
 extern std::atomic<int64_t> timeout_count;
 extern std::atomic<int16_t> checkpoint_failure_count;
 extern std::atomic<int64_t> bkt_ops_cas_mismatch_count;

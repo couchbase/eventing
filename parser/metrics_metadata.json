@@ -201,5 +201,12 @@
     "help": "The total number of times worker is respawned due to worker process crash",
     "added": "7.0.0",
     "stability": "internal"
+  },
+
+  "eventing_analytics_op_exception_count": {
+    "type": "counter",
+    "help": "The total number of analytics query exceptions",
+    "added": "7.6.0",
+    "stability": "committed"
   }
 }

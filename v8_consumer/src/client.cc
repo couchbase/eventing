@@ -50,6 +50,7 @@ std::string GetFailureStats() {
   fstats["bucket_cache_overflow_count"] = bucket_cache_overflow_count_.load();
   fstats["bkt_ops_cas_mismatch_count"] = bkt_ops_cas_mismatch_count.load();
   fstats["n1ql_op_exception_count"] = n1ql_op_exception_count.load();
+  fstats["analytics_op_exception_count"] = analytics_op_exception_count.load();
   fstats["timeout_count"] = timeout_count.load();
   fstats["checkpoint_failure_count"] = checkpoint_failure_count.load();
   fstats["dcp_events_lost"] = e_dcp_lost.load();
