@@ -98,7 +98,8 @@ private:
   Info ResponseSuccessObject(std::unique_ptr<Result> const &result,
                              v8::Local<v8::Object> &response_obj,
                              bool is_doc_needed = false,
-                             bool counter_needed = false);
+                             bool counter_needed = false,
+                             bool res_size_needed = false);
 
   Info VerifyBucketObject(v8::Local<v8::Value> bucket_binding);
 
