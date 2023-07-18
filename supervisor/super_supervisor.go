@@ -571,7 +571,7 @@ func (s *SuperSupervisor) TopologyChangeNotifCallback(kve metakv.KVEntry) error 
 					s.setinitLifecycleEncryptData()
 					msg, err := s.isDeployable(appName)
 					if err != nil {
-						logging.Errorf("%s [%d] Function %s is not deployable: %s err: %v",
+						logging.Errorf("%s [%d] Function %s is not deployable err: %v",
 							logPrefix, s.runningFnsCount(), appName, err)
 						util.Retry(util.NewExponentialBackoff(), &s.retryCount, undeployFunctionCallback, s, appName, msg.DeleteFunction)
 						continue

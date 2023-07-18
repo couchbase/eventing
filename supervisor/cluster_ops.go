@@ -110,7 +110,8 @@ var undeployFunctionCallback = func(args ...interface{}) error {
 	}
 
 	client := util.NewClient(5 * time.Second)
-	settingsUrl := fmt.Sprintf("http://%s:%s/setSettings/?name=%s&force=true", util.Localhost(), s.adminPort.HTTPPort, url.QueryEscape(appName))
+	serverAddress := net.JoinHostPort(util.Localhost(), s.adminPort.HTTPPort)
+	settingsUrl := fmt.Sprintf("http://%s/setSettings/?name=%s&force=true", serverAddress, url.QueryEscape(appName))
 	resp, err := client.Post(settingsUrl, "application/json", bytes.NewBuffer(data))
 	if err != nil {
 		logging.Errorf("%s [%d] Function: %s failed to send http request", logPrefix, s.runningFnsCount(), appName)
@@ -141,7 +142,8 @@ var deleteFunctionCallback = func(args ...interface{}) error {
 	functionId := args[2].(uint32)
 
 	client := util.NewClient(5 * time.Second)
-	deleteUrl := fmt.Sprintf("http://%s:%s/api/v1/functions/%s?bucket=%s&scope=%s&handleruuid=%s", util.Localhost(), s.adminPort.HTTPPort,
+	serverAddress := net.JoinHostPort(util.Localhost(), s.adminPort.HTTPPort)
+	deleteUrl := fmt.Sprintf("http://%s/api/v1/functions/%s?bucket=%s&scope=%s&handleruuid=%s", serverAddress,
 		url.QueryEscape(id.AppName), url.QueryEscape(id.Bucket), url.QueryEscape(id.Scope), functionId)
 	resp, err := client.Delete(deleteUrl)
 	if err != nil {
@@ -177,7 +179,8 @@ var waitForStateChange = func(args ...interface{}) error {
 	functionId := args[3].(uint32)
 
 	client := util.NewClient(5 * time.Second)
-	statusUrl := fmt.Sprintf("http://%s:%s/api/v1/status/%s?bucket=%s&scope=%s", util.Localhost(), s.adminPort.HTTPPort,
+	serverAddress := net.JoinHostPort(util.Localhost(), s.adminPort.HTTPPort)
+	statusUrl := fmt.Sprintf("http://%s/api/v1/status/%s?bucket=%s&scope=%s", serverAddress,
 		url.QueryEscape(id.AppName), url.QueryEscape(id.Bucket), url.QueryEscape(id.Scope))
 	resp, err := client.Get(statusUrl)
 	if err != nil {
