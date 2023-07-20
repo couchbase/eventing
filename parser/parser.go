@@ -40,7 +40,7 @@ var printable_stmt = regexp.MustCompile(
 	`^[[:print:]]*$`)
 
 var function_name = regexp.MustCompile(
-	`^function[[:space:]]+([A-Za-z]+)[[:space:]]*\(`)
+	`^function[[:space:]]+([_$a-zA-Z\xA0-\x{FFFF}][_$a-zA-Z0-9\xA0-\x{FFFF}]*)[[:space:]]*\(`)
 
 var requiredFunctions = map[string]struct{}{"OnUpdate": struct{}{},
 	"OnDelete": struct{}{}}
@@ -178,7 +178,7 @@ func wrapQuery(query string, params string, n1ql_params string) string {
 	result := ""
 	for i, line := range js_lines {
 		if i == 0 {
-			result += "N1QL("
+			result += "couchbase.n1qlQuery("
 		}
 		result += line
 		if i == len(js_lines)-1 {

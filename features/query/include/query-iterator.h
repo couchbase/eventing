@@ -20,15 +20,18 @@
 #include <v8.h>
 
 #include "info.h"
-#include "query-builder.h"
 #include "query-helper.h"
 #include "query-row.h"
+#include "query-controllers.h"
 
 namespace Query {
 class Iterator;
 class Manager;
 
 class Iterator {
+  friend N1qlController;
+  friend QueryController;
+
 public:
   struct Info : public ::Info {
     Info(bool is_fatal) : ::Info(is_fatal) {}
@@ -44,9 +47,8 @@ public:
     Iterator *iterator{nullptr};
   };
 
-  Iterator(Query::Info query_info, lcb_INSTANCE *instance, v8::Isolate *isolate, std::string on_behalf_of_)
-      : connection_(instance), isolate_(isolate),
-        builder_(isolate_, std::move(query_info), instance, on_behalf_of_) {}
+  Iterator(std::unique_ptr<QueryController> query, v8::Isolate *isolate)
+      : isolate_(isolate), query_controller_(std::move(query)) {}
   ~Iterator();
 
   Iterator() = delete;
@@ -61,11 +63,11 @@ public:
   void Stop();
   ::Info Wait();
 
-private:
-  static void RowCallback(lcb_INSTANCE *connection, int type,
-                          const lcb_RESPQUERY *resp);
-  static bool IsStatusSuccess(const std::string &row);
+  inline void ThrowQueryError(const std::string &err_msg) {
+    query_controller_->ThrowQueryError(err_msg);
+  }
 
+private:
   struct Cursor {
     Query::Row GetRow() const;
     Query::Row GetRowAsFinal() const;
@@ -110,11 +112,10 @@ private:
   Cursor cursor_;
   bool has_peeked_{false};
 
-  lcb_INSTANCE *connection_;
   ::Info result_info_{false};
   v8::Isolate *isolate_;
   State state_{State::kIdle};
-  Query::Builder builder_;
+  std::unique_ptr<QueryController> query_controller_;
   std::thread runner_;
 };
 } // namespace Query

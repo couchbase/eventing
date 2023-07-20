@@ -101,12 +101,12 @@ void JsException::ThrowKVError(const std::string &err_msg) {
   isolate_->ThrowException(error_obj);
 }
 
-void JsException::ThrowN1QLError(const std::string &err_msg) {
+void JsException::ThrowN1qlError(const std::string &err_msg) {
   v8::HandleScope handle_scope(isolate_);
   auto custom_error = UnwrapData(isolate_)->custom_error;
 
   v8::Local<v8::Object> error_obj;
-  auto info = custom_error->NewN1QLError(v8Str(isolate_, err_msg), error_obj);
+  auto info = custom_error->NewN1qlError(v8Str(isolate_, err_msg), error_obj);
   if (info.is_fatal) {
     LOG(logError) << "Unable to construct N1QLError : " << info.msg
                   << std::endl;

@@ -23,6 +23,7 @@
 #include "info.h"
 
 namespace Query {
+
 struct Options {
   class Extractor {
   public:
@@ -36,18 +37,17 @@ struct Options {
     Extractor &operator=(const Extractor &) = delete;
     Extractor &operator=(Extractor &&) = delete;
 
-    ::Info Extract(const v8::FunctionCallbackInfo<v8::Value> &args,
-                   Options &opt_out) const;
+    ::Info ExtractN1qlOptions(const v8::Local<v8::Value> &arg,
+                              Options &opt_out) const;
 
   private:
-    ::Info ExtractConsistency(
-        const v8::Local<v8::Object> &options_obj,
-        std::unique_ptr<lcb_QUERY_CONSISTENCY> &consistency_out) const;
+    ::Info ExtractN1qlConsistency(const v8::Local<v8::Object> &options_obj,
+                                  Options &opt_out) const;
+    ::Info ExtractIsPrepared(const v8::Local<v8::Object> &options_obj,
+                             std::unique_ptr<bool> &is_prepared_out) const;
     ::Info
     ExtractClientCtxId(const v8::Local<v8::Object> &options_obj,
                        std::unique_ptr<std::string> &client_ctx_id_out) const;
-    ::Info ExtractIsPrepared(const v8::Local<v8::Object> &options_obj,
-                             std::unique_ptr<bool> &is_prepared_out) const;
 
     v8::Isolate *isolate_;
     v8::Persistent<v8::Context> context_;
@@ -57,9 +57,10 @@ struct Options {
     v8::Persistent<v8::String> is_prepared_property_;
   };
 
-  bool GetOrDefaultIsPrepared(v8::Isolate *isolate) const;
-  lcb_QUERY_CONSISTENCY GetOrDefaultConsistency(v8::Isolate *isolate) const;
+  bool GetOrDefaultN1qlIsPrepared(v8::Isolate *isolate) const;
+  lcb_QUERY_CONSISTENCY GetOrDefaultN1qlConsistency(v8::Isolate *isolate) const;
 
+  // TODO: make it string abstract class can handle it correctly
   std::unique_ptr<lcb_QUERY_CONSISTENCY> consistency;
   std::unique_ptr<std::string> client_context_id;
   std::unique_ptr<bool> is_prepared;

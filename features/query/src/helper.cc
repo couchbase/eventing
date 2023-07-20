@@ -21,131 +21,12 @@
 #include "query-info.h"
 #include "utils.h"
 
-extern std::atomic<int64_t> n1ql_op_exception_count;
-
 Query::Helper::Helper(v8::Isolate *isolate,
                       const v8::Local<v8::Context> &context)
     : isolate_(isolate), opt_extractor_(isolate, context) {
   context_.Reset(isolate_, context);
 }
 Query::Helper::~Helper() { context_.Reset(); }
-
-::Info
-Query::Helper::ValidateQuery(const v8::FunctionCallbackInfo<v8::Value> &args) {
-  if (args.Length() < 1) {
-    return {true, "Need at least the query"};
-  }
-  if (!args[0]->IsString()) {
-    return {true, "Expecting a string for the first parameter"};
-  }
-  if (args.Length() < 2) {
-    return {false};
-  }
-  if (!(args[1]->IsObject() || args[1]->IsArray())) {
-    return {true, "Expecting an object or an array for the second parameter"};
-  }
-  return {false};
-}
-
-Query::Info
-Query::Helper::CreateQuery(const v8::FunctionCallbackInfo<v8::Value> &args) {
-  v8::HandleScope handle_scope(isolate_);
-  Query::Info query_info;
-
-  v8::String::Utf8Value query_utf8(isolate_, args[0]);
-  query_info.query = *query_utf8;
-  if (args.Length() < 2) {
-    return query_info;
-  }
-
-  if (args[1]->IsArray()) {
-    if (auto info = GetPosParams(args[1]); info.is_fatal) {
-      return {true, info.msg};
-    } else {
-      std::swap(query_info.pos_params, info.pos_params);
-    }
-  } else if (args[1]->IsObject()) {
-    if (auto info = GetNamedParams(args[1]); info.is_fatal) {
-      return {true, info.msg};
-    } else {
-      std::swap(query_info.named_params, info.named_params);
-    }
-  }
-
-  Query::Options options;
-  if (auto info = opt_extractor_.Extract(args, options); info.is_fatal) {
-    return {true, info.msg};
-  } else {
-    std::swap(query_info.options, options);
-  }
-  return query_info;
-}
-
-Query::Helper::NamedParamsInfo
-Query::Helper::GetNamedParams(const v8::Local<v8::Value> &arg) const {
-  v8::HandleScope handle_scope(isolate_);
-  auto context = context_.Get(isolate_);
-
-  v8::Local<v8::Object> named_params_obj;
-  if (!TO_LOCAL(arg->ToObject(context), &named_params_obj)) {
-    return {true, "Unable to cast second parameter to object"};
-  }
-
-  v8::Local<v8::Array> named_params_keys;
-  if (!TO_LOCAL(named_params_obj->GetPropertyNames(context),
-                &named_params_keys)) {
-    return {true, "Unable to get the key collection in the second parameter"};
-  }
-
-  std::unordered_map<std::string, std::string> named_params;
-  for (uint32_t i = 0, len = named_params_keys->Length(); i < len; ++i) {
-    v8::Local<v8::Value> key;
-    if (!TO_LOCAL(named_params_keys->Get(context, i), &key)) {
-      return {true, "Unable to get key from the second parameter"};
-    }
-    if (auto info = Utils::ValidateDataType(key); info.is_fatal) {
-      return {true, "Invalid data type for named parameters: " + info.msg};
-    }
-
-    v8::Local<v8::Value> value;
-    if (!TO_LOCAL(named_params_obj->Get(context, key), &value)) {
-      return {true, "Unable to get value from the second parameter"};
-    }
-    if (auto info = Utils::ValidateDataType(value); info.is_fatal) {
-      return {true, "Invalid data type for named parameters: " + info.msg};
-    }
-    v8::String::Utf8Value key_utf8(isolate_, key);
-    named_params[*key_utf8] = JSONStringify(isolate_, value);
-  }
-  return {named_params};
-}
-
-Query::Helper::PosParamsInfo
-Query::Helper::GetPosParams(const v8::Local<v8::Value> &arg) const {
-  v8::HandleScope handle_scope(isolate_);
-  auto context = context_.Get(isolate_);
-  std::stringstream error;
-
-  std::vector<std::string> pos_params;
-  auto params_v8arr = arg.As<v8::Array>();
-  const auto len = params_v8arr->Length();
-  pos_params.reserve(static_cast<std::size_t>(len));
-
-  for (uint32_t i = 0; i < len; ++i) {
-    v8::Local<v8::Value> param_val;
-    if (!TO_LOCAL(params_v8arr->Get(context, i), &param_val)) {
-      error << "Unable to read parameter at index " << i;
-      return {true, error.str()};
-    }
-    if (auto info = Utils::ValidateDataType(param_val); info.is_fatal) {
-      error << "Invalid data type at index " << i
-            << " for positional parameters: " << info.msg;
-      return {true, error.str()};
-    }
-    pos_params.emplace_back(JSONStringify(isolate_, param_val));
-  }
-  return {pos_params};
-}
 
 ::Info Query::Helper::AccountLCBError(const std::string &err_str) {
   auto info = GetErrorCodes(err_str);
@@ -237,11 +118,9 @@ void Query::Helper::AccountLCBError(int err_code) {
   AddLcbException(isolate_data, err_code);
 }
 
-void Query::Helper::HandleRowError(const Query::Row &row) {
+std::string Query::Helper::RowErrorString(const Query::Row &row) {
   auto comm = UnwrapData(isolate_)->comm;
-  auto js_exception = UnwrapData(isolate_)->js_exception;
 
-  ++n1ql_op_exception_count;
   // TODO : Refresh for server auth error also
   if (row.is_client_auth_error) {
     comm->Refresh();
@@ -261,7 +140,7 @@ void Query::Helper::HandleRowError(const Query::Row &row) {
       err_msg << " Error accounting LCB : " << acc_info.msg;
     }
   }
-  js_exception->ThrowN1QLError(err_msg.str());
+  return err_msg.str();
 }
 
 std::string Query::Helper::ErrorFormat(const std::string &message,
@@ -271,17 +150,6 @@ std::string Query::Helper::ErrorFormat(const std::string &message,
   std::stringstream formatter;
   formatter << message << " : " << lcb_strerror_short(error);
   return formatter.str();
-}
-
-lcb_QUERY_CONSISTENCY
-Query::Helper::GetConsistency(const std::string &consistency) {
-  if (consistency == "none") {
-    return LCB_QUERY_CONSISTENCY_NONE;
-  }
-  if (consistency == "request") {
-    return LCB_QUERY_CONSISTENCY_REQUEST;
-  }
-  return LCB_QUERY_CONSISTENCY_NONE;
 }
 
 bool Query::Helper::CheckRetriable(int max_retry_count, uint32_t max_retry_secs,
@@ -311,57 +179,6 @@ Query::Options::Extractor::~Extractor() {
   consistency_property_.Reset();
   client_ctx_id_property_.Reset();
   is_prepared_property_.Reset();
-}
-
-::Info Query::Options::Extractor::Extract(
-    const v8::FunctionCallbackInfo<v8::Value> &args, Options &opt_out) const {
-  if (args.Length() < 3) {
-    return {false};
-  }
-  v8::HandleScope handle_scope(isolate_);
-  auto context = context_.Get(isolate_);
-
-  v8::Local<v8::Object> options_obj;
-  if (!TO_LOCAL(args[2]->ToObject(context), &options_obj)) {
-    return {true, "Unable to read options"};
-  }
-
-  auto info = ExtractConsistency(options_obj, opt_out.consistency);
-  if (info.is_fatal) {
-    return info;
-  }
-  info = ExtractClientCtxId(options_obj, opt_out.client_context_id);
-  if (info.is_fatal) {
-    return info;
-  }
-  return ExtractIsPrepared(options_obj, opt_out.is_prepared);
-}
-
-::Info Query::Options::Extractor::ExtractConsistency(
-    const v8::Local<v8::Object> &options_obj,
-    std::unique_ptr<lcb_QUERY_CONSISTENCY> &consistency_out) const {
-  v8::HandleScope handle_scope(isolate_);
-  auto context = context_.Get(isolate_);
-
-  auto consistency_property = consistency_property_.Get(isolate_);
-  v8::Local<v8::Value> consistency_val;
-  if (!TO_LOCAL(options_obj->Get(context, consistency_property),
-                &consistency_val)) {
-    return {true, "Unable to read consistency value"};
-  }
-  if (consistency_val->IsUndefined()) {
-    return {false};
-  }
-  if (!consistency_val->IsString()) {
-    return {true, "Expecting a string for consistency"};
-  }
-  v8::String::Utf8Value consistency_utf8(isolate_, consistency_val);
-  if (consistencies_.find(*consistency_utf8) == consistencies_.end()) {
-    return {true, "consistency must be one of 'none', 'request'"};
-  }
-  consistency_out = std::make_unique<lcb_QUERY_CONSISTENCY>(
-      Query::Helper::GetConsistency(*consistency_utf8));
-  return {false};
 }
 
 ::Info Query::Options::Extractor::ExtractClientCtxId(
@@ -417,7 +234,142 @@ Query::Options::Extractor::~Extractor() {
   return {false};
 }
 
-bool Query::Options::GetOrDefaultIsPrepared(v8::Isolate *isolate) const {
+// N1ql options
+Query::Helper::NamedParamsInfo
+Query::Helper::GetN1qlNamedParams(const v8::Local<v8::Value> &arg) const {
+  v8::HandleScope handle_scope(isolate_);
+  auto context = context_.Get(isolate_);
+
+  v8::Local<v8::Object> named_params_obj;
+  if (!TO_LOCAL(arg->ToObject(context), &named_params_obj)) {
+    return {true, "Unable to cast second parameter to object"};
+  }
+
+  v8::Local<v8::Array> named_params_keys;
+  if (!TO_LOCAL(named_params_obj->GetPropertyNames(context),
+                &named_params_keys)) {
+    return {true, "Unable to get the key collection in the second parameter"};
+  }
+
+  std::unordered_map<std::string, std::string> named_params;
+  for (uint32_t i = 0, len = named_params_keys->Length(); i < len; ++i) {
+    v8::Local<v8::Value> key;
+    if (!TO_LOCAL(named_params_keys->Get(context, i), &key)) {
+      return {true, "Unable to get key from the second parameter"};
+    }
+    if (auto info = Utils::ValidateDataType(key); info.is_fatal) {
+      return {true, "Invalid data type for named parameters: " + info.msg};
+    }
+
+    v8::Local<v8::Value> value;
+    if (!TO_LOCAL(named_params_obj->Get(context, key), &value)) {
+      return {true, "Unable to get value from the second parameter"};
+    }
+    if (auto info = Utils::ValidateDataType(value); info.is_fatal) {
+      return {true, "Invalid data type for named parameters: " + info.msg};
+    }
+    v8::String::Utf8Value key_utf8(isolate_, key);
+    named_params[*key_utf8] = JSONStringify(isolate_, value);
+  }
+  return {named_params};
+}
+
+Query::Helper::PosParamsInfo
+Query::Helper::GetN1qlPosParams(const v8::Local<v8::Value> &arg) const {
+  v8::HandleScope handle_scope(isolate_);
+  auto context = context_.Get(isolate_);
+  std::stringstream error;
+
+  std::vector<std::string> pos_params;
+  auto params_v8arr = arg.As<v8::Array>();
+  const auto len = params_v8arr->Length();
+  pos_params.reserve(static_cast<std::size_t>(len));
+
+  for (uint32_t i = 0; i < len; ++i) {
+    v8::Local<v8::Value> param_val;
+    if (!TO_LOCAL(params_v8arr->Get(context, i), &param_val)) {
+      error << "Unable to read parameter at index " << i;
+      return {true, error.str()};
+    }
+    if (auto info = Utils::ValidateDataType(param_val); info.is_fatal) {
+      error << "Invalid data type at index " << i
+            << " for positional parameters: " << info.msg;
+      return {true, error.str()};
+    }
+    pos_params.emplace_back(JSONStringify(isolate_, param_val));
+  }
+  return {pos_params};
+}
+
+::Info
+Query::Options::Extractor::ExtractN1qlOptions(const v8::Local<v8::Value> &arg,
+                                              Options &opt_out) const {
+  ::Info info;
+
+  v8::HandleScope handle_scope(isolate_);
+  auto context = context_.Get(isolate_);
+
+  v8::Local<v8::Object> options_obj;
+  if (!TO_LOCAL(arg->ToObject(context), &options_obj)) {
+    return {true, "Unable to read options"};
+  }
+
+  info = ExtractN1qlConsistency(options_obj, opt_out);
+  if (info.is_fatal) {
+    return info;
+  }
+  info = ExtractClientCtxId(options_obj, opt_out.client_context_id);
+  if (info.is_fatal) {
+    return info;
+  }
+
+  info = ExtractIsPrepared(options_obj, opt_out.is_prepared);
+  if (info.is_fatal) {
+    return info;
+  }
+
+  return info;
+}
+
+::Info Query::Options::Extractor::ExtractN1qlConsistency(
+    const v8::Local<v8::Object> &options_obj, Options &opt_out) const {
+  v8::HandleScope handle_scope(isolate_);
+  auto context = context_.Get(isolate_);
+
+  auto consistency_property = consistency_property_.Get(isolate_);
+  v8::Local<v8::Value> consistency_val;
+  if (!TO_LOCAL(options_obj->Get(context, consistency_property),
+                &consistency_val)) {
+    return {true, "Unable to read consistency value"};
+  }
+  if (consistency_val->IsUndefined()) {
+    return {false};
+  }
+  if (!consistency_val->IsString()) {
+    return {true, "Expecting a string for consistency"};
+  }
+  v8::String::Utf8Value consistency_utf8(isolate_, consistency_val);
+  if (consistencies_.find(*consistency_utf8) == consistencies_.end()) {
+    return {true, "consistency must be one of 'none', 'request'"};
+  }
+
+  opt_out.consistency = std::make_unique<lcb_QUERY_CONSISTENCY>(
+      Query::Helper::GetN1qlConsistency(*consistency_utf8));
+  return {false};
+}
+
+lcb_QUERY_CONSISTENCY
+Query::Helper::GetN1qlConsistency(const std::string &consistency) {
+  if (consistency == "none") {
+    return LCB_QUERY_CONSISTENCY_NONE;
+  }
+  if (consistency == "request") {
+    return LCB_QUERY_CONSISTENCY_REQUEST;
+  }
+  return LCB_QUERY_CONSISTENCY_NONE;
+}
+
+bool Query::Options::GetOrDefaultN1qlIsPrepared(v8::Isolate *isolate) const {
   if (is_prepared != nullptr) {
     return *is_prepared;
   }
@@ -425,7 +377,7 @@ bool Query::Options::GetOrDefaultIsPrepared(v8::Isolate *isolate) const {
 }
 
 lcb_QUERY_CONSISTENCY
-Query::Options::GetOrDefaultConsistency(v8::Isolate *isolate) const {
+Query::Options::GetOrDefaultN1qlConsistency(v8::Isolate *isolate) const {
   if (consistency != nullptr) {
     return *consistency;
   }

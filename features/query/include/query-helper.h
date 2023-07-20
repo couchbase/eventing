@@ -24,7 +24,11 @@
 #include "query-row.h"
 
 namespace Query {
+class N1qlController;
+
 class Helper {
+  friend N1qlController;
+
 public:
   Helper(v8::Isolate *isolate, const v8::Local<v8::Context> &context);
   ~Helper();
@@ -34,18 +38,24 @@ public:
   Helper &operator=(const Helper &) = delete;
   Helper &operator=(Helper &&) = delete;
 
-  static ::Info ValidateQuery(const v8::FunctionCallbackInfo<v8::Value> &args);
-  Query::Info CreateQuery(const v8::FunctionCallbackInfo<v8::Value> &args);
   ::Info AccountLCBError(const std::string &err_str);
   void AccountLCBError(int err_code);
   bool CheckRetriable(int max_retry_count, uint32_t max_retry_secs,
                       int retry_count, uint32_t start_time);
-  void HandleRowError(const Query::Row &row);
+  std::string RowErrorString(const Query::Row &row);
   std::string ErrorFormat(const std::string &message, lcb_INSTANCE *connection,
                           lcb_STATUS error);
-  static lcb_QUERY_CONSISTENCY GetConsistency(const std::string &consistency);
+  static lcb_QUERY_CONSISTENCY
+  GetN1qlConsistency(const std::string &consistency);
+  inline std::string GetQueryStatement(const v8::Local<v8::Value> &arg) {
+    v8::HandleScope handle_scope(isolate_);
 
-private:
+    Query::Info query_info;
+    v8::String::Utf8Value query_utf8(isolate_, arg);
+    return *query_utf8;
+  }
+
+protected:
   struct ErrorCodesInfo : public ::Info {
     ErrorCodesInfo(const ::Info &info) : ::Info(info.is_fatal, info.msg) {}
     ErrorCodesInfo(bool is_fatal, const std::string &msg)
@@ -78,14 +88,16 @@ private:
     std::vector<std::string> pos_params;
   };
 
+  NamedParamsInfo GetN1qlNamedParams(const v8::Local<v8::Value> &arg) const;
+  PosParamsInfo GetN1qlPosParams(const v8::Local<v8::Value> &arg) const;
+  Options::Extractor opt_extractor_;
+
+private:
   ErrorCodesInfo GetErrorCodes(const std::string &error);
   ErrorCodesInfo GetErrorCodes(const v8::Local<v8::Value> &errors_val);
-  NamedParamsInfo GetNamedParams(const v8::Local<v8::Value> &arg) const;
-  PosParamsInfo GetPosParams(const v8::Local<v8::Value> &arg) const;
 
   v8::Isolate *isolate_;
   v8::Persistent<v8::Context> context_;
-  Options::Extractor opt_extractor_;
 };
 } // namespace Query
 

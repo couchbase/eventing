@@ -62,7 +62,7 @@ var snippet_inputs = []string{
 		var bar = select * from travelsim where origin = $origin and destn = $destn and xx = 23;
 		var val = 'Hello World'
 		var bar = UPSERT INTO gamesim (KEY, VALUE) VALUES ('reskey', $val);
-		var upsert_query5 = N1QL('UPSERT INTO eventing-bucket-1 (KEY, VALUE) VALUES ($docId5, \'Hello World5\');', {'$docId5':docId5}, {'consistency' : 'request'});
+		var upsert_query5 = couchbase.n1qlQuery('UPSERT INTO eventing-bucket-1 (KEY, VALUE) VALUES ($docId5, \'Hello World5\');', {'$docId5':docId5}, {'consistency' : 'request'});
 	`,
 	`var bar = select * from beerbkt where//opening comment
 		//another comment
@@ -80,12 +80,12 @@ var snippet_inputs = []string{
 }
 
 var snippet_outputs = []string{
-	"N1QL('select * from `beer-samples`;', {});",
-	`N1QL('select 23 from beer;', {}); N1QL('update a set a=5 where 2=3;', {});`,
-	`var anr = N1QL('select * from hello;', {});`,
+	"couchbase.n1qlQuery('select * from `beer-samples`;', {});",
+	`couchbase.n1qlQuery('select 23 from beer;', {}); couchbase.n1qlQuery('update a set a=5 where 2=3;', {});`,
+	`var anr = couchbase.n1qlQuery('select * from hello;', {});`,
 	`var foo = "select * from this_is_a_comment;";`,
-	`N1QL('select * from a;', {}); N1QL('select * from b;', {}); N1QL('select 23 ;', {});`,
-	`N1QL('select 23;', {});`,
+	`couchbase.n1qlQuery('select * from a;', {}); couchbase.n1qlQuery('select * from b;', {}); couchbase.n1qlQuery('select 23 ;', {});`,
+	`couchbase.n1qlQuery('select 23;', {});`,
 	`// select 23;`,
 	`/* select 23; */`,
 	`
@@ -94,7 +94,7 @@ var snippet_outputs = []string{
 		var baz = 'hello"';
 		var gaa = /* hi */ 23;
 		var baz = hello\\;;
-		var boo=N1QL('delete from beers where a > 23 and b < 56;', {});
+		var boo=couchbase.n1qlQuery('delete from beers where a > 23 and b < 56;', {});
 		// a comment
 		/*
 		var bar = "he'llo";
@@ -103,45 +103,45 @@ var snippet_outputs = []string{
 		*/
 		var hello = 2 + 3;
 		if (a > 5) b++;
-		N1QL('select * from beers where foo = bar;', {});
-		N1QL('select *\n' +
+		couchbase.n1qlQuery('select * from beers where foo = bar;', {});
+		couchbase.n1qlQuery('select *\n' +
 		  'from helloworld\n' +
 		    'where a=\"23\" and b=26;', {});
 		var f = "hello\"world";
 		var x = select(23);
-		var x = N1QL('select \'hello\' from bar where t=\"23\";', {});
-		var y = N1QL('select \'hello\' from bar where t=\'23\';', {});
-		var z = N1QL('select \'hello\' from bar where t=\"23\";', {});
+		var x = couchbase.n1qlQuery('select \'hello\' from bar where t=\"23\";', {});
+		var y = couchbase.n1qlQuery('select \'hello\' from bar where t=\'23\';', {});
+		var z = couchbase.n1qlQuery('select \'hello\' from bar where t=\"23\";', {});
 	`,
-	`N1QL('select * from beers;', {}); // and a comment`,
+	`couchbase.n1qlQuery('select * from beers;', {}); // and a comment`,
 	`select * from "invalid-n1ql-syntax" where a=23`,
 	`delete everything; // invalid-n1ql-syntax`,
 	`select * from select * from beers;`,
 	`	var foo = 23;
-		var bar = N1QL('select * from beerbkt where arg = $foo and bar = $bar and xx = 23;', {'$bar':bar, '$foo':foo});
+		var bar = couchbase.n1qlQuery('select * from beerbkt where arg = $foo and bar = $bar and xx = 23;', {'$bar':bar, '$foo':foo});
 	`,
-	"var bar = N1QL('select * from beerbkt where arg = $foo and bar = `$bar`;', {'$foo':foo});",
-	"var bar = N1QL('select * from beerbkt where\\n' +\n'arg = $foo and bar = `$bar`;', {'$foo':foo});",
+	"var bar = couchbase.n1qlQuery('select * from beerbkt where arg = $foo and bar = `$bar`;', {'$foo':foo});",
+	"var bar = couchbase.n1qlQuery('select * from beerbkt where\\n' +\n'arg = $foo and bar = `$bar`;', {'$foo':foo});",
 	`var bar = select /* hello *`,
-	`var bar = N1QL('select *  from foo;', {});`,
+	`var bar = couchbase.n1qlQuery('select *  from foo;', {});`,
 	`	var foo = 23;
-		var bar = N1QL('select * from beerbkt where arg = $foo and bar = $bar and xx = 23;', {'$bar':bar, '$foo':foo});
+		var bar = couchbase.n1qlQuery('select * from beerbkt where arg = $foo and bar = $bar and xx = 23;', {'$bar':bar, '$foo':foo});
 		var origin = "BLR"
 		var destn = "LONDON"
-		var bar = N1QL('select * from travelsim where origin = $origin and destn = $destn and xx = 23;', {'$destn':destn, '$origin':origin});
+		var bar = couchbase.n1qlQuery('select * from travelsim where origin = $origin and destn = $destn and xx = 23;', {'$destn':destn, '$origin':origin});
 		var val = 'Hello World'
-		var bar = N1QL('UPSERT INTO gamesim (KEY, VALUE) VALUES (\'reskey\', $val);', {'$val':val});
-		var upsert_query5 = N1QL('UPSERT INTO eventing-bucket-1 (KEY, VALUE) VALUES ($docId5, \'Hello World5\');', {'$docId5':docId5}, {'consistency' : 'request'});
+		var bar = couchbase.n1qlQuery('UPSERT INTO gamesim (KEY, VALUE) VALUES (\'reskey\', $val);', {'$val':val});
+		var upsert_query5 = couchbase.n1qlQuery('UPSERT INTO eventing-bucket-1 (KEY, VALUE) VALUES ($docId5, \'Hello World5\');', {'$docId5':docId5}, {'consistency' : 'request'});
 	`,
-	`var bar = N1QL('select * from beerbkt where\n' +
+	`var bar = couchbase.n1qlQuery('select * from beerbkt where\n' +
 		'\n' +
 		'\n' +
 		'something=nothing and \n' +
 		'nosuchthing =  \"nosuchvalue\";', {}); // ending comment`,
-	`N1QL('DELETE from dst_bucket.scope_1.coll_4 USE KEYS \"newDocID2\";', {});`,
-	`var curl=N1QL('SELECT CURL(\"http://localhost:8091/pools/default/buckets\",{\"header\":\"authorization: Basic HelloWorldAbcdefghijklmnopqrstuvwxyz==\",\n' +
+	`couchbase.n1qlQuery('DELETE from dst_bucket.scope_1.coll_4 USE KEYS \"newDocID2\";', {});`,
+	`var curl=couchbase.n1qlQuery('SELECT CURL(\"http://localhost:8091/pools/default/buckets\",{\"header\":\"authorization: Basic HelloWorldAbcdefghijklmnopqrstuvwxyz==\",\n' +
 		  '\"request\":\"GET\"});', {});`,
-	`var query = N1QL('(SELECT * FROM src_bucket WHERE NOT (NUMERIC_FIELD IS NOT NULL) ORDER BY NUMERIC_FIELD_LIST, STRING_FIELD_LIST, BOOL_FIELD_LIST DESC)\n' +
+	`var query = couchbase.n1qlQuery('(SELECT * FROM src_bucket WHERE NOT (NUMERIC_FIELD IS NOT NULL) ORDER BY NUMERIC_FIELD_LIST, STRING_FIELD_LIST, BOOL_FIELD_LIST DESC)\n' +
 		'UNION\n' +
 		'(SELECT * FROM src_bucket WHERE\n' +
 			'(NUMERIC_FIELD IS NULL OR ((STRING_FIELD IS NOT NULL) OR (STRING_FIELD <= STRING_VALUES)) AND (STRING_FIELD NOT BETWEEN LOWER_BOUND_VALUE and UPPER_BOUND_VALUE))\n' +

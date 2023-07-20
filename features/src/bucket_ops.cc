@@ -224,7 +224,8 @@ Info BucketOps::SetMetaObject(std::unique_ptr<Result> const &result,
 
 Info BucketOps::ResponseSuccessObject(std::unique_ptr<Result> const &result,
                                       v8::Local<v8::Object> &response_obj,
-                                      bool is_doc_needed, bool counter_needed) {
+                                      bool is_doc_needed, bool counter_needed,
+                                      bool res_size_needed) {
 
   v8::HandleScope handle_scope(isolate_);
   auto context = context_.Get(isolate_);
@@ -250,12 +251,14 @@ Info BucketOps::ResponseSuccessObject(std::unique_ptr<Result> const &result,
   }
 
   bool success = false;
-  auto size = sizeof(result) + result->key.length() + result->value.length();
-  if (!TO(response_obj->Set(context, v8Str(isolate_, "res_size"),
-                            v8::Integer::New(isolate_, size)),
-          &success) ||
-      !success) {
-    return {true, "Unable to set size value"};
+  if (res_size_needed) {
+    auto size = sizeof(result) + result->key.length() + result->value.length();
+    if (!TO(response_obj->Set(context, v8Str(isolate_, "res_size"),
+                              v8::Integer::New(isolate_, size)),
+            &success) ||
+        !success) {
+      return {true, "Unable to set size value"};
+    }
   }
 
   if (!TO(response_obj->Set(context, v8Str(isolate_, success_str_),
@@ -924,8 +927,8 @@ void BucketOps::GetOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
   result->key = meta.key;
 
-  info =
-      bucket_ops->ResponseSuccessObject(std::move(result), response_obj, true);
+  info = bucket_ops->ResponseSuccessObject(std::move(result), response_obj,
+                                           true, false, true);
   if (info.is_fatal) {
     ++bucket_op_exception_count;
     js_exception->ThrowEventingError(info.msg);
