@@ -193,6 +193,7 @@ curl http://user:password@localhost:8096/getFailureStats?name=function_name
   "bucket_op_exception_count": 5108,
   "checkpoint_failure_count": 0,
   "n1ql_op_exception_count": 0,
+  "analytics_op_exception_count": 0,
   "timeout_count": 0,
   "curl_non_200_response": 32
 }
@@ -202,5 +203,6 @@ Name|Datatype|Field|Descripton
 |:---|:---|:---|:---
 | Timeout Count | int64 | `timeout_count` | Count of number of handler executions that were terminated because the handler ran longer than the configured script timeout |
 | N1QL Operation Failure Count | int64 | `n1ql_op_exception_count` | Count of failures encountered when running N1QL queries. Each such failure would result in an exception thrown in JS handler |
+| Analytics Operation Failure Count | int64 | `analytics_op_exception_count` | Count of failures encountered when running analytics queries. Each such failure would result in an exception thrown in JS handler |
 | Bucket Operation Failure Count | int64 | `bucket_op_exception_count` | Count of errors encountered during bucket operations. Each of these failures would result in an exception thrown in JS handler. Integer counter. |
 | Checkpoint Failure Count | int64 | `checkpoint_failure_count` | Count of failures when checkpointing last processed sequence numbers by v8 worker. Failures are retried using exponential backoff until timeout. |

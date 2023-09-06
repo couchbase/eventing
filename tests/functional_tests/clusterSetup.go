@@ -65,6 +65,14 @@ func setIndexStorageMode() ([]byte, error) {
 
 func fireQuery(query string) ([]byte, error) {
 	waitForIndexes()
+	return fireQueryService(query, queryURL)
+}
+
+func fireAnalyticsQuery(query string) ([]byte, error) {
+	return fireQueryService(query, analyticsURL)
+}
+
+func fireQueryService(query string, url string) ([]byte, error) {
 	queryMap := map[string]string{
 		"statement": query,
 	}
@@ -74,7 +82,7 @@ func fireQuery(query string) ([]byte, error) {
 		return nil, err
 	}
 
-	req, err := http.NewRequest("POST", queryURL, bytes.NewReader(payload))
+	req, err := http.NewRequest("POST", url, bytes.NewReader(payload))
 	if err != nil {
 		fmt.Println(err)
 		return nil, err

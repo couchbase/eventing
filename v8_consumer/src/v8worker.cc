@@ -105,6 +105,9 @@ void V8Worker::SetCouchbaseNamespace() {
       v8::FunctionTemplate::New(isolate_, BucketOps::SubdocOp));
   proto_t->Set(v8::String::NewFromUtf8(isolate_, "n1qlQuery").ToLocalChecked(),
                v8::FunctionTemplate::New(isolate_, Query::N1qlFunction));
+  proto_t->Set(
+      v8::String::NewFromUtf8(isolate_, "analyticsQuery").ToLocalChecked(),
+      v8::FunctionTemplate::New(isolate_, Query::AnalyticsFunction));
 
   auto context = context_.Get(isolate_);
   v8::Local<v8::Object> cb_obj;
@@ -463,6 +466,10 @@ void V8Worker::InitializeIsolateData(const server_settings_t *server_settings,
       static_cast<lcb_U32>(h_config->execution_timeout < 3
                                ? 500000
                                : (h_config->execution_timeout - 2) * 1000000);
+  data_.analytics_timeout =
+      static_cast<lcb_U32>(h_config->execution_timeout < 3
+                               ? 500000
+                               : (h_config->execution_timeout - 2) * 1000000);
   data_.op_timeout = h_config->execution_timeout < 5
                          ? h_config->execution_timeout
                          : h_config->execution_timeout - 2;
@@ -510,8 +517,8 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
       certFile_(server_settings->certFile), function_name_(function_name),
       function_id_(function_id), user_prefix_(user_prefix),
       ns_server_port_(ns_server_port), user_(user), domain_(domain),
-      exception_type_names_(
-          {"KVError", "EventingError", "CurlError", "TypeError", "N1QLError"}),
+      exception_type_names_({"KVError", "EventingError", "CurlError",
+                             "TypeError", "N1QLError", "AnalyticsError"}),
       handler_headers_(h_config->handler_headers) {
   auto config = ParseDeployment(h_config->dep_cfg.c_str());
   cb_source_bucket_.assign(config->source_bucket);

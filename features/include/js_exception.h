@@ -26,8 +26,12 @@ public:
   ~CustomError();
 
   Info NewN1qlError(const v8::Local<v8::Value> &message_val,
-                     v8::Local<v8::Object> &n1ql_error_out) {
+                    v8::Local<v8::Object> &n1ql_error_out) {
     return NewCustomError(message_val, n1ql_error_out, "N1QLError");
+  }
+  Info NewAnalyticsError(const v8::Local<v8::Value> &message_val,
+                         v8::Local<v8::Object> &analytics_error_out) {
+    return NewCustomError(message_val, analytics_error_out, "AnalyticsError");
   }
   Info NewKVError(const v8::Local<v8::Value> &message_val,
                   v8::Local<v8::Object> &kv_error_out) {
@@ -67,6 +71,7 @@ public:
   void ThrowKVError(const std::string &err_msg);
   void ThrowKVError(lcb_INSTANCE *instance, lcb_STATUS error);
   void ThrowN1qlError(const std::string &err_msg);
+  void ThrowAnalyticsError(const std::string &err_msg);
   void ThrowEventingError(const std::string &err_msg);
   void ThrowCurlError(const std::string &err_msg);
   void ThrowTypeError(const std::string &err_msg);

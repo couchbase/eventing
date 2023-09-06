@@ -25,9 +25,11 @@
 
 namespace Query {
 class N1qlController;
+class AnalyticsController;
 
 class Helper {
   friend N1qlController;
+  friend AnalyticsController;
 
 public:
   Helper(v8::Isolate *isolate, const v8::Local<v8::Context> &context);
@@ -47,13 +49,16 @@ public:
                           lcb_STATUS error);
   static lcb_QUERY_CONSISTENCY
   GetN1qlConsistency(const std::string &consistency);
+
   inline std::string GetQueryStatement(const v8::Local<v8::Value> &arg) {
     v8::HandleScope handle_scope(isolate_);
-
     Query::Info query_info;
     v8::String::Utf8Value query_utf8(isolate_, arg);
     return *query_utf8;
   }
+
+  static lcb_ANALYTICS_CONSISTENCY
+  GetAnalyticsConsistency(const std::string &consistency);
 
 protected:
   struct ErrorCodesInfo : public ::Info {
@@ -90,6 +95,10 @@ protected:
 
   NamedParamsInfo GetN1qlNamedParams(const v8::Local<v8::Value> &arg) const;
   PosParamsInfo GetN1qlPosParams(const v8::Local<v8::Value> &arg) const;
+  NamedParamsInfo
+  GetAnalyticsNamedParams(const v8::Local<v8::Value> &arg) const;
+  PosParamsInfo GetAnalyticsPosParams(const v8::Local<v8::Value> &arg) const;
+
   Options::Extractor opt_extractor_;
 
 private:

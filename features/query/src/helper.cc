@@ -383,3 +383,138 @@ Query::Options::GetOrDefaultN1qlConsistency(v8::Isolate *isolate) const {
   }
   return UnwrapData(isolate)->n1ql_consistency;
 }
+
+// Analytics options
+Query::Helper::NamedParamsInfo
+Query::Helper::GetAnalyticsNamedParams(const v8::Local<v8::Value> &arg) const {
+  v8::HandleScope handle_scope(isolate_);
+  auto context = context_.Get(isolate_);
+
+  v8::Local<v8::Object> named_params_obj;
+  if (!TO_LOCAL(arg->ToObject(context), &named_params_obj)) {
+    return {true, "Unable to cast second parameter to object"};
+  }
+
+  v8::Local<v8::Array> named_params_keys;
+  if (!TO_LOCAL(named_params_obj->GetPropertyNames(context),
+                &named_params_keys)) {
+    return {true, "Unable to get the key collection in the second parameter"};
+  }
+
+  std::unordered_map<std::string, std::string> named_params;
+  for (uint32_t i = 0, len = named_params_keys->Length(); i < len; ++i) {
+    v8::Local<v8::Value> key;
+    if (!TO_LOCAL(named_params_keys->Get(context, i), &key)) {
+      return {true, "Unable to get key from the second parameter"};
+    }
+    if (auto info = Utils::ValidateDataType(key); info.is_fatal) {
+      return {true, "Invalid data type for named parameters: " + info.msg};
+    }
+
+    v8::Local<v8::Value> value;
+    if (!TO_LOCAL(named_params_obj->Get(context, key), &value)) {
+      return {true, "Unable to get value from the second parameter"};
+    }
+    if (auto info = Utils::ValidateDataType(value); info.is_fatal) {
+      return {true, "Invalid data type for named parameters: " + info.msg};
+    }
+    v8::String::Utf8Value key_utf8(isolate_, key);
+    named_params[*key_utf8] = JSONStringify(isolate_, value);
+  }
+  return {named_params};
+}
+
+Query::Helper::PosParamsInfo
+Query::Helper::GetAnalyticsPosParams(const v8::Local<v8::Value> &arg) const {
+  v8::HandleScope handle_scope(isolate_);
+  auto context = context_.Get(isolate_);
+  std::stringstream error;
+
+  std::vector<std::string> pos_params;
+  auto params_v8arr = arg.As<v8::Array>();
+  const auto len = params_v8arr->Length();
+  pos_params.reserve(static_cast<std::size_t>(len));
+
+  for (uint32_t i = 0; i < len; ++i) {
+    v8::Local<v8::Value> param_val;
+    if (!TO_LOCAL(params_v8arr->Get(context, i), &param_val)) {
+      error << "Unable to read parameter at index " << i;
+      return {true, error.str()};
+    }
+    if (auto info = Utils::ValidateDataType(param_val); info.is_fatal) {
+      error << "Invalid data type at index " << i
+            << " for positional parameters: " << info.msg;
+      return {true, error.str()};
+    }
+    pos_params.emplace_back(JSONStringify(isolate_, param_val));
+  }
+  return {pos_params};
+}
+
+::Info Query::Options::Extractor::ExtractAnalyticsOptions(
+    const v8::Local<v8::Value> &arg, Options &opt_out) const {
+  ::Info info;
+
+  v8::HandleScope handle_scope(isolate_);
+  auto context = context_.Get(isolate_);
+
+  v8::Local<v8::Object> options_obj;
+  if (!TO_LOCAL(arg->ToObject(context), &options_obj)) {
+    return {true, "Unable to read options"};
+  }
+
+  info = ExtractAnalyticsConsistency(options_obj, opt_out);
+  if (info.is_fatal) {
+    return info;
+  }
+  info = ExtractClientCtxId(options_obj, opt_out.client_context_id);
+  if (info.is_fatal) {
+    return info;
+  }
+
+  info = ExtractIsPrepared(options_obj, opt_out.is_prepared);
+  if (info.is_fatal) {
+    return info;
+  }
+
+  return info;
+}
+
+::Info Query::Options::Extractor::ExtractAnalyticsConsistency(
+    const v8::Local<v8::Object> &options_obj, Options &opt_out) const {
+  v8::HandleScope handle_scope(isolate_);
+  auto context = context_.Get(isolate_);
+
+  auto consistency_property = consistency_property_.Get(isolate_);
+  v8::Local<v8::Value> consistency_val;
+  if (!TO_LOCAL(options_obj->Get(context, consistency_property),
+                &consistency_val)) {
+    return {true, "Unable to read consistency value"};
+  }
+  if (consistency_val->IsUndefined()) {
+    return {false};
+  }
+  if (!consistency_val->IsString()) {
+    return {true, "Expecting a string for consistency"};
+  }
+
+  v8::String::Utf8Value consistency_utf8(isolate_, consistency_val);
+  if (consistencies_.find(*consistency_utf8) == consistencies_.end()) {
+    return {true, "consistency must be one of 'none', 'request'"};
+  }
+
+  opt_out.analytics_consistency =
+      Query::Helper::GetAnalyticsConsistency(*consistency_utf8);
+  return {false};
+}
+
+lcb_ANALYTICS_CONSISTENCY
+Query::Helper::GetAnalyticsConsistency(const std::string &consistency) {
+  if (consistency == "none") {
+    return LCB_ANALYTICS_CONSISTENCY_NOT_BOUNDED;
+  }
+  if (consistency == "request") {
+    return LCB_ANALYTICS_CONSISTENCY_REQUEST_PLUS;
+  }
+  return LCB_ANALYTICS_CONSISTENCY_NOT_BOUNDED;
+}

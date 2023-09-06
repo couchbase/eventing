@@ -90,8 +90,8 @@ var (
 
 	failureStatstoReset = [...]string{
 		"bucket_op_exception_count", "bkt_ops_cas_mismatch_count", "n1ql_op_exception_count",
-		"timeout_count", "timer_callback_missing_counter", "curl_non_200_response",
-		"curl_timeout_count", "curl_failure_count"}
+		"analytics_op_exception_count", "timeout_count", "timer_callback_missing_counter",
+		"curl_non_200_response", "curl_timeout_count", "curl_failure_count"}
 )
 
 type xattrMetadata struct {
