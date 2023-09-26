@@ -182,4 +182,4 @@ ADD_CUSTOM_TARGET(eventing-generated DEPENDS
 
 ADD_DEPENDENCIES(eventing-generated convertgo convertaudit)
 
-INSTALL (FILES ../parser/metrics_metadata.json DESTINATION "etc/couchbase/eventing")
+AddMetricsMetadata (JSON ../parser/metrics_metadata.json COMPONENT eventing)
