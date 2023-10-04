@@ -10,7 +10,7 @@
       "filtering_permitted": true,
       "mandatory_fields": {
         "timestamp": "",
-        "user": { "domain": "", "user": "" },
+        "real_userid": { "domain": "", "user": "" },
         "local": { "ip": "", "port": "" },
         "remote": { "ip": "", "port": "" },
         "url": "",
@@ -27,7 +27,7 @@
       "filtering_permitted": true,
       "mandatory_fields": {
         "timestamp": "",
-        "user": { "domain": "", "user": "" },
+        "real_userid": { "domain": "", "user": "" },
         "local": { "ip": "", "port": "" },
         "remote": { "ip": "", "port": "" },
         "url": "",
@@ -44,7 +44,7 @@
       "filtering_permitted": true,
       "mandatory_fields": {
         "timestamp": "",
-        "user": { "domain": "", "user": "" },
+        "real_userid": { "domain": "", "user": "" },
         "local": { "ip": "", "port": "" },
         "remote": { "ip": "", "port": "" },
         "url": "",
@@ -61,7 +61,7 @@
       "filtering_permitted": true,
       "mandatory_fields": {
         "timestamp": "",
-        "user": { "domain": "", "user": "" },
+        "real_userid": { "domain": "", "user": "" },
         "local": { "ip": "", "port": "" },
         "remote": { "ip": "", "port": "" },
         "url": "",
@@ -78,7 +78,7 @@
       "filtering_permitted": true,
       "mandatory_fields": {
         "timestamp": "",
-        "user": { "domain": "", "user": "" },
+        "real_userid": { "domain": "", "user": "" },
         "local": { "ip": "", "port": "" },
         "remote": { "ip": "", "port": "" },
         "url": "",
@@ -95,7 +95,7 @@
       "filtering_permitted": true,
       "mandatory_fields": {
         "timestamp": "",
-        "user": { "domain": "", "user": "" },
+        "real_userid": { "domain": "", "user": "" },
         "local": { "ip": "", "port": "" },
         "remote": { "ip": "", "port": "" },
         "url": "",
@@ -112,7 +112,7 @@
       "filtering_permitted": true,
       "mandatory_fields": {
         "timestamp": "",
-        "user": { "domain": "", "user": "" },
+        "real_userid": { "domain": "", "user": "" },
         "local": { "ip": "", "port": "" },
         "remote": { "ip": "", "port": "" },
         "url": "",
@@ -129,7 +129,7 @@
       "filtering_permitted": true,
       "mandatory_fields": {
         "timestamp": "",
-        "user": { "domain": "", "user": "" },
+        "real_userid": { "domain": "", "user": "" },
         "local": { "ip": "", "port": "" },
         "remote": { "ip": "", "port": "" },
         "url": "",
@@ -146,7 +146,7 @@
       "filtering_permitted": true,
       "mandatory_fields": {
         "timestamp": "",
-        "user": { "domain": "", "user": "" },
+        "real_userid": { "domain": "", "user": "" },
         "local": { "ip": "", "port": "" },
         "remote": { "ip": "", "port": "" },
         "url": "",
@@ -163,7 +163,7 @@
       "filtering_permitted": true,
       "mandatory_fields": {
         "timestamp": "",
-        "user": { "domain": "", "user": "" },
+        "real_userid": { "domain": "", "user": "" },
         "local": { "ip": "", "port": "" },
         "remote": { "ip": "", "port": "" },
         "url": "",
@@ -180,7 +180,7 @@
       "filtering_permitted": true,
       "mandatory_fields": {
         "timestamp": "",
-        "user": { "domain": "", "user": "" },
+        "real_userid": { "domain": "", "user": "" },
         "local": { "ip": "", "port": "" },
         "remote": { "ip": "", "port": "" },
         "url": "",
@@ -197,7 +197,7 @@
       "filtering_permitted": true,
       "mandatory_fields": {
         "timestamp": "",
-        "user": { "domain": "", "user": "" },
+        "real_userid": { "domain": "", "user": "" },
         "local": { "ip": "", "port": "" },
         "remote": { "ip": "", "port": "" },
         "url": "",
@@ -214,7 +214,7 @@
       "filtering_permitted": true,
       "mandatory_fields": {
         "timestamp": "",
-        "user": { "domain": "", "user": "" },
+        "real_userid": { "domain": "", "user": "" },
         "local": { "ip": "", "port": "" },
         "remote": { "ip": "", "port": "" },
         "url": "",
@@ -231,7 +231,7 @@
       "filtering_permitted": true,
       "mandatory_fields": {
         "timestamp": "",
-        "user": { "domain": "", "user": "" },
+        "real_userid": { "domain": "", "user": "" },
         "local": { "ip": "", "port": "" },
         "remote": { "ip": "", "port": "" },
         "url": "",
@@ -248,7 +248,7 @@
       "filtering_permitted": false,
       "mandatory_fields": {
         "timestamp": "",
-        "user": { "domain": "", "user": "" },
+        "real_userid": { "domain": "", "user": "" },
         "local": { "ip": "", "port": "" },
         "remote": { "ip": "", "port": "" },
         "url": "",
@@ -265,7 +265,7 @@
       "filtering_permitted": true,
       "mandatory_fields": {
         "timestamp": "",
-        "user": { "domain": "", "user": "" },
+        "real_userid": { "domain": "", "user": "" },
         "local": { "ip": "", "port": "" },
         "remote": { "ip": "", "port": "" },
         "url": "",
@@ -282,7 +282,7 @@
       "filtering_permitted": true,
       "mandatory_fields": {
         "timestamp": "",
-        "user": { "source": "", "user": "" },
+        "real_userid": { "domain": "", "user": "" },
         "local": { "ip": "", "port": "" },
         "remote": { "ip": "", "port": "" },
         "url": "",
@@ -299,7 +299,7 @@
       "filtering_permitted": true,
       "mandatory_fields": {
         "timestamp": "",
-        "user": { "source": "", "user": "" },
+        "real_userid": { "domain": "", "user": "" },
         "local": { "ip": "", "port": "" },
         "remote": { "ip": "", "port": "" },
         "url": "",
@@ -316,7 +316,7 @@
       "filtering_permitted": true,
       "mandatory_fields": {
         "timestamp": "",
-        "user": { "source": "", "user": "" },
+        "real_userid": { "domain": "", "user": "" },
         "local": { "ip": "", "port": "" },
         "remote": { "ip": "", "port": "" },
         "url": "",
@@ -333,7 +333,7 @@
       "filtering_permitted": false,
       "mandatory_fields": {
         "timestamp": "",
-        "user": { "source": "", "user": "" },
+        "real_userid": { "domain": "", "user": "" },
         "local": { "ip": "", "port": "" },
         "remote": { "ip": "", "port": "" },
         "url": "",
@@ -350,7 +350,7 @@
       "filtering_permitted": false,
       "mandatory_fields": {
         "timestamp": "",
-        "user": { "source": "", "user": "" },
+        "real_userid": { "domain": "", "user": "" },
         "local": { "ip": "", "port": "" },
         "remote": { "ip": "", "port": "" },
         "url": "",
@@ -367,7 +367,7 @@
       "filtering_permitted": true,
       "mandatory_fields": {
         "timestamp": "",
-        "user": { "source": "", "user": "" },
+        "real_userid": { "domain": "", "user": "" },
         "local": { "ip": "", "port": "" },
         "remote": { "ip": "", "port": "" },
         "url": "",
@@ -384,7 +384,7 @@
       "filtering_permitted": true,
       "mandatory_fields": {
         "timestamp": "",
-        "user": { "source": "", "user": "" },
+        "real_userid": { "domain": "", "user": "" },
         "local": { "ip": "", "port": "" },
         "remote": { "ip": "", "port": "" },
         "url": "",
@@ -401,7 +401,7 @@
       "filtering_permitted": true,
       "mandatory_fields": {
         "timestamp": "",
-        "user": { "source": "", "user": "" },
+        "real_userid": { "domain": "", "user": "" },
         "local": { "ip": "", "port": "" },
         "remote": { "ip": "", "port": "" },
         "url": "",
@@ -418,7 +418,7 @@
       "filtering_permitted": true,
       "mandatory_fields": {
         "timestamp": "",
-        "user": { "source": "", "user": "" },
+        "real_userid": { "domain": "", "user": "" },
         "local": { "ip": "", "port": "" },
         "remote": { "ip": "", "port": "" },
         "url": "",
@@ -435,7 +435,7 @@
       "filtering_permitted": true,
       "mandatory_fields": {
         "timestamp": "",
-        "user": { "source": "", "user": "" },
+        "real_userid": { "domain": "", "user": "" },
         "local": { "ip": "", "port": "" },
         "remote": { "ip": "", "port": "" },
         "url": "",
@@ -452,7 +452,7 @@
       "filtering_permitted": true,
       "mandatory_fields": {
         "timestamp": "",
-        "user": { "source": "", "user": "" },
+        "real_userid": { "domain": "", "user": "" },
         "local": { "ip": "", "port": "" },
         "remote": { "ip": "", "port": "" },
         "url": "",
@@ -469,7 +469,7 @@
       "filtering_permitted": true,
       "mandatory_fields": {
         "timestamp": "",
-        "user": { "source": "", "user": "" },
+        "real_userid": { "domain": "", "user": "" },
         "local": { "ip": "", "port": "" },
         "remote": { "ip": "", "port": "" },
         "url": "",
@@ -486,7 +486,7 @@
       "filtering_permitted": true,
       "mandatory_fields": {
         "timestamp": "",
-        "user": { "source": "", "user": "" },
+        "real_userid": { "domain": "", "user": "" },
         "local": { "ip": "", "port": "" },
         "remote": { "ip": "", "port": "" },
         "url": "",
@@ -503,7 +503,7 @@
       "filtering_permitted": true,
       "mandatory_fields": {
         "timestamp": "",
-        "user": { "source": "", "user": "" },
+        "real_userid": { "domain": "", "user": "" },
         "local": { "ip": "", "port": "" },
         "remote": { "ip": "", "port": "" },
         "url": "",
@@ -520,7 +520,7 @@
       "filtering_permitted": true,
       "mandatory_fields": {
         "timestamp": "",
-        "user": { "source": "", "user": "" },
+        "real_userid": { "domain": "", "user": "" },
         "local": { "ip": "", "port": "" },
         "remote": { "ip": "", "port": "" },
         "url": "",
@@ -537,7 +537,7 @@
       "filtering_permitted": true,
       "mandatory_fields": {
         "timestamp": "",
-        "user": { "source": "", "user": "" },
+        "real_userid": { "domain": "", "user": "" },
         "local": { "ip": "", "port": "" },
         "remote": { "ip": "", "port": "" },
         "url": "",
@@ -554,7 +554,7 @@
       "filtering_permitted": false,
       "mandatory_fields": {
         "timestamp": "",
-        "user": { "source": "", "user": "" },
+        "real_userid": { "domain": "", "user": "" },
         "local": { "ip": "", "port": "" },
         "remote": { "ip": "", "port": "" },
         "url": "",
@@ -571,7 +571,7 @@
       "filtering_permitted": true,
       "mandatory_fields": {
         "timestamp": "",
-        "user": { "source": "", "user": "" },
+        "real_userid": { "domain": "", "user": "" },
         "local": { "ip": "", "port": "" },
         "remote": { "ip": "", "port": "" },
         "url": "",
@@ -582,13 +582,13 @@
     {
       "id": 32802,
       "name": "Get User Info",
-      "description": "Request to get user eventing permissions",
+      "description": "Request to get real_userid eventing permissions",
       "sync": false,
       "enabled": false,
       "filtering_permitted": true,
       "mandatory_fields": {
         "timestamp": "",
-        "user": { "source": "", "user": "" },
+        "real_userid": { "domain": "", "user": "" },
         "local": { "ip": "", "port": "" },
         "remote": { "ip": "", "port": "" },
         "url": "",
