@@ -23,7 +23,7 @@
 
 Query::Helper::Helper(v8::Isolate *isolate,
                       const v8::Local<v8::Context> &context)
-    : isolate_(isolate), opt_extractor_(isolate, context) {
+    : opt_extractor_(isolate, context), isolate_(isolate) {
   context_.Reset(isolate_, context);
 }
 Query::Helper::~Helper() { context_.Reset(); }
