@@ -37,10 +37,10 @@ void CodeInsight::AccumulateLog(const std::string &log) {
   entry.last_log_ = log;
 }
 
-void CodeInsight::AccumulateException(v8::TryCatch &try_catch) {
+void CodeInsight::AccumulateException(v8::TryCatch &try_catch, bool timeout) {
   auto context = isolate_->GetCurrentContext();
   auto offset = UnwrapData(isolate_)->insight_line_offset;
-  auto emsg = ExceptionString(isolate_, context, &try_catch);
+  auto emsg = ExceptionString(isolate_, context, &try_catch, timeout);
   v8::Local<v8::Message> msg = try_catch.Message();
   if (msg.IsEmpty())
     return;

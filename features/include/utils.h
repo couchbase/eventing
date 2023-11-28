@@ -131,11 +131,11 @@ struct ConnStrInfo {
 
 struct V8ExceptionInfo {
 
-  std::string exception;
-  uint32_t line;
-  std::string file;
-  std::string srcLine;
-  std::string stack;
+  std::string exception{""};
+  uint32_t line{0};
+  std::string file{""};
+  std::string srcLine{""};
+  std::string stack{""};
 };
 
 class Utils {
@@ -152,11 +152,13 @@ public:
   std::string GetFunctionName(const v8::Local<v8::Value> &func_val);
   std::string ToCPPString(const v8::Local<v8::Value> &str_val);
   UrlEncode UrlEncodeAsString(const std::string &data);
-  UrlEncode UrlEncodeAsKeyValue(const v8::Local<v8::Value> &obj_val, bool encode_kv_pairs);
+  UrlEncode UrlEncodeAsKeyValue(const v8::Local<v8::Value> &obj_val,
+                                bool encode_kv_pairs);
   UrlDecode UrlDecodeString(const std::string &data);
   UrlDecode UrlDecodeAsKeyValue(const std::string &data,
                                 v8::Local<v8::Object> &obj_out);
-  UrlDecode UrlDecodeAsKeyValue(const std::string &data,
+  UrlDecode
+  UrlDecodeAsKeyValue(const std::string &data,
                       std::unordered_map<std::string, std::string> &kv);
   v8::Local<v8::ArrayBuffer> ToArrayBuffer(const void *buffer,
                                            std::size_t size);
@@ -169,27 +171,36 @@ public:
   static Info ValidateDataType(const v8::Local<v8::Value> &arg);
   ConnStrInfo GetConnectionString(const std::string &bucket) const;
   std::string certFile_;
-  UrlEncode UrlEncodePath(const std::string& path, const std::string& curl_lang_compat, const std::string& app_lang_comp);
-  UrlEncode UrlEncodeParams(const v8::Local<v8::Value> &val, const std::string& curl_lang_compat, const std::string& app_lang_comp);
-  
+  UrlEncode UrlEncodePath(const std::string &path,
+                          const std::string &curl_lang_compat,
+                          const std::string &app_lang_comp);
+  UrlEncode UrlEncodeParams(const v8::Local<v8::Value> &val,
+                            const std::string &curl_lang_compat,
+                            const std::string &app_lang_comp);
+
 private:
-  UrlEncode UrlEncodeObjectParams(const v8::Local<v8::Value> &obj, const std::string& curl_lang_compat, const std::string& app_lang_comp);
-  UrlEncode UrlEncodeStringParams(const std::string& qry_params, const std::string& curl_lang_compat, const std::string& app_lang_comp);
-  UrlEncode UrlEncodePath7_1_0(const std::string& raw_path);
-  UrlEncode EncodeAndNormalizePath(const std::string& path);
-  UrlEncode EncodeAndNormalizeQueryParams(const std::string& query_params);
-  std::string NormalizeSingleQueryParam(std::string& query_param);
-  std::pair<std::string, std::string> ExtractPathAndQueryParamsFromURL(const std::string& encoded_url);
+  UrlEncode UrlEncodeObjectParams(const v8::Local<v8::Value> &obj,
+                                  const std::string &curl_lang_compat,
+                                  const std::string &app_lang_comp);
+  UrlEncode UrlEncodeStringParams(const std::string &qry_params,
+                                  const std::string &curl_lang_compat,
+                                  const std::string &app_lang_comp);
+  UrlEncode UrlEncodePath7_1_0(const std::string &raw_path);
+  UrlEncode EncodeAndNormalizePath(const std::string &path);
+  UrlEncode EncodeAndNormalizeQueryParams(const std::string &query_params);
+  std::string NormalizeSingleQueryParam(std::string &query_param);
+  std::pair<std::string, std::string>
+  ExtractPathAndQueryParamsFromURL(const std::string &encoded_url);
 
   v8::Isolate *isolate_;
   CURL *curl_handle_; // Used only to perform url encode/decode
   v8::Persistent<v8::Context> context_;
   v8::Persistent<v8::Object> global_;
   static std::unordered_map<std::string, std::string> enc_to_dec_map;
-  static const char* QUESTION_MARK;
-  static const char* EQ;
-  static const char* AMP;
-  static const char* SLASH;
+  static const char *QUESTION_MARK;
+  static const char *EQ;
+  static const char *AMP;
+  static const char *SLASH;
   static const std::string HEX_QUESTION_MARK;
   static const std::string HEX_EQ;
   static const std::string HEX_AMP;
@@ -241,10 +252,11 @@ std::string ConvertToISO8601(std::string timestamp);
 std::string GetTranspilerSrc();
 std::string ExceptionString(v8::Isolate *isolate,
                             v8::Local<v8::Context> &context,
-                            v8::TryCatch *try_catch);
+                            v8::TryCatch *try_catch, bool timeout = false);
 V8ExceptionInfo GetV8ExceptionInfo(v8::Isolate *isolate,
                                    v8::Local<v8::Context> &context,
-                                   v8::TryCatch *try_catch);
+                                   v8::TryCatch *try_catch,
+                                   bool timeout = false);
 
 CompilationInfo BuildCompileInfo(v8::Isolate *isolate,
                                  v8::Local<v8::Context> &context,
