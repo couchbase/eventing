@@ -4,12 +4,12 @@
 #include <chrono>
 #include <map>
 #include <mutex>
+#include <nlohmann/json.hpp>
 #include <string>
 #include <v8.h>
-#include <nlohmann/json.hpp>
 
-#include "utils.h"
 #include "crc64.h"
+#include "utils.h"
 
 struct ExceptionInfoEntry {
   ExceptionInfoEntry();
@@ -24,7 +24,7 @@ public:
 
   void Setup(const std::string &function_name);
 
-  void AccumulateException(v8::TryCatch &);
+  void AccumulateException(v8::TryCatch &, bool timeout = false);
 
   void AccumulateAndClear(ExceptionInsight &from);
   void LogExceptionSummary(ExceptionInsight &summary);
@@ -35,8 +35,8 @@ private:
   ExceptionInsight(const ExceptionInsight &) = delete;
   ExceptionInsight &operator=(const ExceptionInsight &) = delete;
 
-  void PopulateExceptionInfo(
-    nlohmann::json &exceptionInfo, V8ExceptionInfo v8exception_info);
+  void PopulateExceptionInfo(nlohmann::json &exceptionInfo,
+                             V8ExceptionInfo v8exception_info);
 
   void InitStartTime();
 

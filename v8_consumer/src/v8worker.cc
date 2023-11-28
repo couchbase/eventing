@@ -435,6 +435,7 @@ V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
   function_instance_id_.assign(oss.str());
   thread_exit_cond_.store(false);
   stop_timer_scan_.store(false);
+  timed_out_.store(false);
   event_processing_ongoing_.store(false);
   scan_timer_.store(false);
   update_v8_heap_.store(false);
@@ -1098,6 +1099,7 @@ int V8Worker::SendUpdate(const std::string &value, const std::string &meta,
                         isolate_);
 
   v8::Handle<v8::Value> result;
+  timed_out_ = false;
   auto on_doc_update = on_update_.Get(isolate_);
   execute_start_time_ = Time::now();
   UnwrapData(isolate_)->is_executing_ = true;
@@ -1112,10 +1114,10 @@ int V8Worker::SendUpdate(const std::string &value, const std::string &meta,
   if (try_catch.HasCaught()) {
     UpdateHistogram(start_time);
     on_update_failure++;
-    auto emsg = ExceptionString(isolate_, context, &try_catch);
+    auto emsg = ExceptionString(isolate_, context, &try_catch, timed_out_);
     LOG(logDebug) << "OnUpdate Exception: " << emsg << std::endl;
-    CodeInsight::Get(isolate_).AccumulateException(try_catch);
-    ExceptionInsight::Get(isolate_).AccumulateException(try_catch);
+    CodeInsight::Get(isolate_).AccumulateException(try_catch, timed_out_);
+    ExceptionInsight::Get(isolate_).AccumulateException(try_catch, timed_out_);
     return kOnUpdateCallFail;
   }
 
@@ -1189,6 +1191,7 @@ int V8Worker::SendDelete(const std::string &options, const std::string &meta) {
   v8::Handle<v8::Value> result;
   auto on_doc_delete = on_delete_.Get(isolate_);
   execute_start_time_ = Time::now();
+  timed_out_ = false;
   UnwrapData(isolate_)->is_executing_ = true;
   if (!TO_LOCAL(on_doc_delete->Call(context, context->Global(), 2, args),
                 &result)) {
@@ -1199,12 +1202,13 @@ int V8Worker::SendDelete(const std::string &options, const std::string &meta) {
   query_mgr->ClearQueries();
 
   if (try_catch.HasCaught()) {
+    // TODO: timed_out_ check this and send the timeout message
     LOG(logDebug) << "OnDelete Exception: "
-                  << ExceptionString(isolate_, context, &try_catch)
+                  << ExceptionString(isolate_, context, &try_catch, timed_out_)
                   << std::endl;
     UpdateHistogram(start_time);
-    CodeInsight::Get(isolate_).AccumulateException(try_catch);
-    ExceptionInsight::Get(isolate_).AccumulateException(try_catch);
+    CodeInsight::Get(isolate_).AccumulateException(try_catch, timed_out_);
+    ExceptionInsight::Get(isolate_).AccumulateException(try_catch, timed_out_);
 
     ++on_delete_failure;
     return kOnDeleteCallFail;
@@ -1268,6 +1272,7 @@ void V8Worker::SendTimer(std::string callback, std::string timer_ctx) {
   RetryWithFixedBackoff(std::numeric_limits<int>::max(), 10,
                         IsTerminatingRetriable, IsExecutionTerminating,
                         isolate_);
+  timed_out_ = false;
   execute_start_time_ = Time::now();
   UnwrapData(isolate_)->is_executing_ = true;
   if (!TO_LOCAL(callback_func->Call(context, callback_func_val, 1, arg),
@@ -1282,10 +1287,10 @@ void V8Worker::SendTimer(std::string callback, std::string timer_ctx) {
   if (try_catch.HasCaught()) {
     UpdateHistogram(execute_start_time_);
     timer_callback_failure++;
-    auto emsg = ExceptionString(isolate_, context, &try_catch);
+    auto emsg = ExceptionString(isolate_, context, &try_catch, timed_out_);
     LOG(logDebug) << "Timer callback Exception: " << emsg << std::endl;
-    CodeInsight::Get(isolate_).AccumulateException(try_catch);
-    ExceptionInsight::Get(isolate_).AccumulateException(try_catch);
+    CodeInsight::Get(isolate_).AccumulateException(try_catch, timed_out_);
+    ExceptionInsight::Get(isolate_).AccumulateException(try_catch, timed_out_);
 
     return;
   }
@@ -1633,6 +1638,7 @@ void V8Worker::TaskDurationWatcher() {
       std::lock_guard<std::mutex> guard(
           UnwrapData(isolate_)->termination_lock_);
 
+      timed_out_ = true;
       timeout_count++;
       isolate_->TerminateExecution();
       UnwrapData(isolate_)->is_executing_ = false;

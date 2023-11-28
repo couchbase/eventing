@@ -42,7 +42,7 @@ public:
   void Setup(const std::string &script);
 
   void AccumulateTime(uint64_t nanotime);
-  void AccumulateException(v8::TryCatch &);
+  void AccumulateException(v8::TryCatch &, bool timeout = false);
   void AccumulateLog(const std::string &msg);
 
   std::string ToJSON();

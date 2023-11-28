@@ -182,12 +182,12 @@ std::string ConvertToISO8601(std::string timestamp) {
 
 std::string ExceptionString(v8::Isolate *isolate,
                             v8::Local<v8::Context> &context,
-                            v8::TryCatch *try_catch) {
+                            v8::TryCatch *try_catch, bool timeout) {
 
   std::ostringstream os;
 
   V8ExceptionInfo v8exception_info =
-      GetV8ExceptionInfo(isolate, context, try_catch);
+      GetV8ExceptionInfo(isolate, context, try_catch, timeout);
 
   // The actual exception
   if (!v8exception_info.exception.empty()) {
@@ -217,9 +217,15 @@ std::string ExceptionString(v8::Isolate *isolate,
 
 V8ExceptionInfo GetV8ExceptionInfo(v8::Isolate *isolate,
                                    v8::Local<v8::Context> &context,
-                                   v8::TryCatch *try_catch) {
+                                   v8::TryCatch *try_catch, bool timeout) {
 
   V8ExceptionInfo v8exception_info;
+  if (timeout) {
+    // If function is terminated all the info like line stack trace is lost and
+    // will be populated with wrong info Populate the exception and return
+    v8exception_info.exception = "function execution timed out";
+    return v8exception_info;
+  }
   auto offset = UnwrapData(isolate)->insight_line_offset;
   v8::HandleScope handle_scope(isolate);
 
@@ -355,21 +361,20 @@ Utils::~Utils() {
   global_.Reset();
 }
 
-const char* Utils::QUESTION_MARK = "?";
-const char* Utils::EQ = "=";
-const char* Utils::AMP = "&";
-const char* Utils::SLASH = "/";
+const char *Utils::QUESTION_MARK = "?";
+const char *Utils::EQ = "=";
+const char *Utils::AMP = "&";
+const char *Utils::SLASH = "/";
 const std::string Utils::HEX_QUESTION_MARK = "%3F";
 const std::string Utils::HEX_EQ = "%3D";
 const std::string Utils::HEX_AMP = "%26";
 const std::string Utils::HEX_SLASH = "%2F";
 
 std::unordered_map<std::string, std::string> Utils::enc_to_dec_map = {
-  {Utils::HEX_EQ, Utils::EQ},
-  {Utils::HEX_AMP, Utils::AMP},
-  {Utils::HEX_SLASH, Utils::SLASH},
-  {Utils::HEX_QUESTION_MARK, Utils::QUESTION_MARK}
-};
+    {Utils::HEX_EQ, Utils::EQ},
+    {Utils::HEX_AMP, Utils::AMP},
+    {Utils::HEX_SLASH, Utils::SLASH},
+    {Utils::HEX_QUESTION_MARK, Utils::QUESTION_MARK}};
 
 v8::Local<v8::Value>
 Utils::GetPropertyFromGlobal(const std::string &method_name) {
@@ -533,7 +538,7 @@ UrlEncode Utils::UrlEncodeAsString(const std::string &data) {
   return {encoded};
 }
 
-UrlEncode Utils::EncodeAndNormalizePath(const std::string& path) {
+UrlEncode Utils::EncodeAndNormalizePath(const std::string &path) {
   auto encoded_path = UrlEncodeAsString(path);
   if (encoded_path.is_fatal)
     return encoded_path;
@@ -553,7 +558,8 @@ UrlEncode Utils::EncodeAndNormalizePath(const std::string& path) {
   return {encoded_url};
 }
 
-UrlEncode Utils::UrlEncodeAsKeyValue(const v8::Local<v8::Value> &obj_val, bool encode_kv_pairs) {
+UrlEncode Utils::UrlEncodeAsKeyValue(const v8::Local<v8::Value> &obj_val,
+                                     bool encode_kv_pairs) {
   v8::HandleScope handle_scope(isolate_);
   auto context = context_.Get(isolate_);
 
@@ -690,18 +696,21 @@ Utils::UrlDecodeAsKeyValue(const std::string &data,
   return UrlDecode();
 }
 
-std::pair<std::string, std::string> Utils::ExtractPathAndQueryParamsFromURL(const std::string& encoded_url) {
+std::pair<std::string, std::string>
+Utils::ExtractPathAndQueryParamsFromURL(const std::string &encoded_url) {
   size_t qm_pos = encoded_url.find(Utils::QUESTION_MARK);
   if (qm_pos != std::string::npos) {
-    if (qm_pos == encoded_url.size()-1) {
+    if (qm_pos == encoded_url.size() - 1) {
       return std::make_pair(encoded_url.substr(0, qm_pos), "");
     }
-    return std::make_pair(encoded_url.substr(0, qm_pos),encoded_url.substr(qm_pos+1, encoded_url.size()));
+    return std::make_pair(encoded_url.substr(0, qm_pos),
+                          encoded_url.substr(qm_pos + 1, encoded_url.size()));
   }
   return std::make_pair(encoded_url, "");
 }
 
-UrlEncode Utils::EncodeAndNormalizeQueryParams(const std::string& query_params) {
+UrlEncode
+Utils::EncodeAndNormalizeQueryParams(const std::string &query_params) {
   if (query_params.size() == 0 || query_params == "") {
     return {false};
   }
@@ -710,7 +719,7 @@ UrlEncode Utils::EncodeAndNormalizeQueryParams(const std::string& query_params) 
   size_t start_idx = 0;
   bool delim_found;
 
-  while(start_idx <= query_params.size()-1){
+  while (start_idx <= query_params.size() - 1) {
     auto delim_pos = query_params.find(Utils::AMP, start_idx);
     if (delim_pos != std::string::npos) {
       delim_found = true;
@@ -718,12 +727,14 @@ UrlEncode Utils::EncodeAndNormalizeQueryParams(const std::string& query_params) 
       delim_found = false;
       delim_pos = query_params.size();
     }
-    auto single_query_param = query_params.substr(start_idx, (delim_pos - start_idx));
+    auto single_query_param =
+        query_params.substr(start_idx, (delim_pos - start_idx));
     auto encoded_single_query_param = UrlEncodeAsString(single_query_param);
     if (encoded_single_query_param.is_fatal)
       return encoded_single_query_param;
 
-    auto normalized_single_query_param = NormalizeSingleQueryParam(encoded_single_query_param.encoded);
+    auto normalized_single_query_param =
+        NormalizeSingleQueryParam(encoded_single_query_param.encoded);
     result << normalized_single_query_param.c_str();
     if (delim_found)
       result << Utils::AMP;
@@ -733,7 +744,7 @@ UrlEncode Utils::EncodeAndNormalizeQueryParams(const std::string& query_params) 
   return {result.str()};
 }
 
-std::string Utils::NormalizeSingleQueryParam(std::string& query_param) {
+std::string Utils::NormalizeSingleQueryParam(std::string &query_param) {
   size_t found = query_param.find(Utils::HEX_EQ);
   if (found != std::string::npos) {
     query_param.replace(found, Utils::HEX_EQ.size(), Utils::EQ);
@@ -741,17 +752,21 @@ std::string Utils::NormalizeSingleQueryParam(std::string& query_param) {
   return query_param;
 }
 
-UrlEncode Utils::UrlEncodePath(const std::string& raw_path, const std::string& curl_lang_compat, const std::string& app_lang_compat ) {
-  if(!curl_lang_compat.empty()) {
+UrlEncode Utils::UrlEncodePath(const std::string &raw_path,
+                               const std::string &curl_lang_compat,
+                               const std::string &app_lang_compat) {
+  if (!curl_lang_compat.empty()) {
     if (curl_lang_compat == "7.1.0")
       return UrlEncodePath7_1_0(raw_path);
-    return { raw_path };
+    return {raw_path};
   }
-  return { raw_path };
+  return {raw_path};
 }
 
-UrlEncode Utils::UrlEncodeObjectParams(const v8::Local<v8::Value> &params_val, const std::string& curl_lang_compat, const std::string& app_lang_compat) {
-  if(!curl_lang_compat.empty()) {
+UrlEncode Utils::UrlEncodeObjectParams(const v8::Local<v8::Value> &params_val,
+                                       const std::string &curl_lang_compat,
+                                       const std::string &app_lang_compat) {
+  if (!curl_lang_compat.empty()) {
     if (curl_lang_compat == "7.2.0")
       return UrlEncodeAsKeyValue(params_val, false);
     else
@@ -764,9 +779,11 @@ UrlEncode Utils::UrlEncodeObjectParams(const v8::Local<v8::Value> &params_val, c
   }
 }
 
-UrlEncode Utils::UrlEncodeStringParams(const std::string& qry_params, const std::string& curl_lang_compat, const std::string& app_lang_compat) {
-  if(!curl_lang_compat.empty()) {
-    if(curl_lang_compat == "6.6.2") {
+UrlEncode Utils::UrlEncodeStringParams(const std::string &qry_params,
+                                       const std::string &curl_lang_compat,
+                                       const std::string &app_lang_compat) {
+  if (!curl_lang_compat.empty()) {
+    if (curl_lang_compat == "6.6.2") {
       return UrlEncodeAsString(qry_params);
     }
     if (curl_lang_compat == "7.1.0") {
@@ -774,16 +791,20 @@ UrlEncode Utils::UrlEncodeStringParams(const std::string& qry_params, const std:
     }
     return {qry_params};
   } else {
-    if(app_lang_compat == "6.0.0" || app_lang_compat == "6.5.0" || app_lang_compat == "6.6.2"){
+    if (app_lang_compat == "6.0.0" || app_lang_compat == "6.5.0" ||
+        app_lang_compat == "6.6.2") {
       return UrlEncodeAsString(qry_params);
     }
     return {qry_params};
   }
 }
 
-UrlEncode Utils::UrlEncodeParams(const v8::Local<v8::Value> &params_val, const std::string& curl_lang_compat, const std::string& app_lang_compat){
+UrlEncode Utils::UrlEncodeParams(const v8::Local<v8::Value> &params_val,
+                                 const std::string &curl_lang_compat,
+                                 const std::string &app_lang_compat) {
   if (params_val->IsObject()) {
-    auto encoded_query_params = UrlEncodeObjectParams(params_val, curl_lang_compat, app_lang_compat);
+    auto encoded_query_params =
+        UrlEncodeObjectParams(params_val, curl_lang_compat, app_lang_compat);
     if (encoded_query_params.is_fatal) {
       return {encoded_query_params.is_fatal, encoded_query_params.msg};
     }
@@ -792,32 +813,35 @@ UrlEncode Utils::UrlEncodeParams(const v8::Local<v8::Value> &params_val, const s
 
   v8::String::Utf8Value query_param_utf8(isolate_, params_val);
   auto raw_query_params_str = *query_param_utf8;
-  auto encoded_query_params = UrlEncodeStringParams(raw_query_params_str, curl_lang_compat, app_lang_compat);
+  auto encoded_query_params = UrlEncodeStringParams(
+      raw_query_params_str, curl_lang_compat, app_lang_compat);
   if (encoded_query_params.is_fatal) {
     return {encoded_query_params.is_fatal, encoded_query_params.msg};
   }
   return {encoded_query_params.encoded};
 }
 
-UrlEncode Utils::UrlEncodePath7_1_0(const std::string& raw_path) {
+UrlEncode Utils::UrlEncodePath7_1_0(const std::string &raw_path) {
   auto query_and_param_pair = ExtractPathAndQueryParamsFromURL(raw_path);
   auto encoded_path = EncodeAndNormalizePath(query_and_param_pair.first);
   if (encoded_path.is_fatal) {
     return {encoded_path.is_fatal, encoded_path.msg};
   }
 
-  auto encoded_query_params = EncodeAndNormalizeQueryParams(query_and_param_pair.second);
+  auto encoded_query_params =
+      EncodeAndNormalizeQueryParams(query_and_param_pair.second);
   if (encoded_query_params.is_fatal) {
     return {encoded_query_params.is_fatal, encoded_query_params.msg};
   }
 
   std::ostringstream oss;
-  if(encoded_query_params.encoded != "") {
-    oss << encoded_path.encoded << QUESTION_MARK << encoded_query_params.encoded;
+  if (encoded_query_params.encoded != "") {
+    oss << encoded_path.encoded << QUESTION_MARK
+        << encoded_query_params.encoded;
   } else {
     oss << encoded_path.encoded;
   }
-  auto final_url {oss.str()};
+  auto final_url{oss.str()};
   return {final_url};
 }
 
@@ -863,7 +887,8 @@ std::string GetConnectionStr(const std::string &end_point,
   std::stringstream conn_str;
   if (certFile != "")
     conn_str << "couchbases://" << end_point << '/' << bucket_name
-             << "?select_bucket=true&detailed_errcodes=1&truststorepath=" << certFile;
+             << "?select_bucket=true&detailed_errcodes=1&truststorepath="
+             << certFile;
   else
     conn_str << "couchbase://" << end_point << '/' << bucket_name
              << "?select_bucket=true&detailed_errcodes=1";

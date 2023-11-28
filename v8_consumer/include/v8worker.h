@@ -427,6 +427,7 @@ private:
   const std::vector<std::string> exception_type_names_;
   std::vector<std::string> curl_binding_values_;
   std::atomic<bool> stop_timer_scan_;
+  std::atomic<bool> timed_out_;
   std::unordered_set<int64_t> partitions_;
   std::shared_ptr<BucketFactory> bucket_factory_;
   std::list<BucketBinding> bucket_bindings_;
