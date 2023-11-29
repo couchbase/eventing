@@ -53,6 +53,11 @@ func (c *Consumer) doLastSeqNoCheckpoint() {
 					if c.isVbIdle(vb, &checkpoints[vb]) {
 						continue
 					}
+
+					if !c.checkIfCurrentNodeShouldOwnVb(vb) {
+						continue
+					}
+
 					// Metadata blob doesn't exist probably the app is deployed for the first time.
 					var operr error
 					err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), c.retryCount, getOpCallback,
@@ -102,7 +107,7 @@ func (c *Consumer) doLastSeqNoCheckpoint() {
 					}
 
 					// Needed to handle race between previous owner(another eventing node) and new owner(current node).
-					if vbBlob.CurrentVBOwner == "" && c.checkIfCurrentNodeShouldOwnVb(vb) &&
+					if vbBlob.CurrentVBOwner == "" &&
 						c.checkIfCurrentConsumerShouldOwnVb(vb) && vbBlob.DCPStreamStatus == dcpStreamStopped {
 
 						err = c.updateCheckpointInfo(vbKey, vb, &vbBlob)
