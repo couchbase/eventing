@@ -31,6 +31,10 @@ const (
 	ReasonTag       = "reason"
 )
 
+const (
+	SystemScopeName = "_system"
+)
+
 var MetakvMaxRetries int64 = 60
 
 type ChangeType string
