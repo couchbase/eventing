@@ -5648,6 +5648,10 @@ func (m *ServiceMgr) getUserInfo(w http.ResponseWriter, r *http.Request) {
 		}
 
 		for scopeName, collectionList := range scopeMap {
+			if scopeName == common.SystemScopeName {
+				continue
+			}
+
 			k.ScopeName = scopeName
 			k.CollectionName = "*"
 			manage := rbac.GetPermissions(k, rbac.BucketDcp)
@@ -5718,6 +5722,15 @@ func checkRequest(id common.Identity, r *http.Request, app *application) (runtim
 	}
 
 	funcScope := app.FunctionScope
+
+	if app.DeploymentConfig.SourceScope == common.SystemScopeName ||
+		app.FunctionScope.ScopeName == common.SystemScopeName ||
+		app.DeploymentConfig.MetadataScope == common.SystemScopeName {
+		runtimeInfo.ErrCode = response.ErrInvalidRequest
+		runtimeInfo.Description = "Function cannot interact with _system scope"
+		return
+	}
+
 	// Its a success that uri and body matches
 	if funcScope.BucketName == id.Bucket && funcScope.ScopeName == id.Scope {
 		return

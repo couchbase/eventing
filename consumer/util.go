@@ -167,7 +167,10 @@ func (c *cidToKeyspaceNameCache) updateManifest(e *memcached.DcpEvent) {
 			return
 		}
 
-		scopeName := c.scopeToName[e.ScopeID]
+		scopeName, ok := c.scopeToName[e.ScopeID]
+		if !ok {
+			return
+		}
 		c.cidToKeyspaceName[e.CollectionID] = common.KeyspaceName{
 			Scope:      scopeName,
 			Collection: string(e.Key),
@@ -178,6 +181,10 @@ func (c *cidToKeyspaceNameCache) updateManifest(e *memcached.DcpEvent) {
 		delete(c.cidToKeyspaceName, e.CollectionID)
 
 	case mcd.SCOPE_CREATE:
+		scopeName := string(e.Key)
+		if scopeName == common.SystemScopeName {
+			return
+		}
 		c.scopeToName[e.ScopeID] = string(e.Key)
 
 	case mcd.SCOPE_DROP:
@@ -214,10 +221,15 @@ func (c *cidToKeyspaceNameCache) refreshManifestFromClusterInfo() {
 	defer c.Unlock()
 
 	for _, scope := range manifest.Scopes {
+		if scope.Name == common.SystemScopeName {
+			continue
+		}
+
 		sid, _ := collections.GetHexToUint32(scope.UID)
 		if _, ok := c.scopeToName[sid]; !ok {
 			c.scopeToName[sid] = scope.Name
 		}
+
 		for _, col := range scope.Collections {
 			cid, _ := collections.GetHexToUint32(col.UID)
 			if _, ok := c.cidToKeyspaceName[cid]; ok {
