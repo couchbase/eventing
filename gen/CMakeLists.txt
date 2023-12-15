@@ -13,9 +13,6 @@ INCLUDE (FindCouchbaseGo)
 INCLUDE (FindCouchbaseFlatbuffers)
 
 SET(LDFLAGS)
-IF(APPLE)
-  SET (LDFLAGS "-s -extldflags '-Wl,-rpath,@executable_path/../lib'")
-ENDIF()
 IF(WIN32)
    IF("${MSVC_VERSION}" LESS 1910)
       SET (LDFLAGS "${LDFLAGS} -linkmode internal")
@@ -45,19 +42,17 @@ CONFIGURE_FILE(
   "${PROJECT_SOURCE_DIR}/gen/version/version.js"
 )
 
-GoInstall(
+GoModBuild(
   TARGET convertgo
   PACKAGE github.com/couchbase/eventing/gen/convertgo
-  GOPATH "${PROJECT_SOURCE_DIR}/../../../.."
   GOTAGS "${TAGS}"
   LDFLAGS "${LDFLAGS}"
   GOVERSION ${GOVERSION}
 )
 
-GoInstall(
+GoModBuild(
   TARGET convertaudit
   PACKAGE github.com/couchbase/eventing/gen/convertaudit
-  GOPATH "${PROJECT_SOURCE_DIR}/../../../.."
   GOTAGS "${TAGS}"
   LDFLAGS "${LDFLAGS}"
   GOVERSION ${GOVERSION}
@@ -65,7 +60,7 @@ GoInstall(
 
 ADD_CUSTOM_COMMAND(
         OUTPUT auditevent/events.go
-        COMMAND ${PROJECT_SOURCE_DIR}/../../../../bin/convertaudit
+        COMMAND ${CMAKE_CURRENT_BINARY_DIR}/convertaudit
         ARGS ../audit/audit_descriptor.json auditevent/events.go
         DEPENDS ../audit/audit_descriptor.json
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
@@ -74,7 +69,7 @@ ADD_CUSTOM_COMMAND(
 
 ADD_CUSTOM_COMMAND(
         OUTPUT parser/handler_schema.go
-        COMMAND ${PROJECT_SOURCE_DIR}/../../../../bin/convertgo
+        COMMAND ${CMAKE_CURRENT_BINARY_DIR}/convertgo
         ARGS ../parser/handler_schema.json HandlerSchema parser/handler_schema.go
         DEPENDS ../parser/handler_schema.json
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
@@ -83,7 +78,7 @@ ADD_CUSTOM_COMMAND(
 
 ADD_CUSTOM_COMMAND(
         OUTPUT parser/depcfg_schema.go
-        COMMAND ${PROJECT_SOURCE_DIR}/../../../../bin/convertgo
+        COMMAND ${CMAKE_CURRENT_BINARY_DIR}/convertgo
         ARGS ../parser/depcfg_schema.json DepcfgSchema parser/depcfg_schema.go
         DEPENDS ../parser/depcfg_schema.json
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
@@ -92,7 +87,7 @@ ADD_CUSTOM_COMMAND(
 
 ADD_CUSTOM_COMMAND(
         OUTPUT parser/settings_schema.go
-        COMMAND ${PROJECT_SOURCE_DIR}/../../../../bin/convertgo
+        COMMAND ${CMAKE_CURRENT_BINARY_DIR}/convertgo
         ARGS ../parser/settings_schema.json SettingsSchema parser/settings_schema.go
         DEPENDS ../parser/settings_schema.json
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
@@ -101,7 +96,7 @@ ADD_CUSTOM_COMMAND(
 
 ADD_CUSTOM_COMMAND(
         OUTPUT parser/list_schema.go
-        COMMAND ${PROJECT_SOURCE_DIR}/../../../../bin/convertgo
+        COMMAND ${CMAKE_CURRENT_BINARY_DIR}/convertgo
         ARGS ../parser/list_schema.json ListSchema parser/list_schema.go
         DEPENDS ../parser/list_schema.json
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
@@ -110,7 +105,7 @@ ADD_CUSTOM_COMMAND(
 
 ADD_CUSTOM_COMMAND(
         OUTPUT parser/function_scope_schema.go
-        COMMAND ${PROJECT_SOURCE_DIR}/../../../../bin/convertgo
+        COMMAND ${CMAKE_CURRENT_BINARY_DIR}/convertgo
         ARGS ../parser/function_scope_schema.json FunctionScopeSchema parser/function_scope_schema.go
         DEPENDS ../parser/function_scope_schema.json
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}

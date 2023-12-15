@@ -35,10 +35,6 @@ IF("${PRODUCT_VERSION}" VERSION_GREATER_EQUAL "7.1.0" OR
   SET(TAGS "${TAGS} neo")
 ENDIF()
 
-GET_FILENAME_COMPONENT (CURL_LIB_DIR "${CURL_LIBRARIES}" DIRECTORY)
-SET(CGO_INCLUDE_DIRS "${sigar_SOURCE_DIR}/include;${CURL_INCLUDE_DIR}")
-SET(CGO_LIBRARY_DIRS "${sigar_BINARY_DIR}/src;${CURL_LIB_DIR}")
-
 IF(BUILD_ENTERPRISE)
     SET(NEWEVAL_DIR ../../eventing-ee/evaluator)
     find_path(NEWEVAL_INCLUDE_DIR worker.h
@@ -47,23 +43,18 @@ IF(BUILD_ENTERPRISE)
     LIST(APPEND CGO_LIBRARY_DIRS ${evaluator_BINARY_DIR})
 ENDIF()
 
-GoInstall(TARGET eventing-producer PACKAGE github.com/couchbase/eventing/cmd/producer
-  GOPATH "${PROJECT_SOURCE_DIR}/../../../../.." "${GODEPSDIR}"
+GoModBuild(TARGET eventing-producer PACKAGE github.com/couchbase/eventing/cmd/producer
   INSTALL_PATH bin OUTPUT eventing-producer
-  CGO_INCLUDE_DIRS "${CGO_INCLUDE_DIRS}"
-  CGO_LIBRARY_DIRS "${CGO_LIBRARY_DIRS}"
+  DEPENDS sigar Curl::libcurl
   GOTAGS "${TAGS}"
   LDFLAGS "${LDFLAGS}"
   GOVERSION ${GOVERSION})
 
-GoInstall(TARGET cbevent PACKAGE github.com/couchbase/eventing/cmd/cbevent
-  GOPATH "${PROJECT_SOURCE_DIR}/../../../../.." "${GODEPSDIR}"
-  INSTALL_PATH bin OUTPUT cbevent
-  CGO_INCLUDE_DIRS "${CGO_INCLUDE_DIRS}"
-  CGO_LIBRARY_DIRS "${CGO_LIBRARY_DIRS}"
+GoModBuild(TARGET cbevent PACKAGE github.com/couchbase/eventing/cmd/cbevent
+  INSTALL_PATH bin
   GOTAGS "${TAGS}"
   LDFLAGS "${LDFLAGS}"
   GOVERSION ${GOVERSION})
 
-ADD_DEPENDENCIES(eventing-producer sigar eventing-generated cbq-engine indexer jseval)
+ADD_DEPENDENCIES(eventing-producer eventing-generated cbq-engine indexer jseval)
 ADD_DEPENDENCIES(cbevent eventing-generated)
