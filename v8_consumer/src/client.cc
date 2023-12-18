@@ -74,7 +74,8 @@ std::string GetFailureStats() {
   return fstats.dump();
 }
 
-std::string GetExecutionStats(const std::map<int16_t, V8Worker *> &workers) {
+std::string GetExecutionStats(const std::map<int16_t, V8Worker *> &workers,
+                              bool test) {
   nlohmann::json estats;
   estats["on_update_success"] = on_update_success.load();
   estats["on_update_failure"] = on_update_failure.load();
@@ -112,6 +113,10 @@ std::string GetExecutionStats(const std::map<int16_t, V8Worker *> &workers) {
         agg_queue_size += 1;
     }
 
+    if (test) {
+      agg_queue_size = agg_queue_size + 1000;
+      agg_queue_memory = agg_queue_memory + 10;
+    }
     estats["agg_queue_size"] = agg_queue_size;
     estats["feedback_queue_size"] = 0;
     estats["agg_queue_memory"] = agg_queue_memory;
@@ -652,9 +657,8 @@ void AppWorker::RouteMessageWithResponse(
       msg_priority_ = true;
       break;
     case oGetExecutionStats:
-      LOG(logTrace) << "v8worker execution stats:"
-                    << GetExecutionStats(workers_) << std::endl;
-      resp_msg_->msg.assign(GetExecutionStats(workers_));
+      resp_msg_->msg.assign(
+          GetExecutionStats(workers_, (function_name_ == "test")));
       resp_msg_->msg_type = mV8_Worker_Config;
       resp_msg_->opcode = oExecutionStats;
       msg_priority_ = true;

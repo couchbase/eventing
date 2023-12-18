@@ -13,11 +13,13 @@
 #include "log.h"
 #include "utils.h"
 
-void ExceptionInsight::AccumulateException(v8::TryCatch &try_catch) {
+void ExceptionInsight::AccumulateException(v8::TryCatch &try_catch,
+                                           bool timeout) {
 
   auto newEntry = false;
   auto context = isolate_->GetCurrentContext();
-  auto v8exception_info = GetV8ExceptionInfo(isolate_, context, &try_catch);
+  auto v8exception_info =
+      GetV8ExceptionInfo(isolate_, context, &try_catch, timeout);
 
   // compute a hash for the exception-info to identify duplicates:
   // The field 'stack' contains the exception as well as the stack-track and
@@ -66,7 +68,8 @@ void ExceptionInsight::AccumulateAndClear(ExceptionInsight &from) {
   // Merge all exceptions from 'from' into the current ExceptionInsight
   // instance, either adding new ones in, or incrementing counts of known ones.
 
-  if (from.entries_.size() > 0 && std::string(from.start_time_) < std::string(start_time_)) {
+  if (from.entries_.size() > 0 &&
+      std::string(from.start_time_) < std::string(start_time_)) {
     strncpy(start_time_, from.start_time_, sizeof(start_time_) - 1);
     start_time_[sizeof(start_time_) - 1] = '\0';
   }
@@ -104,14 +107,14 @@ void ExceptionInsight::LogExceptionSummary(
   }
 }
 
-void ExceptionInsight::PopulateExceptionInfo(
-    nlohmann::json &exceptionInfo, V8ExceptionInfo v8exception_info) {
+void ExceptionInsight::PopulateExceptionInfo(nlohmann::json &exceptionInfo,
+                                             V8ExceptionInfo v8exception_info) {
 
-    exceptionInfo["exception"] = v8exception_info.exception;
-    exceptionInfo["file"] = v8exception_info.file;
-    exceptionInfo["line"] = v8exception_info.line;
-    exceptionInfo["srcLine"] = v8exception_info.srcLine;
-    exceptionInfo["stack"] = v8exception_info.stack;
+  exceptionInfo["exception"] = v8exception_info.exception;
+  exceptionInfo["file"] = v8exception_info.file;
+  exceptionInfo["line"] = v8exception_info.line;
+  exceptionInfo["srcLine"] = v8exception_info.srcLine;
+  exceptionInfo["stack"] = v8exception_info.stack;
 }
 
 ExceptionInsight::ExceptionInsight(v8::Isolate *isolate)
