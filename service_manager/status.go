@@ -98,6 +98,7 @@ type statusCodes struct {
 	errInternalServer         statusBase
 	errForbidden              statusBase
 	errUnauthenticated        statusBase
+	errOnDeployFailed         statusBase
 }
 
 func (m *ServiceMgr) getDisposition(code int) int {
@@ -212,6 +213,8 @@ func (m *ServiceMgr) getDisposition(code int) int {
 		return http.StatusForbidden
 	case m.statusCodes.errUnauthenticated.Code:
 		return http.StatusUnauthorized
+	case m.statusCodes.errOnDeployFailed.Code:
+		return http.StatusInternalServerError
 	default:
 		logging.Warnf("Unknown status code: %v", code)
 		return http.StatusInternalServerError
@@ -276,6 +279,7 @@ func (m *ServiceMgr) initErrCodes() {
 		errInternalServer:         statusBase{"INTERNAL_SERVER_ERROR", 59},
 		errForbidden:              statusBase{"ERR_FORBIDDEN", 60},
 		errUnauthenticated:        statusBase{"ERR_UNAUTHENTICATED", 61},
+		errOnDeployFailed:         statusBase{"ERR_ONDEPLOY_FAILED", 65},
 	}
 
 	errors := []errorPayload{

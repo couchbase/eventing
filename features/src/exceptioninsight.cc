@@ -14,12 +14,12 @@
 #include "utils.h"
 
 void ExceptionInsight::AccumulateException(v8::TryCatch &try_catch,
-                                           bool timeout) {
+                                           bool script_timeout, bool on_deploy_timeout) {
 
   auto newEntry = false;
   auto context = isolate_->GetCurrentContext();
   auto v8exception_info =
-      GetV8ExceptionInfo(isolate_, context, &try_catch, timeout);
+      GetV8ExceptionInfo(isolate_, context, &try_catch, script_timeout, on_deploy_timeout);
 
   // compute a hash for the exception-info to identify duplicates:
   // The field 'stack' contains the exception as well as the stack-track and

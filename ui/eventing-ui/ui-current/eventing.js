@@ -72,7 +72,8 @@ angular
         "@eventing-.@items.eventing_processed_count",
         "@eventing-.@items.eventing_failed_count",
         "@eventing-.@items.eventing_timeout_count",
-        "@eventing-.@items.eventing_dcp_backlog"
+        "@eventing-.@items.eventing_dcp_backlog",
+        "@eventing-.@items.eventing_on_deploy_failure"
       ];
       let getStatSamples = isAtLeast70 ? getStatSamples70 :
         getStatSamplesPre70;
@@ -125,7 +126,6 @@ angular
         uiStatNames.forEach(statName => row[statName] = getStatSamples(
           statName));
       }
-
     }
   ])
   // Controller for the summary page.
@@ -153,6 +153,7 @@ angular
       self.statusPollMillis = 2000;
       self.annotationList = []
       self.appstorefresh = []
+      self.showWarningTooltip = new Map();
 
       // Broadcast on channel 'isEventingRunning'
       $rootScope.$broadcast('isEventingRunning', self.isEventingRunning);
@@ -474,6 +475,10 @@ angular
           template: appWarningsTemplate,
           scope: scope
         });
+      };
+
+      self.toggleWarningTooltip = function(appName) {
+        self.showWarningTooltip.set(appName, !self.showWarningTooltip.get(appName));
       };
 
       self.openSettings = function(appName, function_scope) {
@@ -1081,6 +1086,10 @@ angular
 
       self.executionTimeoutCheck = function(appModel) {
         return appModel.settings.execution_timeout > 60;
+      };
+
+      self.ondeployTimeoutCheck = function(appModel) {
+        return appModel.settings.ondeploy_timeout > 60;
       };
 
       self.getScopes = function(bucketName, bucketList, wildcard_allowed) {
@@ -2858,6 +2867,8 @@ angular
             form.worker_count.$error.max ||
             form.execution_timeout.$error.required ||
             form.execution_timeout.$error.min ||
+            form.ondeploy_timeout.$error.required ||
+            form.ondeploy_timeout.$error.min ||
             form.timer_context_size.$error.required ||
             form.timer_context_size.$error.min ||
             form.timer_context_size.$error.max ||

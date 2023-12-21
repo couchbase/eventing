@@ -3,7 +3,22 @@ package supervisor
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/couchbase/cbauth/metakv"
+	"github.com/couchbase/cbauth/service"
+	"github.com/couchbase/eventing/common"
+	"github.com/couchbase/eventing/consumer"
+	"github.com/couchbase/eventing/gen/flatbuf/cfg"
+	"github.com/couchbase/eventing/logging"
+	"github.com/couchbase/eventing/parser"
+	"github.com/couchbase/eventing/producer"
+	servicemanager "github.com/couchbase/eventing/service_manager"
+	"github.com/couchbase/eventing/suptree"
+	"github.com/couchbase/eventing/util"
+	"github.com/couchbase/gocb/v2"
+	"github.com/couchbase/goutils/systemeventlog"
+	"github.com/pkg/errors"
 	"math"
+	"net"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -11,17 +26,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"github.com/couchbase/cbauth/metakv"
-	"github.com/couchbase/cbauth/service"
-	"github.com/couchbase/eventing/common"
-	"github.com/couchbase/eventing/logging"
-	"github.com/couchbase/eventing/producer"
-	servicemanager "github.com/couchbase/eventing/service_manager"
-	"github.com/couchbase/eventing/suptree"
-	"github.com/couchbase/eventing/util"
-	"github.com/couchbase/goutils/systemeventlog"
-	"github.com/pkg/errors"
 )
 
 // NewSuperSupervisor creates the super_supervisor handle
@@ -42,6 +46,7 @@ func NewSuperSupervisor(adminPort AdminPortConfig, eventingDir, kvPort, restPort
 		eventingDir:                eventingDir,
 		keepNodes:                  make([]string, 0),
 		kvPort:                     kvPort,
+		kvNodeAddrs:                make([]string, 0),
 		locallyDeployedApps:        make(map[string]string),
 		producerSupervisorTokenMap: make(map[common.EventingProducer]suptree.ServiceToken),
 		restPort:                   restPort,
@@ -57,6 +62,11 @@ func NewSuperSupervisor(adminPort AdminPortConfig, eventingDir, kvPort, restPort
 		initEncryptDataMutex:       &sync.RWMutex{},
 		initLifecycleEncryptData:   false,
 		featureMatrix:              math.MaxUint32,
+		appToMetadataHandle:        make(map[string]*gocb.Collection),
+		metadataHandleMutex:        &sync.RWMutex{},
+		onDeployMsgBuffer:          make(map[string][]string),
+		onDeployStatus:             make(map[string]common.OnDeployState),
+		prevOnDeployStatus:         make(map[string]common.OnDeployState),
 	}
 
 	var err error
@@ -199,6 +209,153 @@ func (s *SuperSupervisor) EventHandlerLoadCallback(kve metakv.KVEntry) error {
 
 		s.supCmdCh <- msg
 	}
+	return nil
+}
+
+func (s *SuperSupervisor) OnDeployCallback(kve metakv.KVEntry) error {
+	const logPrefix string = "SuperSupervisor::OnDeployCallback"
+
+	appName, err := util.GetAppNameFromPath(kve.Path)
+	if err != nil {
+		logging.Errorf("%s Error in parsing app name from path", logPrefix, err)
+		return err
+	}
+
+	processingStatus, deploymentStatus, _, err := s.getStatuses(kve.Value)
+	currentState := s.GetAppCompositeState(appName)
+	nextState := common.GetCompositeState(deploymentStatus, processingStatus)
+
+	// For Pause or Undeploy, we don't execute OnDeploy
+	if !processingStatus {
+		s.prevOnDeployStatus[appName] = s.onDeployStatus[appName]
+		s.onDeployStatus[appName] = common.PENDING
+		logging.Infof("%s Returning from OnDeploy callback because the action is Pause/Undeploy", logPrefix)
+		return nil
+	}
+
+	source, metadata, _, e := s.getSourceMetaAndFunctionKeySpaces(appName)
+	if e == nil {
+		s.WatchBucket(source, appName, common.SrcWatch)
+		s.watchBucketWithGocb(metadata, appName)
+	}
+
+	if err := s.updateMetadataHandle(appName, metadata); err != nil {
+		logging.Errorf("%s Error during updating metadata handle: %v", logPrefix, err)
+		return err
+	}
+
+	app, isSrcMutationPossible, numVBuckets, err := s.getAppDetails(appName, source)
+	if err != nil {
+		logging.Errorf("%s Error in getting app details: %v", logPrefix, err)
+		return err
+	}
+
+	logging.Infof("%s Got data: AppCode: %s AppLocation: %s FunctionID: %v FIID: %v", logPrefix, app.AppCode, appName, app.FunctionID, app.FunctionInstanceID)
+
+	var settingsData []byte
+	sValue := make(map[string]interface{})
+
+	if kve.Value != nil {
+		err := json.Unmarshal(kve.Value, &sValue)
+		if err != nil {
+			logging.Errorf("%s [%d] Failed to unmarshal settings received, err: %v",
+				logPrefix, s.runningFnsCount(), err)
+			return err
+		}
+	} else {
+		logging.Errorf("%s Couldn't retrieve settings data because KV value is nil", logPrefix)
+		return err
+	}
+
+	isOnDeployPresent, _ := sValue["is_ondeploy_handler_present"].(bool)
+	delete(sValue, "is_ondeploy_handler_present")
+	settingsData, err = json.MarshalIndent(&sValue, "", " ")
+	if err != nil {
+		logging.Errorf("%s Function: %s failed to marshal settings, err: %v", logPrefix, appName, err)
+		return err
+	}
+	// Proceed to writing to settings path for deployment when OnDeploy handler is not present in app code
+	if !isOnDeployPresent {
+		logging.Infof("%s Proceeding to deployment of function: %s since OnDeploy handler is not present", logPrefix, appName)
+		s.triggerDeploymentForOnDeploySuccess(appName, settingsData)
+		return nil
+	}
+
+	// Perform leader election for executing OnDeploy
+	s.attemptOnDeploy(appName)
+
+	if s.isOnDeployLeader(appName) {
+		var onDeployReason string
+		var onDeployDelay int64
+		if nextState == common.AppStateEnabled {
+			if currentState == common.AppStateUndeployed {
+				onDeployReason = "Deploy"
+				onDeployDelay = 0
+			} else if currentState == common.AppStatePaused {
+				onDeployReason = "Resume"
+				lastPausedTimestamp := s.readPauseTimestampDoc(appName)
+				currentTimestamp := time.Now()
+				onDeployDelay = currentTimestamp.Sub(lastPausedTimestamp).Milliseconds()
+			}
+		}
+
+		preparedApp := s.serviceMgr.GetPreparedApp(appName)
+		appContent := util.EncodeAppPayload(&preparedApp)
+
+		var handlerHeaders []string
+		if headers, exists := sValue["handler_headers"]; exists {
+			handlerHeaders = util.ToStringArray(headers)
+		} else {
+			handlerHeaders = common.GetDefaultHandlerHeaders()
+		}
+		handlerFooters := util.ToStringArray(sValue["handler_footers"])
+		var n1qlParams string
+		if consistency, exists := sValue["n1ql_consistency"]; exists {
+			n1qlParams = "{ 'consistency': '" + consistency.(string) + "' }"
+		}
+		parsedCode, _ := parser.TranspileQueries(app.AppCode, n1qlParams)
+
+		c := consumer.NewOnDeployConsumer(s, sValue, appName, app.FunctionID, handlerHeaders, handlerFooters, numVBuckets)
+		err = c.SpawnUtilityWorker(parsedCode, string(appContent), appName, s.serviceMgr.GetAdminHTTPPort(), onDeployReason, onDeployDelay, s.featureMatrix, isSrcMutationPossible, app.FunctionScope)
+		if err != nil {
+			logging.Errorf("%s Utility worker gave error: %v", logPrefix, err)
+			s.updateFailedOnDeployStatus(appName)
+			s.revertToPreviousAppState(appName, sValue, false)
+			return nil
+		}
+
+		_, _, finalOnDeployStatus := s.readOnDeployDoc(appName)
+
+		switch finalOnDeployStatus {
+		case common.FINISHED.String():
+			s.triggerDeploymentForOnDeploySuccess(appName, settingsData)
+		case common.FAILED.String():
+			s.onDeployStatus[appName] = common.FAILED
+			logging.Errorf("%s OnDeploy execution failed for function %s", logPrefix, appName)
+			s.revertToPreviousAppState(appName, sValue, false)
+		}
+	} else { // polling for the followers until OnDeploy is completed by the leader
+		leaderNodeUUID, leaderRestPort, onDeployStatus := s.readOnDeployDoc(appName)
+		for onDeployStatus == common.PENDING.String() {
+			if isLeaderAlive, err := s.isLeaderNodeAlive(leaderRestPort); err == nil && !isLeaderAlive {
+				logging.Errorf("%s OnDeploy leader: %s for app: %s failed", logPrefix, leaderNodeUUID, appName)
+				s.updateFailedOnDeployStatus(appName)
+				s.revertToPreviousAppState(appName, sValue, false)
+				return nil
+			}
+			time.Sleep(1 * time.Second)
+			leaderNodeUUID, leaderRestPort, onDeployStatus = s.readOnDeployDoc(appName)
+		}
+
+		if onDeployStatus == common.FINISHED.String() {
+			// Deploy the function on all the nodes once OnDeploy completes
+			s.triggerDeploymentForOnDeploySuccess(appName, settingsData)
+		} else if onDeployStatus == common.FAILED.String() {
+			s.onDeployStatus[appName] = common.FAILED
+			s.revertToPreviousAppState(appName, sValue, false)
+		}
+	}
+
 	return nil
 }
 
@@ -1124,4 +1281,313 @@ func getMemLimit() (float64, error) {
 		return totMem, nil
 	}
 	return cgMemLimit, nil
+}
+
+// Supervisor of each node attempts to insert a doc into Metadata collection; The node which is able to insert the doc is chosen as the OnDeploy leader
+func (s *SuperSupervisor) attemptOnDeploy(appName string) {
+	const logPrefix string = "SuperSupervisor::attemptOnDeploy"
+
+	doc := onDeployDoc{
+		NodeUUID:       s.uuid,
+		RestPort:       s.restPort,
+		OnDeployStatus: common.PENDING.String(),
+	}
+
+	s.metadataHandleMutex.RLock()
+	defer s.metadataHandleMutex.RUnlock()
+
+	metadataHandle, ok := s.appToMetadataHandle[appName]
+	if !ok {
+		logging.Errorf("%s [%s] Failed to fetch metadata handle", logPrefix, s.uuid)
+		return
+	}
+	_, err := metadataHandle.Insert(appName+"::onDeployLeader", doc, &gocb.InsertOptions{
+		Expiry: 2 * 60 * 60 * time.Second,
+	})
+
+	if errors.Is(err, gocb.ErrDocumentExists) {
+		return
+	} else if err != nil {
+		logging.Errorf("%s [%s] Error encountered in writing document for onDeploy: %v", logPrefix, s.uuid, err)
+	}
+}
+
+// Reads document in Metadata collection to get OnDeploy status and its node leader
+func (s *SuperSupervisor) readOnDeployDoc(appName string) (nodeLeader, restPort, onDeployStatus string) {
+	const logPrefix string = "SuperSupervisor::readOnDeployDoc"
+
+	ops := []gocb.LookupInSpec{
+		gocb.GetSpec("node_uuid", &gocb.GetSpecOptions{}),
+		gocb.GetSpec("rest_port", &gocb.GetSpecOptions{}),
+		gocb.GetSpec("on_deploy_status", &gocb.GetSpecOptions{}),
+	}
+
+	s.metadataHandleMutex.RLock()
+	defer s.metadataHandleMutex.RUnlock()
+
+	metadataHandle, ok := s.appToMetadataHandle[appName]
+	if !ok {
+		logging.Errorf("%s [%s] Failed to fetch metadata handle", logPrefix, s.uuid)
+		return
+	}
+
+	res, err := metadataHandle.LookupIn(appName+"::onDeployLeader", ops, nil)
+	if err != nil {
+		logging.Errorf("%s [%s] Error encountered during lookup: %v", logPrefix, s.uuid, err)
+	}
+
+	err = res.ContentAt(0, &nodeLeader)
+	if err != nil {
+		logging.Errorf("%s [%s] Error encountered during reading node_uuid: %v", logPrefix, s.uuid, err)
+	}
+
+	err = res.ContentAt(1, &restPort)
+	if err != nil {
+		logging.Errorf("%s [%s] Error encountered during reading rest_port: %v", logPrefix, s.uuid, err)
+	}
+
+	err = res.ContentAt(2, &onDeployStatus)
+	if err != nil {
+		logging.Errorf("%s [%s] Error encountered during reading on_deploy_status: %v", logPrefix, s.uuid, err)
+	}
+
+	return
+}
+
+// Deletes the document inserted by the OnDeploy leader from the Metadata Collection
+func (s *SuperSupervisor) removeOnDeployLeader(appName string) {
+	const logPrefix string = "SuperSupervisor::removeOnDeployLeader"
+
+	sourceKeyspace, metadataKeyspace, _, e := s.getSourceMetaAndFunctionKeySpaces(appName)
+	if e == nil {
+		s.WatchBucket(sourceKeyspace, appName, common.SrcWatch)
+		s.watchBucketWithGocb(metadataKeyspace, appName)
+	}
+	if err := s.updateMetadataHandle(appName, metadataKeyspace); err != nil {
+		logging.Errorf("%s Error during updating metadata handle: %v", logPrefix, err)
+	}
+
+	s.metadataHandleMutex.RLock()
+	defer s.metadataHandleMutex.RUnlock()
+
+	metadataHandle, _ := s.appToMetadataHandle[appName]
+
+	_, err := metadataHandle.Remove(appName+"::onDeployLeader", nil)
+
+	if errors.Is(err, gocb.ErrDocumentNotFound) {
+		return
+	} else if err != nil {
+		logging.Errorf("%s [%s] %s Error while deleting node leader: %v", logPrefix, s.uuid, appName, err)
+	}
+}
+
+// Check if the current node is the OnDeploy node leader
+func (s *SuperSupervisor) isOnDeployLeader(appName string) bool {
+	nodeLeader, _, _ := s.readOnDeployDoc(appName)
+	return s.uuid == nodeLeader
+}
+
+// Upserts a document into the Metadata collection with the last pause timestamp
+func (s *SuperSupervisor) writePauseTimestamp(appName string, timestamp time.Time) {
+	const logPrefix string = "SuperSupervisor::writePauseTimestamp"
+
+	doc := pauseTimestampDoc{
+		LastPausedTimestamp: timestamp,
+	}
+
+	s.metadataHandleMutex.RLock()
+	defer s.metadataHandleMutex.RUnlock()
+
+	metadataHandle, ok := s.appToMetadataHandle[appName]
+	if !ok {
+		logging.Errorf("%s [%s] Failed to fetch metadata handle", logPrefix, s.uuid)
+		return
+	}
+
+	_, err := metadataHandle.Upsert(appName+"::lastPaused", doc, nil)
+	if err != nil {
+		logging.Errorf("%s Error encountered in writing pause timestamp for %s : %v", logPrefix, appName, err)
+	}
+}
+
+// Deletes the document of last pause timestamp from the Metadata collection
+func (s *SuperSupervisor) removePauseTimestampDoc(appName string) {
+	const logPrefix string = "SuperSupervisor::removePauseTimestampDoc"
+
+	s.metadataHandleMutex.RLock()
+	defer s.metadataHandleMutex.RUnlock()
+
+	metadataHandle, ok := s.appToMetadataHandle[appName]
+	if !ok {
+		logging.Errorf("%s [%s] Failed to fetch metadata handle", logPrefix, s.uuid)
+		return
+	}
+
+	docID := appName + "::lastPaused"
+	_, err := metadataHandle.Remove(docID, nil)
+
+	if errors.Is(err, gocb.ErrDocumentNotFound) {
+		return
+	} else if err != nil {
+		logging.Errorf("%s Error while deleting pause timestamp doc for %s: %v", logPrefix, appName, err)
+	}
+}
+
+func (s *SuperSupervisor) readPauseTimestampDoc(appName string) (timestamp time.Time) {
+	const logPrefix string = "SuperSupervisor::readPauseTimestampDoc"
+
+	ops := []gocb.LookupInSpec{
+		gocb.GetSpec("last_paused_timestamp", &gocb.GetSpecOptions{}),
+	}
+
+	s.metadataHandleMutex.RLock()
+	defer s.metadataHandleMutex.RUnlock()
+
+	metadataHandle, ok := s.appToMetadataHandle[appName]
+	if !ok {
+		logging.Errorf("%s [%s] Failed to fetch metadata handle", logPrefix, s.uuid)
+		return
+	}
+
+	res, err := metadataHandle.LookupIn(appName+"::lastPaused", ops, nil)
+	if err != nil {
+		logging.Errorf("%s [%s] Error encountered during lookup: %v", logPrefix, s.uuid, err)
+	}
+
+	err = res.ContentAt(0, &timestamp)
+	if err != nil {
+		logging.Errorf("%s [%s] Error encountered during reading timestamp: %v", logPrefix, s.uuid, err)
+	}
+
+	return
+}
+
+func (s *SuperSupervisor) getAppDetails(appName string, sourceKeyspace common.Keyspace) (*common.AppConfig, bool, int, error) {
+	const logPrefix string = "SuperSupervisor::getAppDetails"
+
+	var cfgData []byte
+
+	// Keeping metakv lookup in retry loop. There is potential metakv related race between routine that gets notified about updates
+	// to metakv path and routine that does metakv lookup
+	err := util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &s.retryCount, metakvAppCallback, s, MetakvAppsPath, MetakvChecksumPath, appName, &cfgData)
+	if err == common.ErrRetryTimeout {
+		logging.Errorf("%s [%s] Exiting due to timeout", logPrefix, appName)
+		return nil, false, 0, err
+	}
+
+	config := cfg.GetRootAsConfig(cfgData, 0)
+
+	app := new(common.AppConfig)
+	app.AppCode = string(config.AppCode())
+	app.AppName = string(config.AppName())
+	app.FunctionID = uint32(config.HandlerUUID())
+	app.FunctionInstanceID = string(config.FunctionInstanceID())
+
+	f := new(cfg.FunctionScope)
+	fs := config.FunctionScope(f)
+	funcScope := &common.FunctionScope{}
+
+	if fs != nil {
+		funcScope.BucketName = string(fs.BucketName())
+		funcScope.ScopeName = string(fs.ScopeName())
+	}
+
+	if funcScope.BucketName == "" && funcScope.ScopeName == "" {
+		funcScope.BucketName = "*"
+		funcScope.ScopeName = "*"
+	}
+
+	app.FunctionScope = *funcScope
+
+	d := new(cfg.DepCfg)
+	depcfg := config.DepCfg(d)
+	isSrcMutationPossible := false
+	binding := new(cfg.Bucket)
+	for idx := 0; idx < depcfg.BucketsLength(); idx++ {
+		if depcfg.Buckets(binding, idx) {
+			scopeName := common.CheckAndReturnDefaultForScopeOrCollection(string(binding.ScopeName()))
+			collectionName := common.CheckAndReturnDefaultForScopeOrCollection(string(binding.CollectionName()))
+
+			if string(config.Access(idx)) != "rw" {
+				continue
+			}
+
+			bindingKeyspace := common.Keyspace{
+				BucketName:     string(binding.BucketName()),
+				ScopeName:      scopeName,
+				CollectionName: collectionName,
+			}
+
+			if sourceKeyspace.Equals(bindingKeyspace) {
+				isSrcMutationPossible = true
+				break
+			}
+		}
+	}
+
+	numVBuckets := s.GetNumVbucketsForBucket(string(depcfg.SourceBucket()))
+	return app, isSrcMutationPossible, numVBuckets, nil
+}
+
+func (s *SuperSupervisor) isLeaderNodeAlive(leaderRestPort string) (bool, error) {
+	const logPrefix string = "SuperSupervisor::isLeaderNodeAlive"
+
+	hostEndpoint := net.JoinHostPort(util.Localhost(), s.restPort)
+	cic, err := util.FetchClusterInfoClient(hostEndpoint)
+	if err != nil {
+		logging.Errorf("%s failed to get cluster info client, err: %v", logPrefix, err)
+		return true, err
+	}
+	clusterInfo := cic.GetClusterInfoCache()
+	clusterInfo.RLock()
+	defer clusterInfo.RUnlock()
+
+	failedEventingNodes := clusterInfo.GetFailedEventingNodes()
+	for _, node := range failedEventingNodes {
+		_, restPort, err := net.SplitHostPort(node.Hostname)
+		if err != nil {
+			logging.Errorf("%s Could not get the port from hostname for failed eventing node, err: %v", logPrefix, err)
+		} else if restPort == leaderRestPort {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
+func (s *SuperSupervisor) updateFailedOnDeployStatus(appName string) {
+	s.PublishOnDeployStatus(appName, common.FAILED.String())
+	s.onDeployStatus[appName] = common.FAILED
+}
+
+func (s *SuperSupervisor) triggerDeploymentForOnDeploySuccess(appName string, settingsData []byte) {
+	const logPrefix string = "SuperSupervisor::triggerDeploymentForOnDeploySuccess"
+
+	s.onDeployStatus[appName] = common.FINISHED
+
+	settingsPath := MetakvAppSettingsPath + appName
+	mkvErr := util.MetakvSet(settingsPath, settingsData, nil)
+	if mkvErr != nil {
+		logging.Errorf("%s Function: %s failed to store updated settings in metakv, err: %v", logPrefix, appName, mkvErr)
+	}
+}
+
+func (s *SuperSupervisor) revertToPreviousAppState(appName string, settings map[string]interface{}, undeployFlag bool) {
+	const logPrefix string = "SuperSupervisor::revertToPreviousAppState"
+
+	if undeployFlag == false && s.GetAppCompositeState(appName) == common.AppStatePaused {
+		logging.Errorf("%s Pausing function: %s because of OnDeploy failure", logPrefix, appName)
+		settings["deployment_status"] = true
+	} else {
+		logging.Errorf("%s Undeploying function: %s because of OnDeploy failure", logPrefix, appName)
+		settings["deployment_status"] = false
+		s.CleanupOnDeployTimers(appName, false)
+	}
+	settings["processing_status"] = false
+
+	settingsData, err := json.MarshalIndent(settings, "", " ")
+	if err != nil {
+		logging.Errorf("%s Function: %s failed to marshal settings, err: %v", logPrefix, appName, err)
+		return
+	}
+	s.serviceMgr.SetSettings(appName, settingsData, false)
 }

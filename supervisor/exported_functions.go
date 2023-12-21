@@ -2,7 +2,11 @@ package supervisor
 
 import (
 	"fmt"
+	mcd "github.com/couchbase/eventing/dcp/transport"
 	"net"
+	"sort"
+	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -76,6 +80,20 @@ func (s *SuperSupervisor) GetDeployedApps() map[string]string {
 	}
 
 	return deployedApps
+}
+
+func (s *SuperSupervisor) GetUndeployedApps() []string {
+	s.appListRWMutex.RLock()
+	defer s.appListRWMutex.RUnlock()
+
+	undeployedApps := make([]string, 0)
+	for appName, dStatus := range s.appDeploymentStatus {
+		if pStatus, pOk := s.appProcessingStatus[appName]; pOk && !dStatus && !pStatus {
+			undeployedApps = append(undeployedApps, appName)
+		}
+	}
+
+	return undeployedApps
 }
 
 // GetLatencyStats dumps stats from cpp world
@@ -459,8 +477,14 @@ func (s *SuperSupervisor) StopProducer(appName string, msg common.UndeployAction
 
 	s.deleteFromLocallyDeployedApps(appName)
 
+	s.removePauseTimestampDoc(appName)
+
 	s.cleanupProducer(appName, msg)
 	s.deleteFromDeployedApps(appName)
+
+	s.metadataHandleMutex.Lock()
+	defer s.metadataHandleMutex.Unlock()
+	delete(s.appToMetadataHandle, appName)
 }
 
 func (s *SuperSupervisor) addToDeployedApps(appName string) {
@@ -808,4 +832,356 @@ func (s *SuperSupervisor) UpdateEncryptionLevel(enforceTLS, encryptOn bool) {
 
 func (s *SuperSupervisor) GetSystemMemoryQuota() float64 {
 	return s.systemMemLimit * memQuotaThreshold
+}
+
+func (s *SuperSupervisor) ReadOnDeployDoc(appName string) (nodeLeader, restPort, onDeployStatus string) {
+	return s.readOnDeployDoc(appName)
+}
+
+func (s *SuperSupervisor) RemoveOnDeployLeader(appName string) {
+	s.removeOnDeployLeader(appName)
+}
+
+func (s *SuperSupervisor) WritePauseTimestamp(appName string, timestamp time.Time) {
+	s.writePauseTimestamp(appName, timestamp)
+}
+
+func (s *SuperSupervisor) RemovePauseTimestampDoc(appName string) {
+	s.removePauseTimestampDoc(appName)
+}
+
+func (s *SuperSupervisor) PublishOnDeployStatus(appName string, stat string) {
+	const logPrefix string = "SuperSupervisor::PublishOnDeployStatus"
+
+	upsertOptions := &gocb.UpsertSpecOptions{CreatePath: true}
+	mutateIn := []gocb.MutateInSpec{gocb.UpsertSpec("on_deploy_status", stat, upsertOptions)}
+
+	s.metadataHandleMutex.RLock()
+	defer s.metadataHandleMutex.RUnlock()
+
+	metadataHandle, ok := s.appToMetadataHandle[appName]
+	if !ok {
+		logging.Errorf("%s [%s] Failed to fetch metadata handle", logPrefix, s.uuid)
+		return
+	}
+
+	_, err := metadataHandle.MutateIn(appName+"::onDeployLeader", mutateIn, &gocb.MutateInOptions{PreserveExpiry: true})
+	if err != nil {
+		logging.Errorf("%s Could not update OnDeploy status: %v", logPrefix, err)
+	}
+}
+
+func (s *SuperSupervisor) WriteOnDeployMsgBuffer(appName, msg string) {
+	s.onDeployMsgBuffer[appName] = append(s.onDeployMsgBuffer[appName], msg)
+}
+
+func (s *SuperSupervisor) GetOnDeployMsgBuffer(appName string) []string {
+	return s.onDeployMsgBuffer[appName]
+}
+
+func (s *SuperSupervisor) ClearOnDeployMsgBuffer(appName string) {
+	s.onDeployMsgBuffer[appName] = make([]string, 0)
+}
+
+func (s *SuperSupervisor) GetOnDeployStatus(appName string) common.OnDeployState {
+	if val, ok := s.onDeployStatus[appName]; ok {
+		return val
+	}
+	return common.PENDING
+}
+
+func (s *SuperSupervisor) GetPreviousOnDeployStatus(appName string) common.OnDeployState {
+	if val, ok := s.prevOnDeployStatus[appName]; ok {
+		return val
+	}
+	return common.PENDING
+}
+
+func (s *SuperSupervisor) UpdateFailedOnDeployStatus(appName string) {
+	s.updateFailedOnDeployStatus(appName)
+}
+
+// CleanupOnDeployTimers removes the timer related documents from the metadata bucket of the eventing function during OnDeploy failure
+func (s *SuperSupervisor) CleanupOnDeployTimers(appName string, skipCheckpointBlobs bool) error {
+	const logPrefix string = "SuperSupervisor::CleanupOnDeployTimers"
+
+	_, metadataKeyspace, _, _ := s.getSourceMetaAndFunctionKeySpaces(appName)
+
+	hostAddress := net.JoinHostPort(util.Localhost(), s.gocbGlobalConfigHandle.nsServerPort)
+
+	metaBucketNodeCount := util.CountActiveKVNodes(metadataKeyspace.BucketName, hostAddress)
+	if metaBucketNodeCount == 0 {
+		logging.Infof("%s [%s] MetaBucketNodeCount: %d exiting",
+			logPrefix, appName, metaBucketNodeCount)
+		return nil
+	}
+
+	eventingNodeAddr, err := util.CurrentEventingNodeAddress(hostAddress)
+	if err != nil {
+		logging.Errorf("%s [%s] Failed to get address for current eventing node, err: %v",
+			logPrefix, appName, err)
+		return err
+	}
+
+	numVbuckets := s.GetNumVbucketsForBucket(metadataKeyspace.BucketName)
+	vbsToCleanup := make([]uint16, 0, numVbuckets)
+	for i := 0; i < numVbuckets; i++ {
+		vbsToCleanup = append(vbsToCleanup, uint16(i))
+	}
+
+	logging.Infof("%s [%s] Eventing node: %s vbs to cleanup len: %d dump: %s",
+		logPrefix, appName, eventingNodeAddr, len(vbsToCleanup), util.Condense(vbsToCleanup))
+
+	undeployRoutineCount := util.CPUCount(true)
+	vbsDistribution := util.VbucketNodeAssignment(vbsToCleanup, undeployRoutineCount)
+
+	s.CheckAndSwitchgocbBucket(metadataKeyspace.BucketName, appName, s.GetSecuritySetting())
+	err = s.updateMetadataHandle(appName, metadataKeyspace)
+	if err != nil {
+		logging.Warnf("%s [%s] Failed to refresh meta data handle during cleanup, using the existing handle. Err: %v", logPrefix, appName, err)
+	}
+
+	var undeployWG sync.WaitGroup
+	undeployWG.Add(undeployRoutineCount)
+
+	for i := 0; i < undeployRoutineCount; i++ {
+		go s.CleanupOnDeployTimersImpl(i, vbsDistribution[i], &undeployWG, skipCheckpointBlobs, appName)
+	}
+
+	undeployWG.Wait()
+	return nil
+}
+
+func (s *SuperSupervisor) CleanupOnDeployTimersImpl(id int, vbsToCleanup []uint16, undeployWG *sync.WaitGroup, skipCheckpointBlobs bool, appName string) error {
+	const logPrefix string = "SuperSupervisor::CleanupOnDeployTimersImpl"
+	defer undeployWG.Done()
+
+	sort.Sort(util.Uint16Slice(vbsToCleanup))
+	logging.Infof("%s [%s:id_%d] vbs to cleanup len: %d dump: %s",
+		logPrefix, appName, id, len(vbsToCleanup), util.Condense(vbsToCleanup))
+
+	_, metadataKeyspace, _, _ := s.getSourceMetaAndFunctionKeySpaces(appName)
+	metaKeyspaceID, err := s.GetKeyspaceID(metadataKeyspace.BucketName, metadataKeyspace.ScopeName, metadataKeyspace.CollectionName)
+	if err != nil {
+		logging.Errorf("%s [%s] metadata bucket, scope or collection not found %v", logPrefix, appName, err)
+		return err
+	}
+	identity, _ := common.GetIdentityFromLocation(appName)
+	functionID, err := s.getFunctionId(identity)
+	if err == util.AppNotExist {
+		return err
+	}
+
+	err = util.Retry(util.NewFixedBackoff(time.Second), &s.retryCount, getKVNodesAddressesOpCallback, s, metadataKeyspace.BucketName, appName)
+	if err == common.ErrRetryTimeout {
+		logging.Errorf("%s [%s:id_%d] Exiting due to timeout", logPrefix, appName, id)
+		return err
+	}
+
+	b, err := s.GetBucket(metadataKeyspace.BucketName, appName)
+	if err != nil {
+		logging.Errorf("%s appName: %s Error in getting metadata bucket %s err: %s", logPrefix, appName, metadataKeyspace.BucketName, err)
+		return err
+	}
+
+	dcpConfig, _ := s.getDCPconfig(appName)
+
+	var dcpFeed *couchbase.DcpFeed
+	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &s.retryCount, initCleanStaleTimersCallback, s, &b, &dcpFeed, id, appName, dcpConfig)
+	if err == common.ErrRetryTimeout {
+		logging.Errorf("%s [%s:id_%d] Exiting due to timeout", logPrefix, appName, id)
+		return err
+	}
+
+	logging.Infof("%s [%s:id_%d] Started up dcpfeed to cleanup artifacts from metadata bucket: %s",
+		logPrefix, appName, id, metadataKeyspace.BucketName)
+
+	nsServerHostPort := net.JoinHostPort(util.Localhost(), s.gocbGlobalConfigHandle.nsServerPort)
+	var vbSeqnos []uint64
+	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &s.retryCount, util.GetSeqnos, nsServerHostPort,
+		// No need to protect metaKeyspaceID since its updated only once
+		"default", metadataKeyspace.BucketName, metaKeyspaceID, &vbSeqnos, false)
+	if err == common.ErrRetryTimeout {
+		logging.Errorf("%s [%s:id_%d] Exiting due to timeout", logPrefix, appName, id)
+		return err
+	}
+
+	vbSeqNos := make(map[uint16]uint64)
+	for vb, seqNo := range vbSeqnos {
+		vbSeqNos[uint16(vb)] = seqNo
+	}
+
+	cleanupVbs := make(map[uint16]bool)
+	for _, vb := range vbsToCleanup {
+		cleanupVbs[vb] = true
+	}
+
+	vbs := make([]uint16, 0)
+	for vb := range vbSeqNos {
+		if cleanupVbs[vb] {
+			vbs = append(vbs, vb)
+		}
+	}
+
+	sort.Sort(util.Uint16Slice(vbs))
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	defer wg.Wait()
+
+	rw := &sync.RWMutex{}
+	receivedVbSeqNos := make(map[uint16]uint64)
+
+	go func(b *couchbase.Bucket, dcpFeed *couchbase.DcpFeed, wg *sync.WaitGroup,
+		receivedVbSeqNos map[uint16]uint64, rw *sync.RWMutex) {
+		defer wg.Done()
+
+		prefix := common.NewKey(s.getUserPrefix(appName), fmt.Sprint(functionID), "").GetPrefix()
+		var operr error
+		for {
+			select {
+			case e, ok := <-dcpFeed.C:
+				if ok == false {
+					logging.Infof("%s [%s:id_%d] Exiting metadata cleanup routine, mutations till high vb seqnos received",
+						logPrefix, appName, id)
+					return
+				}
+
+				rw.Lock()
+				receivedVbSeqNos[e.VBucket] = e.Seqno
+				rw.Unlock()
+
+				switch e.Opcode {
+				case mcd.DCP_MUTATION:
+					docID := string(e.Key)
+					if strings.HasPrefix(docID, prefix) {
+						if skipCheckpointBlobs && strings.Contains(docID, "::vb::") {
+							continue
+						}
+						err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &s.retryCount, deleteOpCallback, s, docID, &operr, appName, metadataKeyspace.BucketName)
+						if err == common.ErrRetryTimeout {
+							logging.Errorf("%s [%s:id_%d] Exiting due to timeout",
+								logPrefix, appName, id)
+							return
+						} else if operr == common.ErrEncryptionLevelChanged {
+							continue
+						}
+					}
+
+				case mcd.DCP_STREAMREQ:
+					if e.Status != mcd.SUCCESS {
+						logging.Infof("%s [%s:id_%d] vb: %d STREAMREQ wasn't successful. feed: %s status: %v",
+							logPrefix, appName, id, e.VBucket, dcpFeed.GetName(), e.Status)
+
+						rw.Lock()
+						// Setting it to high value to bail out routine waiting for
+						// received_seq_no >= high_seq_no_at_feed_spawn
+						receivedVbSeqNos[e.VBucket] = uint64(0xFFFFFFFFFFFFFFFF)
+						rw.Unlock()
+					}
+
+				case mcd.DCP_STREAMEND:
+					logging.Infof("%s [%s:id_%d] vb: %d got STREAMEND, feed: %s",
+						logPrefix, appName, id, e.VBucket, dcpFeed.GetName())
+
+					rw.Lock()
+					receivedVbSeqNos[e.VBucket] = uint64(0xFFFFFFFFFFFFFFFF)
+					rw.Unlock()
+
+				case mcd.DCP_SYSTEM_EVENT, mcd.DCP_SEQNO_ADVANCED:
+
+				}
+			}
+		}
+	}(b, dcpFeed, &wg, receivedVbSeqNos, rw)
+
+	var flogs couchbase.FailoverLog
+	err = util.Retry(util.NewFixedBackoff(bucketOpRetryInterval), &s.retryCount, getFailoverLogOpCallback, appName, &b, &flogs, vbs, dcpConfig)
+	if err == common.ErrRetryTimeout {
+		logging.Errorf("%s [%s:id_%d] Exiting due to timeout", logPrefix, appName, id)
+		dcpFeed.Close()
+		return err
+	}
+	keyspaceExist := true
+
+	logging.Infof("%s [%s:id_%d] Going to start DCP streams from metadata bucket: %s, vbs len: %d dump: %s",
+		logPrefix, appName, id, metadataKeyspace.BucketName, len(vbs), util.Condense(vbs))
+
+	for vb, flog := range flogs {
+		if !cleanupVbs[vb] {
+			continue
+		}
+
+		vbuuid, _, _ := flog.Latest()
+
+		logging.Debugf("%s [%s:id_%d] vb: %d starting DCP feed",
+			logPrefix, appName, id, vb)
+
+		util.Retry(util.NewFixedBackoff(time.Second), &s.retryCount, openDcpStreamFromZero, dcpFeed, vb, vbuuid, s, id, vbSeqNos[vb], &keyspaceExist, metadataKeyspace, appName)
+		if !keyspaceExist {
+			// No need to update receivedVbSeqNos since metadata keyspace is already deleted.
+			logging.Infof("%s [%s:id_%d] vb: %d Exiting cleanup routine due to keyspace delete",
+				logPrefix, appName, id, vb)
+			dcpFeed.Close()
+			return nil
+		}
+	}
+
+	ticker := time.NewTicker(10 * time.Second)
+
+	wg.Add(1)
+
+	go func(wg *sync.WaitGroup, dcpFeed *couchbase.DcpFeed) {
+		defer wg.Done()
+
+		for {
+			select {
+			case <-ticker.C:
+				receivedVbs := make([]uint16, 0)
+				rw.RLock()
+				for vb := range receivedVbSeqNos {
+					receivedVbs = append(receivedVbs, vb)
+				}
+				rw.RUnlock()
+
+				sort.Sort(util.Uint16Slice(receivedVbs))
+				sort.Sort(util.Uint16Slice(vbs))
+
+				if len(receivedVbs) < len(vbs) {
+					logging.Infof("%s [%s:id_%d] Received vbs len: %d dump: %s vbs to cleanup len: %d dump: %s",
+						logPrefix, appName, id, len(receivedVbs), util.Condense(receivedVbs),
+						len(vbs), util.Condense(vbs))
+					continue
+				}
+
+				receivedAllMutations := true
+
+				rw.RLock()
+				for vb, seqNo := range vbSeqNos {
+					if !cleanupVbs[vb] {
+						continue
+					}
+
+					if receivedVbSeqNos[vb] < seqNo {
+						receivedAllMutations = false
+						break
+					}
+				}
+				rw.RUnlock()
+
+				if !receivedAllMutations {
+					continue
+				}
+
+				dcpFeed.Close()
+				logging.Infof("%s [%s:id_%d] Closed dcpFeed spawned for cleaning up metadata bucket artifacts",
+					logPrefix, appName, id)
+
+				ticker.Stop()
+				return
+			}
+		}
+	}(&wg, dcpFeed)
+
+	return nil
 }

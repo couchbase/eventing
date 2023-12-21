@@ -543,6 +543,9 @@ void AppWorker::RouteMessageWithResponse(
                 << " Opcode: " << worker_msg->header.opcode << std::endl;
 
   switch (getEvent(worker_msg->header.event)) {
+  case event_type::eOnDeploy:
+      workers_[0]->PushBack(std::move(worker_msg));
+      break;
   case event_type::eV8_Worker:
     switch (getV8WorkerOpcode(worker_msg->header.opcode)) {
     case v8_worker_opcode::oInit:
@@ -671,6 +674,10 @@ void AppWorker::RouteMessageWithResponse(
       LOG(logDebug) << "Responding with insight " << resp_msg_->msg
                     << std::endl;
       break;
+
+    case v8_worker_opcode::oGetOnDeployStats:
+       SendOnDeployAck();
+       break;
 
     case v8_worker_opcode::oGetFailureStats:
       LOG(logTrace) << "v8worker failure stats : " << GetFailureStats()
@@ -1264,6 +1271,21 @@ void AppWorker::SendPauseAck(
   }
   resp_msg_->msg.assign(lps_list.dump());
   resp_msg_->msg_type = resp_msg_type::mPauseAck;
+  msg_priority_ = true;
+}
+
+void AppWorker::SendOnDeployAck() {
+  nlohmann::json on_deploy_ack;
+  std::string on_deploy_status = "Pending";
+  OnDeployState current_state = on_deploy_stat.load();
+  if(current_state == OnDeployState::FINISHED)
+    on_deploy_status = "Finished";
+  else if(current_state == OnDeployState::FAILED)
+    on_deploy_status = "Failed";
+  on_deploy_ack["on_deploy_status"] = on_deploy_status;
+  std::cerr << "AppWorker::SendOnDeployAck The status for OnDeploy: " << on_deploy_status << std::endl;
+  resp_msg_->msg.assign(on_deploy_ack.dump());
+  resp_msg_->msg_type = resp_msg_type::mOnDeployAck;
   msg_priority_ = true;
 }
 

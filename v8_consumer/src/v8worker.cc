@@ -68,6 +68,8 @@ std::atomic<int64_t> enqueued_timer_msg_counter = {0};
 
 std::atomic<int64_t> timer_callback_missing_counter = {0};
 
+std::atomic<OnDeployState> on_deploy_stat = {OnDeployState::PENDING};
+
 void V8Worker::SetCouchbaseNamespace() {
   v8::EscapableHandleScope handle_scope(isolate_);
 
@@ -721,6 +723,7 @@ V8Worker::~V8Worker() {
   context_.Reset();
   on_update_.Reset();
   on_delete_.Reset();
+  on_deploy_.Reset();
   delete settings_;
   delete worker_queue_;
   delete timer_store_;
@@ -850,7 +853,13 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
     return kToLocalFailed;
   }
 
-  if (!on_update_def->IsFunction() && !on_delete_def->IsFunction()) {
+  v8::Local<v8::Value> on_deploy_def;
+  if (!TO_LOCAL(global->Get(context, v8Str(isolate_, "OnDeploy")),
+                  &on_deploy_def)) {
+    return kToLocalFailed;
+  }
+
+  if (!on_update_def->IsFunction() && !on_delete_def->IsFunction() && !on_deploy_def->IsFunction()) {
     return kNoHandlersDefined;
   }
 
@@ -862,6 +871,11 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
   if (on_delete_def->IsFunction()) {
     auto on_delete_fun = on_delete_def.As<v8::Function>();
     on_delete_.Reset(isolate_, on_delete_fun);
+  }
+
+  if (on_deploy_def->IsFunction()) {
+    auto on_deploy_fun = on_deploy_def.As<v8::Function>();
+    on_deploy_.Reset(isolate_, on_deploy_fun);
   }
 
   for (auto &binding : bucket_bindings_) {
@@ -932,6 +946,9 @@ void V8Worker::RouteMessage() {
     event_processing_ongoing_.store(true);
     const auto evt = getEvent(msg->header.event);
     switch (evt) {
+    case event_type::eOnDeploy:
+      HandleDeployEvent(msg);
+      break;
     case event_type::eDCP: {
       const auto dcpOpcode = getDCPOpcode(msg->header.opcode);
       switch (dcpOpcode) {
@@ -1165,6 +1182,16 @@ void V8Worker::HandleMutationEvent(const std::unique_ptr<WorkerMessage> &msg) {
 
   SendUpdate(doc->value()->str(), msg->header.metadata, doc->xattr()->str(),
              doc->is_binary());
+}
+
+void V8Worker::HandleDeployEvent(const std::unique_ptr<WorkerMessage> &msg) {
+  const auto payload = flatbuf::payload::GetPayload(
+      static_cast<const void *>(msg->payload.payload.c_str()));
+  int return_code = SendDeploy(payload->action()->str(), payload->delay());
+  if(return_code == kSuccess)
+    on_deploy_stat = OnDeployState::FINISHED;
+  else
+    on_deploy_stat = OnDeployState::FAILED;
 }
 
 void V8Worker::HandleNoOpEvent(const std::unique_ptr<WorkerMessage> &msg) {
@@ -1497,6 +1524,84 @@ int V8Worker::SendDelete(const std::string &options, const std::string &meta) {
 
   UpdateHistogram(start_time);
   on_delete_success++;
+  return kSuccess;
+}
+
+int V8Worker::SendDeploy(const std::string &reason, const int64_t &delay) {
+  const auto start_time = Time::now();
+
+  v8::Locker locker(isolate_);
+  v8::Isolate::Scope isolate_scope(isolate_);
+  v8::HandleScope handle_scope(isolate_);
+
+  auto context = context_.Get(isolate_);
+  v8::Context::Scope context_scope(context);
+
+  v8::TryCatch try_catch(isolate_);
+
+  v8::Local<v8::Value> args[1];
+
+  v8::Local<v8::Object> action_object = v8::Object::New(isolate_);
+  v8::Local<v8::String> reason_v8str_value = v8Str(isolate_, reason.c_str());
+  v8::Local<v8::Number> delay_v8_value = v8::Number::New(isolate_, static_cast<double>(delay));
+
+  bool success = false;
+  if(!TO(action_object->Set(context, v8Str(isolate_, "reason"), reason_v8str_value), &success) || !success) {
+    LOG(logError) << "Failed to add reason field in action object for OnDeploy" << std::endl;
+    return kToLocalFailed;
+  }
+
+  if(!TO(action_object->Set(context, v8Str(isolate_, "delay"), delay_v8_value), &success) || !success) {
+    LOG(logError) << "Failed to add delay field in action object for OnDeploy" << std::endl;
+    return kToLocalFailed;
+  }
+
+  args[0] = action_object;
+
+  if (on_deploy_.IsEmpty()) {
+    LOG(logInfo) << "Content for OnDeploy handler is empty, returning success" << std::endl;
+    return kSuccess;
+  }
+
+  if (try_catch.HasCaught()) {
+    auto emsg = ExceptionString(isolate_, context, &try_catch);
+    LOG(logError) << "OnDeploy Exception: " << emsg << std::endl;
+    CodeInsight::Get(isolate_).AccumulateException(try_catch);
+    ExceptionInsight::Get(isolate_).AccumulateException(try_catch);
+  }
+
+  if (debugger_started_) {
+    if (!agent_->IsStarted()) {
+      agent_->Start(isolate_, platform_, src_path_.c_str());
+    }
+
+    agent_->PauseOnNextJavascriptStatement("Break on start");
+    return DebugExecute("OnDeploy", args, 1) ? kSuccess : kOnDeployCallFail;
+  }
+
+  v8::Handle<v8::Value> result;
+  timed_out_ = false;
+  auto on_deploy_fun = on_deploy_.Get(isolate_);
+  execute_start_time_ = Time::now();
+  UnwrapData(isolate_)->is_executing_ = true;
+  if (!TO_LOCAL(on_deploy_fun->Call(context, context->Global(), 1, args),
+                &result)) {
+    LOG(logError) << "Error executing on_deploy_fun\n";
+  }
+  UnwrapData(isolate_)->is_executing_ = false;
+  auto query_mgr = UnwrapData(isolate_)->query_mgr;
+  query_mgr->ClearQueries();
+
+  if (try_catch.HasCaught()) {
+    auto emsg = ExceptionString(isolate_, context, &try_catch, false, timed_out_);
+    LOG(logError) << "OnDeploy Exception: " << emsg << std::endl;
+    UpdateHistogram(execute_start_time_);
+    CodeInsight::Get(isolate_).AccumulateException(try_catch, false, timed_out_);
+    ExceptionInsight::Get(isolate_).AccumulateException(try_catch, false, timed_out_);
+    return kOnDeployCallFail;
+  }
+
+  UpdateHistogram(start_time);
   return kSuccess;
 }
 

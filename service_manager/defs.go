@@ -23,7 +23,8 @@ const (
 const (
 	metakvEventingPath       = "/eventing/"
 	metakvAppsPath           = metakvEventingPath + "apps/"
-	metakvAppSettingsPath    = metakvEventingPath + "appsettings/"     // function settings
+	metakvAppSettingsPath    = metakvEventingPath + "appsettings/" // function settings
+	metakvOnDeployPath       = metakvEventingPath + "ondeploy/"
 	metakvConfigKeepNodes    = metakvEventingPath + "config/keepNodes" // Store list of eventing keepNodes
 	metakvConfigPath         = metakvEventingPath + "settings/config"  // global settings
 	metakvRebalanceTokenPath = metakvEventingPath + "rebalanceToken/"

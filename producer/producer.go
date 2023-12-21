@@ -267,6 +267,12 @@ func (p *Producer) Serve() {
 	p.isBootstrapping = false
 	logging.Infof("%s [%s:%d] Bootstrapping status: %t", logPrefix, p.appName, p.LenRunningConsumers(), p.isBootstrapping)
 
+	onDeployMsgList := p.superSup.GetOnDeployMsgBuffer(p.app.AppLocation)
+	for _, msg := range onDeployMsgList {
+		p.WriteAppLog(msg)
+	}
+	p.superSup.ClearOnDeployMsgBuffer(p.app.AppLocation)
+
 	go p.updateStats()
 
 	// Inserting twice because producer can be stopped either because of pause/undeploy
@@ -1059,6 +1065,8 @@ func (p *Producer) UsingTimer() bool {
 func (p *Producer) pauseProducer() error {
 	p.isPausing = true
 
+	p.superSup.WritePauseTimestamp(p.app.AppLocation, time.Now())
+
 	for _, c := range p.getConsumers() {
 		c.PauseConsumer()
 		c.ResetBootstrapDone()
@@ -1149,6 +1157,7 @@ func (p *Producer) resumeProducer() error {
 	p.initWorkerVbMap()
 	p.isPlannerRunning = false
 
+	p.superSup.RemovePauseTimestampDoc(p.app.AppLocation)
 	p.startBucket()
 
 	p.bootstrapFinishCh <- struct{}{}
@@ -1158,6 +1167,11 @@ func (p *Producer) resumeProducer() error {
 	for i := len(p.notifyInitCh); i < 2; i++ {
 		p.notifyInitCh <- struct{}{}
 	}
+	onDeployMsgList := p.superSup.GetOnDeployMsgBuffer(p.app.AppLocation)
+	for _, msg := range onDeployMsgList {
+		p.WriteAppLog(msg)
+	}
+	p.superSup.ClearOnDeployMsgBuffer(p.app.AppLocation)
 	return nil
 }
 

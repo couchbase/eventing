@@ -190,8 +190,15 @@ enum RETURN_CODE {
   kFailedInitBucketHandle,
   kOnUpdateCallFail,
   kOnDeleteCallFail,
+  kOnDeployCallFail,
   kToLocalFailed,
   kJSONParseFailed
+};
+
+enum class OnDeployState {
+  PENDING,
+  FINISHED,
+  FAILED
 };
 
 class BucketBinding;
@@ -210,6 +217,7 @@ extern std::atomic<int64_t> on_update_success;
 extern std::atomic<int64_t> on_update_failure;
 extern std::atomic<int64_t> on_delete_success;
 extern std::atomic<int64_t> on_delete_failure;
+extern std::atomic<OnDeployState> on_deploy_stat;
 extern std::atomic<int64_t> no_op_counter;
 extern std::atomic<int64_t> timer_callback_success;
 extern std::atomic<int64_t> timer_callback_failure;
@@ -274,6 +282,7 @@ public:
   int SendUpdate(const std::string &value, const std::string &meta,
                  const std::string &xattr, bool is_binary);
   int SendDelete(const std::string &value, const std::string &meta);
+  int SendDeploy(const std::string &action, const int64_t &delay);
   void SendTimer(std::string callback, std::string timer_ctx);
   std::string Compile(std::string handler);
 
@@ -347,6 +356,7 @@ public:
   v8::Persistent<v8::Context> context_;
   v8::Persistent<v8::Function> on_update_;
   v8::Persistent<v8::Function> on_delete_;
+  v8::Persistent<v8::Function> on_deploy_;
 
   std::string app_name_;
   std::string bucket_;
@@ -391,6 +401,7 @@ private:
   void HandleMutationEvent(const std::unique_ptr<WorkerMessage> &msg);
   void HandleNoOpEvent(const std::unique_ptr<WorkerMessage> &msg);
   void HandleDeleteCidEvent(const std::unique_ptr<WorkerMessage> &msg);
+  void HandleDeployEvent(const std::unique_ptr<WorkerMessage> &msg);
   std::tuple<bool, bool> IsFilteredEventLocked(bool skip_cid_check,
                                                uint32_t cid, int vb,
                                                uint64_t seq_num);

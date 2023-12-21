@@ -584,6 +584,182 @@ func (c *Consumer) SpawnCompilationWorker(appCode, appContent, appName, eventing
 	return c.compileInfo, nil
 }
 
+func (c *Consumer) SpawnUtilityWorker(appCode, appContent, appName, eventingPort, onDeployReason string, onDeployDelay int64, featureMatrix uint32, isSrcMutationPossible bool, funcScope common.FunctionScope) error {
+	const logPrefix string = "Consumer::SpawnUtilityWorker"
+
+	listener, err := net.Listen("tcp", net.JoinHostPort(util.Localhost(), "0"))
+	if err != nil {
+		logging.Errorf("%s [%s:%s:%d] Utility worker: Failed to listen on tcp port, err: %v",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
+		return err
+	}
+
+	connectedCh := make(chan error, 1)
+
+	go func() {
+		var err error
+		c.conn, err = listener.Accept()
+		if err != nil {
+			logging.Errorf("%s [%s:%s:%d] Utility worker: Error on accept, err: %v",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
+			connectedCh <- err
+			return
+		}
+
+		logging.Infof("%s [%s:%s:%d] Utility worker: got connection: %rs",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), c.conn)
+
+		connectedCh <- nil
+	}()
+
+	_, c.tcpPort, err = net.SplitHostPort(listener.Addr().String())
+	if err != nil {
+		logging.Errorf("%s [%s:%s:%d] Failed to parse address, err: %v",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
+		return err
+	}
+
+	var pid int
+	go func() {
+		user, key := util.LocalKey()
+		executable_img := filepath.Join(filepath.Dir(os.Args[0]), "eventing-consumer")
+
+		cmd := exec.Command(
+			executable_img,
+			appName,
+			"af_inet",
+			c.tcpPort,
+			c.tcpPort,
+			fmt.Sprintf("utility_worker_%s", appName),
+			"1",
+			"1",
+			os.TempDir(),
+			util.GetIPMode(),
+			"true",
+			fmt.Sprint(c.app.FunctionID),
+			c.app.UserPrefix,
+			c.nsServerPort,
+			strconv.Itoa(c.numVbuckets),
+			"",
+			"") // this parameter is not read, for tagging
+
+		cmd.Env = append(os.Environ(),
+			fmt.Sprintf("CBEVT_CALLBACK_USR=%s", user),
+			fmt.Sprintf("CBEVT_CALLBACK_KEY=%s", key))
+
+		outPipe, err := cmd.StdoutPipe()
+		if err != nil {
+			logging.Errorf("%s [%s:%s:%d] Failed to open stdout pipe, err: %v",
+				appName, c.workerName, c.tcpPort, c.Pid(), err)
+			return
+		}
+
+		errPipe, err := cmd.StderrPipe()
+		if err != nil {
+			logging.Errorf("%s [%s:%s:%d] Failed to open stderr pipe, err: %v",
+				appName, c.workerName, c.tcpPort, c.Pid(), err)
+			return
+		}
+
+		inPipe, err := cmd.StdinPipe()
+		if err != nil {
+			logging.Errorf("%s [%s:%s:%d] Failed to open stdin pipe, err: %v",
+				appName, c.workerName, c.tcpPort, c.Pid(), err)
+			return
+		}
+
+		err = cmd.Start()
+		if err != nil {
+			logging.Errorf("%s [%s:%s:%d] Failed to spawn utility worker, err: %v",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
+			inPipe.Close()
+			return
+		}
+		pid = cmd.Process.Pid
+		logging.Infof("%s [%s:%s:%d] Utility worker launched",
+			logPrefix, c.workerName, c.tcpPort, pid)
+
+		bufErr := bufio.NewReader(errPipe)
+		go func(bufErr *bufio.Reader) {
+			defer errPipe.Close()
+			for {
+				msg, _, err := bufErr.ReadLine()
+				if err != nil {
+					logging.Warnf("%s [%s:%s:%d] Failed to read from stderr pipe, err: %v",
+						logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
+					return
+				}
+
+				logging.Infof("%s %s", logPrefix, string(msg))
+			}
+		}(bufErr)
+
+		bufOut := bufio.NewReader(outPipe)
+		go func(bufOut *bufio.Reader) {
+			defer outPipe.Close()
+			for {
+				msg, _, err := bufOut.ReadLine()
+				if err != nil {
+					logging.Warnf("%s [%s:%s:%d] Failed to read from stdout pipe, err: %v",
+						logPrefix, c.workerName, c.tcpPort, c.Pid(), err)
+					return
+				}
+				c.superSup.WriteOnDeployMsgBuffer(appName, string(msg))
+			}
+		}(bufOut)
+
+		err = cmd.Wait()
+		if err.Error() != "signal: killed" {
+			logging.Errorf("%s [%s:%s:%d] utility worker exited with status %v",
+				logPrefix, c.workerName, c.tcpPort, pid, err)
+			return
+		}
+
+		logging.Infof("%s [%s:%s:%d] utility worker exited with status %v",
+			logPrefix, c.workerName, c.tcpPort, pid, err)
+
+	}()
+	if err := <-connectedCh; err != nil {
+		return err
+	}
+	c.sockReader = bufio.NewReader(c.conn)
+
+	c.sendLogLevel(c.logLevel, false)
+	c.sendWorkerThrMap(nil, false)
+	c.sendWorkerThrCount(1, false)
+
+	logging.Infof("%s [%s:%s:%d] Handler headers %v", logPrefix, c.workerName, c.tcpPort, pid, c.handlerHeaders)
+	logging.Infof("%s [%s:%s:%d] Handler footers %v", logPrefix, c.workerName, c.tcpPort, pid, c.handlerFooters)
+
+	payload, pBuilder := c.makeV8InitPayload(appName, funcScope, c.debuggerPort, util.Localhost(), "", eventingPort, "",
+		appContent, c.lcbInstCapacity, c.onDeployTimeout, 10, 10*1000, false, c.timerContextSize, parser.UsingTimer(appCode), isSrcMutationPossible)
+
+	c.sendInitV8Worker(payload, false, pBuilder)
+	c.sendLoadV8Worker(appCode, false)
+	c.sendFeatureMatrix(atomic.LoadUint32(&featureMatrix))
+
+	logging.Infof("%s Reason for OnDeploy: %s with delay: %v", logPrefix, onDeployReason, onDeployDelay)
+
+	c.sendOnDeployEvent(onDeployReason, onDeployDelay)
+
+	go c.readMessageLoop()
+
+	// Polling the leader until OnDeploy finishes execution
+	c.pollOnDeployLeaderStats(appName)
+
+	c.conn.Close()
+	listener.Close()
+
+	err = util.KillProcess(pid)
+	if err != nil {
+		logging.Errorf("%s [%s:%s:%d] Unable to kill C++ worker spawned for OnDeploy, err: %v",
+			logPrefix, c.workerName, c.tcpPort, pid, err)
+		return err
+	}
+
+	return nil
+}
+
 func (c *Consumer) initConsumer(appName string) {
 	c.executionTimeout = 10000
 	c.cursorCheckpointTimeout = 10000
@@ -851,4 +1027,8 @@ func (c *Consumer) SetFeatureMatrix(featureMatrix uint32) {
 	if featureMatrix != atomic.SwapUint32(&c.featureMatrix, featureMatrix) {
 		c.sendFeatureMatrix(featureMatrix)
 	}
+}
+
+func (c *Consumer) GetSuperSup() common.EventingSuperSup {
+	return c.superSup
 }

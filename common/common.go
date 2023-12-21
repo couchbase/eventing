@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/couchbase/cbauth/metakv"
 	"github.com/couchbase/cbauth/service"
@@ -289,6 +290,7 @@ var (
 	ErrRetryTimeout           = errors.New("retry timeout")
 	ErrEncryptionLevelChanged = errors.New("Encryption Level changed during boostrap")
 	ErrHandleEmpty            = errors.New("Bucket handle not initialized")
+	ErrOnDeployFail           = errors.New("OnDeploy execution failed")
 )
 
 // EventingProducer interface to export functions from eventing_producer
@@ -442,6 +444,8 @@ type EventingConsumer interface {
 	GetOwner() *Owner
 
 	SetFeatureMatrix(featureMatrix uint32)
+
+	GetSuperSup() EventingSuperSup
 }
 
 type EventingSuperSup interface {
@@ -461,6 +465,7 @@ type EventingSuperSup interface {
 	GetDcpEventsRemainingToProcess(appName string) uint64
 	GetDebuggerURL(appName string) (string, error)
 	GetDeployedApps() map[string]string
+	GetUndeployedApps() []string
 	GetEventingConsumerPids(appName string) map[string]int
 	GetExecutionStats(appName string) map[string]interface{}
 	GetFailureStats(appName string) map[string]interface{}
@@ -506,6 +511,18 @@ type EventingSuperSup interface {
 	CheckLifeCycleOpsDuringRebalance() bool
 	GetBSCSnapshot() (map[string]map[string][]string, error)
 	GetSystemMemoryQuota() float64
+	ReadOnDeployDoc(string) (string, string, string)
+	RemoveOnDeployLeader(string)
+	PublishOnDeployStatus(string, string)
+	WritePauseTimestamp(string, time.Time)
+	RemovePauseTimestampDoc(appName string)
+	WriteOnDeployMsgBuffer(appName, msg string)
+	GetOnDeployMsgBuffer(appName string) []string
+	ClearOnDeployMsgBuffer(appName string)
+	GetOnDeployStatus(appName string) OnDeployState
+	GetPreviousOnDeployStatus(appName string) OnDeployState
+	UpdateFailedOnDeployStatus(appName string)
+	CleanupOnDeployTimers(appName string, skipCheckpointBlobs bool) error
 
 	WatchBucket(keyspace Keyspace, appName string, mType MonitorType) error
 	UnwatchBucket(keyspace Keyspace, appName string)
@@ -535,6 +552,9 @@ type EventingServiceMgr interface {
 	NotifySupervisorWaitCh()
 	// TODO: Replace it with getting back the whole application.
 	GetFunctionId(id Identity) (uint32, error)
+	GetPreparedApp(appLocation string) Application
+	GetAdminHTTPPort() string
+	SetSettings(appLocation string, data []byte, force bool)
 }
 
 type Config map[string]interface{}
@@ -892,4 +912,25 @@ func DefaultUndeployAction() UndeployAction {
 func (msg UndeployAction) String() string {
 	return fmt.Sprintf("DeleteFunction: %v, SkipMetadataCleanup: %v, UpdateMetakv: %v",
 		msg.DeleteFunction, msg.SkipMetadataCleanup, msg.UpdateMetakv)
+}
+
+type OnDeployState int8
+
+const (
+	PENDING OnDeployState = iota + 1
+	FINISHED
+	FAILED
+)
+
+func (state OnDeployState) String() string {
+	switch state {
+	case PENDING:
+		return "Pending"
+	case FINISHED:
+		return "Finished"
+	case FAILED:
+		return "Failed"
+	default:
+		return fmt.Sprintf("Unknown OnDeployState: %d", state)
+	}
 }

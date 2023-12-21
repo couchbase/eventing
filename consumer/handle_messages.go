@@ -94,6 +94,23 @@ func (c *Consumer) sendWorkerThrCount(thrCount int, sendToDebugger bool) {
 	c.sendMessage(m)
 }
 
+func (c *Consumer) sendOnDeployEvent(action string, delay int64) {
+	header, hBuilder := c.makeOnDeployHeader()
+	payload, pBuilder := c.makeOnDeployPayload(action, delay)
+
+	m := &msgToTransmit{
+		msg: &message{
+			Header:  header,
+			Payload: payload,
+		},
+		prioritize:     true,
+		headerBuilder:  hBuilder,
+		payloadBuilder: pBuilder,
+	}
+
+	c.sendMessage(m)
+}
+
 func (c *Consumer) sendWorkerThrMap(thrPartitionMap map[int][]uint16, sendToDebugger bool) {
 	header, hBuilder := c.makeThrMapHeader()
 
@@ -329,6 +346,21 @@ func (c *Consumer) sendGetLatencyStats() {
 	}
 	c.v8WorkerMessagesProcessed["latency_stats"]++
 	c.msgProcessedRWMutex.Unlock()
+
+	m := &msgToTransmit{
+		msg: &message{
+			Header: header,
+		},
+		sendToDebugger: false,
+		prioritize:     true,
+		headerBuilder:  hBuilder,
+	}
+
+	c.sendMessage(m)
+}
+
+func (c *Consumer) sendGetOnDeployStats() {
+	header, hBuilder := c.makeOnDeployStatsHeader()
 
 	m := &msgToTransmit{
 		msg: &message{

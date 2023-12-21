@@ -610,3 +610,139 @@ func (c *Consumer) updateDcpProcessedMsgs(code mcd.CommandCode) {
 	c.dcpMessagesProcessed[code]++
 	c.msgProcessedRWMutex.Unlock()
 }
+
+type mockOnDeployProducer struct {
+	common.EventingProducer
+	appName string
+}
+
+func (p mockOnDeployProducer) KillAndRespawnEventingConsumer(c common.EventingConsumer) {
+	c.GetSuperSup().UpdateFailedOnDeployStatus(p.appName)
+}
+
+// NewOnDeployConsumer is called by the supervisor elected as the OnDeploy leader for executing OnDeploy of an eventing function
+func NewOnDeployConsumer(s common.EventingSuperSup, settings map[string]interface{}, appName string, functionID uint32, handlerHeaders, handlerFooters []string, numVbuckets int) *Consumer {
+	c := &Consumer{
+		superSup:             s,
+		producer:             mockOnDeployProducer{appName: appName},
+		handlerHeaders:       handlerHeaders,
+		handlerFooters:       handlerFooters,
+		socketWriteBatchSize: 1,
+		cppWorkerThrCount:    1,
+		ipcType:              "af_inet",
+		numVbuckets:          numVbuckets,
+
+		connMutex:            &sync.RWMutex{},
+		msgProcessedRWMutex:  &sync.RWMutex{},
+		sendMsgBufferRWMutex: &sync.RWMutex{},
+		app:                  &common.AppConfig{AppName: appName, FunctionID: functionID},
+
+		v8WorkerMessagesProcessed: make(map[string]uint64),
+
+		builderPool: &sync.Pool{
+			New: func() interface{} {
+				return flatbuffers.NewBuilder(0)
+			},
+		},
+	}
+
+	if val, ok := settings["ondeploy_timeout"]; ok {
+		c.onDeployTimeout = int(val.(float64))
+	} else {
+		c.onDeployTimeout = 60
+	}
+
+	if val, ok := settings["language_compatibility"]; ok {
+		c.languageCompatibility = val.(string)
+	} else {
+		c.languageCompatibility = common.LanguageCompatibility[0]
+	}
+
+	if val, ok := settings["log_level"]; ok {
+		c.logLevel = val.(string)
+	} else {
+		c.logLevel = "INFO"
+	}
+
+	if val, ok := settings["n1ql_consistency"]; ok {
+		c.n1qlConsistency = val.(string)
+	} else {
+		c.n1qlConsistency = "none"
+	}
+
+	if val, ok := settings["n1ql_prepare_all"]; ok {
+		c.n1qlPrepareAll = val.(bool)
+	} else {
+		c.n1qlPrepareAll = false
+	}
+
+	if val, ok := settings["bucket_cache_size"]; ok {
+		c.bucketCacheSize = int64(val.(float64))
+	} else {
+		c.bucketCacheSize = 64 * 1024 * 1024
+	}
+
+	if val, ok := settings["bucket_cache_age"]; ok {
+		c.bucketCacheAge = int64(val.(float64))
+	} else {
+		c.bucketCacheAge = 1000
+	}
+
+	if val, ok := settings["curl_max_allowed_resp_size"]; ok {
+		c.curlMaxAllowedRespSize = int(val.(float64))
+	} else {
+		c.curlMaxAllowedRespSize = 100
+	}
+
+	if val, ok := settings["lcb_retry_count"]; ok {
+		c.lcbRetryCount = int(val.(float64))
+	} else {
+		c.lcbRetryCount = 0
+	}
+
+	if val, ok := settings["lcb_timeout"]; ok {
+		c.lcbTimeout = int(val.(float64))
+	} else {
+		c.lcbTimeout = 5
+	}
+
+	if val, ok := settings["lcb_inst_capacity"]; ok {
+		c.lcbInstCapacity = int(val.(float64))
+	} else {
+		c.lcbInstCapacity = 10
+	}
+
+	if val, ok := settings["user_prefix"]; ok {
+		c.app.UserPrefix = val.(string)
+	} else {
+		c.app.UserPrefix = "eventing"
+	}
+
+	if val, ok := settings["timer_context_size"]; ok {
+		c.timerContextSize = int64(val.(float64))
+	} else {
+		c.timerContextSize = 1024
+	}
+
+	if val, ok := settings["num_timer_partitions"]; ok {
+		c.numTimerPartitions = min(util.RoundUpToNearestPowerOf2(val.(float64)), c.numVbuckets)
+	} else {
+		c.numTimerPartitions = c.numVbuckets
+	}
+
+	c.cppWorkerThrPartitionMap()
+
+	return c
+}
+
+func (c *Consumer) pollOnDeployLeaderStats(appName string) {
+	c.sendGetOnDeployStats()
+	for {
+		_, _, status := c.superSup.ReadOnDeployDoc(appName)
+		if status != common.PENDING.String() {
+			break
+		}
+		c.sendGetOnDeployStats()
+		time.Sleep(1 * time.Second)
+	}
+}

@@ -202,12 +202,12 @@ std::string ConvertToISO8601(std::string timestamp) {
 
 std::string ExceptionString(v8::Isolate *isolate,
                             v8::Local<v8::Context> &context,
-                            v8::TryCatch *try_catch, bool timeout) {
+                            v8::TryCatch *try_catch, bool script_timeout, bool on_deploy_timeout) {
 
   std::ostringstream os;
 
   V8ExceptionInfo v8exception_info =
-      GetV8ExceptionInfo(isolate, context, try_catch, timeout);
+      GetV8ExceptionInfo(isolate, context, try_catch, script_timeout, on_deploy_timeout);
 
   // The actual exception
   if (!v8exception_info.exception.empty()) {
@@ -237,13 +237,17 @@ std::string ExceptionString(v8::Isolate *isolate,
 
 V8ExceptionInfo GetV8ExceptionInfo(v8::Isolate *isolate,
                                    v8::Local<v8::Context> &context,
-                                   v8::TryCatch *try_catch, bool timeout) {
+                                   v8::TryCatch *try_catch, bool script_timeout, bool on_deploy_timeout) {
 
   V8ExceptionInfo v8exception_info;
-  if (timeout) {
+  if (script_timeout) {
     // If function is terminated all the info like line stack trace is lost and
     // will be populated with wrong info Populate the exception and return
     v8exception_info.exception = "function execution timed out";
+    return v8exception_info;
+  }
+  if (on_deploy_timeout) {
+    v8exception_info.exception = "OnDeploy timed out";
     return v8exception_info;
   }
   auto offset = UnwrapData(isolate)->insight_line_offset;

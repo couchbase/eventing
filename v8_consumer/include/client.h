@@ -105,6 +105,8 @@ public:
 
   size_t memory_quota_;
 
+  void SendOnDeployAck();
+
 protected:
   void WriteResponseWithRetry(uv_stream_t *handle,
                               std::vector<uv_buf_t> messages,

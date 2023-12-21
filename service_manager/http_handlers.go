@@ -1816,13 +1816,11 @@ func (m *ServiceMgr) setSettings(appLocation string, data []byte, force bool) (i
 		return
 	}
 
-	metakvPath := metakvAppSettingsPath + appLocation
-	err = util.MetakvSet(metakvPath, data, nil)
-	if err != nil {
-		info.ErrCode = response.ErrSetSettingsPs
-		info.Description = fmt.Sprintf("Function: %s failed to store setting, err: %v", appLocation, err)
-		logging.Errorf("%s %s", logPrefix, info.Description)
-		return
+	if !deploymentStatus || !processingStatus {
+		info = m.undeployTriggerPath(appLocation, data)
+		if info.ErrCode == response.ErrSetSettingsPs {
+			return
+		}
 	}
 
 	// Here function scope and owner won't be changed so no need to check for permissions
@@ -1840,6 +1838,29 @@ func (m *ServiceMgr) setSettings(appLocation string, data []byte, force bool) (i
 	info.Description = fmt.Sprintf("Function: %s stored settings", id)
 	logging.Infof("%s %s", logPrefix, info.Description)
 	return
+}
+
+func (m *ServiceMgr) undeployTriggerPath(appLocation string, data []byte) *response.RuntimeInfo {
+	logPrefix := "ServiceMgr::undeployTriggerPath"
+	info := &response.RuntimeInfo{}
+
+	err := util.MetakvSet(metakvOnDeployPath+appLocation, data, nil)
+	if err != nil {
+		info.ErrCode = response.ErrSetSettingsPs
+		info.Description = fmt.Sprintf("Function: %s failed to trigger ondeploy callback, err: %v", appLocation, err)
+		logging.Errorf("%s %s", logPrefix, info.Description)
+		return info
+	}
+
+	err = util.MetakvSet(metakvAppSettingsPath+appLocation, data, nil)
+	if err != nil {
+		info.ErrCode = response.ErrSetSettingsPs
+		info.Description = fmt.Sprintf("Function: %s failed to store setting, err: %v", appLocation, err)
+		logging.Errorf("%s %s", logPrefix, info.Description)
+		return info
+	}
+
+	return info
 }
 
 func (m *ServiceMgr) parseFunctionPayload(data []byte, fnLocation string) application {
@@ -2411,8 +2432,8 @@ func (m *ServiceMgr) savePrimaryStore(app *application) (info *response.RuntimeI
 	}
 
 	depConfig, dOk := app.Settings["deployment_status"].(bool)
-	processConfig, pOk := app.Settings["deployment_status"].(bool)
-	if dOk && depConfig && pOk && processConfig {
+	processConfig, pOk := app.Settings["processing_status"].(bool)
+	if dOk && depConfig {
 		info = m.checkPermissionWithOwner(*app)
 		if info.ErrCode != response.Ok {
 			return
@@ -2447,7 +2468,7 @@ func (m *ServiceMgr) savePrimaryStore(app *application) (info *response.RuntimeI
 	}
 
 	mhVersion := common.CouchbaseVerMap["mad-hatter"]
-	if dOk && depConfig && pOk && processConfig && m.superSup.GetAppCompositeState(appLocation) == common.AppStatePaused && !m.compareEventingVersion(mhVersion) {
+	if dOk && depConfig && m.superSup.GetAppCompositeState(appLocation) == common.AppStatePaused && !m.compareEventingVersion(mhVersion) {
 		info.ErrCode = response.ErrClusterVersion
 		info.Description = fmt.Sprintf("All eventing nodes in the cluster must be on version %s or higher for using the pause functionality",
 			mhVersion)
@@ -2532,7 +2553,6 @@ func (m *ServiceMgr) savePrimaryStore(app *application) (info *response.RuntimeI
 		n1qlParams = "{ 'consistency': '" + consistency.(string) + "' }"
 	}
 	parsedCode, _ := parser.TranspileQueries(app.AppHandlers, n1qlParams)
-
 	handlerFooters := util.ToStringArray(app.Settings["handler_footers"])
 	compilationInfo, err := c.SpawnCompilationWorker(parsedCode, string(appContent), appLocation, m.adminHTTPPort,
 		handlerHeaders, handlerFooters)
@@ -2572,12 +2592,43 @@ func (m *ServiceMgr) savePrimaryStore(app *application) (info *response.RuntimeI
 		return
 	}
 
-	mkvErr := util.MetakvSet(settingsPath, mData, nil)
-	if mkvErr != nil {
-		info.ErrCode = response.ErrSetSettingsPs
-		info.Description = fmt.Sprintf("Function: %s failed to store updated settings in metakv, err: %v", appLocation, mkvErr)
+	if depConfig && dOk && processConfig && pOk {
+		// Remove OnDeploy document before deployment/resumption of function for a new leader election
+		m.superSup.RemoveOnDeployLeader(appLocation)
+	}
+
+	parsedStmts := parser.GetStatements(parsedCode)
+	parsedStmts.ValidateStructure()
+	usingOnDeploy := parsedStmts.UsingOnDeploy()
+
+	onDeploySettings := util.DeepCopy(settings)
+	onDeploySettings["is_ondeploy_handler_present"] = usingOnDeploy
+
+	oData, oErr := json.MarshalIndent(&onDeploySettings, "", " ")
+	if oErr != nil {
+		info.ErrCode = response.ErrMarshalResp
+		info.Description = fmt.Sprintf("Function: %s failed to marshal ondeploy settings, err: %v", appLocation, oErr)
 		logging.Errorf("%s %s", logPrefix, info.Description)
 		return
+	}
+
+	err = util.MetakvSet(metakvOnDeployPath+appLocation, oData, nil)
+	if err != nil {
+		info.ErrCode = response.ErrSetSettingsPs
+		info.Description = fmt.Sprintf("Function: %s failed to trigger ondeploy callback, err: %v", appLocation, err)
+		logging.Errorf("%s %s", logPrefix, info.Description)
+		return
+	}
+
+	isDeployNextState := common.GetCompositeState(depConfig, processConfig) == common.AppStateEnabled
+	if !isDeployNextState {
+		mkvErr := util.MetakvSet(settingsPath, mData, nil)
+		if mkvErr != nil {
+			info.ErrCode = response.ErrSetSettingsPs
+			info.Description = fmt.Sprintf("Function: %s failed to store updated settings in metakv, err: %v", appLocation, mkvErr)
+			logging.Errorf("%s %s", logPrefix, info.Description)
+			return
+		}
 	}
 
 	wInfo := m.determineWarnings(app, compilationInfo)
@@ -4303,7 +4354,7 @@ func (m *ServiceMgr) statusHandlerImpl(cred cbauth.Creds, appLocation string) (f
 			continue
 		}
 
-		deploymentStatus, processingStatus, err := m.getStatuses(fnLocation)
+		deploymentStatus, processingStatus, onDeploying, err := m.getStatuses(fnLocation)
 		if err != nil {
 			info.ErrCode = response.ErrInvalidConfig
 			info.Description = err.Error()
@@ -4346,11 +4397,10 @@ func (m *ServiceMgr) statusHandlerImpl(cred cbauth.Creds, appLocation string) (f
 					return
 				}
 			}
-			status.CompositeStatus = m.determineStatus(fnLocation, status, appPausingNodesCounter, numEventingNodes, bootstrapStatus)
+			status.CompositeStatus = m.determineStatus(fnLocation, status, appPausingNodesCounter, numEventingNodes, bootstrapStatus, onDeploying)
 		} else {
-			status.CompositeStatus = m.determineStatus(fnLocation, status, appPausingNodesCounter, numEventingNodes, false)
+			status.CompositeStatus = m.determineStatus(fnLocation, status, appPausingNodesCounter, numEventingNodes, false, onDeploying)
 		}
-
 		if _, found := alreadyRedeployedApps[fnLocation]; !found && status.CompositeStatus == "deployed" {
 			status.RedeployRequired = true
 		}
@@ -4379,11 +4429,11 @@ func (m *ServiceMgr) statusHandlerImpl(cred cbauth.Creds, appLocation string) (f
 	return
 }
 
-func (m *ServiceMgr) determineStatus(appLocation string, status appStatus, pausingAppsList map[string]int, numEventingNodes int, bootstrapStatus bool) string {
+func (m *ServiceMgr) determineStatus(appLocation string, status appStatus, pausingAppsList map[string]int, numEventingNodes int, bootstrapStatus bool, onDeploying bool) string {
 	logPrefix := "ServiceMgr::determineStatus"
 
 	if status.DeploymentStatus && status.ProcessingStatus {
-		if !bootstrapStatus && status.NumBootstrappingNodes == 0 && status.NumDeployedNodes == numEventingNodes {
+		if !bootstrapStatus && status.NumBootstrappingNodes == 0 && status.NumDeployedNodes == numEventingNodes && !onDeploying {
 			return "deployed"
 		}
 		return "deploying"
@@ -5526,6 +5576,17 @@ func (m *ServiceMgr) highCardStats() []byte {
 			stats = populate(fmtStr, appName, "dcp_delete_checkpoint_failure", stats, failureStats)
 			stats = populate(fmtStr, appName, "dcp_mutation_checkpoint_failure", stats, failureStats)
 		}
+	}
+
+	undeployedApps := m.superSup.GetUndeployedApps()
+	for _, appName := range undeployedApps {
+		var str string
+		if m.superSup.GetPreviousOnDeployStatus(appName) == common.FAILED {
+			str = fmt.Sprintf(fmtStr, METRICS_PREFIX, "on_deploy_failure", appName, 1)
+		} else {
+			str = fmt.Sprintf(fmtStr, METRICS_PREFIX, "on_deploy_failure", appName, 0)
+		}
+		stats = append(stats, []byte(str)...)
 	}
 	return stats
 }

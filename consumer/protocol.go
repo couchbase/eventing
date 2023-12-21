@@ -26,6 +26,7 @@ const (
 	reservedEvent
 	pauseConsumer
 	configChange
+	onDeployEvent
 )
 
 // This aligns with the `enum class debugger_opcode` in the file `v8_consumer/include/commands.h`
@@ -58,6 +59,7 @@ const (
 	v8WorkerLcbExceptions
 	v8WorkerCurlLatencyStats
 	v8WorkerInsight
+	v8WorkerOnDeployStats
 )
 
 // This aligns with the `enum class dcp_opcode` in the file `v8_consumer/include/commands.h`
@@ -99,6 +101,7 @@ const (
 	bucketOpsResponse
 	bucketOpsFilterAck
 	pauseAck
+	onDeployAck
 )
 
 // This aligns with the `enum class v8_worker_config_opcode` in the file `v8_consumer/include/commands.h`
@@ -113,6 +116,12 @@ const (
 	lcbExceptions
 	curlLatencyStats
 	insight
+)
+
+type onDeployOpcode int8
+
+const (
+	executeOnDeploy onDeployOpcode = iota + 1
 )
 
 type message struct {
@@ -214,6 +223,14 @@ func (c *Consumer) makeThrMemQuotaHeader(meta string) ([]byte, *flatbuffers.Buil
 
 func (c *Consumer) makeConfigChangeHeader(opcode configOpcode, meta string) ([]byte, *flatbuffers.Builder) {
 	return c.makeHeader(configChange, int8(opcode), 0, meta)
+}
+
+func (c *Consumer) makeOnDeployHeader() ([]byte, *flatbuffers.Builder) {
+	return c.makeHeader(onDeployEvent, int8(executeOnDeploy), 0, "")
+}
+
+func (c *Consumer) makeOnDeployStatsHeader() ([]byte, *flatbuffers.Builder) {
+	return c.makeHeader(v8WorkerEvent, int8(v8WorkerOnDeployStats), 0, "")
 }
 
 func (c *Consumer) makeHeader(event eventType, opcode int8, partition int16, meta string) (encodedHeader []byte, builder *flatbuffers.Builder) {
@@ -327,6 +344,22 @@ func (c *Consumer) makeDcpPayload(key, value []byte, xattr []byte, cursors []str
 	payload.PayloadAddValue(builder, valPos)
 	payload.PayloadAddXattr(builder, xattrPos)
 	payload.PayloadAddCursors(builder, cursorsPos)
+
+	payloadPos := payload.PayloadEnd(builder)
+	builder.Finish(payloadPos)
+
+	encodedPayload = builder.FinishedBytes()
+	return
+}
+
+func (c *Consumer) makeOnDeployPayload(actionObj string, delay int64) (encodedPayload []byte, builder *flatbuffers.Builder) {
+	builder = c.getBuilder()
+	action := builder.CreateString(actionObj)
+
+	payload.PayloadStart(builder)
+
+	payload.PayloadAddAction(builder, action)
+	payload.PayloadAddDelay(builder, delay)
 
 	payloadPos := payload.PayloadEnd(builder)
 	builder.Finish(payloadPos)
@@ -605,6 +638,19 @@ func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {
 		for _, ack := range acks {
 			c.filterDataCh <- &ack
 		}
+
+	case int8(onDeployAck):
+		var ack OnDeployAckMsg
+		if err := json.Unmarshal([]byte(msg), &ack); err != nil {
+			logging.Errorf("%s [%s:%s:%d] Failed to unmarshal OnDeploy ack, msg: %v err: %v",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), msg, err)
+			return
+		}
+		if ack.Status != common.PENDING.String() {
+			logging.Infof("%s Received OnDeploy ack for %s with status %s", logPrefix, c.app.AppName, ack.Status)
+			c.superSup.PublishOnDeployStatus(c.app.AppName, ack.Status)
+		}
+
 	default:
 		logging.Infof("%s [%s:%s:%d] Unknown message %s",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), msg)
