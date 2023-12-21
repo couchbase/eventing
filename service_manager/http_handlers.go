@@ -2451,7 +2451,7 @@ func (m *ServiceMgr) savePrimaryStore(app *application) (info *response.RuntimeI
 		return
 	}
 
-	if srcMutationEnabled {
+	if srcMutationEnabled && !m.checkSyncGatewayMutationsAllowed() {
 		keySpace := &common.Keyspace{BucketName: app.DeploymentConfig.SourceBucket,
 			ScopeName:      app.DeploymentConfig.SourceScope,
 			CollectionName: app.DeploymentConfig.SourceCollection,

@@ -1231,3 +1231,19 @@ func (m *ServiceMgr) validateNumberRange(field string, settings map[string]inter
 
 	return
 }
+
+func (m *ServiceMgr) checkSyncGatewayMutationsAllowed() bool {
+	info := &response.RuntimeInfo{}
+
+	var config common.Config
+	if config, info = m.getConfig(); info.ErrCode != response.Ok {
+		return false
+	}
+
+	allowSyncGatewayMutations := false
+	if val, ok := config["allow_sync_gateway_mutations"]; ok {
+		allowSyncGatewayMutations = val.(bool)
+	}
+
+	return allowSyncGatewayMutations
+}
