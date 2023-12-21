@@ -34,7 +34,7 @@ void GetUsernameAndPassword(lcbauth_CREDENTIALS *credentials) {
   auto endpoint = JoinHostPort(host, port);
 
   auto reason = lcbauth_credentials_reason(credentials);
-  if (reason == LCBAUTH_REASON_AUTHENTICATION_FAILURE) {
+  if (reason == LCBAUTH_REASON_AUTHENTICATION_FAILURE || reason == LCBAUTH_REASON_AUTHORIZATION_FAILURE) {
     comm->removeCachedEntry(endpoint);
   }
 
