@@ -309,19 +309,41 @@ func KVNodesAddresses(hostaddress, bucket string) ([]string, error) {
 	return kvNodes, nil
 }
 
-func CollectionAware(hostaddress string) (bool, error) {
+func fetchClusterCompatVersion(hostaddress string) (uint32, uint32, error) {
+	var major, minor uint32
 	cic, err := FetchClusterInfoClient(hostaddress)
 	if err != nil {
-		return false, err
+		return major, minor, err
 	}
 	cinfo := cic.GetClusterInfoCache()
 	cinfo.RLock()
 	defer cinfo.RUnlock()
 
-	ver, _ := cinfo.GetNodeCompatVersion()
+	major, minor = cinfo.GetNodeCompatVersion()
+	return major, minor, nil
+}
+
+func CollectionAware(hostaddress string) (bool, error) {
+	ver, _, err := fetchClusterCompatVersion(hostaddress)
+	if err != nil {
+		return false, err
+	}
 	if ver >= collections.COLLECTION_SUPPORTED_VERSION {
 		return true, nil
 	}
+	return false, nil
+}
+
+func IgnorePurgeSeqFlagAvailable(hostaddress string) (bool, error) {
+	majorVer, minorVer, err := fetchClusterCompatVersion(hostaddress)
+	if err != nil {
+		return false, err
+	}
+
+	if majorVer >= 7 && minorVer >= 2 {
+		return true, nil
+	}
+
 	return false, nil
 }
 

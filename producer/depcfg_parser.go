@@ -459,6 +459,11 @@ func (p *Producer) parseDepcfg() error {
 	if err != nil {
 		logging.Errorf("%s [%s] Failed to cluster collection aware status, err: %v", logPrefix, p.appName, err)
 	}
+
+	p.dcpConfig["ignorePurgedTombstone"], err = util.IgnorePurgeSeqFlagAvailable(p.nsServerHostPort)
+	if err != nil {
+		logging.Errorf("%s [%s] Failed to fetch ignore purge seq flag, err: %v", logPrefix, p.appName, err)
+	}
 	return nil
 }
 
