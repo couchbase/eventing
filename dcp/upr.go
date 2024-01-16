@@ -35,6 +35,8 @@ var ErrorClosed = errors.New("dcp.closed")
 
 const DCP_ADD_STREAM_ACTIVE_VB_ONLY = uint32(0x10) // 16
 
+const DCP_IGNORE_PURGED_TOMBSTONE = uint32(0x80)
+
 // FailoverLog for list of vbuckets.
 type FailoverLog map[uint16]memcached.FailoverLog
 
@@ -154,10 +156,11 @@ type DcpFeed struct {
 	finch     chan bool
 	logPrefix string
 	// config
-	config          map[string]interface{}
-	numConnections  int
-	activeVbOnly    bool
-	collectionAware bool
+	config                map[string]interface{}
+	numConnections        int
+	activeVbOnly          bool
+	collectionAware       bool
+	ignorePurgedTombstone bool
 }
 
 // StartDcpFeed creates and starts a new Dcp feed.
@@ -178,9 +181,10 @@ func (b *Bucket) StartDcpFeed(
 // pass `kvaddrs` as nil
 //
 // configuration parameters,
-//      "genChanSize", buffer channel size for control path.
-//      "dataChanSize", buffer channel size for data path.
-//      "numConnections", number of connections with DCP for local vbuckets.
+//
+//	"genChanSize", buffer channel size for control path.
+//	"dataChanSize", buffer channel size for data path.
+//	"numConnections", number of connections with DCP for local vbuckets.
 func (b *Bucket) StartDcpFeedOver(
 	name DcpFeedName,
 	sequence, flags uint32,
@@ -206,6 +210,7 @@ func (b *Bucket) StartDcpFeedOver(
 	}
 
 	feed.collectionAware = config["collectionAware"].(bool)
+	feed.ignorePurgedTombstone = config["ignorePurgedTombstone"].(bool)
 	feed.numConnections = config["numConnections"].(int)
 	feed.activeVbOnly = config["activeVbOnly"].(bool)
 
@@ -238,6 +243,10 @@ func (feed *DcpFeed) DcpRequestStream(
 	// only request active vbucket
 	if feed.activeVbOnly {
 		flags = flags | DCP_ADD_STREAM_ACTIVE_VB_ONLY
+	}
+
+	if feed.ignorePurgedTombstone {
+		flags = flags | DCP_IGNORE_PURGED_TOMBSTONE
 	}
 
 	respch := make(chan []interface{}, 1)
