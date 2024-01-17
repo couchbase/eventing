@@ -56,7 +56,7 @@ class N1qlController : public QueryController {
 public:
   explicit N1qlController(v8::Isolate *isolate, Query::Info query_info_)
       : QueryController(isolate, std::move(query_info_)) {}
-  ~N1qlController() {}
+  ~N1qlController() { lcb_cmdquery_destroy(cmd_); }
 
   static ::Info ValidateQuery(const v8::FunctionCallbackInfo<v8::Value> &args);
   static Query::Info
@@ -87,7 +87,7 @@ class AnalyticsController : public QueryController {
 public:
   explicit AnalyticsController(v8::Isolate *isolate, Query::Info query_info_)
       : QueryController(isolate, std::move(query_info_)) {}
-  ~AnalyticsController() {}
+  ~AnalyticsController() { lcb_cmdanalytics_destroy(cmd_); }
 
   static ::Info ValidateQuery(const v8::FunctionCallbackInfo<v8::Value> &args);
   static Query::Info
