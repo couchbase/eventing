@@ -1015,6 +1015,7 @@ void V8Worker::HandleDeleteCidEvent(const std::unique_ptr<WorkerMessage> &msg) {
     return;
   }
 
+  std::lock_guard<std::mutex> guard(vbfilter_map_for_cid_lock_);
   auto lock = GetAndLockVbLock(vb);
   auto cidIt = vbfilter_map_for_cid_.find(cid);
   if (cidIt == vbfilter_map_for_cid_.end()) {
@@ -1054,6 +1055,7 @@ std::tuple<bool, bool> V8Worker::IsFilteredEventLocked(bool skip_cid_check,
     return {false, true};
   }
 
+  std::lock_guard<std::mutex> guard(vbfilter_map_for_cid_lock_);
   auto lock = GetAndLockVbLock(vb);
   auto cidIt = vbfilter_map_for_cid_.find(cid);
   if (cidIt == vbfilter_map_for_cid_.end()) {
@@ -1606,6 +1608,8 @@ void V8Worker::UpdateVbFilter(int vb_no, uint64_t seq_no) {
 
 void V8Worker::UpdateDeletedCid(const std::unique_ptr<WorkerMessage> &msg) {
   auto [cid, vb, seq_num, is_valid] = GetCidVbAndSeqNum(msg);
+
+  std::lock_guard<std::mutex> guard(vbfilter_map_for_cid_lock_);
   auto lock = GetAndLockVbLock(vb);
   vbfilter_map_for_cid_[cid][vb] = seq_num;
   lock.unlock();
