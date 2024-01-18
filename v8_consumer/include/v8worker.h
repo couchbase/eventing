@@ -403,6 +403,7 @@ private:
 
   std::vector<std::vector<uint64_t>> vbfilter_map_;
   std::map<uint32_t, std::map<uint16_t, uint64_t>> vbfilter_map_for_cid_;
+  std::mutex vbfilter_map_for_cid_lock_;
   std::vector<uint64_t> *processed_bucketops_;
   std::mutex bucketops_lock_;
 
