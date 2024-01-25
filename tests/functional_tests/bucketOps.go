@@ -217,9 +217,8 @@ func pumpBucketOpsKeyspace(ops opsType, srcKeyspace common.Keyspace, rate *rateL
 			} else {
 
 			retryOp2:
-
 				mutateIn := make([]gocb.MutateInSpec, 0)
-				upsertOptions := &gocb.MutateInOptions{Expiry: time.Duration(ops.expiry)}
+				upsertOptions := &gocb.MutateInOptions{Expiry: time.Duration(ops.expiry), StoreSemantic: gocb.StoreSemanticsUpsert,}
 				upsertSpecOptionsBothSet := &gocb.UpsertSpecOptions{CreatePath: true, IsXattr: true}
 				upsertSpecOptionsNoneSet := &gocb.UpsertSpecOptions{CreatePath: false, IsXattr: false}
 				mutateIn = append(mutateIn, gocb.UpsertSpec(fmt.Sprintf("test_%s", ops.xattrPrefix), "user xattr test value", upsertSpecOptionsBothSet))

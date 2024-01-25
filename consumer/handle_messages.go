@@ -8,6 +8,7 @@ import (
 	"io"
 	"runtime/debug"
 	"strconv"
+	"strings"
 	"sync/atomic"
 
 	"github.com/couchbase/eventing/common"
@@ -487,6 +488,15 @@ func (c *Consumer) sendDeleteCidEvent(cid uint32, partition uint16, seqNo uint64
 	c.sendMessage(msg)
 }
 
+// Remove all the system xattr from map
+func filterXattr(xattr map[string]memcached.XattrVal) {
+	for key, _ := range xattr {
+		if strings.HasPrefix(key, memcached.SystemXattrPrefix) {
+			delete(xattr, key)
+		}
+	}
+}
+
 func (c *Consumer) sendDcpEvent(mKeyspace common.KeyspaceName, e *memcached.DcpEvent, sendToDebugger bool) {
 	m := dcpMetadata{
 		Cas:      strconv.FormatUint(e.Cas, 10),
@@ -509,7 +519,6 @@ func (c *Consumer) sendDcpEvent(mKeyspace common.KeyspaceName, e *memcached.DcpE
 	}
 
 	metadata, err := json.Marshal(&m)
-
 	if err != nil {
 		logging.Errorf("CRHM[%s:%s:%s:%d] key: %ru failed to marshal metadata",
 			c.app.AppLocation, c.workerName, c.tcpPort, c.Pid(), string(e.Key))
@@ -519,8 +528,10 @@ func (c *Consumer) sendDcpEvent(mKeyspace common.KeyspaceName, e *memcached.DcpE
 	var dcpHeader, payload []byte
 	var hBuilder, pBuilder *flatbuffers.Builder
 	if e.Opcode == mcd.DCP_MUTATION {
+		filterXattr(e.Xattr)
+		xattr, _ := json.Marshal(e.Xattr)
 		dcpHeader, hBuilder = c.makeDcpMutationHeader(int16(e.VBucket), string(metadata))
-		payload, pBuilder = c.makeDcpPayload(e.Key, e.Value, isBinary)
+		payload, pBuilder = c.makeDcpPayload(e.Key, e.Value, xattr, isBinary)
 	} else if e.Opcode == mcd.DCP_DELETION || e.Opcode == mcd.DCP_EXPIRATION {
 		optionMap := map[string]interface{}{
 			"expired": e.Opcode == mcd.DCP_EXPIRATION,
@@ -533,7 +544,7 @@ func (c *Consumer) sendDcpEvent(mKeyspace common.KeyspaceName, e *memcached.DcpE
 		}
 
 		dcpHeader, hBuilder = c.makeDcpDeletionHeader(int16(e.VBucket), string(metadata))
-		payload, pBuilder = c.makeDcpPayload(e.Key, options, false)
+		payload, pBuilder = c.makeDcpPayload(e.Key, options, nil, false)
 	}
 
 	msg := &msgToTransmit{

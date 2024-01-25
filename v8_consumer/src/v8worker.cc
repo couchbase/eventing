@@ -1011,7 +1011,8 @@ void V8Worker::HandleMutationEvent(const std::unique_ptr<WorkerMessage> &msg) {
 
   const auto doc = flatbuf::payload::GetPayload(
       static_cast<const void *>(msg->payload.payload.c_str()));
-  SendUpdate(doc->value()->str(), msg->header.metadata, doc->is_binary());
+  SendUpdate(doc->value()->str(), msg->header.metadata, doc->xattr()->str(),
+             doc->is_binary());
 }
 
 void V8Worker::HandleNoOpEvent(const std::unique_ptr<WorkerMessage> &msg) {
@@ -1151,7 +1152,7 @@ void V8Worker::UpdateCurlLatencyHistogram(const Time::time_point &start) {
 }
 
 int V8Worker::SendUpdate(const std::string &value, const std::string &meta,
-                         bool is_binary) {
+                         const std::string &xattr, bool is_binary) {
   const auto start_time = Time::now();
 
   v8::Locker locker(isolate_);
@@ -1164,7 +1165,7 @@ int V8Worker::SendUpdate(const std::string &value, const std::string &meta,
   LOG(logTrace) << "value: " << RU(value) << " meta: " << RU(meta) << std::endl;
   v8::TryCatch try_catch(isolate_);
 
-  v8::Local<v8::Value> args[2];
+  v8::Local<v8::Value> args[on_update_args_count];
   if (is_binary) {
     auto utils = UnwrapData(isolate_)->utils;
     args[0] = utils->ToArrayBuffer(value.c_str(), value.length());
@@ -1172,6 +1173,10 @@ int V8Worker::SendUpdate(const std::string &value, const std::string &meta,
     if (!TO_LOCAL(v8::JSON::Parse(context, v8Str(isolate_, value)), &args[0])) {
       return kToLocalFailed;
     }
+  }
+
+  if (!TO_LOCAL(v8::JSON::Parse(context, v8Str(isolate_, xattr)), &args[2])) {
+    return kToLocalFailed;
   }
 
   if (!TO_LOCAL(v8::JSON::Parse(context, v8Str(isolate_, meta)), &args[1])) {
@@ -1210,7 +1215,7 @@ int V8Worker::SendUpdate(const std::string &value, const std::string &meta,
     }
 
     agent_->PauseOnNextJavascriptStatement("Break on start");
-    return DebugExecute("OnUpdate", args, 2) ? kSuccess : kOnUpdateCallFail;
+    return DebugExecute("OnUpdate", args, on_update_args_count) ? kSuccess : kOnUpdateCallFail;
   }
 
   RetryWithFixedBackoff(std::numeric_limits<int>::max(), 10,
@@ -1222,7 +1227,7 @@ int V8Worker::SendUpdate(const std::string &value, const std::string &meta,
   auto on_doc_update = on_update_.Get(isolate_);
   execute_start_time_ = Time::now();
   UnwrapData(isolate_)->is_executing_ = true;
-  if (!TO_LOCAL(on_doc_update->Call(context, context->Global(), 2, args),
+  if (!TO_LOCAL(on_doc_update->Call(context, context->Global(), on_update_args_count, args),
                 &result)) {
     LOG(logError) << "Error executing on_doc_update \n";
   }
@@ -1258,7 +1263,7 @@ int V8Worker::SendDelete(const std::string &options, const std::string &meta) {
   LOG(logTrace) << " meta: " << RU(meta) << std::endl;
   v8::TryCatch try_catch(isolate_);
 
-  v8::Local<v8::Value> args[2];
+  v8::Local<v8::Value> args[on_delete_args_count];
   if (!TO_LOCAL(v8::JSON::Parse(context, v8Str(isolate_, meta)), &args[0])) {
     return kToLocalFailed;
   }
@@ -1300,7 +1305,7 @@ int V8Worker::SendDelete(const std::string &options, const std::string &meta) {
     }
 
     agent_->PauseOnNextJavascriptStatement("Break on start");
-    return DebugExecute("OnDelete", args, 2) ? kSuccess : kOnDeleteCallFail;
+    return DebugExecute("OnDelete", args, on_delete_args_count) ? kSuccess : kOnDeleteCallFail;
   }
 
   RetryWithFixedBackoff(std::numeric_limits<int>::max(), 10,
@@ -1312,7 +1317,7 @@ int V8Worker::SendDelete(const std::string &options, const std::string &meta) {
   execute_start_time_ = Time::now();
   timed_out_ = false;
   UnwrapData(isolate_)->is_executing_ = true;
-  if (!TO_LOCAL(on_doc_delete->Call(context, context->Global(), 2, args),
+  if (!TO_LOCAL(on_doc_delete->Call(context, context->Global(), on_delete_args_count, args),
                 &result)) {
     LOG(logError) << "Error running the on_doc_delete \n";
   }
@@ -1351,7 +1356,7 @@ void V8Worker::SendTimer(std::string callback, std::string timer_ctx) {
   v8::TryCatch try_catch(isolate_);
 
   v8::Local<v8::Value> timer_ctx_val;
-  v8::Local<v8::Value> arg[1];
+  v8::Local<v8::Value> arg[timer_callback_args_count];
 
   if (timer_ctx == "undefined") {
     arg[0] = v8::Undefined(isolate_);
@@ -1385,7 +1390,7 @@ void V8Worker::SendTimer(std::string callback, std::string timer_ctx) {
     }
 
     agent_->PauseOnNextJavascriptStatement("Break on start");
-    DebugExecute(callback.c_str(), arg, 1);
+    DebugExecute(callback.c_str(), arg, timer_callback_args_count);
   }
 
   RetryWithFixedBackoff(std::numeric_limits<int>::max(), 10,
@@ -1394,7 +1399,7 @@ void V8Worker::SendTimer(std::string callback, std::string timer_ctx) {
   timed_out_ = false;
   execute_start_time_ = Time::now();
   UnwrapData(isolate_)->is_executing_ = true;
-  if (!TO_LOCAL(callback_func->Call(context, callback_func_val, 1, arg),
+  if (!TO_LOCAL(callback_func->Call(context, callback_func_val, timer_callback_args_count, arg),
                 &result)) {
     LOG(logError) << "Error executing the callback function \n";
   }

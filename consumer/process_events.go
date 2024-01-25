@@ -2,7 +2,6 @@ package consumer
 
 import (
 	"bytes"
-	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"runtime"
@@ -1400,14 +1399,12 @@ func (c *Consumer) handleStreamEnd(vBucket uint16, last_processed_seqno uint64) 
 func (c *Consumer) processAndSendDcpDelOrExpMessage(e *cb.DcpEvent, functionInstanceID string, checkRecursiveEvent bool) bool {
 	logPrefix := "Consumer::processAndSendDcpMessage"
 	switch e.Datatype {
-	case uint8(includeXATTRs):
-		xattrLen := binary.BigEndian.Uint32(e.Value[0:4])
+	case uint8(cb.IncludeXATTRs):
 		if c.producer.SrcMutation() && checkRecursiveEvent {
 			if isRecursive, err := c.isRecursiveDCPEvent(e, functionInstanceID); err == nil && isRecursive == true {
 				return false
 			}
 		}
-		e.Value = e.Value[xattrLen+4:]
 		logging.Tracef("%s [%s:%s:%d] Sending key: %ru to be processed by JS handlers",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key))
 		c.sendEvent(e)
@@ -1420,7 +1417,6 @@ func (c *Consumer) processAndSendDcpDelOrExpMessage(e *cb.DcpEvent, functionInst
 func (c *Consumer) sendXattrDoc(e *cb.DcpEvent, functionInstanceID string) {
 	logPrefix := "Consumer::sendXattrDoc"
 
-	xattrLen := binary.BigEndian.Uint32(e.Value[0:4])
 	if c.producer.SrcMutation() {
 		if isRecursive, err := c.isRecursiveDCPEvent(e, functionInstanceID); err == nil && isRecursive == true {
 			c.suppressedDCPMutationCounter++
@@ -1428,14 +1424,12 @@ func (c *Consumer) sendXattrDoc(e *cb.DcpEvent, functionInstanceID string) {
 			logging.Tracef("%s [%s:%s:%d] No IntraHandlerRecursion, sending key: %ru to be processed by JS handlers",
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key))
 			c.dcpMutationCounter++
-			e.Value = e.Value[xattrLen+4:]
 			c.sendEvent(e)
 		}
 	} else {
 		logging.Tracef("%s [%s:%s:%d] Sending key: %ru to be processed by JS handlers",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key))
 		c.dcpMutationCounter++
-		e.Value = e.Value[xattrLen+4:]
 		c.sendEvent(e)
 	}
 }
