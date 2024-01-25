@@ -301,19 +301,21 @@ func (c *Consumer) makeVbMapPayload(assgnedVbs []uint16) (encodedPayload []byte,
 	return
 }
 
-func (c *Consumer) makeDcpPayload(key, value []byte, isBinary bool) (encodedPayload []byte, builder *flatbuffers.Builder) {
+func (c *Consumer) makeDcpPayload(key, value []byte, xattr []byte, isBinary bool) (encodedPayload []byte, builder *flatbuffers.Builder) {
 	builder = c.getBuilder()
 
 	binary := make([]byte, 1)
 	flatbuffers.WriteBool(binary, isBinary)
 	keyPos := builder.CreateByteString(key)
 	valPos := builder.CreateByteString(value)
+	xattrPos := builder.CreateByteString(xattr)
 
 	payload.PayloadStart(builder)
 
 	payload.PayloadAddIsBinary(builder, binary[0])
 	payload.PayloadAddKey(builder, keyPos)
 	payload.PayloadAddValue(builder, valPos)
+	payload.PayloadAddXattr(builder, xattrPos)
 
 	payloadPos := payload.PayloadEnd(builder)
 	builder.Finish(payloadPos)

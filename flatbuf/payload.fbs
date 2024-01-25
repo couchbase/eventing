@@ -63,6 +63,8 @@ table Payload {
 
   bucket:string;
   scope:string;
+
+  xattr:string;
 }
 
 root_type Payload;

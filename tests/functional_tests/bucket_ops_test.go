@@ -18,7 +18,7 @@ func testPumpDoc(itemCount, expectedCount int, bucket string, deleteDoc bool,
 	createAndDeployFunction(t.Name(), handler, settings)
 	waitForDeployToFinish(t.Name())
 
-	pumpBucketOps(opsType{count: itemCount, delete: deleteDoc}, &rateLimit{})
+	pumpBucketOps(opsType{count: itemCount, delete: deleteDoc, writeXattrs: true, xattrPrefix: "xattr"}, &rateLimit{})
 	eventCount := verifyBucketCount(expectedCount, statsLookupRetryCounter, bucket)
 	if expectedCount != eventCount {
 		failAndCollectLogs(t, "For", "TestError",
@@ -559,25 +559,37 @@ func TestMultiColErrorCondition(t *testing.T) {
 }
 
 func TestSubdocOperation(t *testing.T) {
-        const itemCount = 1
+	const itemCount = 1
 
-        pumpBucketOpsSrc(opsType{count: itemCount}, dstBucket, &rateLimit{})
-        setting := &commonSettings{
-                aliasSources:       []string{dstBucket},
-                aliasHandles:       []string{"dst_bucket"},
-                srcMutationEnabled: true,
-        }
-        testPumpDoc(itemCount, 0, dstBucket, false,
-                "subdoc_ops", setting, t)
+	pumpBucketOpsSrc(opsType{count: itemCount}, dstBucket, &rateLimit{})
+	setting := &commonSettings{
+		aliasSources:       []string{dstBucket},
+		aliasHandles:       []string{"dst_bucket"},
+		srcMutationEnabled: true,
+	}
+	testPumpDoc(itemCount, 0, dstBucket, false,
+		"subdoc_ops", setting, t)
 
-        log.Printf("Testing subdoc operation on source bucket")
-        setting = &commonSettings{
-                aliasSources:       []string{srcBucket},
-                aliasHandles:       []string{"dst_bucket"},
-                srcMutationEnabled: true,
-        }
-        testPumpDoc(itemCount, 0, srcBucket, false,
-                "subdoc_ops", setting, t)
+	log.Printf("Testing subdoc operation on source bucket")
+	setting = &commonSettings{
+		aliasSources:       []string{srcBucket},
+		aliasHandles:       []string{"dst_bucket"},
+		srcMutationEnabled: true,
+	}
+	testPumpDoc(itemCount, 0, srcBucket, false,
+		"subdoc_ops", setting, t)
+}
+
+func TestXattrFetchOperation(t *testing.T) {
+	const itemCount = 50
+
+	setting := &commonSettings{
+		aliasSources:       []string{dstBucket},
+		aliasHandles:       []string{"dst_bucket"},
+		srcMutationEnabled: true,
+	}
+	testPumpDoc(itemCount, itemCount, dstBucket, false,
+		"bucket_op_fetch_xattr", setting, t)
 }
 
 func TestUserXattr(t *testing.T) {

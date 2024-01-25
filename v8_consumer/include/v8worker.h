@@ -60,6 +60,10 @@ typedef std::chrono::nanoseconds nsecs;
 
 extern int64_t timer_context_size;
 
+const int on_update_args_count = 3;
+const int on_delete_args_count = 2;
+const int timer_callback_args_count = 1;
+
 using atomic_ptr_t = std::shared_ptr<std::atomic<uint64_t>>;
 // Used for checkpointing of vbucket seq nos
 typedef std::map<int, atomic_ptr_t> vb_seq_map_t;
@@ -246,7 +250,7 @@ public:
   void TaskDurationWatcher();
 
   int SendUpdate(const std::string &value, const std::string &meta,
-                 bool is_binary);
+                 const std::string &xattr, bool is_binary);
   int SendDelete(const std::string &value, const std::string &meta);
   void SendTimer(std::string callback, std::string timer_ctx);
   std::string Compile(std::string handler);
