@@ -1413,7 +1413,7 @@ bool BucketBinding::IsBucketObject(v8::Isolate *isolate,
 
   v8::HandleScope handle_scope(isolate);
 
-  auto binding_id = obj->GetInternalField(InternalFields::kBucketBindingId);
+  auto binding_id = obj->GetInternalField(InternalFields::kBucketBindingId).As<v8::Value>();
   if (binding_id.IsEmpty() || binding_id->IsNullOrUndefined() ||
       !binding_id->IsString()) {
     return false;
