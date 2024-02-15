@@ -172,7 +172,7 @@
              class="block eventing-charts"
              node-name="all"
              mn-title="Charts"
-             item-id="{{app.appname}}"
+             item-id="{{app.function_scope ? app.function_scope.bucket + '/' + app.function_scope.scope + '/' + app.appname : app.appname}}"
              service="eventing"
              prefix="eventing"></mn-detail-stats>
       </section>
