@@ -340,26 +340,26 @@ Bucket::GetWithMeta(MetaData &meta) {
   const auto lcb_timeout = UnwrapData(isolate_)->lcb_timeout;
   const auto max_timeout = UnwrapData(isolate_)->op_timeout;
 
-  lcb_SUBDOCSPECS *specs;
-  lcb_subdocspecs_create(&specs, 3);
+  lcb_SUBDOCSPECS *lcb_specs;
+  lcb_subdocspecs_create(&lcb_specs, 3);
 
   char const *path = "$document.exptime";
-  lcb_subdocspecs_get(specs, 0, LCB_SUBDOCSPECS_F_XATTRPATH, path,
+  lcb_subdocspecs_get(lcb_specs, 0, LCB_SUBDOCSPECS_F_XATTRPATH, path,
                       strlen(path));
 
   char const *path2 = "$document.datatype";
-  lcb_subdocspecs_get(specs, 1, LCB_SUBDOCSPECS_F_XATTRPATH, path2,
+  lcb_subdocspecs_get(lcb_specs, 1, LCB_SUBDOCSPECS_F_XATTRPATH, path2,
                       strlen(path2));
 
-  lcb_subdocspecs_get(specs, 2, 0, "", 0);
+  lcb_subdocspecs_get(lcb_specs, 2, 0, "", 0);
 
   lcb_CMDSUBDOC *cmd;
   lcb_cmdsubdoc_create(&cmd);
-  lcb_cmdsubdoc_specs(cmd, specs);
+  lcb_cmdsubdoc_specs(cmd, lcb_specs);
   lcb_cmdsubdoc_collection(cmd, scope.c_str(), scope.size(), collection.c_str(),
                            collection.size());
   lcb_cmdsubdoc_key(cmd, meta.key.c_str(), meta.key.length());
-  lcb_cmdsubdoc_specs(cmd, specs);
+  lcb_cmdsubdoc_specs(cmd, lcb_specs);
   lcb_cmdsubdoc_timeout(cmd, lcb_timeout);
 
   if (!on_behalf_of_.empty()) {
@@ -370,7 +370,7 @@ Bucket::GetWithMeta(MetaData &meta) {
   auto [err, err_code, result] = TryLcbCmdWithRefreshConnIfNecessary(
       *cmd, max_retry, max_timeout, LcbSubdocSet);
   lcb_cmdsubdoc_destroy(cmd);
-  lcb_subdocspecs_destroy(specs);
+  lcb_subdocspecs_destroy(lcb_specs);
   if (err != nullptr) {
     return {std::move(err), nullptr, nullptr};
   }
@@ -401,14 +401,14 @@ Bucket::CounterWithoutXattr(MetaData &meta, int64_t delta) {
   const auto lcb_timeout = UnwrapData(isolate_)->lcb_timeout;
   const auto max_timeout = UnwrapData(isolate_)->op_timeout;
 
-  lcb_SUBDOCSPECS *spec;
-  lcb_subdocspecs_create(&spec, 1);
-  lcb_subdocspecs_counter(spec, 0, 0, "count", strlen("count"), delta);
+  lcb_SUBDOCSPECS *lcb_specs;
+  lcb_subdocspecs_create(&lcb_specs, 1);
+  lcb_subdocspecs_counter(lcb_specs, 0, 0, "count", strlen("count"), delta);
 
   lcb_CMDSUBDOC *cmd;
   lcb_cmdsubdoc_create(&cmd);
   lcb_cmdsubdoc_store_semantics(cmd, LCB_SUBDOC_STORE_UPSERT);
-  lcb_cmdsubdoc_specs(cmd, spec);
+  lcb_cmdsubdoc_specs(cmd, lcb_specs);
   lcb_cmdsubdoc_cas(cmd, meta.cas);
   lcb_cmdsubdoc_expiry(cmd, meta.expiry);
   lcb_cmdsubdoc_collection(cmd, scope.c_str(), scope.size(), collection.c_str(),
@@ -424,7 +424,7 @@ Bucket::CounterWithoutXattr(MetaData &meta, int64_t delta) {
   auto [err, err_code, result] = TryLcbCmdWithRefreshConnIfNecessary(
       *cmd, max_retry, max_timeout, LcbSubdocSet);
   lcb_cmdsubdoc_destroy(cmd);
-  lcb_subdocspecs_destroy(spec);
+  lcb_subdocspecs_destroy(lcb_specs);
   if (err != nullptr) {
     return {std::move(err), nullptr, nullptr};
   }
@@ -451,19 +451,19 @@ Bucket::CounterWithXattr(MetaData &meta, int64_t delta) {
   meta.scope = scope;
   meta.collection = collection;
 
-  lcb_SUBDOCSPECS *specs;
-  lcb_subdocspecs_create(&specs, 4);
+  lcb_SUBDOCSPECS *lcb_specs;
+  lcb_subdocspecs_create(&lcb_specs, 4);
 
   auto function_instance_id = GetFunctionInstanceID(isolate_);
   std::string function_instance_id_path("_eventing.fiid");
   lcb_subdocspecs_dict_upsert(
-      specs, 0, LCB_SUBDOCSPECS_F_MKINTERMEDIATES | LCB_SUBDOCSPECS_F_XATTRPATH,
+      lcb_specs, 0, LCB_SUBDOCSPECS_F_MKINTERMEDIATES | LCB_SUBDOCSPECS_F_XATTRPATH,
       function_instance_id_path.c_str(), function_instance_id_path.size(),
       function_instance_id.c_str(), function_instance_id.size());
 
   std::string dcp_seqno_path("_eventing.seqno");
   std::string dcp_seqno_macro(R"("${Mutation.seqno}")");
-  lcb_subdocspecs_dict_upsert(specs, 1,
+  lcb_subdocspecs_dict_upsert(lcb_specs, 1,
                               LCB_SUBDOCSPECS_F_MKINTERMEDIATES |
                                   LCB_SUBDOCSPECS_F_XATTR_MACROVALUES,
                               dcp_seqno_path.c_str(), dcp_seqno_path.size(),
@@ -472,12 +472,12 @@ Bucket::CounterWithXattr(MetaData &meta, int64_t delta) {
   std::string value_crc32_path("_eventing.crc");
   std::string value_crc32_macro(R"("${Mutation.value_crc32c}")");
   lcb_subdocspecs_dict_upsert(
-      specs, 2,
+      lcb_specs, 2,
       LCB_SUBDOCSPECS_F_MKINTERMEDIATES | LCB_SUBDOCSPECS_F_XATTR_MACROVALUES,
       value_crc32_path.c_str(), value_crc32_path.size(),
       value_crc32_macro.c_str(), value_crc32_macro.size());
 
-  lcb_subdocspecs_counter(specs, 3, 0, "count", strlen("count"), delta);
+  lcb_subdocspecs_counter(lcb_specs, 3, 0, "count", strlen("count"), delta);
 
   const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
   const auto lcb_timeout = UnwrapData(isolate_)->lcb_timeout;
@@ -485,7 +485,7 @@ Bucket::CounterWithXattr(MetaData &meta, int64_t delta) {
 
   lcb_CMDSUBDOC *cmd;
   lcb_cmdsubdoc_create(&cmd);
-  lcb_cmdsubdoc_specs(cmd, specs);
+  lcb_cmdsubdoc_specs(cmd, lcb_specs);
   lcb_cmdsubdoc_store_semantics(cmd, LCB_SUBDOC_STORE_UPSERT);
   lcb_cmdsubdoc_cas(cmd, meta.cas);
   lcb_cmdsubdoc_expiry(cmd, meta.expiry);
@@ -505,7 +505,7 @@ Bucket::CounterWithXattr(MetaData &meta, int64_t delta) {
   auto [err, err_code, result] = TryLcbCmdWithRefreshConnIfNecessary(
       *cmd, max_retry, max_timeout, LcbSubdocSet);
   lcb_cmdsubdoc_destroy(cmd);
-  lcb_subdocspecs_destroy(specs);
+  lcb_subdocspecs_destroy(lcb_specs);
   if (err != nullptr) {
     return {std::move(err), nullptr, nullptr};
   }
@@ -519,7 +519,7 @@ Bucket::CounterWithXattr(MetaData &meta, int64_t delta) {
 }
 
 std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
-Bucket::SubdocWithoutXattr(MetaData &meta, SubdocOperation &operation) {
+Bucket::MutateInWithoutXattr(MetaData &meta, MutateInSpecs &specs) {
   if (!is_connected_) {
     return {std::make_unique<std::string>("Connection is not initialized"),
             nullptr, nullptr};
@@ -532,17 +532,17 @@ Bucket::SubdocWithoutXattr(MetaData &meta, SubdocOperation &operation) {
   meta.scope = scope;
   meta.collection = collection;
 
-  lcb_SUBDOCSPECS *specs;
-  lcb_subdocspecs_create(&specs, operation.get_num_fields());
+  lcb_SUBDOCSPECS *lcb_specs;
+  lcb_subdocspecs_create(&lcb_specs, specs.get_num_fields());
 
-  operation.populate_specs(specs, 0);
+  specs.populate_lcb_specs(lcb_specs, 0);
   const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
   const auto lcb_timeout = UnwrapData(isolate_)->lcb_timeout;
   const auto max_timeout = UnwrapData(isolate_)->op_timeout;
 
   lcb_CMDSUBDOC *cmd;
   lcb_cmdsubdoc_create(&cmd);
-  lcb_cmdsubdoc_specs(cmd, specs);
+  lcb_cmdsubdoc_specs(cmd, lcb_specs);
   lcb_cmdsubdoc_cas(cmd, meta.cas);
   lcb_cmdsubdoc_expiry(cmd, meta.expiry);
   lcb_cmdsubdoc_collection(cmd, scope.c_str(), scope.size(), collection.c_str(),
@@ -560,7 +560,7 @@ Bucket::SubdocWithoutXattr(MetaData &meta, SubdocOperation &operation) {
   auto [err, err_code, result] = TryLcbCmdWithRefreshConnIfNecessary(
       *cmd, max_retry, max_timeout, LcbSubdocSet);
   lcb_cmdsubdoc_destroy(cmd);
-  lcb_subdocspecs_destroy(specs);
+  lcb_subdocspecs_destroy(lcb_specs);
 
   if (err != nullptr) {
     return {std::move(err), nullptr, nullptr};
@@ -575,7 +575,7 @@ Bucket::SubdocWithoutXattr(MetaData &meta, SubdocOperation &operation) {
 }
 
 std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
-Bucket::SubdocWithXattr(MetaData &meta, SubdocOperation &operation) {
+Bucket::MutateInWithXattr(MetaData &meta, MutateInSpecs &specs) {
   if (!is_connected_) {
     return {std::make_unique<std::string>("Connection is not initialized"),
             nullptr, nullptr};
@@ -588,18 +588,18 @@ Bucket::SubdocWithXattr(MetaData &meta, SubdocOperation &operation) {
   meta.scope = scope;
   meta.collection = collection;
 
-  lcb_SUBDOCSPECS *specs;
-  lcb_subdocspecs_create(&specs, operation.get_num_fields() + 3);
+  lcb_SUBDOCSPECS *lcb_specs;
+  lcb_subdocspecs_create(&lcb_specs, specs.get_num_fields() + 3);
   auto function_instance_id = GetFunctionInstanceID(isolate_);
   std::string function_instance_id_path("_eventing.fiid");
   lcb_subdocspecs_dict_upsert(
-      specs, 0, LCB_SUBDOCSPECS_F_MKINTERMEDIATES | LCB_SUBDOCSPECS_F_XATTRPATH,
+      lcb_specs, 0, LCB_SUBDOCSPECS_F_MKINTERMEDIATES | LCB_SUBDOCSPECS_F_XATTRPATH,
       function_instance_id_path.c_str(), function_instance_id_path.size(),
       function_instance_id.c_str(), function_instance_id.size());
 
   std::string dcp_seqno_path("_eventing.seqno");
   std::string dcp_seqno_macro(R"("${Mutation.seqno}")");
-  lcb_subdocspecs_dict_upsert(specs, 1,
+  lcb_subdocspecs_dict_upsert(lcb_specs, 1,
                               LCB_SUBDOCSPECS_F_MKINTERMEDIATES |
                                   LCB_SUBDOCSPECS_F_XATTR_MACROVALUES,
                               dcp_seqno_path.c_str(), dcp_seqno_path.size(),
@@ -608,12 +608,12 @@ Bucket::SubdocWithXattr(MetaData &meta, SubdocOperation &operation) {
   std::string value_crc32_path("_eventing.crc");
   std::string value_crc32_macro(R"("${Mutation.value_crc32c}")");
   lcb_subdocspecs_dict_upsert(
-      specs, 2,
+      lcb_specs, 2,
       LCB_SUBDOCSPECS_F_MKINTERMEDIATES | LCB_SUBDOCSPECS_F_XATTR_MACROVALUES,
       value_crc32_path.c_str(), value_crc32_path.size(),
       value_crc32_macro.c_str(), value_crc32_macro.size());
 
-  operation.populate_specs(specs, 3);
+  specs.populate_lcb_specs(lcb_specs, 3);
 
   const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
   const auto lcb_timeout = UnwrapData(isolate_)->lcb_timeout;
@@ -621,7 +621,7 @@ Bucket::SubdocWithXattr(MetaData &meta, SubdocOperation &operation) {
 
   lcb_CMDSUBDOC *cmd;
   lcb_cmdsubdoc_create(&cmd);
-  lcb_cmdsubdoc_specs(cmd, specs);
+  lcb_cmdsubdoc_specs(cmd, lcb_specs);
   lcb_cmdsubdoc_cas(cmd, meta.cas);
   lcb_cmdsubdoc_expiry(cmd, meta.expiry);
   lcb_cmdsubdoc_collection(cmd, scope.c_str(), scope.size(), collection.c_str(),
@@ -639,7 +639,7 @@ Bucket::SubdocWithXattr(MetaData &meta, SubdocOperation &operation) {
   auto [err, err_code, result] = TryLcbCmdWithRefreshConnIfNecessary(
       *cmd, max_retry, max_timeout, LcbSubdocSet);
   lcb_cmdsubdoc_destroy(cmd);
-  lcb_subdocspecs_destroy(specs);
+  lcb_subdocspecs_destroy(lcb_specs);
 
   if (err != nullptr) {
     return {std::move(err), nullptr, nullptr};
@@ -668,18 +668,18 @@ Bucket::SetWithXattr(MetaData &meta, const std::string &value,
   meta.scope = scope;
   meta.collection = collection;
 
-  lcb_SUBDOCSPECS *specs;
-  lcb_subdocspecs_create(&specs, 4);
+  lcb_SUBDOCSPECS *lcb_specs;
+  lcb_subdocspecs_create(&lcb_specs, 4);
   auto function_instance_id = GetFunctionInstanceID(isolate_);
   std::string function_instance_id_path("_eventing.fiid");
   lcb_subdocspecs_dict_upsert(
-      specs, 0, LCB_SUBDOCSPECS_F_MKINTERMEDIATES | LCB_SUBDOCSPECS_F_XATTRPATH,
+      lcb_specs, 0, LCB_SUBDOCSPECS_F_MKINTERMEDIATES | LCB_SUBDOCSPECS_F_XATTRPATH,
       function_instance_id_path.c_str(), function_instance_id_path.size(),
       function_instance_id.c_str(), function_instance_id.size());
 
   std::string dcp_seqno_path("_eventing.seqno");
   std::string dcp_seqno_macro(R"("${Mutation.seqno}")");
-  lcb_subdocspecs_dict_upsert(specs, 1,
+  lcb_subdocspecs_dict_upsert(lcb_specs, 1,
                               LCB_SUBDOCSPECS_F_MKINTERMEDIATES |
                                   LCB_SUBDOCSPECS_F_XATTR_MACROVALUES,
                               dcp_seqno_path.c_str(), dcp_seqno_path.size(),
@@ -688,12 +688,12 @@ Bucket::SetWithXattr(MetaData &meta, const std::string &value,
   std::string value_crc32_path("_eventing.crc");
   std::string value_crc32_macro(R"("${Mutation.value_crc32c}")");
   lcb_subdocspecs_dict_upsert(
-      specs, 2,
+      lcb_specs, 2,
       LCB_SUBDOCSPECS_F_MKINTERMEDIATES | LCB_SUBDOCSPECS_F_XATTR_MACROVALUES,
       value_crc32_path.c_str(), value_crc32_path.size(),
       value_crc32_macro.c_str(), value_crc32_macro.size());
 
-  lcb_subdocspecs_replace(specs, 3, 0, "", 0, value.data(), value.size());
+  lcb_subdocspecs_replace(lcb_specs, 3, 0, "", 0, value.data(), value.size());
 
   const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
   const auto lcb_timeout = UnwrapData(isolate_)->lcb_timeout;
@@ -701,7 +701,7 @@ Bucket::SetWithXattr(MetaData &meta, const std::string &value,
 
   lcb_CMDSUBDOC *cmd;
   lcb_cmdsubdoc_create(&cmd);
-  lcb_cmdsubdoc_specs(cmd, specs);
+  lcb_cmdsubdoc_specs(cmd, lcb_specs);
   lcb_cmdsubdoc_cas(cmd, meta.cas);
   lcb_cmdsubdoc_expiry(cmd, meta.expiry);
   lcb_cmdsubdoc_collection(cmd, scope.c_str(), scope.size(), collection.c_str(),
@@ -720,7 +720,7 @@ Bucket::SetWithXattr(MetaData &meta, const std::string &value,
   auto [err, err_code, result] = TryLcbCmdWithRefreshConnIfNecessary(
       *cmd, max_retry, max_timeout, LcbSubdocSet);
   lcb_cmdsubdoc_destroy(cmd);
-  lcb_subdocspecs_destroy(specs);
+  lcb_subdocspecs_destroy(lcb_specs);
 
   if (err != nullptr) {
     return {std::move(err), nullptr, nullptr};
@@ -802,19 +802,19 @@ Bucket::DeleteWithXattr(MetaData &meta) {
   meta.scope = scope;
   meta.collection = collection;
 
-  lcb_SUBDOCSPECS *specs;
-  lcb_subdocspecs_create(&specs, 4);
+  lcb_SUBDOCSPECS *lcb_specs;
+  lcb_subdocspecs_create(&lcb_specs, 4);
 
   auto function_instance_id = GetFunctionInstanceID(isolate_);
   std::string function_instance_id_path("_eventing.fiid");
   lcb_subdocspecs_dict_upsert(
-      specs, 0, LCB_SUBDOCSPECS_F_MKINTERMEDIATES | LCB_SUBDOCSPECS_F_XATTRPATH,
+      lcb_specs, 0, LCB_SUBDOCSPECS_F_MKINTERMEDIATES | LCB_SUBDOCSPECS_F_XATTRPATH,
       function_instance_id_path.c_str(), function_instance_id_path.size(),
       function_instance_id.c_str(), function_instance_id.size());
 
   std::string dcp_seqno_path("_eventing.seqno");
   std::string dcp_seqno_macro(R"("${Mutation.seqno}")");
-  lcb_subdocspecs_dict_upsert(specs, 1,
+  lcb_subdocspecs_dict_upsert(lcb_specs, 1,
                               LCB_SUBDOCSPECS_F_MKINTERMEDIATES |
                                   LCB_SUBDOCSPECS_F_XATTR_MACROVALUES,
                               dcp_seqno_path.c_str(), dcp_seqno_path.size(),
@@ -823,12 +823,12 @@ Bucket::DeleteWithXattr(MetaData &meta) {
   std::string value_crc32_path("_eventing.crc");
   std::string value_crc32_macro(R"("${Mutation.value_crc32c}")");
   lcb_subdocspecs_dict_upsert(
-      specs, 2,
+      lcb_specs, 2,
       LCB_SUBDOCSPECS_F_MKINTERMEDIATES | LCB_SUBDOCSPECS_F_XATTR_MACROVALUES,
       value_crc32_path.c_str(), value_crc32_path.size(),
       value_crc32_macro.c_str(), value_crc32_macro.size());
 
-  lcb_subdocspecs_remove(specs, 3, 0, "", 0);
+  lcb_subdocspecs_remove(lcb_specs, 3, 0, "", 0);
 
   const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
   const auto lcb_timeout = UnwrapData(isolate_)->lcb_timeout;
@@ -836,7 +836,7 @@ Bucket::DeleteWithXattr(MetaData &meta) {
 
   lcb_CMDSUBDOC *cmd;
   lcb_cmdsubdoc_create(&cmd);
-  lcb_cmdsubdoc_specs(cmd, specs);
+  lcb_cmdsubdoc_specs(cmd, lcb_specs);
   lcb_cmdsubdoc_cas(cmd, meta.cas);
   lcb_cmdsubdoc_store_semantics(cmd, LCB_SUBDOC_STORE_REPLACE);
 
@@ -855,7 +855,7 @@ Bucket::DeleteWithXattr(MetaData &meta) {
   auto [err, err_code, result] = TryLcbCmdWithRefreshConnIfNecessary(
       *cmd, max_retry, max_timeout, LcbSubdocDelete);
   lcb_cmdsubdoc_destroy(cmd);
-  lcb_subdocspecs_destroy(specs);
+  lcb_subdocspecs_destroy(lcb_specs);
 
   if (err != nullptr) {
     return {std::move(err), nullptr, nullptr};
@@ -932,19 +932,19 @@ Bucket::TouchWithXattr(MetaData &meta) {
   meta.scope = scope;
   meta.collection = collection;
 
-  lcb_SUBDOCSPECS *specs;
-  lcb_subdocspecs_create(&specs, 3);
+  lcb_SUBDOCSPECS *lcb_specs;
+  lcb_subdocspecs_create(&lcb_specs, 3);
 
   auto function_instance_id = GetFunctionInstanceID(isolate_);
   std::string function_instance_id_path("_eventing.fiid");
   lcb_subdocspecs_dict_upsert(
-      specs, 0, LCB_SUBDOCSPECS_F_MKINTERMEDIATES | LCB_SUBDOCSPECS_F_XATTRPATH,
+      lcb_specs, 0, LCB_SUBDOCSPECS_F_MKINTERMEDIATES | LCB_SUBDOCSPECS_F_XATTRPATH,
       function_instance_id_path.c_str(), function_instance_id_path.size(),
       function_instance_id.c_str(), function_instance_id.size());
 
   std::string dcp_seqno_path("_eventing.seqno");
   std::string dcp_seqno_macro(R"("${Mutation.seqno}")");
-  lcb_subdocspecs_dict_upsert(specs, 1,
+  lcb_subdocspecs_dict_upsert(lcb_specs, 1,
                               LCB_SUBDOCSPECS_F_MKINTERMEDIATES |
                                   LCB_SUBDOCSPECS_F_XATTR_MACROVALUES,
                               dcp_seqno_path.c_str(), dcp_seqno_path.size(),
@@ -953,7 +953,7 @@ Bucket::TouchWithXattr(MetaData &meta) {
   std::string value_crc32_path("_eventing.crc");
   std::string value_crc32_macro(R"("${Mutation.value_crc32c}")");
   lcb_subdocspecs_dict_upsert(
-      specs, 2,
+      lcb_specs, 2,
       LCB_SUBDOCSPECS_F_MKINTERMEDIATES | LCB_SUBDOCSPECS_F_XATTR_MACROVALUES,
       value_crc32_path.c_str(), value_crc32_path.size(),
       value_crc32_macro.c_str(), value_crc32_macro.size());
@@ -964,7 +964,7 @@ Bucket::TouchWithXattr(MetaData &meta) {
 
   lcb_CMDSUBDOC *cmd;
   lcb_cmdsubdoc_create(&cmd);
-  lcb_cmdsubdoc_specs(cmd, specs);
+  lcb_cmdsubdoc_specs(cmd, lcb_specs);
   lcb_cmdsubdoc_collection(cmd, scope.c_str(), scope.size(), collection.c_str(),
                            collection.size());
   lcb_cmdsubdoc_expiry(cmd, meta.expiry);
@@ -981,7 +981,7 @@ Bucket::TouchWithXattr(MetaData &meta) {
   auto [err, err_code, result] = TryLcbCmdWithRefreshConnIfNecessary(
       *cmd, max_retry, max_timeout, LcbSubdocSet);
   lcb_cmdsubdoc_destroy(cmd);
-  lcb_subdocspecs_destroy(specs);
+  lcb_subdocspecs_destroy(lcb_specs);
 
   if (err != nullptr) {
     return {std::move(err), nullptr, nullptr};

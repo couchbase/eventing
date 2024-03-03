@@ -102,9 +102,10 @@ void V8Worker::SetCouchbaseNamespace() {
       v8::FunctionTemplate::New(isolate_, BucketOps::BindingDetails));
   proto_t->Set(
       v8::String::NewFromUtf8(isolate_, "mutateInInternal").ToLocalChecked(),
-      v8::FunctionTemplate::New(isolate_, BucketOps::SubdocOp));
-  proto_t->Set(v8::String::NewFromUtf8(isolate_, "n1qlQuery").ToLocalChecked(),
-               v8::FunctionTemplate::New(isolate_, Query::N1qlFunction));
+      v8::FunctionTemplate::New(isolate_, BucketOps::MutateInOp));
+  proto_t->Set(
+      v8::String::NewFromUtf8(isolate_, "n1qlQuery").ToLocalChecked(),
+      v8::FunctionTemplate::New(isolate_, Query::N1qlFunction));
   proto_t->Set(
       v8::String::NewFromUtf8(isolate_, "analyticsQuery").ToLocalChecked(),
       v8::FunctionTemplate::New(isolate_, Query::AnalyticsFunction));
@@ -240,8 +241,8 @@ void V8Worker::SetCouchbaseNamespace() {
 
     Object.defineProperty(couchbase.MutateInSpec, "create", {
         enumerable: false,
-        value: function(opType, path, value, specOptions) {
-                 var spec = {"op_type": opType};
+        value: function(specType, path, value, specOptions) {
+                 var spec = {"spec_type": specType};
                  spec.path = path;
                  spec.value = JSON.stringify(value);
 
