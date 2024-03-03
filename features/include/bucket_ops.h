@@ -48,17 +48,17 @@ struct OptionsInfo {
   OptionsData options;
 };
 
-struct SubdocInfo {
-  SubdocInfo() : is_valid(false) {}
-  SubdocInfo(bool is_valid) : is_valid(is_valid) {}
-  SubdocInfo(bool is_valid, std::string msg)
+struct MutateInSpecsInfo {
+  MutateInSpecsInfo() : is_valid(false) {}
+  MutateInSpecsInfo(bool is_valid) : is_valid(is_valid) {}
+  MutateInSpecsInfo(bool is_valid, std::string msg)
       : is_valid(is_valid), msg(std::move(msg)) {}
-  SubdocInfo(bool is_valid, SubdocOperation operations)
-      : is_valid(is_valid), operations(std::move(operations)) {}
+  MutateInSpecsInfo(bool is_valid, MutateInSpecs specs)
+      : is_valid(is_valid), specs(std::move(specs)) {}
 
   bool is_valid;
   std::string msg;
-  SubdocOperation operations;
+  MutateInSpecs specs;
 };
 
 struct EpochInfo {
@@ -84,7 +84,7 @@ public:
   static void DecrementOp(const v8::FunctionCallbackInfo<v8::Value> &args);
   static void TouchOp(const v8::FunctionCallbackInfo<v8::Value> &args);
   static void BindingDetails(const v8::FunctionCallbackInfo<v8::Value> &args);
-  static void SubdocOp(const v8::FunctionCallbackInfo<v8::Value> &args);
+  static void MutateInOp(const v8::FunctionCallbackInfo<v8::Value> &args);
 
 private:
   EpochInfo Epoch(const v8::Local<v8::Value> &date_val);
@@ -94,7 +94,7 @@ private:
 
   OptionsInfo ExtractOptionsInfo(v8::Local<v8::Value> options_object);
 
-  SubdocInfo ExtractSubdocInfo(v8::Local<v8::Value> options_object);
+  MutateInSpecsInfo ExtractMutateInSpecsInfo(v8::Local<v8::Value> mutateinspecs_object);
   Info ResponseSuccessObject(std::unique_ptr<Result> const &result,
                              v8::Local<v8::Object> &response_obj,
                              bool is_doc_needed = false,
@@ -130,7 +130,7 @@ private:
             Bucket *bucket);
 
   std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
-  BucketSubdocSet(MetaData &meta, SubdocOperation &value,
+  BucketMutateIn(MetaData &meta, MutateInSpecs &value,
                   bool suppress_recursion, Bucket *bucket);
 
   void CounterOps(v8::FunctionCallbackInfo<v8::Value> args, int64_t delta);
@@ -165,7 +165,7 @@ private:
   const char *invalid_counter_str_;
   const char *cache_str_;
   const char *self_recursion_str_;
-  const char *op_type_str_;
+  const char *spec_type_str_;
   const char *key_subdoc_str_;
   const char *value_subdoc_str_;
   const char *options_subdoc_str_;

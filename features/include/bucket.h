@@ -42,8 +42,8 @@ struct MetaData {
         invalidate_cache_(invalidate) {}
 };
 
-struct SubdocOperation {
-  enum ops {
+struct MutateInSpecs {
+  enum spec_type {
     oBaseOp,
     oInsert,
     oUpsert,
@@ -56,15 +56,15 @@ struct SubdocOperation {
     oInvalidOp
   };
 
-  struct operation {
-    ops opType_;
+  struct spec {
+    spec_type specType_;
     std::string key_;
     std::string value_;
     uint32_t flags = 0;
 
-    operation(ops opType, std::string key, std::string value, bool create_path, bool is_user_xattr)
-        : opType_(opType), key_(key), value_(value) {
-      if (create_path && allow_create_path(opType)) {
+    spec(spec_type specType, std::string key, std::string value, bool create_path, bool is_user_xattr)
+        : specType_(specType), key_(key), value_(value) {
+      if (create_path && allow_create_path(specType)) {
         flags |= LCB_SUBDOCSPECS_F_MKINTERMEDIATES;
       }
       if (is_user_xattr) {
@@ -72,69 +72,69 @@ struct SubdocOperation {
       }
     }
 
-    inline bool allow_create_path(ops opType) {
-      return opType != oReplace && opType != oRemove && opType != oArrayInsert;
+    inline bool allow_create_path(spec_type specType) {
+      return specType != oReplace && specType != oRemove && specType != oArrayInsert;
     }
   };
 
-  std::vector<operation> operations;
+  std::vector<spec> specs;
 
-  int get_num_fields() const { return operations.size(); }
+  int get_num_fields() const { return specs.size(); }
 
-  bool emplace_operation(int operation, std::string key, std::string value,
+  bool emplace_spec(int spec, std::string key, std::string value,
                          bool create_path, bool is_user_xattr) {
-    if (operation <= oBaseOp || operation >= oInvalidOp) {
+    if (spec <= oBaseOp || spec >= oInvalidOp) {
       return false;
     }
-    operations.emplace_back(ops(operation), key, value, create_path, is_user_xattr);
+    specs.emplace_back(spec_type(spec), key, value, create_path, is_user_xattr);
     return true;
   }
 
-  void populate_specs(lcb_SUBDOCSPECS *specs, int start_idx) {
+  void populate_lcb_specs(lcb_SUBDOCSPECS *lcb_specs, int start_idx) {
     auto index = start_idx;
-    for (std::vector<operation>::const_iterator it = operations.begin();
-         it != operations.end(); it++) {
+    for (std::vector<spec>::const_iterator it = specs.begin();
+         it != specs.end(); it++) {
       std::string key = it->key_;
       std::string value = it->value_;
 
-      switch (it->opType_) {
+      switch (it->specType_) {
       case oInsert: {
-        lcb_subdocspecs_dict_add(specs, index, it->flags, key.c_str(),
+        lcb_subdocspecs_dict_add(lcb_specs, index, it->flags, key.c_str(),
                                  key.size(), value.c_str(), value.size());
       } break;
 
       case oUpsert: {
-        lcb_subdocspecs_dict_upsert(specs, index, it->flags, key.c_str(),
+        lcb_subdocspecs_dict_upsert(lcb_specs, index, it->flags, key.c_str(),
                                     key.size(), value.c_str(), value.size());
       } break;
 
       case oReplace: {
-        lcb_subdocspecs_replace(specs, index, it->flags, key.c_str(), key.size(),
+        lcb_subdocspecs_replace(lcb_specs, index, it->flags, key.c_str(), key.size(),
                                 value.c_str(), value.size());
       } break;
 
       case oRemove: {
-        lcb_subdocspecs_remove(specs, index, it->flags, key.c_str(), key.size());
+        lcb_subdocspecs_remove(lcb_specs, index, it->flags, key.c_str(), key.size());
       } break;
 
       case oArrayAppend: {
-        lcb_subdocspecs_array_add_last(specs, index, it->flags, key.c_str(),
+        lcb_subdocspecs_array_add_last(lcb_specs, index, it->flags, key.c_str(),
                                        key.size(), value.c_str(), value.size());
       } break;
 
       case oArrayPrepend: {
-        lcb_subdocspecs_array_add_first(specs, index, it->flags, key.c_str(),
+        lcb_subdocspecs_array_add_first(lcb_specs, index, it->flags, key.c_str(),
                                         key.size(), value.c_str(),
                                         value.size());
       } break;
 
       case oArrayInsert: {
-        lcb_subdocspecs_array_insert(specs, index, it->flags, key.c_str(), key.size(),
+        lcb_subdocspecs_array_insert(lcb_specs, index, it->flags, key.c_str(), key.size(),
                                      value.c_str(), value.size());
       } break;
 
       case oArrayAddUnique: {
-        lcb_subdocspecs_array_add_unique(specs, index, it->flags, key.c_str(),
+        lcb_subdocspecs_array_add_unique(lcb_specs, index, it->flags, key.c_str(),
                                          key.size(), value.c_str(),
                                          value.size());
       } break;
@@ -218,10 +218,10 @@ public:
   Get(MetaData &meta);
 
   std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
-  SubdocWithoutXattr(MetaData &meta, SubdocOperation &operation);
+  MutateInWithoutXattr(MetaData &meta, MutateInSpecs &specs);
 
   std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
-  SubdocWithXattr(MetaData &meta, SubdocOperation &operation);
+  MutateInWithXattr(MetaData &meta, MutateInSpecs &specs);
 
   std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
   SetWithXattr(MetaData &meta, const std::string &value,
