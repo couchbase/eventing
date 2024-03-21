@@ -4,6 +4,7 @@
 package eventing
 
 import (
+	"fmt"
 	"log"
 	"testing"
 	"time"
@@ -23,6 +24,24 @@ func testPumpDoc(itemCount, expectedCount int, bucket string, deleteDoc bool,
 		failAndCollectLogs(t, "For", "TestError",
 			"expected", expectedCount,
 			"got", eventCount,
+		)
+	}
+
+	dumpStats()
+	flushFunctionAndBucket(t.Name())
+}
+
+func testPumpDocUserXattr(itemCount, expectedCount int, bucket string, deleteDoc bool,
+	handler string, settings *commonSettings, t *testing.T) {
+
+	createAndDeployFunction(t.Name(), handler, settings)
+	waitForDeployToFinish(t.Name())
+
+	pumpBucketOps(opsType{count: itemCount, delete: deleteDoc}, &rateLimit{})
+	err := CheckXattrTestValues(bucket)
+	if err != nil {
+		failAndCollectLogs(t, "For", "TestError",
+			"got", fmt.Sprintf("User xattr test values error: %s", err),
 		)
 	}
 
@@ -559,4 +578,28 @@ func TestSubdocOperation(t *testing.T) {
         }
         testPumpDoc(itemCount, 0, srcBucket, false,
                 "subdoc_ops", setting, t)
+}
+
+func TestUserXattr(t *testing.T) {
+	const itemCount = 1
+
+	pumpBucketOpsSrc(opsType{count: itemCount}, dstBucket, &rateLimit{})
+	setting := &commonSettings{
+		aliasSources:       []string{dstBucket},
+		aliasHandles:       []string{"dst_bucket"},
+		srcMutationEnabled: true,
+	}
+	//TODO: Use testPumpDoc once https://review.couchbase.org/c/eventing/+/207759 is merged and move the xattr value checks to user_xattr.js file
+	testPumpDocUserXattr(itemCount, 1, dstBucket, false,
+		"user_xattr", setting, t)
+
+	log.Printf("Testing set user XATTR operation on source bucket")
+	setting = &commonSettings{
+		aliasSources:       []string{srcBucket},
+		aliasHandles:       []string{"dst_bucket"},
+		srcMutationEnabled: true,
+	}
+	//TODO: Use testPumpDoc once https://review.couchbase.org/c/eventing/+/207759 is merged and move the xattr value checks to user_xattr.js file
+	testPumpDocUserXattr(itemCount, 1, srcBucket, false,
+		"user_xattr", setting, t)
 }

@@ -46,6 +46,7 @@ BucketOps::BucketOps(v8::Isolate *isolate,
   value_subdoc_str_ = "value";
   options_subdoc_str_ = "options";
   create_path_type_str_ = "create_path";
+  user_xattr_str_ = "xattr";
   self_recursion_str_ = "self_recursion";
   counter_str_ = "count";
   error_str_ = "error";
@@ -424,6 +425,7 @@ SubdocInfo BucketOps::ExtractSubdocInfo(v8::Local<v8::Value> subdoc_object) {
   v8::HandleScope handle_scope(isolate_);
 
   auto context = context_.Get(isolate_);
+  auto utils = UnwrapData(isolate_)->utils;
   SubdocOperation operations;
 
   if (!subdoc_object->IsArray()) {
@@ -493,7 +495,7 @@ SubdocInfo BucketOps::ExtractSubdocInfo(v8::Local<v8::Value> subdoc_object) {
 
     // Extracting options
     if (!obj->Has(context, v8Str(isolate_, options_subdoc_str_)).FromJust()) {
-      operations.emplace_operation(opType, key, value, false);
+      operations.emplace_operation(opType, key, value, false, false);
       continue;
     }
 
@@ -523,7 +525,26 @@ SubdocInfo BucketOps::ExtractSubdocInfo(v8::Local<v8::Value> subdoc_object) {
         create_path = create_path_v8->Value();
       }
     }
-    auto valid = operations.emplace_operation(opType, key, value, create_path);
+
+    bool is_user_xattr = false;
+    if (options_obj->Has(context, v8Str(isolate_, user_xattr_str_)).FromJust()) {
+      v8::Local<v8::Value> user_xattr_v8val;
+      if (TO_LOCAL(options_obj->Get(context, v8Str(isolate_, user_xattr_str_)), &user_xattr_v8val)) {
+        if (!user_xattr_v8val->IsBoolean()) {
+          return {false, "xattr must be a boolean value"};
+        }
+        auto user_xattr_v8 = user_xattr_v8val.As<v8::Boolean>();
+        is_user_xattr = user_xattr_v8->Value();
+      }
+      if (is_user_xattr && !key.empty() && key[0] == '_') {
+        return {false, "XATTR path cannot start with underscore"};
+      }
+      if(is_user_xattr && !utils->ValidateXattrKeyLength(key)) {
+          return {false, "XATTR key size must be less than 16 characters"};
+      }
+    }
+
+    auto valid = operations.emplace_operation(opType, key, value, create_path, is_user_xattr);
     if (!valid) {
       return {false, "Invalid operations"};
     }

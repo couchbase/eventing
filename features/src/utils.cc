@@ -505,6 +505,16 @@ Info Utils::ValidateDataType(const v8::Local<v8::Value> &arg) {
   return {false};
 }
 
+// KV engine only allows size of XATTR key less than 16 characters currently
+bool Utils::ValidateXattrKeyLength(const std::string &key) {
+  std::string_view root_key { key };
+  auto dot_pos = key.find('.');
+  if (dot_pos != std::string::npos) {
+    root_key = root_key.substr(0, dot_pos);
+  }
+  return root_key.size() < 16;
+}
+
 ConnStrInfo Utils::GetConnectionString(const std::string &bucket) const {
   auto comm = UnwrapData(isolate_)->comm;
   auto nodes_info = comm->GetKVNodes();
