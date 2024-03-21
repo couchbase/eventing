@@ -170,6 +170,7 @@ private:
   const char *value_subdoc_str_;
   const char *options_subdoc_str_;
   const char *create_path_type_str_;
+  const char *user_xattr_str_;
 };
 
 #endif

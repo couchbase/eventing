@@ -169,6 +169,7 @@ public:
                         const char *ws = " \t\n\r\f\v") const;
   std::string Trim(const std::string &s, const char *ws = " \t\n\r\f\v") const;
   static Info ValidateDataType(const v8::Local<v8::Value> &arg);
+  bool ValidateXattrKeyLength(const std::string &key);
   ConnStrInfo GetConnectionString(const std::string &bucket) const;
   std::string certFile_;
   UrlEncode UrlEncodePath(const std::string &path,

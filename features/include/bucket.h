@@ -62,11 +62,18 @@ struct SubdocOperation {
     std::string value_;
     uint32_t flags = 0;
 
-    operation(ops opType, std::string key, std::string value, bool create_path)
+    operation(ops opType, std::string key, std::string value, bool create_path, bool is_user_xattr)
         : opType_(opType), key_(key), value_(value) {
-      if (create_path) {
+      if (create_path && allow_create_path(opType)) {
         flags |= LCB_SUBDOCSPECS_F_MKINTERMEDIATES;
       }
+      if (is_user_xattr) {
+        flags |= LCB_SUBDOCSPECS_F_XATTRPATH;
+      }
+    }
+
+    inline bool allow_create_path(ops opType) {
+      return opType != oReplace && opType != oRemove && opType != oArrayInsert;
     }
   };
 
@@ -75,11 +82,11 @@ struct SubdocOperation {
   int get_num_fields() const { return operations.size(); }
 
   bool emplace_operation(int operation, std::string key, std::string value,
-                         bool create_path) {
+                         bool create_path, bool is_user_xattr) {
     if (operation <= oBaseOp || operation >= oInvalidOp) {
       return false;
     }
-    operations.emplace_back(ops(operation), key, value, create_path);
+    operations.emplace_back(ops(operation), key, value, create_path, is_user_xattr);
     return true;
   }
 
@@ -102,12 +109,12 @@ struct SubdocOperation {
       } break;
 
       case oReplace: {
-        lcb_subdocspecs_replace(specs, index, 0, key.c_str(), key.size(),
+        lcb_subdocspecs_replace(specs, index, it->flags, key.c_str(), key.size(),
                                 value.c_str(), value.size());
       } break;
 
       case oRemove: {
-        lcb_subdocspecs_remove(specs, index, 0, key.c_str(), key.size());
+        lcb_subdocspecs_remove(specs, index, it->flags, key.c_str(), key.size());
       } break;
 
       case oArrayAppend: {
@@ -122,7 +129,7 @@ struct SubdocOperation {
       } break;
 
       case oArrayInsert: {
-        lcb_subdocspecs_array_insert(specs, index, 0, key.c_str(), key.size(),
+        lcb_subdocspecs_array_insert(specs, index, it->flags, key.c_str(), key.size(),
                                      value.c_str(), value.size());
       } break;
 
