@@ -13,6 +13,7 @@
 #define QUERY_MGR_H
 
 #include <libcouchbase/couchbase.h>
+#include <platform/base64.h>
 #include <string>
 #include <unordered_map>
 #include <v8.h>
@@ -30,7 +31,7 @@ public:
                    std::string domain)
       : isolate_(isolate), conn_pool_(pool_size, src_bucket, isolate) {
     if (user.size() != 0 || domain.size() != 0) {
-      on_behalf_of_ = base64Encode(user + ":" + domain);
+      on_behalf_of_ = cb::base64::encode(user + ":" + domain);
     } else {
       on_behalf_of_ = "";
     }
