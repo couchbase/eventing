@@ -108,6 +108,30 @@ void V8Worker::SetCouchbaseNamespace() {
   proto_t->Set(
       v8::String::NewFromUtf8(isolate_, "analyticsQuery").ToLocalChecked(),
       v8::FunctionTemplate::New(isolate_, Query::AnalyticsFunction));
+  proto_t->Set(v8::String::NewFromUtf8(isolate_, "curl").ToLocalChecked(),
+               v8::FunctionTemplate::New(isolate_, CurlFunction));
+  proto_t->Set(v8::String::NewFromUtf8(isolate_, "log").ToLocalChecked(),
+               v8::FunctionTemplate::New(isolate_, Log));
+  proto_t->Set(
+      v8::String::NewFromUtf8(isolate_, "createTimer").ToLocalChecked(),
+      v8::FunctionTemplate::New(isolate_, CreateTimer));
+  proto_t->Set(
+      v8::String::NewFromUtf8(isolate_, "cancelTimer").ToLocalChecked(),
+      v8::FunctionTemplate::New(isolate_, CancelTimer));
+  proto_t->Set(v8::String::NewFromUtf8(isolate_, "crc64").ToLocalChecked(),
+               v8::FunctionTemplate::New(isolate_, Crc64Function));
+  proto_t->Set(
+      v8::String::NewFromUtf8(isolate_, "base64Encode").ToLocalChecked(),
+      v8::FunctionTemplate::New(isolate_, Base64EncodeFunction));
+  proto_t->Set(
+      v8::String::NewFromUtf8(isolate_, "base64Decode").ToLocalChecked(),
+      v8::FunctionTemplate::New(isolate_, Base64DecodeFunction));
+  proto_t->Set(v8::String::NewFromUtf8(isolate_, "base64FloatArrayEncode")
+                   .ToLocalChecked(),
+               v8::FunctionTemplate::New(isolate_, Base64FloatEncodeFunction));
+  proto_t->Set(v8::String::NewFromUtf8(isolate_, "base64FloatArrayDecode")
+                   .ToLocalChecked(),
+               v8::FunctionTemplate::New(isolate_, Base64FloatDecodeFunction));
 
   auto context = context_.Get(isolate_);
   v8::Local<v8::Object> cb_obj;

@@ -241,6 +241,8 @@ v8::Local<v8::String> v8Str(v8::Isolate *isolate, const std::string &str);
 v8::Local<v8::Name> v8Name(v8::Isolate *isolate, uint32_t key);
 v8::Local<v8::Array> v8Array(v8::Isolate *isolate,
                              const std::vector<std::string> &from);
+v8::Local<v8::Array> v8Array(v8::Isolate *isolate,
+                             const std::vector<double> &from);
 
 std::string JSONStringify(v8::Isolate *isolate,
                           const v8::Local<v8::Value> &object,
@@ -275,12 +277,15 @@ std::string GetTimestampNow();
 std::string EventingVer();
 bool IsTerminatingRetriable(bool retry);
 bool IsExecutionTerminating(v8::Isolate *isolate);
-std::string base64Encode(const std::string &data);
 
 void UrlEncodeFunction(const v8::FunctionCallbackInfo<v8::Value> &args);
 void UrlDecodeFunction(const v8::FunctionCallbackInfo<v8::Value> &args);
 
 void Crc64Function(const v8::FunctionCallbackInfo<v8::Value> &args);
+void Base64EncodeFunction(const v8::FunctionCallbackInfo<v8::Value> &args);
+void Base64DecodeFunction(const v8::FunctionCallbackInfo<v8::Value> &args);
+void Base64FloatEncodeFunction(const v8::FunctionCallbackInfo<v8::Value> &args);
+void Base64FloatDecodeFunction(const v8::FunctionCallbackInfo<v8::Value> &args);
 
 std::string GetConnectionStr(const std::string &end_point,
                              const std::string &bucket_name,
