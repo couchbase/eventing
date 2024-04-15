@@ -60,7 +60,7 @@ struct SubdocOperation {
     ops opType_;
     std::string key_;
     std::string value_;
-    uint32_t flags;
+    uint32_t flags = 0;
 
     operation(ops opType, std::string key, std::string value, bool create_path)
         : opType_(opType), key_(key), value_(value) {
