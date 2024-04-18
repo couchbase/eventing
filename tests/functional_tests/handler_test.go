@@ -2261,3 +2261,25 @@ func TestAppcodeRestEndpoint(t *testing.T) {
 		t.Fatalf("Expected 0 code got %d", serverRes.Code)
 	}
 }
+
+func TestCrc64GoIso(t *testing.T) {
+	functionName := t.Name()
+
+	defer flushFunctionAndBucket(functionName)
+
+	handler := "crc_64_go_iso"
+	createAndDeployFunction(functionName, handler, &commonSettings{})
+	waitForDeployToFinish(functionName)
+
+	const itemCount = 100
+	pumpBucketOps(opsType{count: itemCount}, &rateLimit{})
+	eventCount := verifyBucketOps(itemCount, statsLookupRetryCounter)
+	if eventCount != itemCount {
+		failAndCollectLogs(t, "For", t.Name(),
+			"expected", itemCount,
+			"got", eventCount,
+		)
+	}
+
+	dumpStats()
+}

@@ -97,6 +97,10 @@ void V8Worker::SetCouchbaseNamespace() {
   proto_t->Set(
       v8::String::NewFromUtf8(isolate_, "bindingDetails").ToLocalChecked(),
       v8::FunctionTemplate::New(isolate_, BucketOps::BindingDetails));
+  proto_t->Set(
+      v8::String::NewFromUtf8(isolate_, "crc_64_go_iso").ToLocalChecked(),
+      v8::FunctionTemplate::New(isolate_, Crc64GoIsoFunction));
+
 
   auto context = context_.Get(isolate_);
   v8::Local<v8::Object> cb_obj;

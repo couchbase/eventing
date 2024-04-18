@@ -281,6 +281,7 @@ void UrlEncodeFunction(const v8::FunctionCallbackInfo<v8::Value> &args);
 void UrlDecodeFunction(const v8::FunctionCallbackInfo<v8::Value> &args);
 
 void Crc64Function(const v8::FunctionCallbackInfo<v8::Value> &args);
+void Crc64GoIsoFunction(const v8::FunctionCallbackInfo<v8::Value> &args);
 
 std::string GetConnectionStr(const std::string &end_point,
                              const std::string &bucket_name,
