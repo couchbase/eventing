@@ -12,6 +12,7 @@
 #include <mutex>
 #include <regex>
 #include <sstream>
+#include <cinttypes>
 
 #include "crc64.h"
 #include "error.h"
@@ -906,6 +907,48 @@ void Crc64Function(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
   char crc_str[32] = {0};
   std::sprintf(crc_str, "%016lx", (unsigned long)crc);
+  args.GetReturnValue().Set(v8Str(isolate, crc_str));
+}
+
+void Crc64GoIsoFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
+  auto isolate = args.GetIsolate();
+  std::lock_guard<std::mutex> guard(UnwrapData(isolate)->termination_lock_);
+  if (!UnwrapData(isolate)->is_executing_) {
+    return;
+  }
+
+  v8::HandleScope handle_scope(isolate);
+
+  auto js_exception = UnwrapData(isolate)->js_exception;
+
+  auto utils = UnwrapData(isolate)->utils;
+
+  if (args.Length() != 1) {
+    js_exception->ThrowEventingError("Need exactly one argument");
+    return;
+  }
+  const uint8_t *data = nullptr;
+  uint64_t crc = 0;
+  uint64_t len = 0;
+  if (args[0]->IsArrayBuffer()) {
+    auto array_buf = args[0].As<v8::ArrayBuffer>();
+    data = static_cast<const uint8_t *>(array_buf->Data());
+    len = array_buf->ByteLength();
+    crc = crc64_iso.Checksum(data, len);
+  }
+  else {
+    std::string data_str;
+    if (args[0]->IsString())
+      data_str = utils->ToCPPString(args[0]);
+    else
+      data_str = JSONStringify(isolate, args[0]);
+    data = reinterpret_cast<const uint8_t *>(data_str.c_str());
+    len = data_str.size();
+    crc = crc64_iso.Checksum(data, len);
+  }
+
+  char crc_str[32];
+  std::snprintf(crc_str, sizeof(crc_str), "%016" PRIx64, crc);
   args.GetReturnValue().Set(v8Str(isolate, crc_str));
 }
 

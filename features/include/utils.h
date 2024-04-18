@@ -283,6 +283,7 @@ void UrlEncodeFunction(const v8::FunctionCallbackInfo<v8::Value> &args);
 void UrlDecodeFunction(const v8::FunctionCallbackInfo<v8::Value> &args);
 
 void Crc64Function(const v8::FunctionCallbackInfo<v8::Value> &args);
+void Crc64GoIsoFunction(const v8::FunctionCallbackInfo<v8::Value> &args);
 
 enum class arrayEncoding { Float64Encoding, Float32Encoding };
 
