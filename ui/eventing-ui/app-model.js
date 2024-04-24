@@ -175,6 +175,7 @@ ApplicationModel.prototype.getDefaultModel = function() {
       user_prefix: 'eventing',
       n1ql_consistency: 'none',
       language_compatibility: '6.5.0',
+      cursor_aware: false,
       timer_context_size: 1024
     },
     function_scope: {
@@ -213,6 +214,7 @@ ApplicationModel.prototype.initializeDefaults = function() {
   this.settings.execution_timeout = 60;
   this.settings.user_prefix = 'eventing';
   this.settings.n1ql_consistency = 'none';
+  this.settings.cursor_aware = false;
   this.version = getVersion();
   this.settings.timer_context_size = 1024;
   this.settings.dcp_stream_boundary = 'everything';

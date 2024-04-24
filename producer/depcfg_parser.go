@@ -349,6 +349,11 @@ func (p *Producer) parseDepcfg() error {
 		p.handlerConfig.AllowTransactionMutations = false
 	}
 
+	if val, ok := settings["cursor_aware"]; ok {
+		p.handlerConfig.CursorAware = val.(bool)
+	} else {
+		p.handlerConfig.CursorAware = false
+	}
 	// Rebalance related configurations
 
 	if val, ok := settings["vb_ownership_giveup_routine_count"]; ok {

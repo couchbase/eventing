@@ -213,6 +213,7 @@ type Consumer struct {
 	isPausing                     bool
 	superSup                      common.EventingSuperSup
 	allowTransactionMutations     bool
+	cursorAware                   bool
 	timerContextSize              int64
 	vbDcpEventsRemaining          map[int]int64 // Access controlled by statsRWMutex
 	vbDcpFeedMap                  map[uint16]*couchbase.DcpFeed

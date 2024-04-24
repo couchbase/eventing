@@ -905,6 +905,10 @@ func (m *ServiceMgr) validateSettings(appName string, settings map[string]interf
 		return
 	}
 
+	if info = m.validateBoolean("cursor_aware", true, settings); info.ErrCode != response.Ok {
+		return
+	}
+
 	if info = m.validatePossibleValues("language_compatibility", settings, common.LanguageCompatibility); info.ErrCode != response.Ok {
 		return
 	}
