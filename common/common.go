@@ -574,6 +574,7 @@ type HandlerConfig struct {
 	N1qlPrepareAll            bool
 	LanguageCompatibility     string
 	AllowTransactionMutations bool
+	CursorAware               bool
 	AggDCPFeedMemCap          int64
 	CheckpointInterval        int
 	IdleCheckpointInterval    int
