@@ -73,7 +73,6 @@ func NewServiceMgr(config util.Config, rebalanceRunning bool,
 	}
 
 	mgr.rebalanceRunning = rebalanceRunning
-	mgr.servers = append(mgr.servers, mgr.nodeInfo.NodeID)
 	mgr.waiters = make(waiters)
 
 	mgr.initService()
@@ -93,6 +92,15 @@ func (m *ServiceMgr) initService() {
 	m.uuid = cfg["uuid"].(string)
 	m.initErrCodes()
 	m.tempAppStore = NewAppStore()
+
+	keepNodes := m.getKeepNodesUUID()
+	if len(keepNodes) == 0 {
+		m.servers = append(m.servers, m.nodeInfo.NodeID)
+	} else {
+		for _, uuid := range keepNodes {
+			m.servers = append(m.servers, service.NodeID(uuid))
+		}
+	}
 
 	couchbase.SetCAFile(m.caFile)
 	couchbase.SetCertFile(m.certFile)
@@ -1024,6 +1032,26 @@ func (m *ServiceMgr) getActiveNodeAddrs() ([]string, error) {
 		logPrefix, keepNodes, addrUUIDMap, nodeAddrs)
 
 	return nodeAddrs, nil
+}
+
+// returns a list of eventing keepNodes UUID of the cluster
+func (m *ServiceMgr) getKeepNodesUUID() []string {
+	logPrefix := "ServiceMgr::getKeepNodesUUID"
+
+	var keepNodes []string
+
+	var data []byte
+	util.Retry(util.NewFixedBackoff(time.Second), nil, metakvGetCallback, metakvConfigKeepNodes, &data)
+	if len(data) == 0 {
+		return keepNodes
+	}
+
+	err := json.Unmarshal(data, &keepNodes)
+	if err != nil {
+		logging.Errorf("%s Failed to unmarshal keepNodes received from metakv, err: %v", logPrefix, err)
+	}
+
+	return keepNodes
 }
 
 func (m *ServiceMgr) compareEventingVersion(need common.CouchbaseVer) bool {
