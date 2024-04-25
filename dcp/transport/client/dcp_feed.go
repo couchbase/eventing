@@ -4,6 +4,7 @@
 package memcached
 
 import (
+	"bytes"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
@@ -27,7 +28,13 @@ const bufferAckPeriod = 20
 const includeDeleteTime = uint32(0x20)
 const dcpSeqnoAdvExtrasLen = 8
 
+var kvSeparator = []byte{0x00}
+
 var TransactionMutationPrefix = []byte("_txn:")
+
+const SystemXattrPrefix = "_"
+
+const IncludeXATTRs = uint32(4)
 
 // error codes
 var ErrorInvalidLog = errors.New("couchbase.errorInvalidLog")
@@ -992,6 +999,7 @@ type DcpEvent struct {
 	Cas          uint64                // CAS value of the item
 	CollectionID uint32                // Collection Id
 	ScopeID      uint32
+	Xattr        map[string]XattrVal // Xattr map
 
 	EventType transport.CollectionEvent // For DCP_SYSTEM_EVENT, DCP_OSO_SNAPSHOT types
 	// meta fields
@@ -1015,6 +1023,19 @@ type DcpEvent struct {
 	Ctime int64
 }
 
+// Include the XATTR in the request
+type XattrVal struct {
+	body []byte
+}
+
+func (x XattrVal) MarshalJSON() ([]byte, error) {
+	return x.body, nil
+}
+
+func (x XattrVal) Bytes() []byte {
+	return x.body
+}
+
 func newDcpEvent(rq *transport.MCRequest, stream *DcpStream) *DcpEvent {
 	event := &DcpEvent{
 		Cas:      rq.Cas,
@@ -1023,6 +1044,7 @@ func newDcpEvent(rq *transport.MCRequest, stream *DcpStream) *DcpEvent {
 		VBucket:  stream.Vbucket,
 		VBuuid:   stream.Vbuuid,
 		Ctime:    time.Now().UnixNano(),
+		Xattr:    make(map[string]XattrVal),
 	}
 
 	docId := rq.Key
@@ -1037,6 +1059,22 @@ func newDcpEvent(rq *transport.MCRequest, stream *DcpStream) *DcpEvent {
 	copy(event.Key, docId)
 	event.Value = make([]byte, len(rq.Body))
 	copy(event.Value, rq.Body)
+
+	if rq.Datatype&uint8(IncludeXATTRs) == uint8(IncludeXATTRs) {
+		xattrsLen := int(binary.BigEndian.Uint32(event.Value))
+		pos := 4
+
+		for pos < xattrsLen {
+			pairLen := int(binary.BigEndian.Uint32(event.Value[pos:]))
+			pos = pos + 4
+			binaryPair := event.Value[pos : pos+pairLen]
+			pos = pos + pairLen
+			kvPair := bytes.Split(binaryPair, kvSeparator)
+			event.Xattr[string(kvPair[0])] = XattrVal{body: kvPair[1]}
+		}
+
+		event.Value = event.Value[pos:]
+	}
 
 	// 16 LSBits are used by client library to encode vbucket number.
 	// 16 MSBits are left for application to multiplex on opaque value.

@@ -217,9 +217,8 @@ func pumpBucketOpsKeyspace(ops opsType, srcKeyspace common.Keyspace, rate *rateL
 			} else {
 
 			retryOp2:
-
 				mutateIn := make([]gocb.MutateInSpec, 0)
-				upsertOptions := &gocb.MutateInOptions{Expiry: time.Duration(ops.expiry)}
+				upsertOptions := &gocb.MutateInOptions{Expiry: time.Duration(ops.expiry), StoreSemantic: gocb.StoreSemanticsUpsert,}
 				upsertSpecOptionsBothSet := &gocb.UpsertSpecOptions{CreatePath: true, IsXattr: true}
 				upsertSpecOptionsNoneSet := &gocb.UpsertSpecOptions{CreatePath: false, IsXattr: false}
 				mutateIn = append(mutateIn, gocb.UpsertSpec(fmt.Sprintf("test_%s", ops.xattrPrefix), "user xattr test value", upsertSpecOptionsBothSet))
@@ -338,4 +337,61 @@ func DropCollection(bucketName, scopeName, collectionName string) error {
 		ScopeName: scopeName,
 	}, nil)
 	return err
+}
+
+func CheckXattrTestValues(bucketName string) error {
+	srcBucket := bucketName
+	srcScope := "_default"
+	srcCollection := "_default"
+
+	cluster, err := gocb.Connect("couchbase://127.0.0.1:12000", gocb.ClusterOptions{
+		Username: rbacuser,
+		Password: rbacpass,
+	})
+	if err != nil {
+		panic(fmt.Sprintf("Bucket open, err: %s", err))
+	}
+	bucket := cluster.Bucket(srcBucket)
+	err = bucket.WaitUntilReady(5*time.Second, nil)
+	if err != nil {
+		return err
+	}
+	scope := bucket.Scope(srcScope)
+	collection := scope.Collection(srcCollection)
+
+retryLookupOp:
+	res, err := collection.LookupIn("doc_id_0", []gocb.LookupInSpec{
+		gocb.GetSpec("user_xattrs", &gocb.GetSpecOptions{IsXattr: true}),
+	}, nil)
+	if err != nil {
+		time.Sleep(time.Second)
+		goto retryLookupOp
+	}
+
+	var val map[string]interface{}
+	err = res.ContentAt(0, &val)
+	if err != nil {
+		return err
+	}
+
+	arr, ok := val["arrayTest"].([]interface{})
+	if !ok {
+		return errors.New("failed to read arrayTest value correctly")
+	}
+	if len(arr) != 4 {
+		return errors.New("length of arrayTest doesn't match")
+	}
+
+	for i, num := range arr {
+		if numVal, ok := num.(float64); !ok || numVal != float64(i) {
+			return errors.New("arrayTest value doesn't match")
+		}
+	}
+
+	field, ok := val["testField"].(string)
+	if !ok || field != "replace" {
+		return errors.New("testField value doesn't match")
+	}
+
+	return nil
 }

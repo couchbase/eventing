@@ -19,6 +19,7 @@
 #include "lcb_utils.h"
 #include "utils.h"
 #include <nlohmann/json.hpp>
+#include <platform/base64.h>
 
 static bool ipv6 = false;
 std::mutex time_now_mutex;
@@ -97,9 +98,26 @@ v8::Local<v8::Array> v8Array(v8::Isolate *isolate,
 
   auto context = isolate->GetCurrentContext();
   auto array = v8::Array::New(isolate, static_cast<int>(from.size()));
-  for (uint32_t i = 0; i < from.size(); ++i) {
+  for (uint32_t i = 0; i < array->Length(); ++i) {
     auto success = false;
     if (!TO(array->Set(context, i, v8Str(isolate, from[i])), &success)) {
+      return handle_scope.Escape(array);
+    }
+  }
+
+  return handle_scope.Escape(array);
+}
+
+v8::Local<v8::Array> v8Array(v8::Isolate *isolate,
+                             const std::vector<double> &from) {
+  v8::EscapableHandleScope handle_scope(isolate);
+
+  auto context = isolate->GetCurrentContext();
+  auto array = v8::Array::New(isolate, static_cast<int>(from.size()));
+  for (uint32_t i = 0; i < array->Length(); ++i) {
+    auto success = false;
+    if (!TO(array->Set(context, i, v8::Number::New(isolate, from[i])),
+            &success)) {
       return handle_scope.Escape(array);
     }
   }
@@ -485,6 +503,16 @@ Info Utils::ValidateDataType(const v8::Local<v8::Value> &arg) {
     return {true, R"("symbol" is not a valid type)"};
   }
   return {false};
+}
+
+// KV engine only allows size of XATTR key less than 16 characters currently
+bool Utils::ValidateXattrKeyLength(const std::string &key) {
+  std::string_view root_key { key };
+  auto dot_pos = key.find('.');
+  if (dot_pos != std::string::npos) {
+    root_key = root_key.substr(0, dot_pos);
+  }
+  return root_key.size() < 16;
 }
 
 ConnStrInfo Utils::GetConnectionString(const std::string &bucket) const {
@@ -879,6 +907,192 @@ void Crc64Function(const v8::FunctionCallbackInfo<v8::Value> &args) {
   char crc_str[32] = {0};
   std::sprintf(crc_str, "%016lx", (unsigned long)crc);
   args.GetReturnValue().Set(v8Str(isolate, crc_str));
+}
+
+void Base64EncodeFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
+  auto isolate = args.GetIsolate();
+  std::lock_guard<std::mutex> guard(UnwrapData(isolate)->termination_lock_);
+  if (!UnwrapData(isolate)->is_executing_) {
+    return;
+  }
+
+  v8::HandleScope handle_scope(isolate);
+
+  auto js_exception = UnwrapData(isolate)->js_exception;
+
+  if (args.Length() != 1) {
+    js_exception->ThrowEventingError("Need exactly one argument");
+    return;
+  }
+
+  std::string base64_string;
+  if (args[0]->IsArrayBuffer()) {
+    auto array_buf = args[0].As<v8::ArrayBuffer>();
+    auto store = array_buf->GetBackingStore();
+    base64_string.assign(static_cast<const char *>(store->Data()),
+                         store->ByteLength());
+  }
+  if (args[0]->IsString()) {
+    auto utils = UnwrapData(isolate)->utils;
+    base64_string = utils->ToCPPString(args[0]);
+  } else {
+    base64_string = JSONStringify(isolate, args[0]);
+  }
+
+  std::string base64 = cb::base64::encode(base64_string, false);
+  args.GetReturnValue().Set(v8Str(isolate, base64));
+}
+
+void Base64DecodeFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
+  auto isolate = args.GetIsolate();
+  std::lock_guard<std::mutex> guard(UnwrapData(isolate)->termination_lock_);
+  if (!UnwrapData(isolate)->is_executing_) {
+    return;
+  }
+
+  v8::HandleScope handle_scope(isolate);
+
+  auto js_exception = UnwrapData(isolate)->js_exception;
+
+  if (args.Length() != 1) {
+    js_exception->ThrowEventingError("Need exactly one argument");
+    return;
+  }
+
+  v8::Local<v8::Value> v8_base64_string = args[0];
+  if (!v8_base64_string->IsString()) {
+    js_exception->ThrowEventingError("Argument must be of type String");
+    return;
+  }
+  auto utils = UnwrapData(isolate)->utils;
+  auto base64_string = utils->ToCPPString(v8_base64_string);
+
+  std::string base64_decoded = cb::base64::decode(base64_string);
+  args.GetReturnValue().Set(v8Str(isolate, base64_decoded));
+}
+
+bool isLittleEndian() {
+  constexpr uint16_t num = 1;
+  return (*(uint8_t *)&num == 1);
+}
+
+void push_bytes(double value, std::string &bytes) {
+  auto *p = reinterpret_cast<uint8_t *>(&value);
+  if (isLittleEndian()) {
+    for (std::size_t i = 0; i < sizeof(double); ++i) {
+      bytes.push_back(p[i]);
+    }
+  } else {
+    for (std::size_t i = sizeof(double) - 1; i > -1; --i) {
+      bytes.push_back(p[i]);
+    }
+  }
+}
+
+double get_double_value(const uint8_t *bytes, size_t index) {
+  double d;
+  if (isLittleEndian()) {
+    memcpy(&d, bytes + index, sizeof(double));
+  } else {
+    size_t size = sizeof(double);
+    uint8_t bytesCopy[size];
+    for (; index < size; ++index) {
+      bytesCopy[size - index - 1] = bytes[index];
+    }
+    std::memcpy(&d, bytesCopy, sizeof(double));
+  }
+  return d;
+}
+
+void Base64FloatEncodeFunction(
+    const v8::FunctionCallbackInfo<v8::Value> &args) {
+  auto isolate = args.GetIsolate();
+  std::lock_guard<std::mutex> guard(UnwrapData(isolate)->termination_lock_);
+  if (!UnwrapData(isolate)->is_executing_) {
+    return;
+  }
+  auto context = isolate->GetCurrentContext();
+  v8::HandleScope handle_scope(isolate);
+
+  auto js_exception = UnwrapData(isolate)->js_exception;
+
+  if (args.Length() != 1) {
+    js_exception->ThrowEventingError("Need exactly one argument");
+    return;
+  }
+
+  if (!args[0]->IsArray()) {
+    js_exception->ThrowEventingError("Argument must be of type Array");
+    return;
+  }
+
+  auto array = args[0].As<v8::Array>();
+  auto length = array->Length();
+
+  std::string bytes;
+  bytes.reserve(length * sizeof(double));
+  for (uint32_t i = 0; i < length; i++) {
+    v8::Local<v8::Value> number_val;
+    if (!TO_LOCAL(array->Get(context, i), &number_val)) {
+      js_exception->ThrowEventingError("Error reading array element");
+      return;
+    }
+
+    if (!number_val->IsNumber()) {
+      js_exception->ThrowEventingError(
+          "Array elements should be of type Number");
+      return;
+    }
+
+    v8::Local<v8::Number> number_v8val;
+    if (!TO_LOCAL(number_val->ToNumber(context), &number_v8val)) {
+      js_exception->ThrowEventingError(
+          "Unable to convert element to type Number");
+      return;
+    }
+    double value = number_v8val->Value();
+    push_bytes(value, bytes);
+  }
+
+  std::string base64 = cb::base64::encode(bytes, false);
+  args.GetReturnValue().Set(v8Str(isolate, base64));
+}
+
+void Base64FloatDecodeFunction(
+    const v8::FunctionCallbackInfo<v8::Value> &args) {
+  auto isolate = args.GetIsolate();
+  std::lock_guard<std::mutex> guard(UnwrapData(isolate)->termination_lock_);
+  if (!UnwrapData(isolate)->is_executing_) {
+    return;
+  }
+  auto context = isolate->GetCurrentContext();
+  v8::HandleScope handle_scope(isolate);
+
+  auto js_exception = UnwrapData(isolate)->js_exception;
+
+  if (args.Length() != 1) {
+    js_exception->ThrowEventingError("Need exactly one argument");
+    return;
+  }
+
+  v8::Local<v8::Value> v8_base64_string = args[0];
+  if (!v8_base64_string->IsString()) {
+    js_exception->ThrowEventingError("Argument must be of type String");
+    return;
+  }
+
+  auto utils = UnwrapData(isolate)->utils;
+  auto base64Bytes = cb::base64::decode(utils->ToCPPString(v8_base64_string));
+
+  std::vector<double> doubleArray;
+  doubleArray.reserve(base64Bytes.length() / sizeof(double));
+  const uint8_t *bytes = reinterpret_cast<const uint8_t *>(base64Bytes.data());
+  for (size_t i = 0; i < base64Bytes.length(); i += sizeof(double)) {
+    double d = get_double_value(bytes, i);
+    doubleArray.push_back(d);
+  }
+
+  args.GetReturnValue().Set(v8Array(isolate, doubleArray));
 }
 
 std::string GetConnectionStr(const std::string &end_point,

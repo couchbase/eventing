@@ -39,7 +39,6 @@ SET(FEATURES_SRC
         ../features/src/js_exception.cc
         ../features/src/v8log.cc
         ../features/src/utils.cc
-        ../features/src/base64.cc
         ../features/src/insight.cc
         ../features/src/exceptioninsight.cc
         ../features/src/bucket_ops.cc
@@ -111,5 +110,5 @@ ENDIF()
 ADD_EXECUTABLE(eventing-consumer ${EVENTING_SOURCES})
 ADD_DEPENDENCIES(eventing-consumer eventing-generated couchbase)
 
-TARGET_LINK_LIBRARIES(eventing-consumer ${EVENTING_LIBRARIES} couchbase nlohmann_json::nlohmann_json)
+TARGET_LINK_LIBRARIES(eventing-consumer ${EVENTING_LIBRARIES} couchbase nlohmann_json::nlohmann_json platform)
 INSTALL(TARGETS eventing-consumer RUNTIME DESTINATION bin)

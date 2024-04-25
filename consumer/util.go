@@ -64,43 +64,43 @@ func (c *Consumer) deleteFromEnqueueMap(vb uint16) {
 func (c *Consumer) isRecursiveDCPEvent(evt *memcached.DcpEvent, functionInstanceID string) (bool, error) {
 	logPrefix := "Consumer::isRecursiveDCPEvent"
 
+	if evt.Xattr == nil {
+		return false, nil
+	}
+
+	eventingXattr, ok := evt.Xattr[xattrPrefix]
+	if !ok {
+		return false, nil
+	}
+
 	var xMeta xattrMetadata
-	body, xattr, err := util.ParseXattrData(xattrPrefix, evt.Value)
+	err := json.Unmarshal(eventingXattr.Bytes(), &xMeta)
 	if err != nil {
 		c.dcpXattrParseError++
-		logging.Errorf("%s [%s:%s:%d] key: %ru failed to parse xattr metadata, err: %v",
+		logging.Errorf("%s [%s:%s:%d] key: %ru failed to unmarshal xattr, err: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), string(evt.Key), err)
 		return false, err
 	}
-	if xattr != nil && len(xattr) > 0 {
-		err = json.Unmarshal(xattr, &xMeta)
-		if err != nil {
-			c.dcpXattrParseError++
-			logging.Errorf("%s [%s:%s:%d] key: %ru failed to unmarshal xattr, err: %v",
-				logPrefix, c.workerName, c.tcpPort, c.Pid(), string(evt.Key), err)
-			return false, err
-		}
 
-		seqno, err := strconv.ParseUint(xMeta.SeqNo, 0, 64)
+	seqno, err := strconv.ParseUint(xMeta.SeqNo, 0, 64)
+	if err != nil {
+		c.dcpXattrParseError++
+		logging.Errorf("%s [%s:%s:%d] key: %ru failed to read sequence number from XATTR",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), string(evt.Key))
+		return false, err
+	}
+
+	if xMeta.FunctionInstanceID == functionInstanceID && seqno == evt.Seqno {
+		checksum := crc32.Checksum(evt.Value, util.CrcTable)
+		xChecksum, err := strconv.ParseUint(xMeta.ValueCRC, 0, 32)
 		if err != nil {
 			c.dcpXattrParseError++
-			logging.Errorf("%s [%s:%s:%d] key: %ru failed to read sequence number from XATTR",
+			logging.Errorf("%s [%s:%s:%d] key: %ru failed to read CRC from XATTR",
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), string(evt.Key))
 			return false, err
 		}
-
-		if xMeta.FunctionInstanceID == functionInstanceID && seqno == evt.Seqno {
-			checksum := crc32.Checksum(body, util.CrcTable)
-			xChecksum, err := strconv.ParseUint(xMeta.ValueCRC, 0, 32)
-			if err != nil {
-				c.dcpXattrParseError++
-				logging.Errorf("%s [%s:%s:%d] key: %ru failed to read CRC from XATTR",
-					logPrefix, c.workerName, c.tcpPort, c.Pid(), string(evt.Key))
-				return false, err
-			}
-			if uint64(checksum) == xChecksum {
-				return true, nil
-			}
+		if uint64(checksum) == xChecksum {
+			return true, nil
 		}
 	}
 	return false, nil

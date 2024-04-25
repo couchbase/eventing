@@ -7,7 +7,6 @@ import (
 	"crypto/rand"
 	"crypto/tls"
 	"encoding/base64"
-	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -1850,38 +1849,6 @@ func CPUCount(log bool) int {
 	}
 
 	return cpuCount
-}
-
-func ParseXattrData(xattrPrefix string, data []byte) (body, xattr []byte, err error) {
-	length := len(data)
-	if length < 4 {
-		return nil, nil, fmt.Errorf("empty xattr metadata")
-	}
-	xattrLen := binary.BigEndian.Uint32(data[0:4])
-	body = data[xattrLen+4:]
-	if xattrLen == 0 {
-		return body, nil, nil
-	}
-	index := uint32(4)
-	delimeter := []byte("\x00")
-	for index < xattrLen {
-		keyValPairLen := binary.BigEndian.Uint32(data[index : index+4])
-		if keyValPairLen == 0 || int(index+keyValPairLen) > length {
-			return body, nil, fmt.Errorf("xattr parse error, unexpected xattr data")
-		}
-		index += 4
-		keyValPairData := data[index : index+keyValPairLen]
-		keyValPair := bytes.Split(keyValPairData, delimeter)
-		if len(keyValPair) != 3 {
-			return body, nil, fmt.Errorf("xattr parse error, unexpected number of components")
-		}
-		xattrKey := string(keyValPair[0])
-		if xattrKey == xattrPrefix {
-			return body, keyValPair[1], nil
-		}
-		index += keyValPairLen
-	}
-	return body, nil, nil
 }
 
 func MaybeCompress(payload []byte, compressPayload bool) ([]byte, error) {
