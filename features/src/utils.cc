@@ -1084,6 +1084,11 @@ void Base64FloatDecodeFunction(
   auto utils = UnwrapData(isolate)->utils;
   auto base64Bytes = cb::base64::decode(utils->ToCPPString(v8_base64_string));
 
+  if(base64Bytes.length() % sizeof(double) != 0) {
+    js_exception->ThrowEventingError("Incorrect base64 string provided");
+    return;
+  }
+
   std::vector<double> doubleArray;
   doubleArray.reserve(base64Bytes.length() / sizeof(double));
   const uint8_t *bytes = reinterpret_cast<const uint8_t *>(base64Bytes.data());
