@@ -507,7 +507,7 @@ Info Utils::ValidateDataType(const v8::Local<v8::Value> &arg) {
 
 // KV engine only allows size of XATTR key less than 16 characters currently
 bool Utils::ValidateXattrKeyLength(const std::string &key) {
-  std::string_view root_key { key };
+  std::string_view root_key{key};
   auto dot_pos = key.find('.');
   if (dot_pos != std::string::npos) {
     root_key = root_key.substr(0, dot_pos);
@@ -994,7 +994,7 @@ double get_double_value(const uint8_t *bytes, size_t index) {
   if (isLittleEndian()) {
     memcpy(&d, bytes + index, sizeof(double));
   } else {
-    size_t size = sizeof(double);
+    constexpr auto size = sizeof(double);
     uint8_t bytesCopy[size];
     for (; index < size; ++index) {
       bytesCopy[size - index - 1] = bytes[index];
