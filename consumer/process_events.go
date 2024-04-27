@@ -74,6 +74,11 @@ func (c *Consumer) processDCPEvents() {
 				logging.Tracef("%s [%s:%s:%d] Got DCP_MUTATION for key: %ru datatype: %v",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key), e.Datatype)
 
+				if !c.allowSyncDocuments && c.isSGWMutation(e) {
+					c.suppressedDCPMutationCounter++
+					continue
+				}
+
 				switch e.Datatype {
 				case dcpDatatypeJSON:
 					c.dcpMutationCounter++
@@ -104,6 +109,14 @@ func (c *Consumer) processDCPEvents() {
 					continue
 				}
 
+				logging.Tracef("%s [%s:%s:%d] Got DCP_DELETION for key: %ru datatype: %v",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key), e.Datatype)
+
+				if !c.allowSyncDocuments && c.isSGWMutation(e) {
+					c.suppressedDCPDeletionCounter++
+					continue
+				}
+
 				if c.processAndSendDcpDelOrExpMessage(e, functionInstanceID, true) {
 					c.dcpDeletionCounter++
 				} else {
@@ -115,8 +128,19 @@ func (c *Consumer) processDCPEvents() {
 					continue
 				}
 
-				c.processAndSendDcpDelOrExpMessage(e, functionInstanceID, false)
-				c.dcpExpiryCounter++
+				logging.Tracef("%s [%s:%s:%d] Got DCP_EXPIRATION for key: %ru datatype: %v",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key), e.Datatype)
+
+				if !c.allowSyncDocuments && c.isSGWMutation(e) {
+					c.suppressedDCPExpirationCounter++
+					continue
+				}
+
+				if c.processAndSendDcpDelOrExpMessage(e, functionInstanceID, false) {
+					c.dcpExpiryCounter++
+				} else {
+					c.suppressedDCPExpirationCounter++
+				}
 
 			case mcd.DCP_STREAMEND:
 				c.dcpStatsLogger.AddDcpLog(e.VBucket, LogState, string(StateStreamEnd))
@@ -1449,6 +1473,10 @@ func (c *Consumer) filterMutations(e *cb.DcpEvent) bool {
 
 func (c *Consumer) isTransactionMutation(e *cb.DcpEvent) bool {
 	return bytes.HasPrefix(e.Key, cb.TransactionMutationPrefix)
+}
+
+func (c *Consumer) isSGWMutation(e *cb.DcpEvent) bool {
+	return bytes.HasPrefix(e.Key, cb.SyncGatewayMutationPrefix)
 }
 
 // If fetchFresh is true then it will fetch the latest failover log if vbBlob doesn't contain failover log

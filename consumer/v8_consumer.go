@@ -121,6 +121,7 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		superSup:                        s,
 		tcpPort:                         pConfig.SockIdentifier,
 		allowTransactionMutations:       hConfig.AllowTransactionMutations,
+		allowSyncDocuments:              hConfig.AllowSyncDocuments,
 		cursorAware:                     hConfig.CursorAware,
 		timerContextSize:                hConfig.TimerContextSize,
 		updateStatsTicker:               time.NewTicker(updateCPPStatsTickInterval),

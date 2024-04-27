@@ -213,6 +213,7 @@ type Consumer struct {
 	isPausing                     bool
 	superSup                      common.EventingSuperSup
 	allowTransactionMutations     bool
+	allowSyncDocuments            bool
 	cursorAware                   bool
 	timerContextSize              int64
 	vbDcpEventsRemaining          map[int]int64 // Access controlled by statsRWMutex
@@ -352,18 +353,19 @@ type Consumer struct {
 	timerMessagesProcessed      uint64
 
 	// DCP and timer related counters
-	timerResponsesRecieved       uint64
-	aggMessagesSentCounter       uint64
-	dcpDeletionCounter           uint64
-	dcpMutationCounter           uint64
-	dcpExpiryCounter             uint64
-	dcpXattrParseError           uint64
-	errorParsingTimerResponses   uint64
-	timerMessagesProcessedPSec   int
-	suppressedDCPDeletionCounter uint64
-	suppressedDCPMutationCounter uint64
-	sentEventsSize               int64
-	numSentEvents                int64
+	timerResponsesRecieved         uint64
+	aggMessagesSentCounter         uint64
+	dcpDeletionCounter             uint64
+	dcpMutationCounter             uint64
+	dcpExpiryCounter               uint64
+	dcpXattrParseError             uint64
+	errorParsingTimerResponses     uint64
+	timerMessagesProcessedPSec     int
+	suppressedDCPExpirationCounter uint64
+	suppressedDCPDeletionCounter   uint64
+	suppressedDCPMutationCounter   uint64
+	sentEventsSize                 int64
+	numSentEvents                  int64
 
 	// metastore related timer stats
 	metastoreDeleteCounter      uint64

@@ -90,6 +90,10 @@ func (c *Consumer) GetEventProcessingStats() map[string]uint64 {
 		stats["dcp_xattr_parse_error_counter"] = c.dcpXattrParseError
 	}
 
+	if c.suppressedDCPExpirationCounter > 0 {
+		stats["dcp_expiration_suppressed_counter"] = c.suppressedDCPExpirationCounter
+	}
+
 	if c.suppressedDCPDeletionCounter > 0 {
 		stats["dcp_deletion_suppressed_counter"] = c.suppressedDCPDeletionCounter
 	}
