@@ -2,7 +2,6 @@ package util
 
 import (
 	"bytes"
-	"net"
 	"net/url"
 	"strings"
 	"time"
@@ -169,40 +168,4 @@ func GetCluster(caller, connstr string, s common.EventingSuperSup) (*gocb.Cluste
 
 	logging.Infof("Connected to cluster %rs", connstr)
 	return conn, nil
-}
-
-func IsSyncGatewayEnabled(caller string, keySpace *common.Keyspace, restPort string, s common.EventingSuperSup) (enabled bool, err error) {
-	logPrefix := "util::IsSyncGatewayEnabled"
-
-	addr := net.JoinHostPort(Localhost(), restPort)
-
-	kvVbMap, err := KVVbMap(keySpace.BucketName, addr)
-	if err != nil {
-		logging.Errorf("%s Failed to get KVVbMap, err: %v", logPrefix, err)
-		return
-	}
-
-	connStr := GetConnectionStr(kvVbMap)
-
-	cluster, err := GetCluster(caller, connStr, s)
-	if err != nil {
-		logging.Errorf("%s gocb connect failed for bucket: %s, err: %v", logPrefix, keySpace.BucketName, err)
-		return
-	}
-
-	defer cluster.Close(nil)
-
-	bucket := cluster.Bucket(keySpace.BucketName)
-	err = bucket.WaitUntilReady(5*time.Second, nil)
-	if err != nil {
-		logging.Errorf("%s OpenBucket failed for bucket: %s, err: %v", logPrefix, keySpace.BucketName, err)
-		return
-	}
-
-	collection := bucket.Scope(keySpace.ScopeName).Collection(keySpace.CollectionName)
-	_, err = collection.Get("_sync:seq", &gocb.GetOptions{})
-	if err != nil {
-		return false, nil
-	}
-	return true, nil
 }
