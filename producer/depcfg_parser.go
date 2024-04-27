@@ -349,6 +349,12 @@ func (p *Producer) parseDepcfg() error {
 		p.handlerConfig.AllowTransactionMutations = false
 	}
 
+	if val, ok := settings["allow_sync_documents"]; ok {
+		p.handlerConfig.AllowSyncDocuments = val.(bool)
+	} else {
+		p.handlerConfig.AllowSyncDocuments = true
+	}
+
 	if val, ok := settings["cursor_aware"]; ok {
 		p.handlerConfig.CursorAware = val.(bool)
 	} else {

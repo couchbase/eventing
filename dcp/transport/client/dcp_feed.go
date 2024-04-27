@@ -9,13 +9,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/couchbase/eventing/common/collections"
-	"github.com/couchbase/eventing/dcp/transport"
-	"github.com/couchbase/eventing/logging"
 	"io"
 	"strconv"
 	"sync/atomic"
 	"time"
+
+	"github.com/couchbase/eventing/common/collections"
+	"github.com/couchbase/eventing/dcp/transport"
+	"github.com/couchbase/eventing/logging"
 )
 
 const dcpMutationExtraLen = 16
@@ -31,6 +32,8 @@ const dcpSeqnoAdvExtrasLen = 8
 var kvSeparator = []byte{0x00}
 
 var TransactionMutationPrefix = []byte("_txn:")
+
+var SyncGatewayMutationPrefix = []byte("_sync:")
 
 const SystemXattrPrefix = "_"
 
