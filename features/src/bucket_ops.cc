@@ -46,7 +46,7 @@ BucketOps::BucketOps(v8::Isolate *isolate,
   value_subdoc_str_ = "value";
   options_subdoc_str_ = "options";
   create_path_type_str_ = "create_path";
-  user_xattr_str_ = "xattr";
+  user_xattr_str_ = "xattrs";
   self_recursion_str_ = "self_recursion";
   counter_str_ = "count";
   error_str_ = "error";

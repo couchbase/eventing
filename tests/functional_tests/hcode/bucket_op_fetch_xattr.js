@@ -1,4 +1,4 @@
-function OnUpdate(doc, meta, xattr) {
+function OnUpdate(doc, meta, xattrs) {
     if(!xattr.test_xattr) {
         return;
     }
