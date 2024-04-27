@@ -34,6 +34,7 @@ import (
 	"github.com/couchbase/eventing/parser"
 	"github.com/couchbase/eventing/rbac"
 	"github.com/couchbase/eventing/service_manager/response"
+	"github.com/couchbase/eventing/syncgateway"
 	"github.com/couchbase/eventing/util"
 	"github.com/couchbase/goutils/systemeventlog"
 	//"github.com/couchbase/goutils/systemeventlog"
@@ -2443,24 +2444,47 @@ func (m *ServiceMgr) savePrimaryStore(app *application) (info *response.RuntimeI
 	}
 
 	srcMutationEnabled := m.isSrcMutationEnabled(&app.DeploymentConfig)
-	if srcMutationEnabled && !m.compareEventingVersion(mhVersion) {
-		info.ErrCode = response.ErrClusterVersion
-		info.Description = fmt.Sprintf("All eventing nodes in the cluster must be on version %s or higher for allowing mutations against source bucket",
-			mhVersion)
-		logging.Warnf("%s Version compat check failed: %s", logPrefix, info.Description)
-		return
-	}
-
 	if srcMutationEnabled {
-		keySpace := &common.Keyspace{BucketName: app.DeploymentConfig.SourceBucket,
-			ScopeName:      app.DeploymentConfig.SourceScope,
-			CollectionName: app.DeploymentConfig.SourceCollection,
-		}
-		if enabled, err := util.IsSyncGatewayEnabled(logPrefix, keySpace, m.restPort, m.superSup); err == nil && enabled {
-			info.ErrCode = response.ErrSyncGatewayEnabled
-			info.Description = fmt.Sprintf("SyncGateway is enabled on: %s, deployement of source bucket mutating handler will cause Intra Bucket Recursion", app.DeploymentConfig.SourceBucket)
+		if !m.compareEventingVersion(mhVersion) {
+			info.ErrCode = response.ErrClusterVersion
+			info.Description = fmt.Sprintf("All eventing nodes in the cluster must be on version %s or higher for allowing mutations against source bucket",
+				mhVersion)
+			logging.Warnf("%s Version compat check failed: %s", logPrefix, info.Description)
 			return
 		}
+		// Note: If app is not "cursor_aware" we may encounter duplicate mutations
+		client, clienterr := syncgateway.NewSourceBucketClient(logPrefix, app.DeploymentConfig.SourceBucket, m.restPort, m.superSup)
+		if clienterr != nil {
+			info.ErrCode = response.ErrSGWDetection
+			info.Description = fmt.Sprintf("Encountered internal error while checking for possible Sync Gateway co-existence. Error logged")
+			logging.Errorf("%s Encountered internal error while checking for possible Sync Gateway co-existence: %v", logPrefix, clienterr)
+			if client != nil {
+				client.Close()
+			}
+			return
+		}
+		prohibited, reason, deploymentcheckerr := client.IsDeploymentProhibited(common.Keyspace{
+			BucketName:     app.DeploymentConfig.SourceBucket,
+			ScopeName:      app.DeploymentConfig.SourceScope,
+			CollectionName: app.DeploymentConfig.SourceCollection})
+		if deploymentcheckerr != nil {
+			info.ErrCode = response.ErrSGWDetection
+			info.Description = fmt.Sprintf("Encountered internal error while checking for possible Sync Gateway co-existence. Error logged")
+			logging.Errorf("%s Encountered internal error while checking for possible Sync Gateway co-existence: %v", logPrefix, deploymentcheckerr)
+			if client != nil {
+				client.Close()
+			}
+			return
+		}
+		if prohibited {
+			info.ErrCode = response.ErrUnsupportedSGW
+			info.Description = fmt.Sprintf("%s. deployment of source keyspace mutating handler will cause Intra Bucket Recursion", reason)
+			if client != nil {
+				client.Close()
+			}
+			return
+		}
+		client.Close()
 	}
 
 	logging.Infof("%v Function UUID: %v for function name: %v stored in primary store", logPrefix, app.FunctionID, appLocation)
