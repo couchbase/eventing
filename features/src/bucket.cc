@@ -530,7 +530,7 @@ Bucket::CounterWithXattr(MetaData &meta, int64_t delta) {
   meta.collection = collection;
 
   lcb_SUBDOCSPECS *lcb_specs;
-  lcb_subdocspecs_create(&lcb_specs, 4);
+  lcb_subdocspecs_create(&lcb_specs, 5);
 
   auto function_instance_id = GetFunctionInstanceID(isolate_);
   std::string function_instance_id_path("_eventing.fiid");
@@ -547,15 +547,22 @@ Bucket::CounterWithXattr(MetaData &meta, int64_t delta) {
                               dcp_seqno_path.c_str(), dcp_seqno_path.size(),
                               dcp_seqno_macro.c_str(), dcp_seqno_macro.size());
 
+  std::string CAS_path("_eventing.cas");
+  std::string CAS_macro(R"("${Mutation.CAS}")");
+  lcb_subdocspecs_dict_upsert(lcb_specs,2,
+                              LCB_SUBDOCSPECS_F_MKINTERMEDIATES |
+                                  LCB_SUBDOCSPECS_F_XATTR_MACROVALUES,
+                              CAS_path.c_str(), CAS_path.size(),
+                              CAS_macro.c_str(), CAS_macro.size());
+
   std::string value_crc32_path("_eventing.crc");
   std::string value_crc32_macro(R"("${Mutation.value_crc32c}")");
   lcb_subdocspecs_dict_upsert(
-      lcb_specs, 2,
+      lcb_specs, 3,
       LCB_SUBDOCSPECS_F_MKINTERMEDIATES | LCB_SUBDOCSPECS_F_XATTR_MACROVALUES,
       value_crc32_path.c_str(), value_crc32_path.size(),
       value_crc32_macro.c_str(), value_crc32_macro.size());
-
-  lcb_subdocspecs_counter(lcb_specs, 3, 0, "count", strlen("count"), delta);
+  lcb_subdocspecs_counter(lcb_specs, 4, 0, "count", strlen("count"), delta);
 
   const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
   const auto lcb_timeout = UnwrapData(isolate_)->lcb_timeout;
@@ -667,7 +674,8 @@ Bucket::MutateInWithXattr(MetaData &meta, MutateInSpecs &specs) {
   meta.collection = collection;
 
   lcb_SUBDOCSPECS *lcb_specs;
-  lcb_subdocspecs_create(&lcb_specs, specs.get_num_fields() + 3);
+  lcb_subdocspecs_create(&lcb_specs, specs.get_num_fields() + 4);
+
   auto function_instance_id = GetFunctionInstanceID(isolate_);
   std::string function_instance_id_path("_eventing.fiid");
   lcb_subdocspecs_dict_upsert(
@@ -683,15 +691,23 @@ Bucket::MutateInWithXattr(MetaData &meta, MutateInSpecs &specs) {
                               dcp_seqno_path.c_str(), dcp_seqno_path.size(),
                               dcp_seqno_macro.c_str(), dcp_seqno_macro.size());
 
+  std::string CAS_path("_eventing.cas");
+  std::string CAS_macro(R"("${Mutation.CAS}")");
+  lcb_subdocspecs_dict_upsert(lcb_specs,2,
+                              LCB_SUBDOCSPECS_F_MKINTERMEDIATES |
+                                  LCB_SUBDOCSPECS_F_XATTR_MACROVALUES,
+                              CAS_path.c_str(), CAS_path.size(),
+                              CAS_macro.c_str(), CAS_macro.size());
+
   std::string value_crc32_path("_eventing.crc");
   std::string value_crc32_macro(R"("${Mutation.value_crc32c}")");
   lcb_subdocspecs_dict_upsert(
-      lcb_specs, 2,
+      lcb_specs, 3,
       LCB_SUBDOCSPECS_F_MKINTERMEDIATES | LCB_SUBDOCSPECS_F_XATTR_MACROVALUES,
       value_crc32_path.c_str(), value_crc32_path.size(),
       value_crc32_macro.c_str(), value_crc32_macro.size());
 
-  specs.populate_lcb_specs(lcb_specs, 3);
+  specs.populate_lcb_specs(lcb_specs, 4);
 
   const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
   const auto lcb_timeout = UnwrapData(isolate_)->lcb_timeout;
@@ -747,7 +763,8 @@ Bucket::SetWithXattr(MetaData &meta, const std::string &value,
   meta.collection = collection;
 
   lcb_SUBDOCSPECS *lcb_specs;
-  lcb_subdocspecs_create(&lcb_specs, 4);
+  lcb_subdocspecs_create(&lcb_specs, 5);
+
   auto function_instance_id = GetFunctionInstanceID(isolate_);
   std::string function_instance_id_path("_eventing.fiid");
   lcb_subdocspecs_dict_upsert(
@@ -763,15 +780,23 @@ Bucket::SetWithXattr(MetaData &meta, const std::string &value,
                               dcp_seqno_path.c_str(), dcp_seqno_path.size(),
                               dcp_seqno_macro.c_str(), dcp_seqno_macro.size());
 
+  std::string CAS_path("_eventing.cas");
+  std::string CAS_macro(R"("${Mutation.CAS}")");
+  lcb_subdocspecs_dict_upsert(lcb_specs,2,
+                              LCB_SUBDOCSPECS_F_MKINTERMEDIATES |
+                                  LCB_SUBDOCSPECS_F_XATTR_MACROVALUES,
+                              CAS_path.c_str(), CAS_path.size(),
+                              CAS_macro.c_str(), CAS_macro.size());
+
   std::string value_crc32_path("_eventing.crc");
   std::string value_crc32_macro(R"("${Mutation.value_crc32c}")");
   lcb_subdocspecs_dict_upsert(
-      lcb_specs, 2,
+      lcb_specs, 3,
       LCB_SUBDOCSPECS_F_MKINTERMEDIATES | LCB_SUBDOCSPECS_F_XATTR_MACROVALUES,
       value_crc32_path.c_str(), value_crc32_path.size(),
       value_crc32_macro.c_str(), value_crc32_macro.size());
 
-  lcb_subdocspecs_replace(lcb_specs, 3, 0, "", 0, value.data(), value.size());
+  lcb_subdocspecs_replace(lcb_specs, 4, 0, "", 0, value.data(), value.size());
 
   const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
   const auto lcb_timeout = UnwrapData(isolate_)->lcb_timeout;
@@ -881,7 +906,7 @@ Bucket::DeleteWithXattr(MetaData &meta) {
   meta.collection = collection;
 
   lcb_SUBDOCSPECS *lcb_specs;
-  lcb_subdocspecs_create(&lcb_specs, 4);
+  lcb_subdocspecs_create(&lcb_specs, 5);
 
   auto function_instance_id = GetFunctionInstanceID(isolate_);
   std::string function_instance_id_path("_eventing.fiid");
@@ -898,15 +923,23 @@ Bucket::DeleteWithXattr(MetaData &meta) {
                               dcp_seqno_path.c_str(), dcp_seqno_path.size(),
                               dcp_seqno_macro.c_str(), dcp_seqno_macro.size());
 
+  std::string CAS_path("_eventing.cas");
+  std::string CAS_macro(R"("${Mutation.CAS}")");
+  lcb_subdocspecs_dict_upsert(lcb_specs,2,
+                              LCB_SUBDOCSPECS_F_MKINTERMEDIATES |
+                                  LCB_SUBDOCSPECS_F_XATTR_MACROVALUES,
+                              CAS_path.c_str(), CAS_path.size(),
+                              CAS_macro.c_str(), CAS_macro.size());
+
   std::string value_crc32_path("_eventing.crc");
   std::string value_crc32_macro(R"("${Mutation.value_crc32c}")");
   lcb_subdocspecs_dict_upsert(
-      lcb_specs, 2,
+      lcb_specs, 3,
       LCB_SUBDOCSPECS_F_MKINTERMEDIATES | LCB_SUBDOCSPECS_F_XATTR_MACROVALUES,
       value_crc32_path.c_str(), value_crc32_path.size(),
       value_crc32_macro.c_str(), value_crc32_macro.size());
 
-  lcb_subdocspecs_remove(lcb_specs, 3, 0, "", 0);
+  lcb_subdocspecs_remove(lcb_specs, 4, 0, "", 0);
 
   const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
   const auto lcb_timeout = UnwrapData(isolate_)->lcb_timeout;
@@ -1011,7 +1044,7 @@ Bucket::TouchWithXattr(MetaData &meta) {
   meta.collection = collection;
 
   lcb_SUBDOCSPECS *lcb_specs;
-  lcb_subdocspecs_create(&lcb_specs, 3);
+  lcb_subdocspecs_create(&lcb_specs, 4);
 
   auto function_instance_id = GetFunctionInstanceID(isolate_);
   std::string function_instance_id_path("_eventing.fiid");
@@ -1028,10 +1061,18 @@ Bucket::TouchWithXattr(MetaData &meta) {
                               dcp_seqno_path.c_str(), dcp_seqno_path.size(),
                               dcp_seqno_macro.c_str(), dcp_seqno_macro.size());
 
+  std::string CAS_path("_eventing.cas");
+  std::string CAS_macro(R"("${Mutation.CAS}")");
+  lcb_subdocspecs_dict_upsert(lcb_specs,2,
+                              LCB_SUBDOCSPECS_F_MKINTERMEDIATES |
+                                  LCB_SUBDOCSPECS_F_XATTR_MACROVALUES,
+                              CAS_path.c_str(), CAS_path.size(),
+                              CAS_macro.c_str(), CAS_macro.size());
+
   std::string value_crc32_path("_eventing.crc");
   std::string value_crc32_macro(R"("${Mutation.value_crc32c}")");
   lcb_subdocspecs_dict_upsert(
-      lcb_specs, 2,
+      lcb_specs, 3,
       LCB_SUBDOCSPECS_F_MKINTERMEDIATES | LCB_SUBDOCSPECS_F_XATTR_MACROVALUES,
       value_crc32_path.c_str(), value_crc32_path.size(),
       value_crc32_macro.c_str(), value_crc32_macro.size());

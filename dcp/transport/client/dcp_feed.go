@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -35,7 +36,7 @@ var TransactionMutationPrefix = []byte("_txn:")
 
 var SyncGatewayMutationPrefix = []byte("_sync:")
 
-const SystemXattrPrefix = "_"
+const systemXattrPrefix = "_"
 
 const IncludeXATTRs = uint32(4)
 
@@ -1002,7 +1003,8 @@ type DcpEvent struct {
 	Cas          uint64                // CAS value of the item
 	CollectionID uint32                // Collection Id
 	ScopeID      uint32
-	Xattr        map[string]XattrVal // Xattr map
+	SystemXattrs map[string]XattrVal // System Xattrs map
+	UserXattrs   map[string]XattrVal // User Xattrs map
 
 	EventType transport.CollectionEvent // For DCP_SYSTEM_EVENT, DCP_OSO_SNAPSHOT types
 	// meta fields
@@ -1026,7 +1028,6 @@ type DcpEvent struct {
 	Ctime int64
 }
 
-// Include the XATTR in the request
 type XattrVal struct {
 	body []byte
 }
@@ -1041,13 +1042,14 @@ func (x XattrVal) Bytes() []byte {
 
 func newDcpEvent(rq *transport.MCRequest, stream *DcpStream) *DcpEvent {
 	event := &DcpEvent{
-		Cas:      rq.Cas,
-		Datatype: rq.Datatype,
-		Opcode:   rq.Opcode,
-		VBucket:  stream.Vbucket,
-		VBuuid:   stream.Vbuuid,
-		Ctime:    time.Now().UnixNano(),
-		Xattr:    make(map[string]XattrVal),
+		Cas:          rq.Cas,
+		Datatype:     rq.Datatype,
+		Opcode:       rq.Opcode,
+		VBucket:      stream.Vbucket,
+		VBuuid:       stream.Vbuuid,
+		Ctime:        time.Now().UnixNano(),
+		SystemXattrs: make(map[string]XattrVal),
+		UserXattrs:   make(map[string]XattrVal),
 	}
 
 	docId := rq.Key
@@ -1073,9 +1075,13 @@ func newDcpEvent(rq *transport.MCRequest, stream *DcpStream) *DcpEvent {
 			binaryPair := event.Value[pos : pos+pairLen]
 			pos = pos + pairLen
 			kvPair := bytes.Split(binaryPair, kvSeparator)
-			event.Xattr[string(kvPair[0])] = XattrVal{body: kvPair[1]}
+			xattrKey := string(kvPair[0])
+			if strings.HasPrefix(xattrKey, systemXattrPrefix) {
+				event.SystemXattrs[xattrKey] = XattrVal{body: kvPair[1]}
+				continue
+			}
+			event.UserXattrs[xattrKey] = XattrVal{body: kvPair[1]}
 		}
-
 		event.Value = event.Value[pos:]
 	}
 
