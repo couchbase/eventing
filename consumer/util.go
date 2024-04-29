@@ -64,11 +64,11 @@ func (c *Consumer) deleteFromEnqueueMap(vb uint16) {
 func (c *Consumer) isRecursiveDCPEvent(evt *memcached.DcpEvent, functionInstanceID string) (bool, error) {
 	logPrefix := "Consumer::isRecursiveDCPEvent"
 
-	if evt.Xattr == nil {
+	if len(evt.SystemXattrs) == 0 {
 		return false, nil
 	}
 
-	eventingXattr, ok := evt.Xattr[xattrPrefix]
+	eventingXattr, ok := evt.SystemXattrs[xattrPrefix]
 	if !ok {
 		return false, nil
 	}
@@ -82,23 +82,37 @@ func (c *Consumer) isRecursiveDCPEvent(evt *memcached.DcpEvent, functionInstance
 		return false, err
 	}
 
-	seqno, err := strconv.ParseUint(xMeta.SeqNo, 0, 64)
-	if err != nil {
-		c.dcpXattrParseError++
-		logging.Errorf("%s [%s:%s:%d] key: %ru failed to read sequence number from XATTR",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), string(evt.Key))
-		return false, err
-	}
+	if xMeta.FunctionInstanceID == functionInstanceID {
+		xSeqNo, seqNoErr := strconv.ParseUint(xMeta.SeqNo, 0, 64)
+		if seqNoErr != nil {
+			c.dcpXattrParseError++
+			logging.Errorf("%s [%s:%s:%d] key: %ru failed to read sequence number from XATTR",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), string(evt.Key))
+			return false, seqNoErr
+		}
 
-	if xMeta.FunctionInstanceID == functionInstanceID && seqno == evt.Seqno {
-		checksum := crc32.Checksum(evt.Value, util.CrcTable)
-		xChecksum, err := strconv.ParseUint(xMeta.ValueCRC, 0, 32)
-		if err != nil {
+		var xCAS uint64
+		if xMeta.CAS != nil {
+			var CASErr error
+			xCAS, CASErr = util.HexLittleEndianToUint64([]byte(*xMeta.CAS))
+			if CASErr != nil {
+				c.dcpXattrParseError++
+				logging.Errorf("%s [%s:%s:%d] key: %ru failed to read CAS from XATTR, err: %v",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), string(evt.Key), CASErr)
+				return false, CASErr
+			}
+		}
+		if xCAS != evt.Cas && xSeqNo != evt.Seqno {
+			return false, nil
+		}
+		xChecksum, checksumErr := strconv.ParseUint(xMeta.ValueCRC, 0, 32)
+		if checksumErr != nil {
 			c.dcpXattrParseError++
 			logging.Errorf("%s [%s:%s:%d] key: %ru failed to read CRC from XATTR",
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), string(evt.Key))
-			return false, err
+			return false, checksumErr
 		}
+		checksum := crc32.Checksum(evt.Value, util.CrcTable)
 		if uint64(checksum) == xChecksum {
 			return true, nil
 		}

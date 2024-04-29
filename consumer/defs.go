@@ -91,9 +91,10 @@ var (
 )
 
 type xattrMetadata struct {
-	FunctionInstanceID string `json:"fiid"`
-	SeqNo              string `json:"seqno"`
-	ValueCRC           string `json:"crc"`
+	FunctionInstanceID string  `json:"fiid"`
+	SeqNo              string  `json:"seqno"`
+	CAS                *string `json:"cas"`
+	ValueCRC           string  `json:"crc"`
 }
 
 type vbFlogEntry struct {

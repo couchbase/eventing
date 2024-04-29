@@ -7,6 +7,8 @@ import (
 	"crypto/rand"
 	"crypto/tls"
 	"encoding/base64"
+	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -2363,4 +2365,20 @@ func CheckAndGetBktAndScopeIDs(fG *common.FunctionScope, restPort string) (strin
 	}
 
 	return bucketUUID, scopeId, nil
+}
+
+func HexLittleEndianToUint64(hexLE []byte) (uint64, error) {
+	if len(hexLE) <= 2 {
+		return 0, fmt.Errorf("hex input value %s is too short. Leading 0x is expected", hexLE)
+	}
+	if hexLE[0] != '0' || hexLE[1] != 'x' {
+		return 0, fmt.Errorf("incorrect hex little endian input %s", hexLE)
+	}
+	decoded := make([]byte, hex.DecodedLen(len(hexLE[2:])))
+	_, err := hex.Decode(decoded, hexLE[2:])
+	if err != nil {
+		return 0, err
+	}
+	res := binary.LittleEndian.Uint64(decoded)
+	return res, nil
 }
