@@ -143,7 +143,7 @@ function ApplicationModel(app) {
 
 ApplicationModel.prototype.getDefaultModel = function() {
   var code = [
-    'function OnUpdate(doc, meta, xattr) {',
+    'function OnUpdate(doc, meta, xattrs) {',
     '    log("Doc created/updated", meta.id);',
     '}',
     '',
