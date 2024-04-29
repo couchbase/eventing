@@ -1747,6 +1747,10 @@ func getAppNameFromSplitPath(splitPath []string) (string, error) {
 	return "", fmt.Errorf("Invalid path: %s", splitPath)
 }
 
+func GetFunctionInstanceId(funcId uint32, funcInstanceId string) string {
+	return strconv.FormatUint(uint64(funcId), 10) + "-" + funcInstanceId
+}
+
 func GenerateFunctionID() (uint32, error) {
 	uuid := make([]byte, 16)
 	_, err := rand.Read(uuid)

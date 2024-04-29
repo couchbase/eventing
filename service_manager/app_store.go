@@ -127,7 +127,7 @@ func (al *appStore) listApps(funcScope *common.FunctionScope) (active []*applica
 	active = make([]*application, 0)
 
 	al.RLock()
-        defer al.RUnlock()
+	defer al.RUnlock()
 	if funcScope != nil {
 		appList, ok := al.appCache[*funcScope]
 		if !ok {

@@ -48,10 +48,14 @@ func (registry *CursorRegistry) Unregister(k common.KeyspaceName, funcId string)
 	registry.root.unregister(k, funcId)
 }
 
-func (registry *CursorRegistry) GetCursors(k common.KeyspaceName) ([]string, bool) {
+func (registry *CursorRegistry) GetCursors(k common.KeyspaceName) (map[string]struct{}, bool) {
 	registry.RLock()
 	defer registry.RUnlock()
 	return registry.root.getCursors(k)
+}
+
+func (registry *CursorRegistry) PrintTree() {
+	PrintTrackerMap(registry.root, 1)
 }
 
 func (ct *CursorTracker) register(k common.KeyspaceName, funcId string) bool {
@@ -192,25 +196,25 @@ func (ct *CursorTracker) unregister(k common.KeyspaceName, funcId string) {
 	ct.reevaluatemax()
 }
 
-func (ct *CursorTracker) getCursors(k common.KeyspaceName) ([]string, bool) {
+func (ct *CursorTracker) getCursors(k common.KeyspaceName) (map[string]struct{}, bool) {
 	bucketComponent, bfound := ct.children[k.Bucket]
 	if !bfound {
 		return nil, false
 	}
-	scopeComponent, sfound := bucketComponent.children[k.Bucket]
+	scopeComponent, sfound := bucketComponent.children[k.Scope]
 	if !sfound {
 		return nil, false
 	}
-	collComponent, cfound := scopeComponent.children[k.Bucket]
+	collComponent, cfound := scopeComponent.children[k.Collection]
 	if !cfound {
 		return nil, false
 	}
 	if collComponent.num == 0 {
-		return []string{}, true
+		return nil, true
 	}
-	cursors := make([]string, collComponent.num)
+	cursors := make(map[string]struct{}, collComponent.num)
 	for key, _ := range collComponent.funcIds {
-		cursors = append(cursors, key)
+		cursors[key] = struct{}{}
 	}
 	return cursors, true
 }

@@ -37,7 +37,7 @@ func NewState() state {
 
 // NewServiceMgr creates handle for ServiceMgr, which implements cbauth service.Manager
 func NewServiceMgr(config util.Config, rebalanceRunning bool,
-	superSup common.EventingSuperSup) *ServiceMgr {
+	superSup common.EventingSuperSup, cursorRegistry common.CursorRegistryMgr) *ServiceMgr {
 
 	logging.Infof("ServiceMgr::newServiceMgr config: %rm rebalanceRunning: %v", fmt.Sprintf("%#v", config), rebalanceRunning)
 
@@ -63,6 +63,7 @@ func NewServiceMgr(config util.Config, rebalanceRunning bool,
 		state:                   NewState(),
 		stopTracerCh:            make(chan struct{}, 1),
 		superSup:                superSup,
+		cursorRegistry:          cursorRegistry,
 		supWaitCh:               make(chan bool, 2),
 		finch:                   make(chan bool),
 	}

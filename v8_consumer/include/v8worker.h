@@ -33,9 +33,11 @@
 #include <uv.h>
 #include <v8.h>
 #include <vector>
+#include <optional>
 
 #include "blocking_deque.h"
 #include "bucket.h"
+#include "checkpoint_writer.h"
 #include "commands.h"
 #include "exceptioninsight.h"
 #include "histogram.h"
@@ -223,14 +225,30 @@ extern std::atomic<int64_t> dcp_mutation_msg_counter;
 extern std::atomic<int64_t> timer_msg_counter;
 extern std::atomic<int64_t> timer_create_counter;
 extern std::atomic<int64_t> timer_cancel_counter;
-
 extern std::atomic<int64_t> enqueued_dcp_delete_msg_counter;
 extern std::atomic<int64_t> enqueued_dcp_mutation_msg_counter;
 extern std::atomic<int64_t> dcp_delete_parse_failure;
 extern std::atomic<int64_t> dcp_mutation_parse_failure;
 extern std::atomic<int64_t> filtered_dcp_delete_counter;
 extern std::atomic<int64_t> filtered_dcp_mutation_counter;
+extern std::atomic<int64_t> dcp_mutation_checkpoint_cas_mismatch;
+extern std::atomic<int64_t> dcp_delete_checkpoint_cas_mismatch;
+extern std::atomic<int64_t> dcp_mutation_checkpoint_failure;
+extern std::atomic<int64_t> dcp_delete_checkpoint_failure;
+
 extern std::atomic<int64_t> enqueued_timer_msg_counter;
+
+struct ParsedMetadata {
+  int vb{0};
+  uint64_t seq_num{0};
+  uint32_t cid{0};
+
+  std::string scope{""};
+  std::string collection{""};
+  std::string key{""};
+  std::string cas{""};
+  std::string rootcas{""};
+};
 
 class V8Worker {
 public:
@@ -245,6 +263,8 @@ public:
            int worker_idx, const std::string &user, const std::string &domain);
   ~V8Worker();
 
+  void EnableTracker();
+  void DisableTracker();
   int V8WorkerLoad(std::string source_s);
   void RouteMessage();
   void TaskDurationWatcher();
@@ -291,11 +311,12 @@ public:
 
   std::unique_lock<std::mutex> GetAndLockBucketOpsLock();
 
-  int ParseMetadata(const std::string &metadata, uint32_t &cid, int &vb_no,
-                    uint64_t &seq_no) const;
-  int ParseMetadataWithAck(const std::string &metadata_str, uint32_t &cid,
-                           int &vb_no, uint64_t &seq_no, int &skip_ack,
-                           bool ack_check) const;
+  std::pair<std::optional<ParsedMetadata>, int>
+  ParseMetadata(const std::string &metadata) const;
+
+  std::pair<std::optional<ParsedMetadata>, int>
+  ParseMetadataWithAck(const std::string &metadata_str, int &skip_ack,
+    const bool ack_check) const;
 
   void SetThreadExitFlag();
 
@@ -371,8 +392,8 @@ private:
   std::tuple<bool, bool> IsFilteredEventLocked(bool skip_cid_check,
                                                uint32_t cid, int vb,
                                                uint64_t seq_num);
-  std::tuple<uint32_t, int, uint64_t, bool>
-  GetCidVbAndSeqNum(const std::unique_ptr<WorkerMessage> &msg) const;
+  std::tuple<std::optional<ParsedMetadata>, bool>
+  ParseWorkerMessage(const std::unique_ptr<WorkerMessage> &msg) const;
   void SetCouchbaseNamespace();
   v8::Local<v8::ObjectTemplate> NewGlobalObj() const;
   void InstallCurlBindings(const std::vector<CurlBinding> &curl_bindings) const;
@@ -432,8 +453,10 @@ private:
   std::vector<std::string> curl_binding_values_;
   std::atomic<bool> stop_timer_scan_;
   std::atomic<bool> timed_out_;
+  std::atomic<bool> tracker_enabled_;
   std::unordered_set<int64_t> partitions_;
   std::shared_ptr<BucketFactory> bucket_factory_;
+  std::unique_ptr<CheckpointWriter> checkpoint_writer_{nullptr};
   std::list<BucketBinding> bucket_bindings_;
   std::vector<std::string> handler_headers_;
   std::vector<std::string> handler_footers_;

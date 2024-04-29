@@ -22,6 +22,7 @@
 #include <unordered_map>
 #include <v8.h>
 #include <vector>
+#include <stdint.h>
 
 #include "comm.h"
 #include "info.h"
@@ -313,4 +314,18 @@ inline long ConvertMicroSecondsToSeconds(long time) { return time / 1e6; }
 
 void ReplaceSubstringsInPlace(std::string &subject, const std::string &search,
                               const std::string &replace, int count);
+
+static inline uint64_t byte_swap_64(uint64_t x) {
+  return (((x & UINT64_C(0xFF)) << 56) |
+          ((x & UINT64_C(0xFF00)) << 40) |
+          ((x & UINT64_C(0xFF0000)) << 24) |
+          ((x & UINT64_C(0xFF000000)) << 8) |
+          ((x & UINT64_C(0xFF00000000)) >> 8) |
+          ((x & UINT64_C(0xFF0000000000)) >> 24) |
+          ((x & UINT64_C(0xFF000000000000)) >> 40) |
+          ((x & UINT64_C(0xFF00000000000000)) >> 56));
+}
+
+std::string to_hex(uint64_t);
+void splitString(const std::string&, std::vector<std::string>&, char);
 #endif

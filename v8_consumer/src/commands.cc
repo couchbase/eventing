@@ -39,26 +39,28 @@ v8_worker_opcode getV8WorkerOpcode(int8_t opcode) {
   if (opcode == 2)
     return oInit;
   if (opcode == 3)
-    return oLoad;
+    return oTracker;
   if (opcode == 4)
-    return oTerminate;
+    return oLoad;
   if (opcode == 5)
-    return oUnused1;
+    return oTerminate;
   if (opcode == 6)
-    return oUnused2;
+    return oUnused1;
   if (opcode == 7)
-    return oGetLatencyStats;
+    return oUnused2;
   if (opcode == 8)
-    return oGetFailureStats;
+    return oGetLatencyStats;
   if (opcode == 9)
-    return oGetExecutionStats;
+    return oGetFailureStats;
   if (opcode == 10)
-    return oGetCompileInfo;
+    return oGetExecutionStats;
   if (opcode == 11)
-    return oGetLcbExceptions;
+    return oGetCompileInfo;
   if (opcode == 12)
-    return oGetCurlLatencyStats;
+    return oGetLcbExceptions;
   if (opcode == 13)
+    return oGetCurlLatencyStats;
+  if (opcode == 14)
     return oInsight;
   return V8_Worker_Opcode_Unknown;
 }

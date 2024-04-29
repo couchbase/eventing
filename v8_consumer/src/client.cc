@@ -19,6 +19,8 @@
 #include "lcb_utils.h"
 
 #include <nlohmann/json.hpp>
+#include <iostream>
+#include <sstream>
 
 uint64_t timer_responses_sent(0);
 uint64_t messages_parsed(0);
@@ -102,8 +104,11 @@ std::string GetExecutionStats(const std::map<int16_t, V8Worker *> &workers,
   estats["dcp_delete_parse_failure"] = dcp_delete_parse_failure.load();
   estats["dcp_mutation_parse_failure"] = dcp_mutation_parse_failure.load();
   estats["filtered_dcp_delete_counter"] = filtered_dcp_delete_counter.load();
-  estats["filtered_dcp_mutation_counter"] =
-      filtered_dcp_mutation_counter.load();
+  estats["filtered_dcp_mutation_counter"] = filtered_dcp_mutation_counter.load();
+  estats["dcp_delete_checkpoint_failure"] = dcp_delete_checkpoint_failure.load();
+  estats["dcp_mutation_checkpoint_failure"] = dcp_mutation_checkpoint_failure.load();
+  estats["dcp_delete_checkpoint_cas_mismatch"] = dcp_delete_checkpoint_cas_mismatch.load();
+  estats["dcp_mutation_checkpoint_cas_mismatch"] = dcp_mutation_checkpoint_cas_mismatch.load();
   if (!workers.empty()) {
     int64_t agg_queue_memory = 0, agg_queue_size = 0;
     for (const auto &w : workers) {
@@ -610,6 +615,18 @@ void AppWorker::RouteMessageWithResponse(
         v8worker_init_done_ = true;
       }
       break;
+    case oTracker:
+      for (int16_t i = 0; i < thr_count_; i++) {
+        bool enable = false;
+        std::istringstream(worker_msg->header.metadata) >> std::boolalpha >> enable;
+        if (enable) {
+          workers_[i]->EnableTracker();
+        } else {
+          workers_[i]->DisableTracker();
+        }
+      }
+      msg_priority_ = true;
+      break;
     case oLoad:
       LOG(logDebug) << "Loading app code:" << RM(worker_msg->header.metadata)
                     << std::endl;
@@ -749,21 +766,17 @@ void AppWorker::RouteMessageWithResponse(
         LOG(logInfo) << "Received filter event from Go "
                      << worker_msg->header.metadata << std::endl;
         auto worker = workers_[worker_index];
-        int vb_no = 0, skip_ack = 0;
-        uint64_t filter_seq_no = 0;
-        uint32_t cid = 0;
-        if (kSuccess == worker->ParseMetadataWithAck(
-                            worker_msg->header.metadata, cid, vb_no,
-                            filter_seq_no, skip_ack, true)) {
+        int skip_ack = 0;
+        auto [parsed_meta, status] = worker->ParseMetadataWithAck(worker_msg->header.metadata, skip_ack, true);
+        if (status == kSuccess) {
           auto lck = worker->GetAndLockBucketOpsLock();
-          auto last_processed_seq_no = worker->GetBucketopsSeqno(vb_no);
-          if (last_processed_seq_no < filter_seq_no) {
-            worker->UpdateVbFilter(vb_no, filter_seq_no);
+          auto last_processed_seq_no = worker->GetBucketopsSeqno(parsed_meta->vb);
+          if (last_processed_seq_no < (parsed_meta->seq_num)) {
+            worker->UpdateVbFilter(parsed_meta->vb, parsed_meta->seq_num);
           }
-          worker->RemoveTimerPartition(vb_no);
+          worker->RemoveTimerPartition(parsed_meta->vb);
           lck.unlock();
-          SendFilterAck(oVbFilter, mFilterAck, vb_no, last_processed_seq_no,
-                        skip_ack);
+          SendFilterAck(oVbFilter, mFilterAck, parsed_meta->vb, last_processed_seq_no, skip_ack);
         }
       } else {
         LOG(logError) << "Filter event lost: worker " << worker_index
@@ -776,14 +789,11 @@ void AppWorker::RouteMessageWithResponse(
         LOG(logInfo) << "Received update processed seq_no event from Go "
                      << worker_msg->header.metadata << std::endl;
         current_partition_thr_map_[worker_msg->header.partition] = worker_index;
-        int vb_no = 0;
-        uint64_t seq_no = 0;
-        uint32_t cid = 0;
-        if (kSuccess == workers_[worker_index]->ParseMetadata(
-                            worker_msg->header.metadata, cid, vb_no, seq_no)) {
+        auto [parsed_meta, status] = workers_[worker_index]->ParseMetadata(worker_msg->header.metadata);
+        if (status == kSuccess) {
           auto lck = workers_[worker_index]->GetAndLockBucketOpsLock();
-          workers_[worker_index]->UpdateBucketopsSeqnoLocked(vb_no, seq_no);
-          workers_[worker_index]->AddTimerPartition(vb_no);
+          workers_[worker_index]->UpdateBucketopsSeqnoLocked(parsed_meta->vb, parsed_meta->seq_num);
+          workers_[worker_index]->AddTimerPartition(parsed_meta->vb);
         }
       }
       break;

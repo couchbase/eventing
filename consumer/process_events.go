@@ -129,14 +129,14 @@ func (c *Consumer) processDCPEvents() {
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key), e.Datatype)
 
 				if !c.allowSyncDocuments && c.isSGWMutation(e) {
-					c.suppressedDCPExpirationCounter++
+					c.suppressedDCPExpiryCounter++
 					continue
 				}
 
 				if c.processAndSendDcpDelOrExpMessage(e, false) {
 					c.dcpExpiryCounter++
 				} else {
-					c.suppressedDCPExpirationCounter++
+					c.suppressedDCPExpiryCounter++
 				}
 
 			case mcd.DCP_STREAMEND:
@@ -1178,6 +1178,10 @@ func (c *Consumer) cppWorkerThrPartitionMap() {
 }
 
 func (c *Consumer) sendEvent(e *cb.DcpEvent) error {
+	return c.sendEventWithCursorIdsAndCas(e, nil, e.Cas)
+}
+
+func (c *Consumer) sendEventWithCursorIdsAndCas(e *cb.DcpEvent, cursors []string, rootCas uint64) error {
 	logPrefix := "Consumer::processTrappedEvent"
 
 	mKeyspace, deleted := c.cidToKeyspaceCache.getKeyspaceName(e)
@@ -1187,7 +1191,7 @@ func (c *Consumer) sendEvent(e *cb.DcpEvent) error {
 	}
 
 	if !c.producer.IsTrapEvent() {
-		c.sendDcpEvent(mKeyspace, e, false)
+		c.sendDcpEvent(mKeyspace, e, cursors, rootCas, false)
 		return nil
 	}
 
@@ -1206,7 +1210,7 @@ func (c *Consumer) sendEvent(e *cb.DcpEvent) error {
 	if success {
 		c.startDebugger(mKeyspace, e, instance)
 	} else {
-		c.sendDcpEvent(mKeyspace, e, false)
+		c.sendDcpEvent(mKeyspace, e, cursors, rootCas, false)
 	}
 	return nil
 }
@@ -1421,14 +1425,37 @@ func (c *Consumer) processAndSendDcpDelOrExpMessage(e *cb.DcpEvent, checkRecursi
 	logPrefix := "Consumer::processAndSendDcpMessage"
 	switch e.Datatype {
 	case uint8(cb.IncludeXATTRs):
-		if c.producer.SrcMutation() && checkRecursiveEvent {
-			if shouldSuppress, err := c.shouldSuppressMutation(e); err == nil && shouldSuppress {
+		if (c.producer.SrcMutation() && checkRecursiveEvent) || c.cursorAware {
+			suppressChkptMut, rootCas, err := c.processCheckpointMutation(e)
+			if err != nil {
 				return false
 			}
+			if c.cursorAware && suppressChkptMut {
+				return false
+			}
+			if c.producer.SrcMutation() && checkRecursiveEvent {
+				suppressEvtMut, err := c.shouldSuppressEventingMutation(e, rootCas)
+				if err != nil {
+					logging.Tracef("%s [%s:%s:%d] key: %ru _eventing processing failure encountered: %v",
+						logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key), err)
+					return false
+				}
+				if suppressEvtMut {
+					return false
+				}
+			}
+			logging.Tracef("%s [%s:%s:%d] Sending key: %ru to be processed by JS handlers",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key))
+			if c.cursorAware {
+				c.sendEventWithCursorIdsAndCas(e, c.getStaleCursors(e), rootCas)
+			} else {
+				c.sendEvent(e)
+			}
+		} else {
+			logging.Tracef("%s [%s:%s:%d] Sending key: %ru to be processed by JS handlers",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key))
+			c.sendEvent(e)
 		}
-		logging.Tracef("%s [%s:%s:%d] Sending key: %ru to be processed by JS handlers",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key))
-		c.sendEvent(e)
 	default:
 		c.sendEvent(e)
 	}
@@ -1437,14 +1464,36 @@ func (c *Consumer) processAndSendDcpDelOrExpMessage(e *cb.DcpEvent, checkRecursi
 
 func (c *Consumer) sendXattrDoc(e *cb.DcpEvent) {
 	logPrefix := "Consumer::sendXattrDoc"
-
-	if c.producer.SrcMutation() {
-		if shouldSuppress, err := c.shouldSuppressMutation(e); err == nil && shouldSuppress {
+	// Note: We look inside xattrs only if:
+	// 1. This handle can perform SBM and this mutation might be a potential SBM OR
+	// 2. This is a cursor aware function
+	if c.producer.SrcMutation() || c.cursorAware {
+		suppressChkptMut, rootCas, err := c.processCheckpointMutation(e)
+		if err != nil {
+			return
+		}
+		if c.cursorAware && suppressChkptMut {
 			c.suppressedDCPMutationCounter++
+			return
+		}
+		if c.producer.SrcMutation() {
+			suppressEvtMut, err := c.shouldSuppressEventingMutation(e, rootCas)
+			if err != nil {
+				logging.Tracef("%s [%s:%s:%d] key: %ru _eventing processing failure encountered: %v",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key), err)
+				return
+			}
+			if suppressEvtMut {
+				c.suppressedDCPMutationCounter++
+				return
+			}
+		}
+		logging.Tracef("%s [%s:%s:%d] Sending key: %ru to be processed by JS handlers",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key))
+		c.dcpMutationCounter++
+		if c.cursorAware {
+			c.sendEventWithCursorIdsAndCas(e, c.getStaleCursors(e), rootCas)
 		} else {
-			logging.Tracef("%s [%s:%s:%d] No IntraHandlerRecursion, sending key: %ru to be processed by JS handlers",
-				logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key))
-			c.dcpMutationCounter++
 			c.sendEvent(e)
 		}
 	} else {

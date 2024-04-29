@@ -357,6 +357,8 @@ type EventingProducer interface {
 	SourceCollection() string
 	GetSourceKeyspaceID() (KeyspaceID, bool)
 	GetMetadataKeyspaceID() (KeyspaceID, bool)
+	GetFunctionInstanceId() string
+	GetCursorAware() bool
 	SrcMutation() bool
 	Stop(context string)
 	StopRunningConsumers()
@@ -507,6 +509,21 @@ type EventingSuperSup interface {
 
 	WatchBucket(keyspace Keyspace, appName string, mType MonitorType) error
 	UnwatchBucket(keyspace Keyspace, appName string)
+}
+
+type CursorRegistryWriter interface {
+	Register(k KeyspaceName, funcId string) bool
+	Unregister(k KeyspaceName, funcId string)
+}
+
+type CursorRegistryReader interface {
+	GetCursors(k KeyspaceName) (map[string]struct{}, bool)
+	PrintTree()
+}
+
+type CursorRegistryMgr interface {
+	CursorRegistryWriter
+	CursorRegistryReader
 }
 
 type EventingServiceMgr interface {

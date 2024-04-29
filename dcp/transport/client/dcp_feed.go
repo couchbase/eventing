@@ -1002,9 +1002,9 @@ type DcpEvent struct {
 	OldValue     []byte                // TODO: TBD: old document value
 	Cas          uint64                // CAS value of the item
 	CollectionID uint32                // Collection Id
-	ScopeID      uint32
-	SystemXattrs map[string]XattrVal // System Xattrs map
-	UserXattrs   map[string]XattrVal // User Xattrs map
+	ScopeID      uint32                // Scope Id
+	SystemXattrs map[string]XattrVal   // System Xattrs map
+	UserXattrs   map[string]XattrVal   // User Xattrs map
 
 	EventType transport.CollectionEvent // For DCP_SYSTEM_EVENT, DCP_OSO_SNAPSHOT types
 	// meta fields

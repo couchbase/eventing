@@ -1782,8 +1782,20 @@ func (m *ServiceMgr) setSettings(appLocation string, data []byte, force bool) (i
 
 			// Write to primary store in case of deployment
 			if !m.checkIfDeployedAndRunning(appLocation) {
+				sourceKey := common.KeyspaceName{
+					Bucket:     app.DeploymentConfig.SourceBucket,
+					Scope:      app.DeploymentConfig.SourceScope,
+					Collection: app.DeploymentConfig.SourceCollection,
+				}
+				fiid := util.GetFunctionInstanceId(app.FunctionID, app.FunctionInstanceID)
+				if cursorRegisterInfo := m.checkAndRegisterCursor(app, appLocation, sourceKey, fiid); cursorRegisterInfo.ErrCode != response.Ok {
+					*info = *cursorRegisterInfo
+					return
+				}
 				info = m.savePrimaryStore(app)
 				if info.ErrCode != response.Ok {
+					// Note: Cursor unregister is a NOOP if it was never registered in the first place
+					m.cursorRegistry.Unregister(sourceKey, fiid)
 					logging.Errorf("%s %s", logPrefix, info.Description)
 					return
 				}
@@ -3446,13 +3458,26 @@ func (m *ServiceMgr) functionName(w http.ResponseWriter, r *http.Request, id com
 			app.Settings["language_compatibility"] = common.LanguageCompatibility[0]
 		}
 
+		sourceKey := common.KeyspaceName{
+			Bucket:     app.DeploymentConfig.SourceBucket,
+			Scope:      app.DeploymentConfig.SourceScope,
+			Collection: app.DeploymentConfig.SourceCollection,
+		}
+		fiid := util.GetFunctionInstanceId(app.FunctionID, app.FunctionInstanceID)
+		if cursorRegisterInfo := m.checkAndRegisterCursor(&app, appLocation, sourceKey, fiid); cursorRegisterInfo.ErrCode != response.Ok {
+			*runtimeInfo = *cursorRegisterInfo
+			return
+		}
+
 		info = m.savePrimaryStore(&app)
 		if info.ErrCode != response.Ok {
+			m.cursorRegistry.Unregister(sourceKey, fiid)
 			*runtimeInfo = *info
 			return
 		}
 		// Save to temp store only if saving to primary store succeeds
 		if info = m.saveTempStore(app); info.ErrCode != response.Ok {
+			m.cursorRegistry.Unregister(sourceKey, fiid)
 			*runtimeInfo = *info
 			return
 		}
@@ -5004,8 +5029,20 @@ func (m *ServiceMgr) createApplications(cred cbauth.Creds, appList *[]applicatio
 			continue
 		}
 
+		sourceKey := common.KeyspaceName{
+			Bucket:     app.DeploymentConfig.SourceBucket,
+			Scope:      app.DeploymentConfig.SourceScope,
+			Collection: app.DeploymentConfig.SourceCollection,
+		}
+		fiid := util.GetFunctionInstanceId(app.FunctionID, app.FunctionInstanceID)
+		if cursorRegisterInfo := m.checkAndRegisterCursor(&app, appLocation, sourceKey, fiid); cursorRegisterInfo.ErrCode != response.Ok {
+			infoList = append(infoList, cursorRegisterInfo)
+			continue
+		}
+
 		infoPri := m.savePrimaryStore(&app)
 		if infoPri.ErrCode != response.Ok {
+			m.cursorRegistry.Unregister(sourceKey, fiid)
 			logging.Errorf("%s Function: %s saving %ru to primary store failed: %v", logPrefix, appLocation, infoPri)
 			infoList = append(infoList, infoPri)
 			continue
@@ -5014,6 +5051,7 @@ func (m *ServiceMgr) createApplications(cred cbauth.Creds, appList *[]applicatio
 		// Save to temp store only if saving to primary store succeeds
 		infoTmp := m.saveTempStore(app)
 		if infoTmp.ErrCode != response.Ok {
+			m.cursorRegistry.Unregister(sourceKey, fiid)
 			logging.Errorf("%s Function: %s saving to temporary store failed: %v", logPrefix, appLocation, infoTmp)
 			infoList = append(infoList, infoTmp)
 			continue
@@ -5734,6 +5772,55 @@ func (m *ServiceMgr) getUserInfo(w http.ResponseWriter, r *http.Request) {
 
 	runtimeInfo.Description = u
 	runtimeInfo.OnlyDescription = true
+}
+
+func (m *ServiceMgr) checkAndRegisterCursor(app *application, appLocation string, sourceKey common.KeyspaceName, fiid string) (runtimeInfo *response.RuntimeInfo) {
+	const logPrefix = "ServiceMgr::checkAndRegisterCursor"
+	runtimeInfo = &response.RuntimeInfo{}
+	// Ensure the current state is undeployed or non-existent
+	appStatus := m.superSup.GetAppCompositeState(appLocation)
+	if appStatus == common.AppStatePaused || appStatus == common.AppStateEnabled {
+		return
+	}
+
+	// Ensure the app is cursor aware
+	cursorValue, cursorValueFound := app.Settings["cursor_aware"]
+	if !cursorValueFound {
+		return
+	}
+	isCursorAware, isbool := cursorValue.(bool)
+	if !isbool || !isCursorAware {
+		return
+	}
+
+	// Parse deployment and processing status
+	var deploymentStatus, processingStatus bool
+	dVal, dfound := app.Settings["deployment_status"]
+	pVal, pfound := app.Settings["processing_status"]
+	if dfound {
+		if val, ok := dVal.(bool); ok {
+			deploymentStatus = val
+		}
+	}
+	if pfound {
+		if val, ok := pVal.(bool); ok {
+			processingStatus = val
+		}
+	}
+
+	// Ensure dep and proc status == true
+	if !deploymentStatus || !processingStatus {
+		return
+	}
+
+	// Attempt to register the cursor
+	logging.Infof("%s Attempting to register function %s with InstId: %s at keyspace: %v", logPrefix, appLocation, fiid, sourceKey)
+	if !m.cursorRegistry.Register(sourceKey, fiid) {
+		runtimeInfo.ErrCode = response.ErrCursorLimitReached
+		runtimeInfo.Description = fmt.Sprintf("Reached cursor aware functions limit on this keyspace. Deployment not allowed for function %v", appLocation)
+		logging.Errorf("%s %s", logPrefix, runtimeInfo.Description)
+	}
+	return
 }
 
 func checkRequest(id common.Identity, r *http.Request, app *application) (runtimeInfo *response.RuntimeInfo) {

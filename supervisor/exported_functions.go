@@ -443,6 +443,20 @@ func (s *SuperSupervisor) StopProducer(appName string, msg common.UndeployAction
 	logging.Infof("%s [%d] Function: %s stopping running producer instance, %s",
 		logPrefix, s.runningFnsCount(), appName, msg)
 
+	if p, ok := s.runningFns()[appName]; ok {
+		if p.GetCursorAware() {
+			sourceKeyspace := common.KeyspaceName{
+				Bucket:     p.SourceBucket(),
+				Scope:      p.SourceScope(),
+				Collection: p.SourceCollection(),
+			}
+			fiid := p.GetFunctionInstanceId()
+			s.cursorRegistry.Unregister(sourceKeyspace, fiid)
+			logging.Infof("%s [%d] Attempting to unregister function: %s with cursorId: %s and keyspace: %v",
+				logPrefix, s.runningFnsCount(), appName, fiid, sourceKeyspace)
+		}
+	}
+
 	s.deleteFromLocallyDeployedApps(appName)
 
 	s.cleanupProducer(appName, msg)

@@ -238,6 +238,14 @@ func (p *Producer) GetMetadataKeyspaceID() (common.KeyspaceID, bool) {
 	return p.metaKeyspaceID, true
 }
 
+func (p *Producer) GetFunctionInstanceId() string {
+	return strconv.FormatUint(uint64(p.app.FunctionID), 10) + "-" + p.app.FunctionInstanceID
+}
+
+func (p *Producer) GetCursorAware() bool {
+	return p.handlerConfig.CursorAware
+}
+
 // SourceScope returns the source scope for event handler
 func (p *Producer) SourceScope() string {
 	return p.handlerConfig.SourceKeyspace.ScopeName

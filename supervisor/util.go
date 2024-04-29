@@ -815,9 +815,9 @@ func initgocbGlobalConfig(retryCount int64, restPort string) (*gocbGlobalConfig,
 }
 
 /*
-	This function checks encryptionEnabled flag and inserts app <-> bucket mapping
-	to appropriate cluster instance. Note: For pause-resume use-case without change in encryption level
-	this is a noop
+This function checks encryptionEnabled flag and inserts app <-> bucket mapping
+to appropriate cluster instance. Note: For pause-resume use-case without change in encryption level
+this is a noop
 */
 func (config *gocbGlobalConfig) maybeRegistergocbBucket(bucketName, appName string, setting *common.SecuritySetting, supervisor *SuperSupervisor) error {
 	var err error
