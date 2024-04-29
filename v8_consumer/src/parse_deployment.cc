@@ -84,13 +84,12 @@ deployment_config *ParseDeployment(const char *app_code) {
 }
 
 std::vector<std::string> ToStringArray(
-    const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>> *from) {
-  std::vector<std::string> handler_headers(from->size());
+  const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>> *from) {
+  std::vector<std::string> to(from->size());
   for (flatbuffers::uoffset_t i = 0; i < from->size(); ++i) {
-    handler_headers[i] = from->Get(i)->str();
+    to[i] = from->Get(i)->str();
   }
-
-  return handler_headers;
+  return to;
 }
 
 std::string checkAndReturnDefaultForScopeOrCollection(const std::string &key,

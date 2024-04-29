@@ -61,151 +61,229 @@ func (c *Consumer) deleteFromEnqueueMap(vb uint16) {
 	delete(c.vbEnqueuedForStreamReq, vb)
 }
 
-func (c *Consumer) shouldSuppressMutation(evt *memcached.DcpEvent) (bool, error) {
-	logPrefix := "Consumer::shouldSuppressMutation"
+func (c *Consumer) shouldSuppressEventingMutation(evt *memcached.DcpEvent, rootCas uint64) (bool, error) {
+	const logPrefix = "Consumer::shouldSuppressMutation"
 
 	if len(evt.SystemXattrs) == 0 {
 		return false, nil
 	}
-	xattrEventingBody, xattrEventingFound := evt.SystemXattrs[XATTR_EVENTING]
-	xattrMouBody, xattrMouFound := evt.SystemXattrs[XATTR_MOU]
-
-	// Handle decisions based on xattr _eventing (if found)
-	var xattrEventing *xattrEventing
-	if xattrEventingFound {
-		var err error
-		if xattrEventing, err = c.parseXattrEventing(evt.Key, xattrEventingBody.Bytes()); err != nil {
-			c.dcpXattrParseError++
-			logging.Errorf("%s [%s:%s:%d] key: %ru failed to parse xattr _eventing, err: %v",
-				logPrefix, c.workerName, c.tcpPort, c.Pid(), string(evt.Key), err)
-			return false, err
-		}
-		if c.shouldSuppressEventingMutation(evt, xattrEventing) {
-			return true, nil
-		}
+	// Attempt to parse _eventing only if this is a SBM handler
+	// If this mutation is SBM, return true. No need to look at _checkpoints
+	if !c.producer.SrcMutation() {
+		return false, nil
+	}
+	xattrEventingBody, found := evt.SystemXattrs[XATTR_EVENTING]
+	if !found || xattrEventingBody.Bytes() == nil {
+		return false, nil
 	}
 
-	// Handle decisions based on xattr _mou (if found)
-	// provided that xattr _eventing is either:
-	// Not found OR
-	// Not a recursive mutation
-	var xattrMou *xattrMou
-	var err1 error
-	if xattrMouFound {
-		if xattrMou, err1 = c.parseXattrMou(evt.Key, xattrMouBody.Bytes()); err1 != nil {
-			c.dcpXattrParseError++
-			logging.Errorf("%s [%s:%s:%d] key: %ru failed to parse xattr _mou, err: %v",
-				logPrefix, c.workerName, c.tcpPort, c.Pid(), string(evt.Key), err1)
-			return false, err1
-		}
-		if c.shouldSuppressImportMutation(evt.Cas, xattrMou, xattrEventing) {
-			return true, nil
-		}
-	}
-
-	return false, nil
-}
-
-func (c *Consumer) parseXattrEventing(key []byte, data []byte) (*xattrEventing, error) {
-	const logPrefix = "Consumer::parseXattrEventing"
+	data := xattrEventingBody.Bytes()
 	var xEventingRaw xattrEventingRaw
 	if parseErr := json.Unmarshal(data, &xEventingRaw); parseErr != nil {
-		c.dcpXattrParseError++
-		logging.Errorf("%s [%s:%s:%d] key: %ru failed to unmarshal xattr for key: _eventing, err: %v",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), string(key), parseErr)
-		return nil, parseErr
+		c.dcpEvtParseFailCounter++
+		logging.Tracef("%s [%s:%s:%d] key: %ru failed to unmarshal xattr for key: _eventing, err: %v",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), string(evt.Key), parseErr)
+		return false, parseErr
 	}
 
-	xseqno, seqnoErr := strconv.ParseUint(xEventingRaw.SeqNo, 0, 64)
-	if seqnoErr != nil {
-		c.dcpXattrParseError++
-		logging.Errorf("%s [%s:%s:%d] key: %ru failed to read sequence number from XATTR",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), string(key))
-		return nil, seqnoErr
+	if xEventingRaw.FunctionInstanceID != c.functionInstanceId {
+		return false, nil
 	}
 
-	var xcas uint64
+	xSeqNo, seqNoErr := strconv.ParseUint(xEventingRaw.SeqNo, 0, 64)
+	if seqNoErr != nil {
+		c.dcpEvtParseFailCounter++
+		logging.Tracef("%s [%s:%s:%d] key: %ru failed to read sequence number from XATTR",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), string(evt.Key))
+		return false, seqNoErr
+	}
+
+	var xCAS uint64
 	if xEventingRaw.CAS != nil {
 		var casErr error
-		xcas, casErr = util.HexLittleEndianToUint64([]byte(*xEventingRaw.CAS))
+		xCAS, casErr = util.HexLittleEndianToUint64([]byte(*xEventingRaw.CAS))
 		if casErr != nil {
-			c.dcpXattrParseError++
-			logging.Errorf("%s [%s:%s:%d] key: %ru failed to read CAS from XATTR, err: %v",
-				logPrefix, c.workerName, c.tcpPort, c.Pid(), string(key), casErr)
-			return nil, casErr
+			c.dcpEvtParseFailCounter++
+			logging.Tracef("%s [%s:%s:%d] key: %ru failed to read CAS from XATTR, err: %v",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), string(evt.Key), casErr)
+			return false, casErr
 		}
 	}
 
-	xchecksum, checksumErr := strconv.ParseUint(xEventingRaw.ValueCRC, 0, 32)
+	xChecksum, checksumErr := strconv.ParseUint(xEventingRaw.ValueCRC, 0, 32)
 	if checksumErr != nil {
-		c.dcpXattrParseError++
-		logging.Errorf("%s [%s:%s:%d] key: %ru failed to read CRC from XATTR",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), string(key))
-		return nil, checksumErr
+		c.dcpEvtParseFailCounter++
+		logging.Tracef("%s [%s:%s:%d] key: %ru failed to read CRC from XATTR",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), string(evt.Key))
+		return false, checksumErr
 	}
 
-	return &xattrEventing{
+	return c.isSourceMutation(evt, &xattrEventing{
 		FunctionInstanceID: xEventingRaw.FunctionInstanceID,
-		SeqNo:              xseqno,
-		CAS:                xcas,
-		ValueCRC:           xchecksum,
-	}, nil
+		SeqNo:              xSeqNo,
+		CAS:                xCAS,
+		ValueCRC:           xChecksum,
+	}, rootCas), nil
 }
 
-func (c *Consumer) parseXattrMou(key []byte, data []byte) (*xattrMou, error) {
-	const logPrefix = "Consumer::parseMouMetadata"
-	var xMouRaw xattrMouRaw
-	if err := json.Unmarshal(data, &xMouRaw); err != nil {
-		c.dcpXattrParseError++
-		logging.Errorf("%s [%s:%s:%d] key: %ru failed to parse _mou xattr, err: %v",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), string(key), err)
-		return nil, err
-	}
-
-	var xImportCAS uint64
-	var casErr error
-	xImportCAS, casErr = util.HexLittleEndianToUint64([]byte(xMouRaw.ImportCAS))
-	if casErr != nil {
-		c.dcpXattrParseError++
-		logging.Errorf("%s [%s:%s:%d] key: %ru failed to read CAS from XATTR, err: %v",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), string(key), casErr)
-		return nil, casErr
-	}
-
-	var xPCAS uint64
-	xPCAS, casErr = util.HexLittleEndianToUint64([]byte(xMouRaw.PCAS))
-	if casErr != nil {
-		c.dcpXattrParseError++
-		logging.Errorf("%s [%s:%s:%d] key: %ru failed to read CAS from XATTR, err: %v",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), string(key), casErr)
-		return nil, casErr
-	}
-
-	return &xattrMou{
-		ImportCAS: xImportCAS,
-		PCAS:      xPCAS,
-	}, nil
-}
-
-func (c *Consumer) shouldSuppressEventingMutation(evt *memcached.DcpEvent, metadata *xattrEventing) bool {
-	// SBM check
-	if metadata == nil ||
-		(metadata.FunctionInstanceID != c.functionInstanceId) ||
-		(metadata.CAS != evt.Cas && metadata.SeqNo != evt.Seqno) {
+func (c *Consumer) isSourceMutation(evt *memcached.DcpEvent, evtMetadata *xattrEventing, rootCas uint64) bool {
+	const logPrefix = "Consumer::isSourceMutation"
+	if evtMetadata == nil ||
+		(evtMetadata.FunctionInstanceID != c.functionInstanceId) ||
+		(evtMetadata.CAS != rootCas && evtMetadata.SeqNo != evt.Seqno) {
 		return false
 	}
-	return uint64(crc32.Checksum(evt.Value, util.CrcTable)) == metadata.ValueCRC
-	// [TODO] : Suppress mutation resulting from eventing cursor progression
+	return uint64(crc32.Checksum(evt.Value, util.CrcTable)) == evtMetadata.ValueCRC
 }
 
-func (c *Consumer) shouldSuppressImportMutation(documentCAS uint64, xattrMou *xattrMou, xattrEventing *xattrEventing) bool {
-	// Not an import mutation OR
-	// An import mutation but no eventing processing history, PROCESS
-	if xattrEventing == nil || xattrMou.ImportCAS != documentCAS {
-		return false
+// Can potentially reach here because mutation was not an SBM.
+// However, this might be a false negative as this mutation might be one
+// of the checkpoint updates on top of an SBM.
+// Hence, attempt to parse _checkpoints regardless of whether this handler
+// is cursor aware or not
+func (c *Consumer) processCheckpointMutation(evt *memcached.DcpEvent) (bool, uint64, error) {
+	const logPrefix = "Consumer::processCheckpointMutation"
+	if evt.SystemXattrs == nil || len(evt.SystemXattrs) == 0 {
+		return false, 0, nil
 	}
-	// Parent of this import is an eventing source mutation, SKIP
-	return xattrMou.PCAS == xattrEventing.CAS
+	xattrMouBody, xattrMouFound := evt.SystemXattrs[XATTR_MOU]
+	xattrChkptBody, xattrChkptFound := evt.SystemXattrs[XATTR_CHKPT]
+	if !xattrMouFound && !xattrChkptFound {
+		return false, 0, nil
+	}
+	if !xattrMouFound {
+		xattrMouBody = memcached.XattrVal{}
+	}
+	if !xattrChkptFound {
+		xattrChkptBody = memcached.XattrVal{}
+	}
+	return c.processCheckpointMutation1(evt.Cas, evt.Key, xattrMouBody.Bytes(), xattrChkptBody.Bytes())
+}
+
+func (c *Consumer) processCheckpointMutation1(thisMutationCas uint64, key, dataMou, dataChkpts []byte) (bool, uint64, error) {
+	const logPrefix = "Consumer::processCheckpointMutation1"
+	// Note: Assuming this app's cursor doesn't exist, hence thisAppRootCas == 0 by default
+	// Assuming this mutation itself is the root mutation, hence thisMutationRootCas == thisMutationCas by default
+	var thisAppRootCas uint64
+	thisMutationRootCas := thisMutationCas
+	if dataMou != nil {
+		var xMouRaw xattrMouRaw
+		if err := json.Unmarshal(dataMou, &xMouRaw); err != nil {
+			c.dcpChkptParseFailCounter++
+			logging.Tracef("%s [%s:%s:%d] key: %ru failed to parse _mou xattr, err: %v",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), string(key), err)
+			return false, 0, err
+		}
+
+		var xImportCAS uint64
+		var casErr error
+		xImportCAS, casErr = util.HexLittleEndianToUint64([]byte(xMouRaw.ImportCAS))
+		if casErr != nil {
+			c.dcpChkptParseFailCounter++
+			logging.Tracef("%s [%s:%s:%d] key: %ru failed to read ImportCAS from XATTR: _mou, err: %v",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), string(key), casErr)
+			return false, 0, casErr
+		}
+
+		if thisMutationCas == xImportCAS {
+			var xPCAS uint64
+			xPCAS, casErr = util.HexLittleEndianToUint64([]byte(xMouRaw.PCAS))
+			if casErr != nil {
+				c.dcpChkptParseFailCounter++
+				logging.Tracef("%s [%s:%s:%d] key: %ru failed to read PCAS from XATTR: _mou, err: %v",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), string(key), casErr)
+				return false, 0, casErr
+			}
+			thisMutationCas = xPCAS
+			thisMutationRootCas = xPCAS
+		}
+	}
+
+	if dataChkpts != nil {
+		var xChkptsRaw map[string]xattrChkptRaw
+		if err := json.Unmarshal(dataChkpts, &xChkptsRaw); err != nil {
+			c.dcpChkptParseFailCounter++
+			logging.Tracef("%s [%s:%s:%d] key: %ru failed to parse _checkpoints xattr, err: %v",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), string(key), err)
+			return false, 0, err
+		}
+
+		var appRootCasFound, mutationRootCasFound bool
+		for cursorId, value := range xChkptsRaw {
+			var xCAS uint64
+			var xPCAS uint64
+			var casErr error
+			xCAS, casErr = util.HexLittleEndianToUint64([]byte(value.CAS))
+			if casErr != nil {
+				c.dcpChkptParseFailCounter++
+				logging.Tracef("%s [%s:%s:%d] key: %ru failed to read CAS from XATTR: _checkpoints, err: %v",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), string(key), casErr)
+				return false, 0, casErr
+			}
+
+			xPCAS, casErr = util.HexLittleEndianToUint64([]byte(value.PCAS))
+			if casErr != nil {
+				c.dcpChkptParseFailCounter++
+				logging.Tracef("%s [%s:%s:%d] key: %ru failed to read PCAS from XATTR: _checkpoints, err: %v",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), string(key), casErr)
+				return false, 0, casErr
+			}
+
+			if !appRootCasFound {
+				if cursorId == c.functionInstanceId {
+					appRootCasFound = true
+					thisAppRootCas = xPCAS
+				}
+			}
+
+			if !mutationRootCasFound {
+				if xCAS == thisMutationCas {
+					mutationRootCasFound = true
+					thisMutationRootCas = xPCAS
+				}
+			}
+
+			if appRootCasFound && mutationRootCasFound {
+				break
+			}
+		}
+	}
+
+	return (thisMutationRootCas == thisAppRootCas), thisMutationRootCas, nil
+}
+
+func (c *Consumer) getStaleCursors(evt *memcached.DcpEvent) []string {
+	const logPrefix = "Consumer::getStaleCursors"
+	keyspaceName, deleted := c.cidToKeyspaceCache.getKeyspaceName(evt)
+	if deleted {
+		return nil
+	}
+	xattrChkptBody, found := evt.SystemXattrs[XATTR_CHKPT]
+	if !found || xattrChkptBody.Bytes() == nil {
+		return nil
+	}
+	var xChkptsRaw map[string]interface{}
+	if err := json.Unmarshal(xattrChkptBody.Bytes(), &xChkptsRaw); err != nil {
+		c.dcpChkptParseFailCounter++
+		logging.Tracef("%s [%s:%s:%d] key: %ru failed to parse _checkpoints xattr, err: %v",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), string(evt.Key), err)
+		return nil
+	}
+	cursors := make([]string, 0)
+	for cursorId, _ := range xChkptsRaw {
+		cursors = append(cursors, cursorId)
+	}
+	activeCursors, found := c.cursorRegistry.GetCursors(keyspaceName)
+	if !found {
+		activeCursors = make(map[string]struct{})
+	}
+	stalecursors := make([]string, 0)
+	for _, cursor := range cursors {
+		if _, found := activeCursors[cursor]; !found {
+			stalecursors = append(stalecursors, cursor)
+		}
+	}
+	return stalecursors
 }
 
 func (c *Consumer) purgeVbStreamRequested(logPrefix string, vb uint16) {

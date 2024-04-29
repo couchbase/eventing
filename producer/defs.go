@@ -84,6 +84,7 @@ type Producer struct {
 	stopChClosed           bool
 	stopProducerCh         chan struct{}
 	superSup               common.EventingSuperSup
+	cursorRegistry         common.CursorRegistryMgr
 	trapEvent              bool
 	debuggerToken          string
 	uuid                   string

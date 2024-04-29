@@ -312,7 +312,7 @@ func (c *Consumer) startDebugger(mKeyspace common.KeyspaceName, e *cb.DcpEvent, 
 	c.sendFeatureMatrix(atomic.LoadUint32(&c.featureMatrix))
 	c.sendDebuggerStart()
 	c.sendLoadV8Worker(c.app.ParsedAppCode, true)
-	c.sendDcpEvent(mKeyspace, e, true)
+	c.sendDcpEvent(mKeyspace, e, nil, e.Cas, true)
 }
 
 // ResolveHostname returns external IP address of this node.

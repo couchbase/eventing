@@ -31,6 +31,8 @@ table Payload {
   // DCP event related fields
   key:string; // dcp mutation key
   value:string; // dcp mutation value
+  xattr:string; // dcp mutation xattrs
+  cursors:string; // cursors to cleanup (for cursor_aware only)
 
   // Timer event related fields
   callback_fn:string; // timer event callback function
@@ -63,8 +65,6 @@ table Payload {
 
   bucket:string;
   scope:string;
-
-  xattr:string;
 }
 
 root_type Payload;

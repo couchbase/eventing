@@ -125,6 +125,7 @@ var (
 	ErrMethodNotAllowed       = errCode(62)
 	ErrInvalidRequest         = errCode(63)
 	ErrAppPaused              = errCode(64)
+	ErrCursorLimitReached     = errCode(65)
 )
 
 // Shouldn't expose internal details
@@ -178,6 +179,7 @@ var (
 		ErrMethodNotAllowed:       ErrorInfo{httpStatusCode: http.StatusMethodNotAllowed, Name: "ERR_METHOD_NOT_ALLOWED", Code: 62},
 		ErrInvalidRequest:         ErrorInfo{httpStatusCode: http.StatusBadRequest, Name: "ERR_INVALID_REQUEST", Code: 63},
 		ErrAppPaused:              ErrorInfo{httpStatusCode: http.StatusUnprocessableEntity, Name: "ERR_APP_PAUSED", Code: 64},
+		ErrCursorLimitReached:     ErrorInfo{httpStatusCode: http.StatusBadRequest, Name: "ERR_CURSOR_LIMIT_REACHED", Code: 65},
 	}
 )
 

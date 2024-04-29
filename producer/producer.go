@@ -27,7 +27,7 @@ import (
 // NewProducer creates a new producer instance using parameters supplied by super_supervisor
 func NewProducer(appName, debuggerPort, eventingPort, eventingSSLPort, eventingDir, kvPort,
 	metakvAppHostPortsPath, nsServerPort, uuid, diagDir string, memoryQuota int64,
-	featureMatrix uint32, superSup common.EventingSuperSup) *Producer {
+	featureMatrix uint32, superSup common.EventingSuperSup, cursorRegistry common.CursorRegistryMgr) *Producer {
 	p := &Producer{
 		appName:                      appName,
 		bootstrapFinishCh:            make(chan struct{}, 1),
@@ -60,6 +60,7 @@ func NewProducer(appName, debuggerPort, eventingPort, eventingSSLPort, eventingD
 		stopCh:                       make(chan struct{}, 1),
 		stopUndeployWaitCh:           make(chan struct{}, 1),
 		superSup:                     superSup,
+		cursorRegistry:               cursorRegistry,
 		topologyChangeCh:             make(chan *common.TopologyChangeMsg, 10),
 		uuid:                         uuid,
 		vbEventingNodeAssignRWMutex:  &sync.RWMutex{},
@@ -626,7 +627,7 @@ func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int
 	}()
 
 	c := consumer.NewConsumer(p.handlerConfig, p.processConfig, p.rebalanceConfig, index, p.uuid, p.nsServerPort,
-		p.eventingNodeUUIDs, vbnos, p.app, p.dcpConfig, p, p.superSup, p.numVbuckets,
+		p.eventingNodeUUIDs, vbnos, p.app, p.dcpConfig, p, p.superSup, p.cursorRegistry, p.numVbuckets,
 		&p.retryCount, vbEventingNodeAssignMap, workerVbucketMap, atomic.LoadUint32(&p.featureMatrix))
 
 	if notifyRebalance {

@@ -77,6 +77,7 @@ const (
 	XATTR_EVENTING                 = "_eventing"
 	XATTR_SYNC                     = "_sync"
 	XATTR_MOU                      = "_mou"
+	XATTR_CHKPT                    = "_checkpoints"
 )
 
 var (
@@ -99,6 +100,11 @@ type xattrEventingRaw struct {
 	ValueCRC           string  `json:"crc"`
 }
 
+type xattrChkptRaw struct {
+	CAS  string `json:"cas"`
+	PCAS string `json:"pcas"`
+}
+
 type xattrMouRaw struct {
 	ImportCAS string `json:"cas"`
 	PCAS      string `json:"pCas"`
@@ -111,9 +117,9 @@ type xattrEventing struct {
 	ValueCRC           uint64
 }
 
-type xattrMou struct {
-	ImportCAS uint64
-	PCAS      uint64
+type xattrChkpt struct {
+	CAS  uint64
+	PCAS uint64
 }
 
 type vbFlogEntry struct {
@@ -127,6 +133,7 @@ type vbFlogEntry struct {
 
 type dcpMetadata struct {
 	Cas      string              `json:"cas"`
+	RootCas  string              `json:"rootcas"`
 	DocID    string              `json:"id"`
 	Expiry   uint32              `json:"expiration"`
 	Flag     uint32              `json:"flags"`
@@ -233,6 +240,7 @@ type Consumer struct {
 	stoppingConsumer              bool
 	isPausing                     bool
 	superSup                      common.EventingSuperSup
+	cursorRegistry                common.CursorRegistryMgr
 	allowTransactionMutations     bool
 	allowSyncDocuments            bool
 	cursorAware                   bool
@@ -374,19 +382,26 @@ type Consumer struct {
 	timerMessagesProcessed      uint64
 
 	// DCP and timer related counters
-	timerResponsesRecieved         uint64
-	aggMessagesSentCounter         uint64
-	dcpDeletionCounter             uint64
-	dcpMutationCounter             uint64
-	dcpExpiryCounter               uint64
-	dcpXattrParseError             uint64
-	errorParsingTimerResponses     uint64
-	timerMessagesProcessedPSec     int
-	suppressedDCPExpirationCounter uint64
-	suppressedDCPDeletionCounter   uint64
+	timerResponsesRecieved uint64
+	aggMessagesSentCounter uint64
+
+	dcpDeletionCounter uint64
+	dcpMutationCounter uint64
+	dcpExpiryCounter   uint64
+
+	dcpEvtParseFailCounter   uint64
+	dcpChkptParseFailCounter uint64
+
+	errorParsingTimerResponses uint64
+	timerMessagesProcessedPSec int
+
 	suppressedDCPMutationCounter   uint64
-	sentEventsSize                 int64
-	numSentEvents                  int64
+	suppressedDCPDeletionCounter   uint64
+	suppressedDCPExpiryCounter     uint64
+	suppressedChkptMutationCounter uint64
+
+	sentEventsSize int64
+	numSentEvents  int64
 
 	// metastore related timer stats
 	metastoreDeleteCounter      uint64
