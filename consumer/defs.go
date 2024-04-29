@@ -74,7 +74,9 @@ const (
 	metadataUpdatedPeriodicCheck   = "metadata_updated_periodic_checkpoint"
 	metadataCorrectedAfterRollback = "metadata_corrected_after_rollback"
 	undoMetadataCorrection         = "undo_metadata_correction"
-	xattrPrefix                    = "_eventing"
+	XATTR_EVENTING                 = "_eventing"
+	XATTR_SYNC                     = "_sync"
+	XATTR_MOU                      = "_mou"
 )
 
 var (
@@ -90,11 +92,28 @@ var (
 		"curl_non_200_response", "curl_timeout_count", "curl_failure_count"}
 )
 
-type xattrMetadata struct {
+type xattrEventingRaw struct {
 	FunctionInstanceID string  `json:"fiid"`
 	SeqNo              string  `json:"seqno"`
 	CAS                *string `json:"cas"`
 	ValueCRC           string  `json:"crc"`
+}
+
+type xattrMouRaw struct {
+	ImportCAS string `json:"cas"`
+	PCAS      string `json:"pCas"`
+}
+
+type xattrEventing struct {
+	FunctionInstanceID string
+	SeqNo              uint64
+	CAS                uint64
+	ValueCRC           uint64
+}
+
+type xattrMou struct {
+	ImportCAS uint64
+	PCAS      uint64
 }
 
 type vbFlogEntry struct {
@@ -128,14 +147,15 @@ type vbSeqNo struct {
 type Consumer struct {
 	cidToKeyspaceCache *cidToKeyspaceNameCache
 
-	n1qlPrepareAll bool
-	app            *common.AppConfig
-	sourceKeyspace *common.Keyspace // source bucket
-	builderPool    *sync.Pool
-	breakpadOn     bool
-	uuid           string
-	srcKeyspaceID  common.KeyspaceID
-	retryCount     *int64
+	n1qlPrepareAll     bool
+	app                *common.AppConfig
+	sourceKeyspace     *common.Keyspace // source bucket
+	builderPool        *sync.Pool
+	breakpadOn         bool
+	uuid               string
+	functionInstanceId string
+	srcKeyspaceID      common.KeyspaceID
+	retryCount         *int64
 
 	handlerFooters []string
 	handlerHeaders []string

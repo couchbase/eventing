@@ -7,7 +7,6 @@ import (
 	"runtime"
 	"runtime/debug"
 	"sort"
-	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -23,8 +22,6 @@ import (
 
 func (c *Consumer) processDCPEvents() {
 	logPrefix := "Consumer::processDCPEvents"
-
-	functionInstanceID := strconv.Itoa(int(c.app.FunctionID)) + "-" + c.app.FunctionInstanceID
 
 	for {
 		if c.cppQueueSizes != nil {
@@ -91,7 +88,7 @@ func (c *Consumer) processDCPEvents() {
 					}
 
 				case dcpDatatypeJSONXattr:
-					c.sendXattrDoc(e, functionInstanceID)
+					c.sendXattrDoc(e)
 
 				case dcpDatatypeBinXattr:
 					if c.binaryDocAllowed {
@@ -99,7 +96,7 @@ func (c *Consumer) processDCPEvents() {
 							c.suppressedDCPMutationCounter++
 							continue
 						}
-						c.sendXattrDoc(e, functionInstanceID)
+						c.sendXattrDoc(e)
 					}
 
 				}
@@ -117,7 +114,7 @@ func (c *Consumer) processDCPEvents() {
 					continue
 				}
 
-				if c.processAndSendDcpDelOrExpMessage(e, functionInstanceID, true) {
+				if c.processAndSendDcpDelOrExpMessage(e, true) {
 					c.dcpDeletionCounter++
 				} else {
 					c.suppressedDCPDeletionCounter++
@@ -136,7 +133,7 @@ func (c *Consumer) processDCPEvents() {
 					continue
 				}
 
-				if c.processAndSendDcpDelOrExpMessage(e, functionInstanceID, false) {
+				if c.processAndSendDcpDelOrExpMessage(e, false) {
 					c.dcpExpiryCounter++
 				} else {
 					c.suppressedDCPExpirationCounter++
@@ -1420,12 +1417,12 @@ func (c *Consumer) handleStreamEnd(vBucket uint16, last_processed_seqno uint64) 
 }
 
 // return false if message is supressed else true
-func (c *Consumer) processAndSendDcpDelOrExpMessage(e *cb.DcpEvent, functionInstanceID string, checkRecursiveEvent bool) bool {
+func (c *Consumer) processAndSendDcpDelOrExpMessage(e *cb.DcpEvent, checkRecursiveEvent bool) bool {
 	logPrefix := "Consumer::processAndSendDcpMessage"
 	switch e.Datatype {
 	case uint8(cb.IncludeXATTRs):
 		if c.producer.SrcMutation() && checkRecursiveEvent {
-			if isRecursive, err := c.isRecursiveDCPEvent(e, functionInstanceID); err == nil && isRecursive == true {
+			if shouldSuppress, err := c.shouldSuppressMutation(e); err == nil && shouldSuppress {
 				return false
 			}
 		}
@@ -1438,11 +1435,11 @@ func (c *Consumer) processAndSendDcpDelOrExpMessage(e *cb.DcpEvent, functionInst
 	return true
 }
 
-func (c *Consumer) sendXattrDoc(e *cb.DcpEvent, functionInstanceID string) {
+func (c *Consumer) sendXattrDoc(e *cb.DcpEvent) {
 	logPrefix := "Consumer::sendXattrDoc"
 
 	if c.producer.SrcMutation() {
-		if isRecursive, err := c.isRecursiveDCPEvent(e, functionInstanceID); err == nil && isRecursive == true {
+		if shouldSuppress, err := c.shouldSuppressMutation(e); err == nil && shouldSuppress {
 			c.suppressedDCPMutationCounter++
 		} else {
 			logging.Tracef("%s [%s:%s:%d] No IntraHandlerRecursion, sending key: %ru to be processed by JS handlers",

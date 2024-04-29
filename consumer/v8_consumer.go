@@ -6,6 +6,7 @@ import (
 	"net"
 	"runtime/debug"
 	"sort"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -158,6 +159,7 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		featureMatrix:                   featureMatrix,
 	}
 
+	consumer.functionInstanceId = strconv.FormatUint(uint64(app.FunctionID), 10) + "-" + app.FunctionInstanceID
 	consumer.dcpStatsLogger = NewDcpStatsLog(5*time.Minute, consumer.workerName, consumer.stopConsumerCh)
 	consumer.srcKeyspaceID, _ = p.GetSourceKeyspaceID()
 	consumer.cidToKeyspaceCache = initCidToCol(hConfig.SourceKeyspace.BucketName, nsServerPort)
