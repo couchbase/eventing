@@ -14,6 +14,7 @@
 #include <sstream>
 
 #include "crc64.h"
+#include "error.h"
 #include "isolate_data.h"
 #include "js_exception.h"
 #include "lcb_utils.h"
@@ -111,7 +112,6 @@ v8::Local<v8::Array> v8Array(v8::Isolate *isolate,
 v8::Local<v8::Array> v8Array(v8::Isolate *isolate,
                              const std::vector<double> &from) {
   v8::EscapableHandleScope handle_scope(isolate);
-
   auto context = isolate->GetCurrentContext();
   auto array = v8::Array::New(isolate, static_cast<int>(from.size()));
   for (uint32_t i = 0; i < array->Length(); ++i) {
@@ -976,36 +976,66 @@ bool isLittleEndian() {
   return (*(uint8_t *)&num == 1);
 }
 
-void push_bytes(double value, std::string &bytes) {
+template <typename T,
+          typename std::enable_if_t<
+              std::is_same_v<T, float> || std::is_same_v<T, double>, int> = 0>
+void push_bytes(T value, std::string &bytes) {
   auto *p = reinterpret_cast<uint8_t *>(&value);
   if (isLittleEndian()) {
-    for (std::size_t i = 0; i < sizeof(double); ++i) {
+    for (std::size_t i = 0; i < sizeof(T); ++i) {
       bytes.push_back(p[i]);
     }
   } else {
-    for (std::size_t i = sizeof(double) - 1; i > -1; --i) {
-      bytes.push_back(p[i]);
+    std::size_t size = sizeof(T);
+    for (std::size_t i = 0; i < size; i++) {
+      bytes.push_back(p[size - i - 1]);
     }
   }
 }
 
-double get_double_value(const uint8_t *bytes, size_t index) {
-  double d;
+template <typename T,
+          typename std::enable_if_t<
+              std::is_same_v<T, float> || std::is_same_v<T, double>, int> = 0>
+double get_value(const uint8_t *bytes, size_t index) {
+  T d;
   if (isLittleEndian()) {
-    memcpy(&d, bytes + index, sizeof(double));
+    memcpy(&d, bytes + index, sizeof(T));
   } else {
-    constexpr auto size = sizeof(double);
+    constexpr auto size = sizeof(T);
     uint8_t bytesCopy[size];
     for (; index < size; ++index) {
       bytesCopy[size - index - 1] = bytes[index];
     }
-    std::memcpy(&d, bytesCopy, sizeof(double));
+    std::memcpy(&d, bytesCopy, sizeof(T));
   }
-  return d;
+
+  return static_cast<double>(d);
 }
 
-void Base64FloatEncodeFunction(
-    const v8::FunctionCallbackInfo<v8::Value> &args) {
+template <typename T,
+          typename std::enable_if_t<
+              std::is_same_v<T, float> || std::is_same_v<T, double>, int> = 0>
+std::tuple<Error, v8::Local<v8::Array>> get_v8_array(v8::Isolate *isolate,
+                                                     std::string base64Bytes) {
+  if (base64Bytes.length() % sizeof(T) != 0) {
+    return {std::make_unique<std::string>("Incorrect base64 string provided"),
+            v8::Local<v8::Array>()};
+  }
+
+  v8::EscapableHandleScope handle_scope(isolate);
+
+  std::vector<double> array;
+  array.reserve(base64Bytes.length() / sizeof(T));
+  auto bytes = reinterpret_cast<const uint8_t *>(base64Bytes.data());
+  for (size_t i = 0; i < base64Bytes.length(); i += sizeof(T)) {
+    double d = get_value<T>(bytes, i);
+    array.push_back(d);
+  }
+  return {nullptr, handle_scope.Escape(v8Array(isolate, array))};
+}
+
+void base64FloatArrayEncode(const v8::FunctionCallbackInfo<v8::Value> &args,
+                            arrayEncoding encoding) {
   auto isolate = args.GetIsolate();
   std::lock_guard<std::mutex> guard(UnwrapData(isolate)->termination_lock_);
   if (!UnwrapData(isolate)->is_executing_) {
@@ -1030,7 +1060,15 @@ void Base64FloatEncodeFunction(
   auto length = array->Length();
 
   std::string bytes;
-  bytes.reserve(length * sizeof(double));
+  switch (encoding) {
+  case arrayEncoding::Float64Encoding:
+    bytes.reserve(length * sizeof(double));
+    break;
+  case arrayEncoding::Float32Encoding:
+    bytes.reserve(length * sizeof(float));
+    break;
+  }
+
   for (uint32_t i = 0; i < length; i++) {
     v8::Local<v8::Value> number_val;
     if (!TO_LOCAL(array->Get(context, i), &number_val)) {
@@ -1050,22 +1088,39 @@ void Base64FloatEncodeFunction(
           "Unable to convert element to type Number");
       return;
     }
-    double value = number_v8val->Value();
-    push_bytes(value, bytes);
+    switch (encoding) {
+    case arrayEncoding::Float64Encoding: {
+      double value = number_v8val->Value();
+      push_bytes<double>(value, bytes);
+    } break;
+    case arrayEncoding::Float32Encoding: {
+      float value = static_cast<float>(number_v8val->Value());
+      push_bytes<float>(value, bytes);
+    } break;
+    }
   }
 
   std::string base64 = cb::base64::encode(bytes, false);
   args.GetReturnValue().Set(v8Str(isolate, base64));
 }
 
-void Base64FloatDecodeFunction(
+void Base64Float64EncodeFunction(
     const v8::FunctionCallbackInfo<v8::Value> &args) {
+  base64FloatArrayEncode(args, arrayEncoding::Float64Encoding);
+}
+
+void Base64Float32EncodeFunction(
+    const v8::FunctionCallbackInfo<v8::Value> &args) {
+  base64FloatArrayEncode(args, arrayEncoding::Float32Encoding);
+}
+
+void base64FloatArrayDecode(const v8::FunctionCallbackInfo<v8::Value> &args,
+                            arrayEncoding encoding) {
   auto isolate = args.GetIsolate();
   std::lock_guard<std::mutex> guard(UnwrapData(isolate)->termination_lock_);
   if (!UnwrapData(isolate)->is_executing_) {
     return;
   }
-  auto context = isolate->GetCurrentContext();
   v8::HandleScope handle_scope(isolate);
 
   auto js_exception = UnwrapData(isolate)->js_exception;
@@ -1084,20 +1139,33 @@ void Base64FloatDecodeFunction(
   auto utils = UnwrapData(isolate)->utils;
   auto base64Bytes = cb::base64::decode(utils->ToCPPString(v8_base64_string));
 
-  if(base64Bytes.length() % sizeof(double) != 0) {
-    js_exception->ThrowEventingError("Incorrect base64 string provided");
+  std::tuple<Error, v8::Local<v8::Array>> returnValue;
+  switch (encoding) {
+  case arrayEncoding::Float64Encoding:
+    returnValue = get_v8_array<double>(isolate, base64Bytes);
+    break;
+
+  case arrayEncoding::Float32Encoding:
+    returnValue = get_v8_array<float>(isolate, base64Bytes);
+    break;
+  }
+
+  auto error = std::move(std::get<0>(returnValue));
+  if (error != nullptr) {
+    js_exception->ThrowEventingError(*error);
     return;
   }
+  args.GetReturnValue().Set(std::get<1>(returnValue));
+}
 
-  std::vector<double> doubleArray;
-  doubleArray.reserve(base64Bytes.length() / sizeof(double));
-  const uint8_t *bytes = reinterpret_cast<const uint8_t *>(base64Bytes.data());
-  for (size_t i = 0; i < base64Bytes.length(); i += sizeof(double)) {
-    double d = get_double_value(bytes, i);
-    doubleArray.push_back(d);
-  }
+void Base64Float64DecodeFunction(
+    const v8::FunctionCallbackInfo<v8::Value> &args) {
+  base64FloatArrayDecode(args, arrayEncoding::Float64Encoding);
+}
 
-  args.GetReturnValue().Set(v8Array(isolate, doubleArray));
+void Base64Float32DecodeFunction(
+    const v8::FunctionCallbackInfo<v8::Value> &args) {
+  base64FloatArrayDecode(args, arrayEncoding::Float32Encoding);
 }
 
 std::string GetConnectionStr(const std::string &end_point,
