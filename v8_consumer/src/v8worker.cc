@@ -126,12 +126,22 @@ void V8Worker::SetCouchbaseNamespace() {
   proto_t->Set(
       v8::String::NewFromUtf8(isolate_, "base64Decode").ToLocalChecked(),
       v8::FunctionTemplate::New(isolate_, Base64DecodeFunction));
-  proto_t->Set(v8::String::NewFromUtf8(isolate_, "base64FloatArrayEncode")
-                   .ToLocalChecked(),
-               v8::FunctionTemplate::New(isolate_, Base64FloatEncodeFunction));
-  proto_t->Set(v8::String::NewFromUtf8(isolate_, "base64FloatArrayDecode")
-                   .ToLocalChecked(),
-               v8::FunctionTemplate::New(isolate_, Base64FloatDecodeFunction));
+  proto_t->Set(
+      v8::String::NewFromUtf8(isolate_, "base64Float64ArrayEncode")
+          .ToLocalChecked(),
+      v8::FunctionTemplate::New(isolate_, Base64Float64EncodeFunction));
+  proto_t->Set(
+      v8::String::NewFromUtf8(isolate_, "base64Float64ArrayDecode")
+          .ToLocalChecked(),
+      v8::FunctionTemplate::New(isolate_, Base64Float64DecodeFunction));
+  proto_t->Set(
+      v8::String::NewFromUtf8(isolate_, "base64Float32ArrayEncode")
+          .ToLocalChecked(),
+      v8::FunctionTemplate::New(isolate_, Base64Float32EncodeFunction));
+  proto_t->Set(
+      v8::String::NewFromUtf8(isolate_, "base64Float32ArrayDecode")
+          .ToLocalChecked(),
+      v8::FunctionTemplate::New(isolate_, Base64Float32DecodeFunction));
 
   auto context = context_.Get(isolate_);
   v8::Local<v8::Object> cb_obj;
@@ -1215,7 +1225,9 @@ int V8Worker::SendUpdate(const std::string &value, const std::string &meta,
     }
 
     agent_->PauseOnNextJavascriptStatement("Break on start");
-    return DebugExecute("OnUpdate", args, on_update_args_count) ? kSuccess : kOnUpdateCallFail;
+    return DebugExecute("OnUpdate", args, on_update_args_count)
+               ? kSuccess
+               : kOnUpdateCallFail;
   }
 
   RetryWithFixedBackoff(std::numeric_limits<int>::max(), 10,
@@ -1227,7 +1239,8 @@ int V8Worker::SendUpdate(const std::string &value, const std::string &meta,
   auto on_doc_update = on_update_.Get(isolate_);
   execute_start_time_ = Time::now();
   UnwrapData(isolate_)->is_executing_ = true;
-  if (!TO_LOCAL(on_doc_update->Call(context, context->Global(), on_update_args_count, args),
+  if (!TO_LOCAL(on_doc_update->Call(context, context->Global(),
+                                    on_update_args_count, args),
                 &result)) {
     LOG(logError) << "Error executing on_doc_update \n";
   }
@@ -1305,7 +1318,9 @@ int V8Worker::SendDelete(const std::string &options, const std::string &meta) {
     }
 
     agent_->PauseOnNextJavascriptStatement("Break on start");
-    return DebugExecute("OnDelete", args, on_delete_args_count) ? kSuccess : kOnDeleteCallFail;
+    return DebugExecute("OnDelete", args, on_delete_args_count)
+               ? kSuccess
+               : kOnDeleteCallFail;
   }
 
   RetryWithFixedBackoff(std::numeric_limits<int>::max(), 10,
@@ -1317,7 +1332,8 @@ int V8Worker::SendDelete(const std::string &options, const std::string &meta) {
   execute_start_time_ = Time::now();
   timed_out_ = false;
   UnwrapData(isolate_)->is_executing_ = true;
-  if (!TO_LOCAL(on_doc_delete->Call(context, context->Global(), on_delete_args_count, args),
+  if (!TO_LOCAL(on_doc_delete->Call(context, context->Global(),
+                                    on_delete_args_count, args),
                 &result)) {
     LOG(logError) << "Error running the on_doc_delete \n";
   }
@@ -1399,7 +1415,8 @@ void V8Worker::SendTimer(std::string callback, std::string timer_ctx) {
   timed_out_ = false;
   execute_start_time_ = Time::now();
   UnwrapData(isolate_)->is_executing_ = true;
-  if (!TO_LOCAL(callback_func->Call(context, callback_func_val, timer_callback_args_count, arg),
+  if (!TO_LOCAL(callback_func->Call(context, callback_func_val,
+                                    timer_callback_args_count, arg),
                 &result)) {
     LOG(logError) << "Error executing the callback function \n";
   }
