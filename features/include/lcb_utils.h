@@ -25,6 +25,13 @@ const uint8_t UNKNOWN_TYPE = 8;
 const uint16_t UNKNOWN_SCOPE = 0x8C;
 const uint16_t UNKNOWN_COLLECTION = 0x88;
 
+struct LookupInResultEntry {
+  std::string value;
+  lcb_STATUS err_code{LCB_SUCCESS};
+
+  LookupInResultEntry(std::string value_, lcb_STATUS err_code_) : value(value_), err_code(err_code_) {}
+};
+
 struct Result {
   std::string key;
   uint64_t cas{0};
@@ -35,6 +42,7 @@ struct Result {
   int64_t subdoc_counter{0};
   uint64_t counter{0};
   uint16_t kv_err_code{0};
+  std::vector<LookupInResultEntry> lookupin_entries;
 };
 
 constexpr int def_lcb_retry_count = 6;
@@ -74,6 +82,9 @@ std::pair<lcb_STATUS, Result> LcbTouch(lcb_INSTANCE *instance,
                                        lcb_CMDTOUCH &cmd);
 
 std::pair<lcb_STATUS, Result> LcbSubdocSet(lcb_INSTANCE *instance,
+                                           lcb_CMDSUBDOC &cmd);
+
+std::pair<lcb_STATUS, Result> LcbSubdocGet(lcb_INSTANCE *instance,
                                            lcb_CMDSUBDOC &cmd);
 
 std::pair<lcb_STATUS, Result> LcbSubdocDelete(lcb_INSTANCE *instance,
