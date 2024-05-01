@@ -1,5 +1,5 @@
 function OnUpdate(doc, meta, xattrs) {
-    if(!xattr.test_xattr) {
+    if(!xattrs.test_xattr) {
         return;
     }
 

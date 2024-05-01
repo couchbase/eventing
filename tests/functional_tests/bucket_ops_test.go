@@ -615,3 +615,25 @@ func TestUserXattr(t *testing.T) {
 	testPumpDocUserXattr(itemCount, 1, srcBucket, false,
 		"user_xattr", setting, t)
 }
+
+func TestGetUserXattr(t *testing.T) {
+	const itemCount = 1
+
+	pumpBucketOpsSrc(opsType{count: itemCount}, dstBucket, &rateLimit{})
+	setting := &commonSettings{
+		aliasSources:       []string{dstBucket},
+		aliasHandles:       []string{"dst_bucket"},
+		srcMutationEnabled: true,
+	}
+	testPumpDoc(itemCount, 0, dstBucket, false,
+		"get_user_xattr", setting, t)
+
+	log.Printf("Testing get user XATTR operation on source bucket")
+	setting = &commonSettings{
+		aliasSources:       []string{srcBucket},
+		aliasHandles:       []string{"dst_bucket"},
+		srcMutationEnabled: true,
+	}
+	testPumpDoc(itemCount, 0, srcBucket, false,
+		"get_user_xattr", setting, t)
+}

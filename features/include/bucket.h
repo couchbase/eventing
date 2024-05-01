@@ -147,6 +147,57 @@ struct MutateInSpecs {
   }
 };
 
+struct LookupInSpecs {
+  enum class spec_type {
+    oBaseOp,
+    oGet,
+    oInvalidOp
+  };
+
+  struct spec {
+    spec_type specType_;
+    std::string key_;
+    uint32_t flags = 0;
+
+    spec(spec_type specType, std::string key, bool is_user_xattr)
+        : specType_(specType), key_(key) {
+      if (is_user_xattr) {
+        flags |= LCB_SUBDOCSPECS_F_XATTRPATH;
+      }
+    }
+  };
+
+  std::vector<spec> specs;
+
+  int get_num_fields() const { return specs.size(); }
+
+  bool emplace_spec(int spec_opcode, std::string key, bool is_user_xattr) {
+    auto spec = spec_type(spec_opcode);
+    if (spec <= spec_type::oBaseOp || spec >= spec_type::oInvalidOp) {
+      return false;
+    }
+    specs.emplace_back(spec, key, is_user_xattr);
+    return true;
+  }
+
+  void populate_lcb_specs(lcb_SUBDOCSPECS *lcb_specs, int start_idx) {
+    auto index = start_idx;
+    for (auto it = specs.cbegin(); it != specs.cend(); it++) {
+      std::string key = it->key_;
+
+      switch (it->specType_) {
+      case spec_type::oGet:
+        lcb_subdocspecs_get(lcb_specs, index, it->flags, key.c_str(), key.size());
+        break;
+
+      default:
+        break;
+      }
+      index++;
+    }
+  }
+};
+
 class BucketFactory {
 public:
   BucketFactory(v8::Isolate *isolate, const v8::Local<v8::Context> &context);
@@ -243,6 +294,9 @@ public:
 
   std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
   DeleteWithoutXattr(MetaData &meta);
+
+  std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
+  LookupIn(MetaData &meta, LookupInSpecs &specs);
 
   std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
   GetWithMeta(MetaData &meta);

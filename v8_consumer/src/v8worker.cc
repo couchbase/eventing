@@ -104,6 +104,9 @@ void V8Worker::SetCouchbaseNamespace() {
       v8::String::NewFromUtf8(isolate_, "mutateInInternal").ToLocalChecked(),
       v8::FunctionTemplate::New(isolate_, BucketOps::MutateInOp));
   proto_t->Set(
+      v8::String::NewFromUtf8(isolate_, "lookupInInternal").ToLocalChecked(),
+      v8::FunctionTemplate::New(isolate_, BucketOps::LookupInOp));
+  proto_t->Set(
       v8::String::NewFromUtf8(isolate_, "n1qlQuery").ToLocalChecked(),
       v8::FunctionTemplate::New(isolate_, Query::N1qlFunction));
   proto_t->Set(
@@ -298,6 +301,40 @@ void V8Worker::SetCouchbaseNamespace() {
         options = {};
       }
       return couchbase.mutateInInternal(bucket, meta, op_array, options);
+    };
+
+    couchbase.LookupInSpec = {};
+
+    Object.defineProperty(couchbase.LookupInSpec, "create", {
+        enumerable: false,
+        value: function(specType, path, specOptions) {
+                 var spec = {"spec_type": specType};
+                 spec.path = path;
+
+                 if(specOptions != undefined) {
+                   spec.options = specOptions;
+                 }
+                 return spec;
+               }
+        });
+
+    couchbase.LookupInSpec.get = function(path, specOptions) {
+      return couchbase.LookupInSpec.create(1, path, specOptions);
+    };
+
+    couchbase.lookupIn = function(bucket, meta, op_array, options) {
+      if(!op_array) {
+        return {"success": true};
+      }
+
+      var details = couchbase.bindingDetails(bucket, meta);
+      var key = couchbase.getCachedKey(meta.id, details);
+
+      this.invalidateKey(key);
+      if(!options) {
+        options = {};
+      }
+      return couchbase.lookupInInternal(bucket, meta, op_array, options);
     };
 
     couchbase.delete = function(bucket, meta) {

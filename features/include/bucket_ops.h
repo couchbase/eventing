@@ -61,6 +61,19 @@ struct MutateInSpecsInfo {
   MutateInSpecs specs;
 };
 
+struct LookupInSpecsInfo {
+  LookupInSpecsInfo() : is_valid(false) {}
+  LookupInSpecsInfo(bool is_valid) : is_valid(is_valid) {}
+  LookupInSpecsInfo(bool is_valid, std::string msg)
+      : is_valid(is_valid), msg(std::move(msg)) {}
+  LookupInSpecsInfo(bool is_valid, LookupInSpecs specs)
+      : is_valid(is_valid), specs(std::move(specs)) {}
+
+  bool is_valid;
+  std::string msg;
+  LookupInSpecs specs;
+};
+
 struct EpochInfo {
   EpochInfo(bool is_valid) : is_valid(is_valid), epoch(0) {}
 
@@ -85,6 +98,7 @@ public:
   static void TouchOp(const v8::FunctionCallbackInfo<v8::Value> &args);
   static void BindingDetails(const v8::FunctionCallbackInfo<v8::Value> &args);
   static void MutateInOp(const v8::FunctionCallbackInfo<v8::Value> &args);
+  static void LookupInOp(const v8::FunctionCallbackInfo<v8::Value> &args);
 
 private:
   EpochInfo Epoch(const v8::Local<v8::Value> &date_val);
@@ -95,6 +109,7 @@ private:
   OptionsInfo ExtractOptionsInfo(v8::Local<v8::Value> options_object);
 
   MutateInSpecsInfo ExtractMutateInSpecsInfo(v8::Local<v8::Value> mutateinspecs_object);
+  LookupInSpecsInfo ExtractLookupInSpecsInfo(v8::Local<v8::Value> lookupinspecs_object);
   Info ResponseSuccessObject(std::unique_ptr<Result> const &result,
                              v8::Local<v8::Object> &response_obj,
                              bool is_doc_needed = false,

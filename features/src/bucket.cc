@@ -323,6 +323,80 @@ Bucket::Get(MetaData &meta) {
 }
 
 std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
+Bucket::LookupIn(MetaData &meta, LookupInSpecs &specs) {
+  if (!is_connected_) {
+    return {std::make_unique<std::string>("Connection is not initialized"),
+            nullptr, nullptr};
+  }
+
+  auto [error, scope, collection] = get_scope_and_collection_names(meta);
+  if (error != nullptr) {
+    return {std::move(error), nullptr, nullptr};
+  }
+  meta.scope = scope;
+  meta.collection = collection;
+
+  const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
+  const auto lcb_timeout = UnwrapData(isolate_)->lcb_timeout;
+  const auto max_timeout = UnwrapData(isolate_)->op_timeout;
+
+  lcb_SUBDOCSPECS *lcb_specs;
+  lcb_subdocspecs_create(&lcb_specs, specs.get_num_fields() + 2);
+
+  char const *path = "$document.exptime";
+  lcb_subdocspecs_get(lcb_specs, 0, LCB_SUBDOCSPECS_F_XATTRPATH, path,
+                      strlen(path));
+
+  char const *path2 = "$document.datatype";
+  lcb_subdocspecs_get(lcb_specs, 1, LCB_SUBDOCSPECS_F_XATTRPATH, path2,
+                      strlen(path2));
+
+  specs.populate_lcb_specs(lcb_specs, 2);
+
+  lcb_CMDSUBDOC *cmd;
+  lcb_cmdsubdoc_create(&cmd);
+  lcb_cmdsubdoc_specs(cmd, lcb_specs);
+  lcb_cmdsubdoc_collection(cmd, meta.scope.c_str(), meta.scope.size(), meta.collection.c_str(),
+                           meta.collection.size());
+  lcb_cmdsubdoc_key(cmd, meta.key.c_str(), meta.key.size());
+  lcb_cmdsubdoc_timeout(cmd, lcb_timeout);
+
+  if (!on_behalf_of_.empty()) {
+    lcb_cmdsubdoc_on_behalf_of(cmd, on_behalf_of_.c_str(),
+                               on_behalf_of_.size());
+  }
+  auto [err, err_code, result] = TryLcbCmdWithRefreshConnIfNecessary(
+    *cmd, max_retry, max_timeout, LcbSubdocGet);
+  lcb_cmdsubdoc_destroy(cmd);
+  lcb_subdocspecs_destroy(lcb_specs);
+  if (err != nullptr) {
+    return {std::move(err), nullptr, nullptr};
+  }
+  if (err_code != LCB_SUCCESS) {
+    ++lcb_retry_failure;
+    return {nullptr, std::make_unique<lcb_STATUS>(err_code), nullptr};
+  }
+
+  std::ostringstream oss;
+  oss << "[";
+  int index = 0;
+  for (const auto &entry: result.lookupin_entries) {
+    if(index++ > 0) {
+      oss << ",";
+    }
+    if (entry.err_code == LCB_SUCCESS)
+      oss << "{\"value\":" << entry.value << ",\"success\":" << "true}";
+    else
+      oss << "{\"success\":" << "false}";
+  }
+  oss << "]";
+  result.value = oss.str();
+
+  return {nullptr, std::make_unique<lcb_STATUS>(err_code),
+          std::make_unique<Result>(std::move(result))};
+}
+
+std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
 Bucket::GetWithMeta(MetaData &meta) {
   if (!is_connected_) {
     return {std::make_unique<std::string>("Connection is not initialized"),
@@ -368,7 +442,7 @@ Bucket::GetWithMeta(MetaData &meta) {
   }
 
   auto [err, err_code, result] = TryLcbCmdWithRefreshConnIfNecessary(
-      *cmd, max_retry, max_timeout, LcbSubdocSet);
+      *cmd, max_retry, max_timeout, LcbSubdocGet);
   lcb_cmdsubdoc_destroy(cmd);
   lcb_subdocspecs_destroy(lcb_specs);
   if (err != nullptr) {
@@ -377,6 +451,10 @@ Bucket::GetWithMeta(MetaData &meta) {
   if (err_code != LCB_SUCCESS) {
     ++lcb_retry_failure;
     return {nullptr, std::make_unique<lcb_STATUS>(err_code), nullptr};
+  }
+
+  if (!result.lookupin_entries.empty()) {
+    result.value = result.lookupin_entries[0].value;
   }
 
   return {nullptr, std::make_unique<lcb_STATUS>(err_code),
