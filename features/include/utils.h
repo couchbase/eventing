@@ -283,10 +283,19 @@ void UrlEncodeFunction(const v8::FunctionCallbackInfo<v8::Value> &args);
 void UrlDecodeFunction(const v8::FunctionCallbackInfo<v8::Value> &args);
 
 void Crc64Function(const v8::FunctionCallbackInfo<v8::Value> &args);
+
+enum class arrayEncoding { Float64Encoding, Float32Encoding };
+
 void Base64EncodeFunction(const v8::FunctionCallbackInfo<v8::Value> &args);
 void Base64DecodeFunction(const v8::FunctionCallbackInfo<v8::Value> &args);
-void Base64FloatEncodeFunction(const v8::FunctionCallbackInfo<v8::Value> &args);
-void Base64FloatDecodeFunction(const v8::FunctionCallbackInfo<v8::Value> &args);
+void Base64Float64EncodeFunction(
+    const v8::FunctionCallbackInfo<v8::Value> &args);
+void Base64Float64DecodeFunction(
+    const v8::FunctionCallbackInfo<v8::Value> &args);
+void Base64Float32EncodeFunction(
+    const v8::FunctionCallbackInfo<v8::Value> &args);
+void Base64Float32DecodeFunction(
+    const v8::FunctionCallbackInfo<v8::Value> &args);
 
 std::string GetConnectionStr(const std::string &end_point,
                              const std::string &bucket_name,
