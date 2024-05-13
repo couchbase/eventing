@@ -522,6 +522,7 @@ type CursorRegistryReader interface {
 }
 
 type CursorRegistryMgr interface {
+	UpdateLimit(newlimit uint8)
 	CursorRegistryWriter
 	CursorRegistryReader
 }

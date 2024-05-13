@@ -36,6 +36,16 @@ func NewCursorRegistry(limit uint8) *CursorRegistry {
 	}
 }
 
+func (registry *CursorRegistry) UpdateLimit(newlimit uint8) {
+	registry.Lock()
+	defer registry.Unlock()
+	traverse(registry.root, 0, func(tracker *CursorTracker, level int) {
+		if tracker.limit != newlimit {
+			tracker.limit = newlimit
+		}
+	})
+}
+
 func (registry *CursorRegistry) Register(k common.KeyspaceName, funcId string) bool {
 	registry.Lock()
 	defer registry.Unlock()
@@ -252,6 +262,13 @@ func (ct *CursorTracker) addCursor(funcId string) {
 		ct.num += 1
 		ct.max += 1
 		ct.funcIds[funcId] = struct{}{}
+	}
+}
+
+func traverse(tracker *CursorTracker, level int, cb func(tracker *CursorTracker, level int)) {
+	cb(tracker, level)
+	for _, child := range tracker.children {
+		traverse(child, level+1, cb)
 	}
 }
 
