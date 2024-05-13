@@ -739,6 +739,11 @@ func (s *SuperSupervisor) HandleGlobalConfigChange(config common.Config) error {
 			if disable, ok := value.(bool); ok && disable {
 				newDisabledFeatureList = newDisabledFeatureList | common.CurlFeature
 			}
+
+		case "cursor_limit":
+			if newlimit, ok := value.(float64); ok {
+				s.cursorRegistry.UpdateLimit(uint8(newlimit))
+			}
 		}
 	}
 

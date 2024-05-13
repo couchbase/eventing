@@ -347,6 +347,10 @@ func (m *ServiceMgr) validateConfig(c map[string]interface{}) (info *response.Ru
 		}
 	}
 
+	if info = m.validateNumberRange("cursor_limit", c, 1.0, 20.0); info.ErrCode != response.Ok {
+		return
+	}
+
 	if info = m.validatePositiveInteger("function_size", c); info.ErrCode != response.Ok {
 		return
 	}
