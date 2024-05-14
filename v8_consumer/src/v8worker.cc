@@ -121,6 +121,9 @@ void V8Worker::SetCouchbaseNamespace() {
   proto_t->Set(v8::String::NewFromUtf8(isolate_, "crc64").ToLocalChecked(),
                v8::FunctionTemplate::New(isolate_, Crc64Function));
   proto_t->Set(
+          v8::String::NewFromUtf8(isolate_, "crc_64_go_iso").ToLocalChecked(),
+          v8::FunctionTemplate::New(isolate_, Crc64GoIsoFunction));
+  proto_t->Set(
       v8::String::NewFromUtf8(isolate_, "base64Encode").ToLocalChecked(),
       v8::FunctionTemplate::New(isolate_, Base64EncodeFunction));
   proto_t->Set(
@@ -142,6 +145,7 @@ void V8Worker::SetCouchbaseNamespace() {
       v8::String::NewFromUtf8(isolate_, "base64Float32ArrayDecode")
           .ToLocalChecked(),
       v8::FunctionTemplate::New(isolate_, Base64Float32DecodeFunction));
+
 
   auto context = context_.Get(isolate_);
   v8::Local<v8::Object> cb_obj;
