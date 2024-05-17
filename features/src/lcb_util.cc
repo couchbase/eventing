@@ -176,12 +176,13 @@ void SubDocumentLookupCallback(lcb_INSTANCE *instance, int cbtype,
   }
 
   auto total = lcb_respsubdoc_result_size(resp);
-  for (size_t index = 0; index < total; index++) {
+  if (total > 0) {
     result->rc = lcb_respsubdoc_result_status(resp, 0);
     if (result->rc != LCB_SUCCESS) {
-      return;
+        return;
     }
-
+  }
+  for (size_t index = 0; index < total; index++) {
     const char *cValue;
     size_t nValue;
     lcb_respsubdoc_result_value(resp, index, &cValue, &nValue);
@@ -205,7 +206,14 @@ void SubDocumentLookupCallback(lcb_INSTANCE *instance, int cbtype,
         }
       }
     } else {
-      result->value.assign(cValue, nValue);
+      auto err_code = lcb_respsubdoc_result_status(resp, index);
+      if(err_code == LCB_SUCCESS) {
+        std::string temp;
+        temp.assign(cValue, nValue);
+        result->lookupin_entries.emplace_back(temp, err_code);
+      } else {
+        result->lookupin_entries.emplace_back("", err_code);
+      }
     }
   }
 
@@ -369,6 +377,25 @@ std::pair<lcb_STATUS, Result> LcbDelete(lcb_INSTANCE *instance,
 
   if (err != LCB_SUCCESS) {
     LOG(logTrace) << "Bucket: Unable to schedule LCB_REMOVE: "
+                  << lcb_strerror_short(err) << std::endl;
+  }
+  return {err, result};
+}
+
+std::pair<lcb_STATUS, Result> LcbSubdocGet(lcb_INSTANCE *instance,
+                                           lcb_CMDSUBDOC &cmd) {
+  Result result;
+  auto err = lcb_subdoc(instance, &result, &cmd);
+  if (err != LCB_SUCCESS) {
+    LOG(logTrace) << "Bucket: Unable to set params for LCB_SUBDOC_GET: "
+                  << lcb_strerror_short(err) << std::endl;
+    return {err, result};
+  }
+
+  err = lcb_wait(instance, LCB_WAIT_DEFAULT);
+
+  if (err != LCB_SUCCESS) {
+    LOG(logTrace) << "Bucket: Unable to schedule LCB_SUBDOC_GET: "
                   << lcb_strerror_short(err) << std::endl;
   }
   return {err, result};

@@ -41,7 +41,7 @@ BucketOps::BucketOps(v8::Isolate *isolate,
   doc_str_ = "doc";
   meta_str_ = "meta";
   cache_str_ = "cache";
-  op_type_str_ = "op_type";
+  spec_type_str_ = "spec_type";
   key_subdoc_str_ = "path";
   value_subdoc_str_ = "value";
   options_subdoc_str_ = "options";
@@ -421,18 +421,18 @@ OptionsInfo BucketOps::ExtractOptionsInfo(v8::Local<v8::Value> options_object) {
   return {true, options};
 }
 
-SubdocInfo BucketOps::ExtractSubdocInfo(v8::Local<v8::Value> subdoc_object) {
+MutateInSpecsInfo BucketOps::ExtractMutateInSpecsInfo(v8::Local<v8::Value> mutateinspecs_object) {
   v8::HandleScope handle_scope(isolate_);
 
   auto context = context_.Get(isolate_);
   auto utils = UnwrapData(isolate_)->utils;
-  SubdocOperation operations;
+  MutateInSpecs specs;
 
-  if (!subdoc_object->IsArray()) {
-    return {false, "the 'subdoc operations' parameter should be an array"};
+  if (!mutateinspecs_object->IsArray()) {
+    return {false, "the 'MutateInSpecs' parameter should be an array"};
   }
 
-  auto req_array = subdoc_object.As<v8::Array>();
+  auto req_array = mutateinspecs_object.As<v8::Array>();
   for (uint32_t i = 0; i < req_array->Length(); i++) {
     v8::Local<v8::Value> array_ele;
     if (!TO_LOCAL(req_array->Get(context, i), &array_ele)) {
@@ -445,25 +445,25 @@ SubdocInfo BucketOps::ExtractSubdocInfo(v8::Local<v8::Value> subdoc_object) {
 
     v8::Local<v8::Object> obj = array_ele.As<v8::Object>();
     // Extracting op type
-    if (!obj->Has(context, v8Str(isolate_, op_type_str_)).FromJust()) {
+    if (!obj->Has(context, v8Str(isolate_, spec_type_str_)).FromJust()) {
       return {false, "field not provided"};
     }
 
-    v8::Local<v8::Value> op_v8val;
-    if (!TO_LOCAL(obj->Get(context, v8Str(isolate_, op_type_str_)),
-                  &op_v8val)) {
-      return {false, "error in casting op_type"};
+    v8::Local<v8::Value> spec_v8val;
+    if (!TO_LOCAL(obj->Get(context, v8Str(isolate_, spec_type_str_)),
+                  &spec_v8val)) {
+      return {false, "error in casting spec_type"};
     }
 
-    if (!op_v8val->IsNumber()) {
-      return {false, "'op_type' should be an integer"};
+    if (!spec_v8val->IsNumber()) {
+      return {false, "'spec_type' should be an integer"};
     }
 
-    v8::Local<v8::Integer> op_v8int;
-    if (!TO_LOCAL(op_v8val->ToInteger(context), &op_v8int)) {
-      return {false, "error in casting 'op_type'"};
+    v8::Local<v8::Integer> spec_v8int;
+    if (!TO_LOCAL(spec_v8val->ToInteger(context), &spec_v8int)) {
+      return {false, "error in casting 'spec_type'"};
     }
-    auto opType = op_v8int->Value();
+    auto specType = spec_v8int->Value();
 
     // Extracting key
     if (!obj->Has(context, v8Str(isolate_, key_subdoc_str_)).FromJust()) {
@@ -495,7 +495,7 @@ SubdocInfo BucketOps::ExtractSubdocInfo(v8::Local<v8::Value> subdoc_object) {
 
     // Extracting options
     if (!obj->Has(context, v8Str(isolate_, options_subdoc_str_)).FromJust()) {
-      operations.emplace_operation(opType, key, value, false, false);
+      specs.emplace_spec(specType, key, value, false, false);
       continue;
     }
 
@@ -544,13 +544,114 @@ SubdocInfo BucketOps::ExtractSubdocInfo(v8::Local<v8::Value> subdoc_object) {
       }
     }
 
-    auto valid = operations.emplace_operation(opType, key, value, create_path, is_user_xattr);
+    auto valid = specs.emplace_spec(specType, key, value, create_path, is_user_xattr);
     if (!valid) {
-      return {false, "Invalid operations"};
+      return {false, "Invalid specs"};
     }
   }
 
-  return {true, operations};
+  return {true, specs};
+}
+
+LookupInSpecsInfo BucketOps::ExtractLookupInSpecsInfo(v8::Local<v8::Value> lookupinspecs_object) {
+  v8::HandleScope handle_scope(isolate_);
+
+  auto context = context_.Get(isolate_);
+  LookupInSpecs specs;
+
+  if (!lookupinspecs_object->IsArray()) {
+    return {false, "the 'LookupInSpecs' parameter should be an array"};
+  }
+
+  auto req_array = lookupinspecs_object.As<v8::Array>();
+  for (uint32_t i = 0; i < req_array->Length(); i++) {
+    v8::Local<v8::Value> array_ele;
+    if (!TO_LOCAL(req_array->Get(context, i), &array_ele)) {
+      return {true, "unable to read array"};
+    }
+
+    if (!array_ele->IsObject()) {
+      return {false, "array elements should be an object"};
+    }
+
+    v8::Local<v8::Object> obj = array_ele.As<v8::Object>();
+    // Extracting op type
+    if (!obj->Has(context, v8Str(isolate_, spec_type_str_)).FromJust()) {
+      return {false, "field not provided"};
+    }
+
+    v8::Local<v8::Value> spec_v8val;
+    if (!TO_LOCAL(obj->Get(context, v8Str(isolate_, spec_type_str_)),
+                  &spec_v8val)) {
+      return {false, "error in casting 'spec_type'"};
+    }
+
+    if (!spec_v8val->IsNumber()) {
+      return {false, "'spec_type' should be an integer"};
+    }
+
+    v8::Local<v8::Integer> spec_v8int;
+    if (!TO_LOCAL(spec_v8val->ToInteger(context), &spec_v8int)) {
+      return {false, "error in casting 'spec_type'"};
+    }
+    auto specType = spec_v8int->Value();
+
+    // Extracting key
+    if (!obj->Has(context, v8Str(isolate_, key_subdoc_str_)).FromJust()) {
+      return {false, "field not provided"};
+    }
+
+    v8::Local<v8::Value> key_v8val;
+    if (!TO_LOCAL(obj->Get(context, v8Str(isolate_, key_subdoc_str_)),
+                  &key_v8val)) {
+      return {false, "error in casting path"};
+    }
+
+    v8::String::Utf8Value key_utf8(isolate_, key_v8val);
+    std::string key(*key_utf8);
+
+    // Extracting options
+    if (!obj->Has(context, v8Str(isolate_, options_subdoc_str_)).FromJust()) {
+      specs.emplace_spec(specType, key, false);
+      continue;
+    }
+
+    v8::Local<v8::Value> option_v8val;
+    if (!TO_LOCAL(obj->Get(context, v8Str(isolate_, options_subdoc_str_)),
+                  &option_v8val)) {
+      return {false, "error in casting options"};
+    }
+
+    if (!option_v8val->IsObject()) {
+      return {false, "option elements should be an object"};
+    }
+
+    v8::Local<v8::Object> options_obj = option_v8val.As<v8::Object>();
+    bool xattr = false;
+    if (options_obj->Has(context, v8Str(isolate_, user_xattr_str_))
+            .FromJust()) {
+      v8::Local<v8::Value> xattr_v8val;
+      if (TO_LOCAL(
+              options_obj->Get(context, v8Str(isolate_, user_xattr_str_)),
+              &xattr_v8val)) {
+        if (!xattr_v8val->IsBoolean()) {
+          return {false, "xattr must be a boolean value"};
+        }
+        auto xattr_v8 = xattr_v8val.As<v8::Boolean>();
+        xattr = xattr_v8->Value();
+        if(xattr && !key.empty() && key[0] == '_') {
+          return {false, "XATTR path cannot start with underscore"};
+        }
+      }
+    }
+
+    auto valid = specs.emplace_spec(specType, key, xattr);
+    if (!valid) {
+      return {false, "invalid specs"};
+    }
+  }
+
+  return {true, specs};
 }
 
 EpochInfo BucketOps::Epoch(const v8::Local<v8::Value> &date_val) {
@@ -653,12 +754,12 @@ BucketOps::BucketSet(MetaData &meta, v8::Local<v8::Value> value,
 }
 
 std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
-BucketOps::BucketSubdocSet(MetaData &meta, SubdocOperation &value,
+BucketOps::BucketMutateIn(MetaData &meta, MutateInSpecs &value,
                            bool suppress_recursion, Bucket *bucket) {
   if (suppress_recursion) {
-    return bucket->SubdocWithXattr(meta, value);
+    return bucket->MutateInWithXattr(meta, value);
   }
-  return bucket->SubdocWithoutXattr(meta, value);
+  return bucket->MutateInWithoutXattr(meta, value);
 }
 
 void BucketOps::Details(v8::FunctionCallbackInfo<v8::Value> args) {
@@ -1570,7 +1671,7 @@ void BucketOps::BindingDetails(
   bucket_ops->Details(args);
 }
 
-void BucketOps::SubdocOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
+void BucketOps::MutateInOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
   auto isolate = args.GetIsolate();
   auto isolate_data = UnwrapData(isolate);
   v8::HandleScope handle_scope(isolate);
@@ -1586,7 +1687,7 @@ void BucketOps::SubdocOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
   if (args.Length() < 3) {
     ++bucket_op_exception_count;
     js_exception->ThrowTypeError(
-        "couchbase.subdoc requires at least 3 arguments");
+        "couchbase.MutateIn requires at least 3 arguments");
     return;
   }
 
@@ -1643,15 +1744,15 @@ void BucketOps::SubdocOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
   }
 
   auto bucket = BucketBinding::GetBucket(isolate, args[0]);
-  auto subdoc_info = bucket_ops->ExtractSubdocInfo(args[2]);
-  if (!subdoc_info.is_valid) {
+  auto mutateinspecs_info = bucket_ops->ExtractMutateInSpecsInfo(args[2]);
+  if (!mutateinspecs_info.is_valid) {
     ++bucket_op_exception_count;
-    js_exception->ThrowTypeError(subdoc_info.msg);
+    js_exception->ThrowTypeError(mutateinspecs_info.msg);
     return;
   }
 
-  auto [error, err_code, result] = bucket_ops->BucketSubdocSet(
-      meta, subdoc_info.operations, suppress_recursion, bucket);
+  auto [error, err_code, result] = bucket_ops->BucketMutateIn(
+      meta, mutateinspecs_info.specs, suppress_recursion, bucket);
 
   if (error != nullptr) {
     ++bucket_op_exception_count;
@@ -1735,6 +1836,102 @@ void BucketOps::SubdocOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
   result->exptime = meta.expiry;
 
   info = bucket_ops->ResponseSuccessObject(std::move(result), response_obj);
+  if (info.is_fatal) {
+    ++bucket_op_exception_count;
+    js_exception->ThrowEventingError(info.msg);
+    return;
+  }
+
+  args.GetReturnValue().Set(response_obj);
+}
+
+void BucketOps::LookupInOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
+  auto isolate = args.GetIsolate();
+  auto isolate_data = UnwrapData(isolate);
+  v8::HandleScope handle_scope(isolate);
+
+  std::lock_guard<std::mutex> guard(isolate_data->termination_lock_);
+  if (!isolate_data->is_executing_) {
+    return;
+  }
+
+  auto js_exception = isolate_data->js_exception;
+  auto bucket_ops = isolate_data->bucket_ops;
+
+  if (args.Length() < 3) {
+    ++bucket_op_exception_count;
+    js_exception->ThrowTypeError(
+        "couchbase.LookupIn requires at least 3 arguments");
+    return;
+  }
+
+  // Validation and extraction phase
+  auto info = bucket_ops->VerifyBucketObject(args[0]);
+  if (info.is_fatal) {
+    ++bucket_op_exception_count;
+    js_exception->ThrowTypeError(info.msg);
+    return;
+  }
+
+  auto meta_info = bucket_ops->ExtractMetaInfo(args[1], true, true);
+  if (!meta_info.is_valid) {
+    ++bucket_op_exception_count;
+    js_exception->ThrowTypeError(meta_info.msg);
+    return;
+  }
+  auto meta = meta_info.meta;
+
+  info = Utils::ValidateDataType(args[2]);
+  if (info.is_fatal) {
+    ++bucket_op_exception_count;
+    auto err_msg = "Invalid data type for 3rd argument: " + info.msg;
+    js_exception->ThrowTypeError(err_msg);
+    return;
+  }
+
+  // Setup objects
+  auto bucket = BucketBinding::GetBucket(isolate, args[0]);
+  auto lookupinspecs_info = bucket_ops->ExtractLookupInSpecsInfo(args[2]);
+  if (!lookupinspecs_info.is_valid) {
+    ++bucket_op_exception_count;
+    js_exception->ThrowTypeError(lookupinspecs_info.msg);
+    return;
+  }
+  auto [error, err_code, result] = bucket->LookupIn(meta, lookupinspecs_info.specs);
+  if (error != nullptr) {
+    ++bucket_op_exception_count;
+    js_exception->ThrowEventingError(*error);
+    return;
+  }
+
+  if (*err_code != LCB_SUCCESS) {
+    bucket_ops->HandleBucketOpFailure(bucket->GetConnection(), *err_code);
+    return;
+  }
+
+  v8::Local<v8::Object> response_obj = v8::Object::New(isolate);
+  if (result->rc == LCB_ERR_DOCUMENT_NOT_FOUND) {
+    info = bucket_ops->SetErrorObject(
+        response_obj, "LCB_KEY_ENOENT",
+        "The document key does not exist on the server", result->kv_err_code,
+        bucket_ops->key_not_found_str_, true);
+
+    if (info.is_fatal) {
+      ++bucket_op_exception_count;
+      js_exception->ThrowEventingError(info.msg);
+      return;
+    }
+    args.GetReturnValue().Set(response_obj);
+    return;
+  }
+
+  if (result->rc != LCB_SUCCESS) {
+    bucket_ops->HandleBucketOpFailure(bucket->GetConnection(), result->rc);
+    return;
+  }
+
+  result->key = meta.key;
+  info = bucket_ops->ResponseSuccessObject(std::move(result), response_obj, true);
   if (info.is_fatal) {
     ++bucket_op_exception_count;
     js_exception->ThrowEventingError(info.msg);
