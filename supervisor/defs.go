@@ -152,8 +152,9 @@ type SuperSupervisor struct {
 	runningProducersRWMutex    *sync.RWMutex
 	vbucketsToOwn              []uint16
 
-	scn        *util.ServicesChangeNotifier
-	serviceMgr common.EventingServiceMgr
+	scn            *util.ServicesChangeNotifier
+	serviceMgr     common.EventingServiceMgr
+	cursorRegistry common.CursorRegistryMgr
 
 	gocbGlobalConfigHandle *gocbGlobalConfig
 

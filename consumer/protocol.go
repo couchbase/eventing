@@ -48,6 +48,7 @@ const (
 	v8WorkerOpcode int8 = iota
 	v8WorkerDispose
 	v8WorkerInit
+	v8WorkerTracker
 	v8WorkerLoad
 	v8WorkerTerminate
 	v8WorkerUnused1
@@ -184,6 +185,10 @@ func (c *Consumer) makeV8CompileOpcodeHeader(appCode string) ([]byte, *flatbuffe
 	return c.makeV8EventHeader(v8WorkerCompile, appCode)
 }
 
+func (c *Consumer) makeV8TrackerOpcodeHeader(enable bool) ([]byte, *flatbuffers.Builder) {
+	return c.makeV8EventHeader(v8WorkerTracker, strconv.FormatBool(enable))
+}
+
 func (c *Consumer) makeV8LoadOpcodeHeader(appCode string) ([]byte, *flatbuffers.Builder) {
 	return c.makeV8EventHeader(v8WorkerLoad, appCode)
 }
@@ -301,7 +306,7 @@ func (c *Consumer) makeVbMapPayload(assgnedVbs []uint16) (encodedPayload []byte,
 	return
 }
 
-func (c *Consumer) makeDcpPayload(key, value []byte, xattr []byte, isBinary bool) (encodedPayload []byte, builder *flatbuffers.Builder) {
+func (c *Consumer) makeDcpPayload(key, value []byte, xattr []byte, cursors []string, isBinary bool) (encodedPayload []byte, builder *flatbuffers.Builder) {
 	builder = c.getBuilder()
 
 	binary := make([]byte, 1)
@@ -309,6 +314,12 @@ func (c *Consumer) makeDcpPayload(key, value []byte, xattr []byte, isBinary bool
 	keyPos := builder.CreateByteString(key)
 	valPos := builder.CreateByteString(value)
 	xattrPos := builder.CreateByteString(xattr)
+	var cursorsPos flatbuffers.UOffsetT
+	if cursors == nil || len(cursors) == 0 {
+		cursorsPos = builder.CreateByteString([]byte(""))
+	} else {
+		cursorsPos = builder.CreateByteString([]byte(strings.Join(cursors, ",")))
+	}
 
 	payload.PayloadStart(builder)
 
@@ -316,6 +327,7 @@ func (c *Consumer) makeDcpPayload(key, value []byte, xattr []byte, isBinary bool
 	payload.PayloadAddKey(builder, keyPos)
 	payload.PayloadAddValue(builder, valPos)
 	payload.PayloadAddXattr(builder, xattrPos)
+	payload.PayloadAddCursors(builder, cursorsPos)
 
 	payloadPos := payload.PayloadEnd(builder)
 	builder.Finish(payloadPos)

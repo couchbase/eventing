@@ -26,9 +26,10 @@ type Response interface {
 
 // Init this with  sel := systemeventlog.NewSystemEventLogger(systemeventlog.SystemEventLoggerConfig{}, baseNsserverURL,
 // util.SYSTEM_EVENT_COMPONENT, http.Client{Timeout: util.DEFAULT_TIMEOUT_SECS * time.Second},
-// func(message string) {
-//         logging.Errorf(message)
-//  })
+//
+//	func(message string) {
+//	        logging.Errorf(message)
+//	 })
 var sel systemeventlog.SystemEventLogger
 
 type WarningsInfo struct {
@@ -111,11 +112,12 @@ var (
 	ErrBucketAccess           = errCode(49)
 	ErrInterFunctionRecursion = errCode(50)
 	ErrInterBucketRecursion   = errCode(51)
-	ErrSyncGatewayEnabled     = errCode(52)
-	ErrAppNotFound            = errCode(53)
-	ErrMetakvWriteFailed      = errCode(54)
-	ErrRequestedOpFailed      = errCode(55)
-	ErrCollectionMissing      = errCode(56)
+	ErrUnsupportedSGW         = errCode(52)
+	ErrSGWDetection           = errCode(53)
+	ErrAppNotFound            = errCode(54)
+	ErrMetakvWriteFailed      = errCode(55)
+	ErrRequestedOpFailed      = errCode(56)
+	ErrCollectionMissing      = errCode(57)
 	ErrMagmaStorage           = errCode(58)
 	ErrInternalServer         = errCode(59)
 	ErrForbidden              = errCode(60)
@@ -123,6 +125,7 @@ var (
 	ErrMethodNotAllowed       = errCode(62)
 	ErrInvalidRequest         = errCode(63)
 	ErrAppPaused              = errCode(64)
+	ErrCursorLimitReached     = errCode(65)
 )
 
 // Shouldn't expose internal details
@@ -163,11 +166,12 @@ var (
 		ErrBucketAccess:           ErrorInfo{httpStatusCode: http.StatusBadRequest, Name: "ERR_BUCKET_ACCESS", Code: 49},
 		ErrInterFunctionRecursion: ErrorInfo{httpStatusCode: http.StatusBadRequest, Name: "ERR_INTER_FUNCTION_RECURSION", Code: 50},
 		ErrInterBucketRecursion:   ErrorInfo{httpStatusCode: http.StatusBadRequest, Name: "ERR_INTER_BUCKET_RECURSION", Code: 51},
-		ErrSyncGatewayEnabled:     ErrorInfo{httpStatusCode: http.StatusBadRequest, Name: "ERR_SYNC_GATEWAY_ENABLED", Code: 52},
-		ErrAppNotFound:            ErrorInfo{httpStatusCode: http.StatusBadRequest, Name: "ERR_APP_NOT_FOUND", Code: 53},
-		ErrMetakvWriteFailed:      ErrorInfo{httpStatusCode: http.StatusInternalServerError, Name: "ERR_METAKV_WRITE_FAILED", Code: 54},
-		ErrRequestedOpFailed:      ErrorInfo{httpStatusCode: http.StatusBadRequest, Name: "ERR_REQUESTED_OP_FAILED", Code: 55},
-		ErrCollectionMissing:      ErrorInfo{httpStatusCode: http.StatusBadRequest, Name: "ERR_COLLECTION_MISSING", Code: 56},
+		ErrUnsupportedSGW:         ErrorInfo{httpStatusCode: http.StatusBadRequest, Name: "ERR_UNSUPPORTED_SYNC_GATEWAY", Code: 52},
+		ErrSGWDetection:           ErrorInfo{httpStatusCode: http.StatusInternalServerError, Name: "ERR_SYNC_GATEWAY_DETECTION", Code: 53},
+		ErrAppNotFound:            ErrorInfo{httpStatusCode: http.StatusBadRequest, Name: "ERR_APP_NOT_FOUND", Code: 54},
+		ErrMetakvWriteFailed:      ErrorInfo{httpStatusCode: http.StatusInternalServerError, Name: "ERR_METAKV_WRITE_FAILED", Code: 55},
+		ErrRequestedOpFailed:      ErrorInfo{httpStatusCode: http.StatusBadRequest, Name: "ERR_REQUESTED_OP_FAILED", Code: 56},
+		ErrCollectionMissing:      ErrorInfo{httpStatusCode: http.StatusBadRequest, Name: "ERR_COLLECTION_MISSING", Code: 57},
 		ErrMagmaStorage:           ErrorInfo{httpStatusCode: http.StatusBadRequest, Name: "ERR_MAGMA_BACKEND", Code: 58, Description: "Magma buckets are not yet supported in Eventing"},
 		ErrInternalServer:         ErrorInfo{httpStatusCode: http.StatusInternalServerError, Name: "INTERNAL_SERVER_ERROR", Code: 59, Attributes: []string{"retry"}},
 		ErrForbidden:              ErrorInfo{httpStatusCode: http.StatusForbidden, Name: "ERR_FORBIDDEN", Code: 60},
@@ -175,6 +179,7 @@ var (
 		ErrMethodNotAllowed:       ErrorInfo{httpStatusCode: http.StatusMethodNotAllowed, Name: "ERR_METHOD_NOT_ALLOWED", Code: 62},
 		ErrInvalidRequest:         ErrorInfo{httpStatusCode: http.StatusBadRequest, Name: "ERR_INVALID_REQUEST", Code: 63},
 		ErrAppPaused:              ErrorInfo{httpStatusCode: http.StatusUnprocessableEntity, Name: "ERR_APP_PAUSED", Code: 64},
+		ErrCursorLimitReached:     ErrorInfo{httpStatusCode: http.StatusBadRequest, Name: "ERR_CURSOR_LIMIT_REACHED", Code: 65},
 	}
 )
 

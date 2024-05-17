@@ -31,6 +31,7 @@ enum event_type {
 enum v8_worker_opcode {
   oDispose,
   oInit,
+  oTracker,
   oLoad,
   oTerminate,
   oUnused1,

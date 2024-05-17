@@ -114,9 +114,10 @@ type ServiceMgr struct {
 	servers  []service.NodeID
 	state
 
-	supWaitCh chan bool
-	superSup  common.EventingSuperSup
-	waiters   waiters
+	supWaitCh      chan bool
+	superSup       common.EventingSuperSup
+	cursorRegistry common.CursorRegistryMgr
+	waiters        waiters
 
 	statusCodes   statusCodes
 	statusPayload []byte

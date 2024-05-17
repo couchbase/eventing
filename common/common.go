@@ -357,6 +357,8 @@ type EventingProducer interface {
 	SourceCollection() string
 	GetSourceKeyspaceID() (KeyspaceID, bool)
 	GetMetadataKeyspaceID() (KeyspaceID, bool)
+	GetFunctionInstanceId() string
+	GetCursorAware() bool
 	SrcMutation() bool
 	Stop(context string)
 	StopRunningConsumers()
@@ -509,6 +511,22 @@ type EventingSuperSup interface {
 	UnwatchBucket(keyspace Keyspace, appName string)
 }
 
+type CursorRegistryWriter interface {
+	Register(k KeyspaceName, funcId string) bool
+	Unregister(k KeyspaceName, funcId string)
+}
+
+type CursorRegistryReader interface {
+	GetCursors(k KeyspaceName) (map[string]struct{}, bool)
+	PrintTree()
+}
+
+type CursorRegistryMgr interface {
+	UpdateLimit(newlimit uint8)
+	CursorRegistryWriter
+	CursorRegistryReader
+}
+
 type EventingServiceMgr interface {
 	UpdateBucketGraphFromMetakv(functionName string) error
 	ResetFailoverStatus()
@@ -574,6 +592,8 @@ type HandlerConfig struct {
 	N1qlPrepareAll            bool
 	LanguageCompatibility     string
 	AllowTransactionMutations bool
+	AllowSyncDocuments        bool
+	CursorAware               bool
 	AggDCPFeedMemCap          int64
 	CheckpointInterval        int
 	IdleCheckpointInterval    int

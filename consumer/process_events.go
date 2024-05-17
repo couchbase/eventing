@@ -7,7 +7,6 @@ import (
 	"runtime"
 	"runtime/debug"
 	"sort"
-	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -23,8 +22,6 @@ import (
 
 func (c *Consumer) processDCPEvents() {
 	logPrefix := "Consumer::processDCPEvents"
-
-	functionInstanceID := strconv.Itoa(int(c.app.FunctionID)) + "-" + c.app.FunctionInstanceID
 
 	for {
 		if c.cppQueueSizes != nil {
@@ -74,6 +71,11 @@ func (c *Consumer) processDCPEvents() {
 				logging.Tracef("%s [%s:%s:%d] Got DCP_MUTATION for key: %ru datatype: %v",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key), e.Datatype)
 
+				if !c.allowSyncDocuments && c.isSGWMutation(e) {
+					c.suppressedDCPMutationCounter++
+					continue
+				}
+
 				switch e.Datatype {
 				case dcpDatatypeJSON:
 					c.dcpMutationCounter++
@@ -86,7 +88,7 @@ func (c *Consumer) processDCPEvents() {
 					}
 
 				case dcpDatatypeJSONXattr:
-					c.sendXattrDoc(e, functionInstanceID)
+					c.sendXattrDoc(e)
 
 				case dcpDatatypeBinXattr:
 					if c.binaryDocAllowed {
@@ -94,7 +96,7 @@ func (c *Consumer) processDCPEvents() {
 							c.suppressedDCPMutationCounter++
 							continue
 						}
-						c.sendXattrDoc(e, functionInstanceID)
+						c.sendXattrDoc(e)
 					}
 
 				}
@@ -104,7 +106,15 @@ func (c *Consumer) processDCPEvents() {
 					continue
 				}
 
-				if c.processAndSendDcpDelOrExpMessage(e, functionInstanceID, true) {
+				logging.Tracef("%s [%s:%s:%d] Got DCP_DELETION for key: %ru datatype: %v",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key), e.Datatype)
+
+				if !c.allowSyncDocuments && c.isSGWMutation(e) {
+					c.suppressedDCPDeletionCounter++
+					continue
+				}
+
+				if c.processAndSendDcpDelOrExpMessage(e, true) {
 					c.dcpDeletionCounter++
 				} else {
 					c.suppressedDCPDeletionCounter++
@@ -115,8 +125,19 @@ func (c *Consumer) processDCPEvents() {
 					continue
 				}
 
-				c.processAndSendDcpDelOrExpMessage(e, functionInstanceID, false)
-				c.dcpExpiryCounter++
+				logging.Tracef("%s [%s:%s:%d] Got DCP_EXPIRATION for key: %ru datatype: %v",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key), e.Datatype)
+
+				if !c.allowSyncDocuments && c.isSGWMutation(e) {
+					c.suppressedDCPExpiryCounter++
+					continue
+				}
+
+				if c.processAndSendDcpDelOrExpMessage(e, false) {
+					c.dcpExpiryCounter++
+				} else {
+					c.suppressedDCPExpiryCounter++
+				}
 
 			case mcd.DCP_STREAMEND:
 				c.dcpStatsLogger.AddDcpLog(e.VBucket, LogState, string(StateStreamEnd))
@@ -1157,6 +1178,10 @@ func (c *Consumer) cppWorkerThrPartitionMap() {
 }
 
 func (c *Consumer) sendEvent(e *cb.DcpEvent) error {
+	return c.sendEventWithCursorIdsAndCas(e, nil, e.Cas)
+}
+
+func (c *Consumer) sendEventWithCursorIdsAndCas(e *cb.DcpEvent, cursors []string, rootCas uint64) error {
 	logPrefix := "Consumer::processTrappedEvent"
 
 	mKeyspace, deleted := c.cidToKeyspaceCache.getKeyspaceName(e)
@@ -1166,7 +1191,7 @@ func (c *Consumer) sendEvent(e *cb.DcpEvent) error {
 	}
 
 	if !c.producer.IsTrapEvent() {
-		c.sendDcpEvent(mKeyspace, e, false)
+		c.sendDcpEvent(mKeyspace, e, cursors, rootCas, false)
 		return nil
 	}
 
@@ -1185,7 +1210,7 @@ func (c *Consumer) sendEvent(e *cb.DcpEvent) error {
 	if success {
 		c.startDebugger(mKeyspace, e, instance)
 	} else {
-		c.sendDcpEvent(mKeyspace, e, false)
+		c.sendDcpEvent(mKeyspace, e, cursors, rootCas, false)
 	}
 	return nil
 }
@@ -1396,34 +1421,79 @@ func (c *Consumer) handleStreamEnd(vBucket uint16, last_processed_seqno uint64) 
 }
 
 // return false if message is supressed else true
-func (c *Consumer) processAndSendDcpDelOrExpMessage(e *cb.DcpEvent, functionInstanceID string, checkRecursiveEvent bool) bool {
+func (c *Consumer) processAndSendDcpDelOrExpMessage(e *cb.DcpEvent, checkRecursiveEvent bool) bool {
 	logPrefix := "Consumer::processAndSendDcpMessage"
 	switch e.Datatype {
 	case uint8(cb.IncludeXATTRs):
-		if c.producer.SrcMutation() && checkRecursiveEvent {
-			if isRecursive, err := c.isRecursiveDCPEvent(e, functionInstanceID); err == nil && isRecursive == true {
+		if (c.producer.SrcMutation() && checkRecursiveEvent) || c.cursorAware {
+			suppressChkptMut, rootCas, err := c.processCheckpointMutation(e)
+			if err != nil {
 				return false
 			}
+			if c.cursorAware && suppressChkptMut {
+				return false
+			}
+			if c.producer.SrcMutation() && checkRecursiveEvent {
+				suppressEvtMut, err := c.shouldSuppressEventingMutation(e, rootCas)
+				if err != nil {
+					logging.Tracef("%s [%s:%s:%d] key: %ru _eventing processing failure encountered: %v",
+						logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key), err)
+					return false
+				}
+				if suppressEvtMut {
+					return false
+				}
+			}
+			logging.Tracef("%s [%s:%s:%d] Sending key: %ru to be processed by JS handlers",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key))
+			if c.cursorAware {
+				c.sendEventWithCursorIdsAndCas(e, c.getStaleCursors(e), rootCas)
+			} else {
+				c.sendEvent(e)
+			}
+		} else {
+			logging.Tracef("%s [%s:%s:%d] Sending key: %ru to be processed by JS handlers",
+				logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key))
+			c.sendEvent(e)
 		}
-		logging.Tracef("%s [%s:%s:%d] Sending key: %ru to be processed by JS handlers",
-			logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key))
-		c.sendEvent(e)
 	default:
 		c.sendEvent(e)
 	}
 	return true
 }
 
-func (c *Consumer) sendXattrDoc(e *cb.DcpEvent, functionInstanceID string) {
+func (c *Consumer) sendXattrDoc(e *cb.DcpEvent) {
 	logPrefix := "Consumer::sendXattrDoc"
-
-	if c.producer.SrcMutation() {
-		if isRecursive, err := c.isRecursiveDCPEvent(e, functionInstanceID); err == nil && isRecursive == true {
+	// Note: We look inside xattrs only if:
+	// 1. This handle can perform SBM and this mutation might be a potential SBM OR
+	// 2. This is a cursor aware function
+	if c.producer.SrcMutation() || c.cursorAware {
+		suppressChkptMut, rootCas, err := c.processCheckpointMutation(e)
+		if err != nil {
+			return
+		}
+		if c.cursorAware && suppressChkptMut {
 			c.suppressedDCPMutationCounter++
+			return
+		}
+		if c.producer.SrcMutation() {
+			suppressEvtMut, err := c.shouldSuppressEventingMutation(e, rootCas)
+			if err != nil {
+				logging.Tracef("%s [%s:%s:%d] key: %ru _eventing processing failure encountered: %v",
+					logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key), err)
+				return
+			}
+			if suppressEvtMut {
+				c.suppressedDCPMutationCounter++
+				return
+			}
+		}
+		logging.Tracef("%s [%s:%s:%d] Sending key: %ru to be processed by JS handlers",
+			logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key))
+		c.dcpMutationCounter++
+		if c.cursorAware {
+			c.sendEventWithCursorIdsAndCas(e, c.getStaleCursors(e), rootCas)
 		} else {
-			logging.Tracef("%s [%s:%s:%d] No IntraHandlerRecursion, sending key: %ru to be processed by JS handlers",
-				logPrefix, c.workerName, c.tcpPort, c.Pid(), string(e.Key))
-			c.dcpMutationCounter++
 			c.sendEvent(e)
 		}
 	} else {
@@ -1449,6 +1519,10 @@ func (c *Consumer) filterMutations(e *cb.DcpEvent) bool {
 
 func (c *Consumer) isTransactionMutation(e *cb.DcpEvent) bool {
 	return bytes.HasPrefix(e.Key, cb.TransactionMutationPrefix)
+}
+
+func (c *Consumer) isSGWMutation(e *cb.DcpEvent) bool {
+	return bytes.HasPrefix(e.Key, cb.SyncGatewayMutationPrefix)
 }
 
 // If fetchFresh is true then it will fetch the latest failover log if vbBlob doesn't contain failover log

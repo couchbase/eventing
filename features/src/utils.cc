@@ -20,6 +20,7 @@
 #include "js_exception.h"
 #include "lcb_utils.h"
 #include "utils.h"
+#include <cinttypes>
 #include <nlohmann/json.hpp>
 #include <platform/base64.h>
 
@@ -1386,5 +1387,20 @@ void ReplaceSubstringsInPlace(std::string &subject, const std::string &search,
          count != 0) {
     count--;
     subject.replace(pos, search.length(), replace);
+  }
+}
+
+std::string to_hex(uint64_t val) {
+  char buf[32];
+  snprintf(buf, sizeof(buf), "0x%016" PRIx64, val);
+  return std::string{buf};
+}
+
+void splitString(const std::string& str, std::vector<std::string>& result, char delimiter) {
+  std::stringstream ss(str);
+  std::string token;
+
+  while (std::getline(ss, token, delimiter)) {
+    result.push_back(token);
   }
 }

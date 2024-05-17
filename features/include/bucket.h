@@ -26,20 +26,24 @@
 #include "lcb_utils.h"
 
 struct MetaData {
+  std::string scope;
+  std::string collection;
   std::string key;
   uint64_t cas;
   uint32_t expiry;
 
-  std::string collection;
-  std::string scope;
   bool invalidate_cache_;
 
   MetaData()
-      : key(""), cas(0), expiry(0), collection(""), scope(""),
+      : scope(""), collection(""), key(""), cas(0), expiry(0),
         invalidate_cache_(false) {}
   MetaData(bool invalidate)
-      : key(""), cas(0), expiry(0), collection(""), scope(""),
+      : scope(""), collection(""), key(""), cas(0), expiry(0),
         invalidate_cache_(invalidate) {}
+  MetaData(const std::string& scope, const std::string& collection,
+    const std::string& key, const uint64_t& cas)
+      : scope(scope), collection(collection), key(key), cas(cas),
+        expiry(0), invalidate_cache_(false) {}
 };
 
 struct MutateInSpecs {
@@ -264,6 +268,9 @@ public:
     auto func = invalidate_func.As<v8::Function>();
     invalidate_cache_func_.Reset(isolate_, func);
   }
+
+  std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
+  WriteCheckpoint(const MetaData &meta, const uint64_t& rootcas, const std::vector<std::string>& cleanup_cursors);
 
   std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
   Get(MetaData &meta);

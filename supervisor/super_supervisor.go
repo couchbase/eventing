@@ -72,6 +72,7 @@ func NewSuperSupervisor(adminPort AdminPortConfig, eventingDir, kvPort, restPort
 	s.mu = &sync.RWMutex{}
 	s.buckets = make(map[string]*bucketWatchStruct)
 	s.bucketsRWMutex = &sync.RWMutex{}
+	s.cursorRegistry = NewCursorRegistry(5)
 	s.superSup.ServeBackground("SuperSupervisor")
 
 	config, _ := util.NewConfig(nil)
@@ -86,7 +87,7 @@ func NewSuperSupervisor(adminPort AdminPortConfig, eventingDir, kvPort, restPort
 	config.Set("rest_port", s.restPort)
 
 	util.InitialiseSystemEventLogger(s.restPort)
-	s.serviceMgr = servicemanager.NewServiceMgr(config, false, s)
+	s.serviceMgr = servicemanager.NewServiceMgr(config, false, s, s.cursorRegistry)
 
 	util.LogSystemEvent(util.EVENTID_PRODUCER_STARTUP, systemeventlog.SEInfo, nil)
 
@@ -457,7 +458,6 @@ func (s *SuperSupervisor) SettingsChangeCallback(kve metakv.KVEntry) error {
 					delete(s.bootstrappingApps, appName)
 					delete(s.pausingApps, appName)
 					s.appListRWMutex.Unlock()
-
 				}
 
 				s.updateQuotaForRunningFns()
@@ -739,6 +739,11 @@ func (s *SuperSupervisor) HandleGlobalConfigChange(config common.Config) error {
 			if disable, ok := value.(bool); ok && disable {
 				newDisabledFeatureList = newDisabledFeatureList | common.CurlFeature
 			}
+
+		case "cursor_limit":
+			if newlimit, ok := value.(float64); ok {
+				s.cursorRegistry.UpdateLimit(uint8(newlimit))
+			}
 		}
 	}
 
@@ -810,7 +815,23 @@ func (s *SuperSupervisor) spawnApp(appName string) error {
 	metakvAppHostPortsPath := fmt.Sprintf("%s%s/", metakvProducerHostPortsPath, appName)
 
 	p := producer.NewProducer(appName, s.adminPort.DebuggerPort, s.adminPort.HTTPPort, s.adminPort.SslPort, s.eventingDir,
-		s.kvPort, metakvAppHostPortsPath, s.restPort, s.uuid, s.diagDir, s.memoryQuota, atomic.LoadUint32(&s.featureMatrix), s)
+		s.kvPort, metakvAppHostPortsPath, s.restPort, s.uuid, s.diagDir, s.memoryQuota, atomic.LoadUint32(&s.featureMatrix), s, s.cursorRegistry)
+
+	if p.GetCursorAware() {
+		sourceKeyspace := common.KeyspaceName{
+			Bucket:     p.SourceBucket(),
+			Scope:      p.SourceScope(),
+			Collection: p.SourceCollection(),
+		}
+		fiid := p.GetFunctionInstanceId()
+		if done := s.cursorRegistry.Register(sourceKeyspace, fiid); done {
+			logging.Infof("%s [%d] Function: %s with cursorId: %s and keyspace: %v registered with cursor map",
+				logPrefix, s.runningFnsCount(), appName, fiid, sourceKeyspace)
+		} else {
+			logging.Errorf("%s [%d] Could not register function: %s with cursorId: %s and keyspaceId: %v to cursor map",
+				logPrefix, s.runningFnsCount(), appName, fiid, sourceKeyspace)
+		}
+	}
 
 	sourceKeyspace := common.Keyspace{BucketName: p.SourceBucket(), ScopeName: p.SourceScope(), CollectionName: p.SourceCollection()}
 	err := s.WatchBucket(sourceKeyspace, appName, common.SrcWatch)

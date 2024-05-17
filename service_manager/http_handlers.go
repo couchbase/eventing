@@ -34,6 +34,7 @@ import (
 	"github.com/couchbase/eventing/parser"
 	"github.com/couchbase/eventing/rbac"
 	"github.com/couchbase/eventing/service_manager/response"
+	"github.com/couchbase/eventing/syncgateway"
 	"github.com/couchbase/eventing/util"
 	"github.com/couchbase/goutils/systemeventlog"
 	//"github.com/couchbase/goutils/systemeventlog"
@@ -1781,8 +1782,20 @@ func (m *ServiceMgr) setSettings(appLocation string, data []byte, force bool) (i
 
 			// Write to primary store in case of deployment
 			if !m.checkIfDeployedAndRunning(appLocation) {
+				sourceKey := common.KeyspaceName{
+					Bucket:     app.DeploymentConfig.SourceBucket,
+					Scope:      app.DeploymentConfig.SourceScope,
+					Collection: app.DeploymentConfig.SourceCollection,
+				}
+				fiid := util.GetFunctionInstanceId(app.FunctionID, app.FunctionInstanceID)
+				if cursorRegisterInfo := m.checkAndRegisterCursor(app, appLocation, sourceKey, fiid); cursorRegisterInfo.ErrCode != response.Ok {
+					*info = *cursorRegisterInfo
+					return
+				}
 				info = m.savePrimaryStore(app)
 				if info.ErrCode != response.Ok {
+					// Note: Cursor unregister is a NOOP if it was never registered in the first place
+					m.cursorRegistry.Unregister(sourceKey, fiid)
 					logging.Errorf("%s %s", logPrefix, info.Description)
 					return
 				}
@@ -2443,24 +2456,47 @@ func (m *ServiceMgr) savePrimaryStore(app *application) (info *response.RuntimeI
 	}
 
 	srcMutationEnabled := m.isSrcMutationEnabled(&app.DeploymentConfig)
-	if srcMutationEnabled && !m.compareEventingVersion(mhVersion) {
-		info.ErrCode = response.ErrClusterVersion
-		info.Description = fmt.Sprintf("All eventing nodes in the cluster must be on version %s or higher for allowing mutations against source bucket",
-			mhVersion)
-		logging.Warnf("%s Version compat check failed: %s", logPrefix, info.Description)
-		return
-	}
-
-	if srcMutationEnabled && !m.checkSyncGatewayMutationsAllowed() {
-		keySpace := &common.Keyspace{BucketName: app.DeploymentConfig.SourceBucket,
-			ScopeName:      app.DeploymentConfig.SourceScope,
-			CollectionName: app.DeploymentConfig.SourceCollection,
-		}
-		if enabled, err := util.IsSyncGatewayEnabled(logPrefix, keySpace, m.restPort, m.superSup); err == nil && enabled {
-			info.ErrCode = response.ErrSyncGatewayEnabled
-			info.Description = fmt.Sprintf("SyncGateway is enabled on: %s, deployement of source bucket mutating handler will cause Intra Bucket Recursion", app.DeploymentConfig.SourceBucket)
+	if srcMutationEnabled {
+		if !m.compareEventingVersion(mhVersion) {
+			info.ErrCode = response.ErrClusterVersion
+			info.Description = fmt.Sprintf("All eventing nodes in the cluster must be on version %s or higher for allowing mutations against source bucket",
+				mhVersion)
+			logging.Warnf("%s Version compat check failed: %s", logPrefix, info.Description)
 			return
 		}
+		// Note: If app is not "cursor_aware" we may encounter duplicate mutations
+		client, clienterr := syncgateway.NewSourceBucketClient(logPrefix, app.DeploymentConfig.SourceBucket, m.restPort, m.superSup)
+		if clienterr != nil {
+			info.ErrCode = response.ErrSGWDetection
+			info.Description = fmt.Sprintf("Encountered internal error while checking for possible Sync Gateway co-existence. Error logged")
+			logging.Errorf("%s Encountered internal error while checking for possible Sync Gateway co-existence: %v", logPrefix, clienterr)
+			if client != nil {
+				client.Close()
+			}
+			return
+		}
+		prohibited, reason, deploymentcheckerr := client.IsDeploymentProhibited(common.Keyspace{
+			BucketName:     app.DeploymentConfig.SourceBucket,
+			ScopeName:      app.DeploymentConfig.SourceScope,
+			CollectionName: app.DeploymentConfig.SourceCollection})
+		if deploymentcheckerr != nil {
+			info.ErrCode = response.ErrSGWDetection
+			info.Description = fmt.Sprintf("Encountered internal error while checking for possible Sync Gateway co-existence. Error logged")
+			logging.Errorf("%s Encountered internal error while checking for possible Sync Gateway co-existence: %v", logPrefix, deploymentcheckerr)
+			if client != nil {
+				client.Close()
+			}
+			return
+		}
+		if prohibited {
+			info.ErrCode = response.ErrUnsupportedSGW
+			info.Description = fmt.Sprintf("%s. deployment of source keyspace mutating handler will cause Intra Bucket Recursion", reason)
+			if client != nil {
+				client.Close()
+			}
+			return
+		}
+		client.Close()
 	}
 
 	logging.Infof("%v Function UUID: %v for function name: %v stored in primary store", logPrefix, app.FunctionID, appLocation)
@@ -3422,13 +3458,26 @@ func (m *ServiceMgr) functionName(w http.ResponseWriter, r *http.Request, id com
 			app.Settings["language_compatibility"] = common.LanguageCompatibility[0]
 		}
 
+		sourceKey := common.KeyspaceName{
+			Bucket:     app.DeploymentConfig.SourceBucket,
+			Scope:      app.DeploymentConfig.SourceScope,
+			Collection: app.DeploymentConfig.SourceCollection,
+		}
+		fiid := util.GetFunctionInstanceId(app.FunctionID, app.FunctionInstanceID)
+		if cursorRegisterInfo := m.checkAndRegisterCursor(&app, appLocation, sourceKey, fiid); cursorRegisterInfo.ErrCode != response.Ok {
+			*runtimeInfo = *cursorRegisterInfo
+			return
+		}
+
 		info = m.savePrimaryStore(&app)
 		if info.ErrCode != response.Ok {
+			m.cursorRegistry.Unregister(sourceKey, fiid)
 			*runtimeInfo = *info
 			return
 		}
 		// Save to temp store only if saving to primary store succeeds
 		if info = m.saveTempStore(app); info.ErrCode != response.Ok {
+			m.cursorRegistry.Unregister(sourceKey, fiid)
 			*runtimeInfo = *info
 			return
 		}
@@ -4980,8 +5029,20 @@ func (m *ServiceMgr) createApplications(cred cbauth.Creds, appList *[]applicatio
 			continue
 		}
 
+		sourceKey := common.KeyspaceName{
+			Bucket:     app.DeploymentConfig.SourceBucket,
+			Scope:      app.DeploymentConfig.SourceScope,
+			Collection: app.DeploymentConfig.SourceCollection,
+		}
+		fiid := util.GetFunctionInstanceId(app.FunctionID, app.FunctionInstanceID)
+		if cursorRegisterInfo := m.checkAndRegisterCursor(&app, appLocation, sourceKey, fiid); cursorRegisterInfo.ErrCode != response.Ok {
+			infoList = append(infoList, cursorRegisterInfo)
+			continue
+		}
+
 		infoPri := m.savePrimaryStore(&app)
 		if infoPri.ErrCode != response.Ok {
+			m.cursorRegistry.Unregister(sourceKey, fiid)
 			logging.Errorf("%s Function: %s saving %ru to primary store failed: %v", logPrefix, appLocation, infoPri)
 			infoList = append(infoList, infoPri)
 			continue
@@ -4990,6 +5051,7 @@ func (m *ServiceMgr) createApplications(cred cbauth.Creds, appList *[]applicatio
 		// Save to temp store only if saving to primary store succeeds
 		infoTmp := m.saveTempStore(app)
 		if infoTmp.ErrCode != response.Ok {
+			m.cursorRegistry.Unregister(sourceKey, fiid)
 			logging.Errorf("%s Function: %s saving to temporary store failed: %v", logPrefix, appLocation, infoTmp)
 			infoList = append(infoList, infoTmp)
 			continue
@@ -5710,6 +5772,55 @@ func (m *ServiceMgr) getUserInfo(w http.ResponseWriter, r *http.Request) {
 
 	runtimeInfo.Description = u
 	runtimeInfo.OnlyDescription = true
+}
+
+func (m *ServiceMgr) checkAndRegisterCursor(app *application, appLocation string, sourceKey common.KeyspaceName, fiid string) (runtimeInfo *response.RuntimeInfo) {
+	const logPrefix = "ServiceMgr::checkAndRegisterCursor"
+	runtimeInfo = &response.RuntimeInfo{}
+	// Ensure the current state is undeployed or non-existent
+	appStatus := m.superSup.GetAppCompositeState(appLocation)
+	if appStatus == common.AppStatePaused || appStatus == common.AppStateEnabled {
+		return
+	}
+
+	// Ensure the app is cursor aware
+	cursorValue, cursorValueFound := app.Settings["cursor_aware"]
+	if !cursorValueFound {
+		return
+	}
+	isCursorAware, isbool := cursorValue.(bool)
+	if !isbool || !isCursorAware {
+		return
+	}
+
+	// Parse deployment and processing status
+	var deploymentStatus, processingStatus bool
+	dVal, dfound := app.Settings["deployment_status"]
+	pVal, pfound := app.Settings["processing_status"]
+	if dfound {
+		if val, ok := dVal.(bool); ok {
+			deploymentStatus = val
+		}
+	}
+	if pfound {
+		if val, ok := pVal.(bool); ok {
+			processingStatus = val
+		}
+	}
+
+	// Ensure dep and proc status == true
+	if !deploymentStatus || !processingStatus {
+		return
+	}
+
+	// Attempt to register the cursor
+	logging.Infof("%s Attempting to register function %s with InstId: %s at keyspace: %v", logPrefix, appLocation, fiid, sourceKey)
+	if !m.cursorRegistry.Register(sourceKey, fiid) {
+		runtimeInfo.ErrCode = response.ErrCursorLimitReached
+		runtimeInfo.Description = fmt.Sprintf("Reached cursor aware functions limit on this keyspace. Deployment not allowed for function %v", appLocation)
+		logging.Errorf("%s %s", logPrefix, runtimeInfo.Description)
+	}
+	return
 }
 
 func checkRequest(id common.Identity, r *http.Request, app *application) (runtimeInfo *response.RuntimeInfo) {

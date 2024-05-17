@@ -8,7 +8,6 @@ import (
 	"io"
 	"runtime/debug"
 	"strconv"
-	"strings"
 	"sync/atomic"
 
 	"github.com/couchbase/eventing/common"
@@ -276,6 +275,28 @@ func (c *Consumer) sendCompileRequest(appCode string) {
 	c.sendMessage(m)
 }
 
+func (c *Consumer) sendTrackerV8Worker(enable bool) {
+	header, hBuilder := c.makeV8TrackerOpcodeHeader(enable)
+
+	c.msgProcessedRWMutex.Lock()
+	if _, ok := c.v8WorkerMessagesProcessed["v8_tracker"]; !ok {
+		c.v8WorkerMessagesProcessed["v8_tracker"] = 0
+	}
+	c.v8WorkerMessagesProcessed["v8_tracker"]++
+	c.msgProcessedRWMutex.Unlock()
+
+	m := &msgToTransmit{
+		msg: &message{
+			Header: header,
+		},
+		sendToDebugger: false,
+		prioritize:     true,
+		headerBuilder:  hBuilder,
+	}
+
+	c.sendMessage(m)
+}
+
 func (c *Consumer) sendLoadV8Worker(appCode string, sendToDebugger bool) {
 
 	header, hBuilder := c.makeV8LoadOpcodeHeader(appCode)
@@ -488,18 +509,10 @@ func (c *Consumer) sendDeleteCidEvent(cid uint32, partition uint16, seqNo uint64
 	c.sendMessage(msg)
 }
 
-// Remove all the system xattr from map
-func filterXattr(xattr map[string]memcached.XattrVal) {
-	for key, _ := range xattr {
-		if strings.HasPrefix(key, memcached.SystemXattrPrefix) {
-			delete(xattr, key)
-		}
-	}
-}
-
-func (c *Consumer) sendDcpEvent(mKeyspace common.KeyspaceName, e *memcached.DcpEvent, sendToDebugger bool) {
+func (c *Consumer) sendDcpEvent(mKeyspace common.KeyspaceName, e *memcached.DcpEvent, cursors []string, rootCas uint64, sendToDebugger bool) {
 	m := dcpMetadata{
 		Cas:      strconv.FormatUint(e.Cas, 10),
+		RootCas:  strconv.FormatUint(rootCas, 10),
 		DocID:    string(e.Key),
 		Expiry:   e.Expiry,
 		Flag:     e.Flags,
@@ -528,10 +541,9 @@ func (c *Consumer) sendDcpEvent(mKeyspace common.KeyspaceName, e *memcached.DcpE
 	var dcpHeader, payload []byte
 	var hBuilder, pBuilder *flatbuffers.Builder
 	if e.Opcode == mcd.DCP_MUTATION {
-		filterXattr(e.Xattr)
-		xattr, _ := json.Marshal(e.Xattr)
+		xattr, _ := json.Marshal(e.UserXattrs)
 		dcpHeader, hBuilder = c.makeDcpMutationHeader(int16(e.VBucket), string(metadata))
-		payload, pBuilder = c.makeDcpPayload(e.Key, e.Value, xattr, isBinary)
+		payload, pBuilder = c.makeDcpPayload(e.Key, e.Value, xattr, cursors, isBinary)
 	} else if e.Opcode == mcd.DCP_DELETION || e.Opcode == mcd.DCP_EXPIRATION {
 		optionMap := map[string]interface{}{
 			"expired": e.Opcode == mcd.DCP_EXPIRATION,
@@ -544,7 +556,7 @@ func (c *Consumer) sendDcpEvent(mKeyspace common.KeyspaceName, e *memcached.DcpE
 		}
 
 		dcpHeader, hBuilder = c.makeDcpDeletionHeader(int16(e.VBucket), string(metadata))
-		payload, pBuilder = c.makeDcpPayload(e.Key, options, nil, false)
+		payload, pBuilder = c.makeDcpPayload(e.Key, options, nil, cursors, false)
 	}
 
 	msg := &msgToTransmit{

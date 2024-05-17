@@ -31,8 +31,8 @@ const (
 func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, rConfig *common.RebalanceConfig,
 	index int, uuid, nsServerPort string, eventingNodeUUIDs []string, vbnos []uint16, app *common.AppConfig,
 	dcpConfig map[string]interface{}, p common.EventingProducer, s common.EventingSuperSup,
-	numVbuckets int, retryCount *int64, vbEventingNodeAssignMap map[uint16]string,
-	workerVbucketMap map[string][]uint16, featureMatrix uint32) *Consumer {
+	cursorRegistry common.CursorRegistryMgr, numVbuckets int, retryCount *int64,
+	vbEventingNodeAssignMap map[uint16]string, workerVbucketMap map[string][]uint16, featureMatrix uint32) *Consumer {
 
 	var b *couchbase.Bucket
 	consumer := &Consumer{
@@ -119,8 +119,11 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		stopVbOwnerTakeoverCh:           make(chan struct{}),
 		stopConsumerCh:                  make(chan struct{}),
 		superSup:                        s,
+		cursorRegistry:                  cursorRegistry,
 		tcpPort:                         pConfig.SockIdentifier,
 		allowTransactionMutations:       hConfig.AllowTransactionMutations,
+		allowSyncDocuments:              hConfig.AllowSyncDocuments,
+		cursorAware:                     hConfig.CursorAware,
 		timerContextSize:                hConfig.TimerContextSize,
 		updateStatsTicker:               time.NewTicker(updateCPPStatsTickInterval),
 		loadStatsTicker:                 time.NewTicker(updateCPPStatsTickInterval),
@@ -156,6 +159,7 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		featureMatrix:                   featureMatrix,
 	}
 
+	consumer.functionInstanceId = util.GetFunctionInstanceId(app.FunctionID, app.FunctionInstanceID)
 	consumer.dcpStatsLogger = NewDcpStatsLog(5*time.Minute, consumer.workerName, consumer.stopConsumerCh)
 	consumer.srcKeyspaceID, _ = p.GetSourceKeyspaceID()
 	consumer.cidToKeyspaceCache = initCidToCol(hConfig.SourceKeyspace.BucketName, nsServerPort)
@@ -318,6 +322,9 @@ func (c *Consumer) HandleV8Worker() error {
 		c.producer.UsingTimer(), c.producer.SrcMutation())
 
 	c.sendInitV8Worker(payload, false, pBuilder)
+	if c.cursorAware {
+		c.sendTrackerV8Worker(true)
+	}
 
 	c.sendLoadV8Worker(c.app.ParsedAppCode, false)
 

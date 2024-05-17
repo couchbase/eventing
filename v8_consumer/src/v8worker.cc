@@ -54,6 +54,10 @@ std::atomic<int64_t> dcp_delete_parse_failure = {0};
 std::atomic<int64_t> dcp_mutation_parse_failure = {0};
 std::atomic<int64_t> filtered_dcp_delete_counter = {0};
 std::atomic<int64_t> filtered_dcp_mutation_counter = {0};
+std::atomic<int64_t> dcp_mutation_checkpoint_cas_mismatch = {0};
+std::atomic<int64_t> dcp_delete_checkpoint_cas_mismatch = {0};
+std::atomic<int64_t> dcp_mutation_checkpoint_failure = {0};
+std::atomic<int64_t> dcp_delete_checkpoint_failure = {0};
 std::atomic<int64_t> timer_msg_counter = {0};
 std::atomic<int64_t> timer_create_counter = {0};
 std::atomic<int64_t> timer_cancel_counter = {0};
@@ -788,6 +792,20 @@ bool V8Worker::DebugExecute(const char *func_name, v8::Local<v8::Value> *args,
   return true;
 }
 
+void V8Worker::EnableTracker() {
+  if (tracker_enabled_) {
+    return;
+  }
+  auto fiid_ = GetFunctionInstanceID();
+  checkpoint_writer_ = std::make_unique<CheckpointWriter>(isolate_, fiid_, cb_source_bucket_, cb_source_scope_, cb_source_collection_);
+  checkpoint_writer_->Connect();
+  tracker_enabled_ = true;
+}
+
+void V8Worker::DisableTracker() {
+ return; // [TODO]: Implement
+}
+
 int V8Worker::V8WorkerLoad(std::string script_to_execute) {
   LOG(logInfo) << "Eventing dir: " << RS(settings_->eventing_dir) << std::endl;
   v8::Locker locker(isolate_);
@@ -1019,65 +1037,106 @@ void V8Worker::UpdateSeqNumLocked(const int vb, const uint64_t seq_num) {
 void V8Worker::HandleDeleteEvent(const std::unique_ptr<WorkerMessage> &msg) {
 
   ++dcp_delete_msg_counter;
-  auto [cid, vb, seq_num, is_valid] = GetCidVbAndSeqNum(msg);
-  if (!is_valid) {
+  auto [parsed_meta, is_valid] = ParseWorkerMessage(msg);
+  if (!is_valid || !parsed_meta.has_value()) {
     ++dcp_delete_parse_failure;
     return;
   }
 
   {
     std::lock_guard<std::mutex> guard(bucketops_lock_);
-    auto [filter, update] = IsFilteredEventLocked(false, cid, vb, seq_num);
+    auto [filter, update] = IsFilteredEventLocked(false, parsed_meta->cid, parsed_meta->vb, parsed_meta->seq_num);
     if (update) {
-      UpdateSeqNumLocked(vb, seq_num);
+      UpdateSeqNumLocked(parsed_meta->vb, parsed_meta->seq_num);
     }
     if (filter) {
       return;
     }
   }
 
-  const auto options = flatbuf::payload::GetPayload(
-      static_cast<const void *>(msg->payload.payload.c_str()));
+  const auto options = flatbuf::payload::GetPayload(static_cast<const void *>(msg->payload.payload.c_str()));
+  {
+    if (tracker_enabled_) {
+      uint64_t cas = static_cast<uint64_t>(std::stoull(parsed_meta->cas, nullptr, 10));
+      uint64_t rootcas = static_cast<uint64_t>(std::stoull(parsed_meta->rootcas, nullptr, 10));
+      auto cursors = options->cursors()->str();
+      std::vector<std::string> cursors_arr;
+      if (cursors.size() > 0) {
+        splitString(cursors, cursors_arr, ',');
+      }
+      auto err_code = checkpoint_writer_->Write(MetaData(parsed_meta->scope, parsed_meta->collection, parsed_meta->key, cas), rootcas, cursors_arr);
+      if (err_code) {
+        if (err_code == LCB_ERR_CAS_MISMATCH) {
+          ++dcp_delete_checkpoint_cas_mismatch;
+        } else {
+          ++dcp_delete_checkpoint_failure;
+        }
+        return;
+      }
+    }
+  }
+
   SendDelete(options->value()->str(), msg->header.metadata);
 }
 
 void V8Worker::HandleMutationEvent(const std::unique_ptr<WorkerMessage> &msg) {
 
   ++dcp_mutation_msg_counter;
-  auto [cid, vb, seq_num, is_valid] = GetCidVbAndSeqNum(msg);
-  if (!is_valid) {
+  auto [parsed_meta, is_valid] = ParseWorkerMessage(msg);
+  if (!is_valid || !parsed_meta.has_value()) {
     ++dcp_mutation_parse_failure;
     return;
   }
 
   {
     std::lock_guard<std::mutex> guard(bucketops_lock_);
-    auto [filter, update] = IsFilteredEventLocked(false, cid, vb, seq_num);
+    auto [filter, update] = IsFilteredEventLocked(false, parsed_meta->cid, parsed_meta->vb, parsed_meta->seq_num);
     if (update) {
-      UpdateSeqNumLocked(vb, seq_num);
+      UpdateSeqNumLocked(parsed_meta->vb, parsed_meta->seq_num);
     }
     if (filter) {
       return;
     }
   }
 
-  const auto doc = flatbuf::payload::GetPayload(
-      static_cast<const void *>(msg->payload.payload.c_str()));
+  const auto doc = flatbuf::payload::GetPayload(static_cast<const void *>(msg->payload.payload.c_str()));
+
+  {
+    if (tracker_enabled_) {
+      uint64_t cas = static_cast<uint64_t>(std::stoull(parsed_meta->cas, nullptr, 10));
+      uint64_t rootcas = static_cast<uint64_t>(std::stoull(parsed_meta->rootcas, nullptr, 10));
+      auto cursors = doc->cursors()->str();
+      std::vector<std::string> cursors_arr;
+      if (cursors.size() > 0) {
+        splitString(cursors, cursors_arr, ',');
+      }
+      auto err_code = checkpoint_writer_->Write(MetaData(parsed_meta->scope, parsed_meta->collection, parsed_meta->key, cas), rootcas, cursors_arr);
+      if (err_code) {
+        if (err_code == LCB_ERR_CAS_MISMATCH) {
+          ++dcp_mutation_checkpoint_cas_mismatch;
+        } else {
+          ++dcp_mutation_checkpoint_failure;
+        }
+        return;
+      }
+    }
+  }
+
   SendUpdate(doc->value()->str(), msg->header.metadata, doc->xattr()->str(),
              doc->is_binary());
 }
 
 void V8Worker::HandleNoOpEvent(const std::unique_ptr<WorkerMessage> &msg) {
-  auto [cid, vb, seq_num, is_valid] = GetCidVbAndSeqNum(msg);
-  if (!is_valid) {
+  auto [parsed_meta, is_valid] = ParseWorkerMessage(msg);
+  if (!is_valid || !parsed_meta.has_value()) {
     return;
   }
 
   {
     std::lock_guard<std::mutex> guard(bucketops_lock_);
-    auto [filter, update] = IsFilteredEventLocked(true, cid, vb, seq_num);
+    auto [filter, update] = IsFilteredEventLocked(true, parsed_meta->cid, parsed_meta->vb, parsed_meta->seq_num);
     if (update) {
-      UpdateSeqNumLocked(vb, seq_num);
+      UpdateSeqNumLocked(parsed_meta->vb, parsed_meta->seq_num);
     }
     if (filter) {
       return;
@@ -1087,31 +1146,28 @@ void V8Worker::HandleNoOpEvent(const std::unique_ptr<WorkerMessage> &msg) {
 }
 
 void V8Worker::HandleDeleteCidEvent(const std::unique_ptr<WorkerMessage> &msg) {
-  auto [cid, vb, seq_num, is_valid] = GetCidVbAndSeqNum(msg);
-  if (!is_valid) {
+  auto [parsed_meta, is_valid] = ParseWorkerMessage(msg);
+  if (!is_valid || !parsed_meta.has_value()) {
     return;
   }
 
   std::lock_guard<std::mutex> guard(vbfilter_map_for_cid_lock_);
-  auto lock = GetAndLockVbLock(vb);
-  auto cidIt = vbfilter_map_for_cid_.find(cid);
+  auto lock = GetAndLockVbLock(parsed_meta->vb);
+  auto cidIt = vbfilter_map_for_cid_.find(parsed_meta->cid);
   if (cidIt == vbfilter_map_for_cid_.end()) {
     return;
   }
 
-  cidIt->second.erase(vb);
+  cidIt->second.erase(parsed_meta->vb);
   if (cidIt->second.size() == 0) {
-    vbfilter_map_for_cid_.erase(cid);
+    vbfilter_map_for_cid_.erase(parsed_meta->cid);
   }
 }
 
-std::tuple<uint32_t, int, uint64_t, bool>
-V8Worker::GetCidVbAndSeqNum(const std::unique_ptr<WorkerMessage> &msg) const {
-  auto vb = 0;
-  uint64_t seq_num = 0;
-  uint32_t cid = 0;
-  auto result = ParseMetadata(msg->header.metadata, cid, vb, seq_num);
-  return {cid, vb, seq_num, result == kSuccess};
+std::tuple<std::optional<ParsedMetadata>, bool>
+V8Worker::ParseWorkerMessage(const std::unique_ptr<WorkerMessage> &msg) const {
+  auto result = ParseMetadata(msg->header.metadata);
+  return {result.first, result.second == kSuccess};
 }
 
 std::tuple<bool, bool> V8Worker::IsFilteredEventLocked(bool skip_cid_check,
@@ -1214,7 +1270,7 @@ int V8Worker::SendUpdate(const std::string &value, const std::string &meta,
   auto context = context_.Get(isolate_);
   v8::Context::Scope context_scope(context);
 
-  LOG(logTrace) << "value: " << RU(value) << " meta: " << RU(meta) << std::endl;
+  LOG(logTrace) << "value: " << RU(value) << " meta: " << RU(meta) << RU(xattr) << std::endl;
   v8::TryCatch try_catch(isolate_);
 
   v8::Local<v8::Value> args[on_update_args_count];
@@ -1663,29 +1719,41 @@ std::vector<uv_buf_t> V8Worker::BuildResponse(const std::string &payload,
   return messages;
 }
 
-int V8Worker::ParseMetadata(const std::string &metadata, uint32_t &cid,
-                            int &vb_no, uint64_t &seq_no) const {
+std::pair<std::optional<ParsedMetadata>, int>
+V8Worker::ParseMetadata(const std::string &metadata) const {
   int skip_ack;
-  return ParseMetadataWithAck(metadata, cid, vb_no, seq_no, skip_ack, false);
+  return ParseMetadataWithAck(metadata, skip_ack, false);
 }
 
-int V8Worker::ParseMetadataWithAck(const std::string &metadata_str,
-                                   uint32_t &cid, int &vb_no, uint64_t &seq_no,
-                                   int &skip_ack, const bool ack_check) const {
-  auto metadata = nlohmann::json::parse(metadata_str, nullptr, false);
-  if (metadata.is_discarded()) {
-    return kJSONParseFailed;
-  }
-
-  seq_no = metadata["seq"].get<uint64_t>();
-  vb_no = metadata["vb"].get<int>();
-  if (metadata.contains("cid")) {
-    cid = metadata["cid"].get<uint32_t>();
-  }
-  if (ack_check) {
-    skip_ack = metadata["skip_ack"].get<int>();
-  }
-  return kSuccess;
+std::pair<std::optional<ParsedMetadata>, int>
+V8Worker::ParseMetadataWithAck(const std::string &metadata_str, int &skip_ack, const bool ack_check) const {
+  try {
+    auto metadata = nlohmann::json::parse(metadata_str, nullptr, false);
+    ParsedMetadata pmeta;
+    if (metadata.contains("keyspace")) {
+      pmeta.scope = metadata["keyspace"]["scope_name"].get<std::string>();
+      pmeta.collection = metadata["keyspace"]["collection_name"].get<std::string>();
+    }
+    if (metadata.contains("cid")) {
+      pmeta.cid = metadata["cid"].get<uint32_t>();
+    }
+    if (ack_check) {
+      skip_ack = metadata["skip_ack"].get<int>();
+    }
+    if (metadata.contains("id")) {
+      pmeta.key = metadata["id"].get<std::string>();
+    }
+    if (metadata.contains("cas")) {
+      pmeta.cas = metadata["cas"].get<std::string>();
+    }
+    if (metadata.contains("rootcas")) {
+      pmeta.rootcas = metadata["rootcas"].get<std::string>();
+    }
+    pmeta.vb = metadata["vb"].get<int>();
+    pmeta.seq_num = metadata["seq"].get<uint64_t>();
+    return {pmeta, kSuccess};
+  } catch(nlohmann::json::parse_error& ex) {}
+  return {std::nullopt, kJSONParseFailed};
 }
 
 void V8Worker::UpdateVbFilter(int vb_no, uint64_t seq_no) {
@@ -1695,11 +1763,14 @@ void V8Worker::UpdateVbFilter(int vb_no, uint64_t seq_no) {
 }
 
 void V8Worker::UpdateDeletedCid(const std::unique_ptr<WorkerMessage> &msg) {
-  auto [cid, vb, seq_num, is_valid] = GetCidVbAndSeqNum(msg);
+  auto [parsed_meta, is_valid] = ParseWorkerMessage(msg);
+  if (!is_valid || !parsed_meta.has_value()) {
+    return;
+  }
 
   std::lock_guard<std::mutex> guard(vbfilter_map_for_cid_lock_);
-  auto lock = GetAndLockVbLock(vb);
-  vbfilter_map_for_cid_[cid][vb] = seq_num;
+  auto lock = GetAndLockVbLock(parsed_meta->vb);
+  vbfilter_map_for_cid_[parsed_meta->cid][parsed_meta->vb] = parsed_meta->seq_num;
   lock.unlock();
 }
 

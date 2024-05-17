@@ -9,13 +9,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"strconv"
+	"strings"
+	"sync/atomic"
+	"time"
+
 	"github.com/couchbase/eventing/common/collections"
 	"github.com/couchbase/eventing/dcp/transport"
 	"github.com/couchbase/eventing/logging"
-	"io"
-	"strconv"
-	"sync/atomic"
-	"time"
 )
 
 const dcpMutationExtraLen = 16
@@ -32,7 +34,9 @@ var kvSeparator = []byte{0x00}
 
 var TransactionMutationPrefix = []byte("_txn:")
 
-const SystemXattrPrefix = "_"
+var SyncGatewayMutationPrefix = []byte("_sync:")
+
+const systemXattrPrefix = "_"
 
 const IncludeXATTRs = uint32(4)
 
@@ -998,8 +1002,9 @@ type DcpEvent struct {
 	OldValue     []byte                // TODO: TBD: old document value
 	Cas          uint64                // CAS value of the item
 	CollectionID uint32                // Collection Id
-	ScopeID      uint32
-	Xattr        map[string]XattrVal // Xattr map
+	ScopeID      uint32                // Scope Id
+	SystemXattrs map[string]XattrVal   // System Xattrs map
+	UserXattrs   map[string]XattrVal   // User Xattrs map
 
 	EventType transport.CollectionEvent // For DCP_SYSTEM_EVENT, DCP_OSO_SNAPSHOT types
 	// meta fields
@@ -1023,7 +1028,6 @@ type DcpEvent struct {
 	Ctime int64
 }
 
-// Include the XATTR in the request
 type XattrVal struct {
 	body []byte
 }
@@ -1038,13 +1042,14 @@ func (x XattrVal) Bytes() []byte {
 
 func newDcpEvent(rq *transport.MCRequest, stream *DcpStream) *DcpEvent {
 	event := &DcpEvent{
-		Cas:      rq.Cas,
-		Datatype: rq.Datatype,
-		Opcode:   rq.Opcode,
-		VBucket:  stream.Vbucket,
-		VBuuid:   stream.Vbuuid,
-		Ctime:    time.Now().UnixNano(),
-		Xattr:    make(map[string]XattrVal),
+		Cas:          rq.Cas,
+		Datatype:     rq.Datatype,
+		Opcode:       rq.Opcode,
+		VBucket:      stream.Vbucket,
+		VBuuid:       stream.Vbuuid,
+		Ctime:        time.Now().UnixNano(),
+		SystemXattrs: make(map[string]XattrVal),
+		UserXattrs:   make(map[string]XattrVal),
 	}
 
 	docId := rq.Key
@@ -1070,9 +1075,13 @@ func newDcpEvent(rq *transport.MCRequest, stream *DcpStream) *DcpEvent {
 			binaryPair := event.Value[pos : pos+pairLen]
 			pos = pos + pairLen
 			kvPair := bytes.Split(binaryPair, kvSeparator)
-			event.Xattr[string(kvPair[0])] = XattrVal{body: kvPair[1]}
+			xattrKey := string(kvPair[0])
+			if strings.HasPrefix(xattrKey, systemXattrPrefix) {
+				event.SystemXattrs[xattrKey] = XattrVal{body: kvPair[1]}
+				continue
+			}
+			event.UserXattrs[xattrKey] = XattrVal{body: kvPair[1]}
 		}
-
 		event.Value = event.Value[pos:]
 	}
 

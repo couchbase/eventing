@@ -74,7 +74,10 @@ const (
 	metadataUpdatedPeriodicCheck   = "metadata_updated_periodic_checkpoint"
 	metadataCorrectedAfterRollback = "metadata_corrected_after_rollback"
 	undoMetadataCorrection         = "undo_metadata_correction"
-	xattrPrefix                    = "_eventing"
+	XATTR_EVENTING                 = "_eventing"
+	XATTR_SYNC                     = "_sync"
+	XATTR_MOU                      = "_mou"
+	XATTR_CHKPT                    = "_checkpoints"
 )
 
 var (
@@ -90,10 +93,33 @@ var (
 		"curl_non_200_response", "curl_timeout_count", "curl_failure_count"}
 )
 
-type xattrMetadata struct {
-	FunctionInstanceID string `json:"fiid"`
-	SeqNo              string `json:"seqno"`
-	ValueCRC           string `json:"crc"`
+type xattrEventingRaw struct {
+	FunctionInstanceID string  `json:"fiid"`
+	SeqNo              string  `json:"seqno"`
+	CAS                *string `json:"cas"`
+	ValueCRC           string  `json:"crc"`
+}
+
+type xattrChkptRaw struct {
+	CAS  string `json:"cas"`
+	PCAS string `json:"pcas"`
+}
+
+type xattrMouRaw struct {
+	ImportCAS string `json:"cas"`
+	PCAS      string `json:"pCas"`
+}
+
+type xattrEventing struct {
+	FunctionInstanceID string
+	SeqNo              uint64
+	CAS                uint64
+	ValueCRC           uint64
+}
+
+type xattrChkpt struct {
+	CAS  uint64
+	PCAS uint64
 }
 
 type vbFlogEntry struct {
@@ -107,6 +133,7 @@ type vbFlogEntry struct {
 
 type dcpMetadata struct {
 	Cas      string              `json:"cas"`
+	RootCas  string              `json:"rootcas"`
 	DocID    string              `json:"id"`
 	Expiry   uint32              `json:"expiration"`
 	Flag     uint32              `json:"flags"`
@@ -127,14 +154,15 @@ type vbSeqNo struct {
 type Consumer struct {
 	cidToKeyspaceCache *cidToKeyspaceNameCache
 
-	n1qlPrepareAll bool
-	app            *common.AppConfig
-	sourceKeyspace *common.Keyspace // source bucket
-	builderPool    *sync.Pool
-	breakpadOn     bool
-	uuid           string
-	srcKeyspaceID  common.KeyspaceID
-	retryCount     *int64
+	n1qlPrepareAll     bool
+	app                *common.AppConfig
+	sourceKeyspace     *common.Keyspace // source bucket
+	builderPool        *sync.Pool
+	breakpadOn         bool
+	uuid               string
+	functionInstanceId string
+	srcKeyspaceID      common.KeyspaceID
+	retryCount         *int64
 
 	handlerFooters []string
 	handlerHeaders []string
@@ -212,7 +240,10 @@ type Consumer struct {
 	stoppingConsumer              bool
 	isPausing                     bool
 	superSup                      common.EventingSuperSup
+	cursorRegistry                common.CursorRegistryMgr
 	allowTransactionMutations     bool
+	allowSyncDocuments            bool
+	cursorAware                   bool
 	timerContextSize              int64
 	vbDcpEventsRemaining          map[int]int64 // Access controlled by statsRWMutex
 	vbDcpFeedMap                  map[uint16]*couchbase.DcpFeed
@@ -351,18 +382,26 @@ type Consumer struct {
 	timerMessagesProcessed      uint64
 
 	// DCP and timer related counters
-	timerResponsesRecieved       uint64
-	aggMessagesSentCounter       uint64
-	dcpDeletionCounter           uint64
-	dcpMutationCounter           uint64
-	dcpExpiryCounter             uint64
-	dcpXattrParseError           uint64
-	errorParsingTimerResponses   uint64
-	timerMessagesProcessedPSec   int
-	suppressedDCPDeletionCounter uint64
-	suppressedDCPMutationCounter uint64
-	sentEventsSize               int64
-	numSentEvents                int64
+	timerResponsesRecieved uint64
+	aggMessagesSentCounter uint64
+
+	dcpDeletionCounter uint64
+	dcpMutationCounter uint64
+	dcpExpiryCounter   uint64
+
+	dcpEvtParseFailCounter   uint64
+	dcpChkptParseFailCounter uint64
+
+	errorParsingTimerResponses uint64
+	timerMessagesProcessedPSec int
+
+	suppressedDCPMutationCounter   uint64
+	suppressedDCPDeletionCounter   uint64
+	suppressedDCPExpiryCounter     uint64
+	suppressedChkptMutationCounter uint64
+
+	sentEventsSize int64
+	numSentEvents  int64
 
 	// metastore related timer stats
 	metastoreDeleteCounter      uint64
