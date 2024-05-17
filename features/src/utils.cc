@@ -9,10 +9,10 @@
 // or implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
+#include <cinttypes>
 #include <mutex>
 #include <regex>
 #include <sstream>
-#include <cinttypes>
 
 #include "crc64.h"
 #include "error.h"
@@ -935,8 +935,7 @@ void Crc64GoIsoFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
     data = static_cast<const uint8_t *>(array_buf->Data());
     len = array_buf->ByteLength();
     crc = crc64_iso.Checksum(data, len);
-  }
-  else {
+  } else {
     std::string data_str;
     if (args[0]->IsString())
       data_str = utils->ToCPPString(args[0]);
@@ -982,7 +981,14 @@ void Base64EncodeFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
     base64_string = JSONStringify(isolate, args[0]);
   }
 
-  std::string base64 = cb::base64::encode(base64_string, false);
+  std::string base64;
+  try {
+    base64 = cb::base64::encode(base64_string, false);
+  } catch (const std::invalid_argument &i) {
+    js_exception->ThrowEventingError("Invalid input");
+    return;
+  }
+
   args.GetReturnValue().Set(v8Str(isolate, base64));
 }
 
@@ -1010,7 +1016,13 @@ void Base64DecodeFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
   auto utils = UnwrapData(isolate)->utils;
   auto base64_string = utils->ToCPPString(v8_base64_string);
 
-  std::string base64_decoded = cb::base64::decode(base64_string);
+  std::string base64_decoded;
+  try {
+    base64_decoded = cb::base64::decode(base64_string);
+  } catch (const std::invalid_argument &i) {
+    js_exception->ThrowEventingError("Invalid input");
+    return;
+  }
   args.GetReturnValue().Set(v8Str(isolate, base64_decoded));
 }
 
@@ -1143,7 +1155,13 @@ void base64FloatArrayEncode(const v8::FunctionCallbackInfo<v8::Value> &args,
     }
   }
 
-  std::string base64 = cb::base64::encode(bytes, false);
+  std::string base64;
+  try {
+    base64 = cb::base64::encode(bytes, false);
+  } catch (const std::invalid_argument &i) {
+    js_exception->ThrowEventingError("Invalid input");
+    return;
+  }
   args.GetReturnValue().Set(v8Str(isolate, base64));
 }
 
@@ -1180,8 +1198,13 @@ void base64FloatArrayDecode(const v8::FunctionCallbackInfo<v8::Value> &args,
   }
 
   auto utils = UnwrapData(isolate)->utils;
-  auto base64Bytes = cb::base64::decode(utils->ToCPPString(v8_base64_string));
-
+  std::string base64Bytes;
+  try {
+    base64Bytes = cb::base64::decode(utils->ToCPPString(v8_base64_string));
+  } catch (const std::invalid_argument &i) {
+    js_exception->ThrowEventingError("Invalid input");
+    return;
+  }
   std::tuple<Error, v8::Local<v8::Array>> returnValue;
   switch (encoding) {
   case arrayEncoding::Float64Encoding:
