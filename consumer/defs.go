@@ -208,6 +208,7 @@ type Consumer struct {
 	eventingNodeUUIDs          []string
 	executeTimerRoutineCount   int
 	executionTimeout           int
+	cursorCheckpointTimeout    int
 	lcbRetryCount              int
 	lcbTimeout                 int
 	filterVbEvents             map[uint16]struct{} // Access controlled by filterVbEventsRWMutex

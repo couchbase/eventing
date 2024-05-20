@@ -337,7 +337,7 @@ func (c *Consumer) makeDcpPayload(key, value []byte, xattr []byte, cursors []str
 }
 
 func (c *Consumer) makeV8InitPayload(appName string, functionScope common.FunctionScope, debuggerPort, currHost, eventingDir, eventingPort,
-	eventingSSLPort, depCfg string, capacity, executionTimeout, checkpointInterval int,
+	eventingSSLPort, depCfg string, capacity, executionTimeout, cursorCheckpointInterval, checkpointInterval int,
 	skipLcbBootstrap bool, timerContextSize int64,
 	usingTimer, srcMutation bool) (encodedPayload []byte, builder *flatbuffers.Builder) {
 	builder = c.getBuilder()
@@ -396,6 +396,7 @@ func (c *Consumer) makeV8InitPayload(appName string, functionScope common.Functi
 	payload.PayloadAddLcbInstCapacity(builder, int32(capacity))
 	payload.PayloadAddLanguageCompatibility(builder, languageCompatibility)
 	payload.PayloadAddExecutionTimeout(builder, int32(executionTimeout))
+	payload.PayloadAddCursorCheckpointTimeout(builder, int32(cursorCheckpointInterval))
 	payload.PayloadAddCheckpointInterval(builder, int32(checkpointInterval))
 	payload.PayloadAddTimerContextSize(builder, timerContextSize)
 	payload.PayloadAddFunctionInstanceId(builder, fiid)

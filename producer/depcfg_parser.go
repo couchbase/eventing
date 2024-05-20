@@ -187,6 +187,12 @@ func (p *Producer) parseDepcfg() error {
 		p.handlerConfig.ExecutionTimeout = 60
 	}
 
+	if val, ok := settings["cursor_checkpoint_timeout"]; ok {
+		p.handlerConfig.CursorCheckpointTimeout = int(val.(float64))
+	} else {
+		p.handlerConfig.CursorCheckpointTimeout = 60
+	}
+
 	if val, ok := settings["feedback_batch_size"]; ok {
 		p.handlerConfig.FeedbackBatchSize = int(val.(float64))
 	} else {

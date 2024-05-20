@@ -13,6 +13,7 @@ table Payload {
   depcfg:string;
   debugger_port:string;
   execution_timeout:int; // Execution timeout for handler code execution
+  cursor_checkpoint_timeout:int; // Execution timeout for cursor checkpointing
   lcb_inst_capacity:int; // Nested iterator related fields
   skip_lcb_bootstrap:bool; // Control bootstrap of lcb handles.
                            // In some case we need to skip lcb connects i.e. while checking for
