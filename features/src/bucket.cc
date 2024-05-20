@@ -282,10 +282,9 @@ Bucket::WriteCheckpoint(const MetaData &meta, const uint64_t& rootcas, const std
   if (!is_connected_) {
     return {std::make_unique<std::string>("Connection is not initialized"), nullptr, nullptr};
   }
-
+  const auto lcb_cursor_checkpoint_timeout = UnwrapData(isolate_)->lcb_cursor_checkpoint_timeout;
+  const auto cursor_checkpoint_timeout = UnwrapData(isolate_)->cursor_checkpoint_timeout;
   const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
-  const auto lcb_timeout = UnwrapData(isolate_)->lcb_timeout;
-  const auto max_timeout = UnwrapData(isolate_)->op_timeout;
 
   // Setup subdoc specs
   lcb_SUBDOCSPECS *specs;
@@ -337,10 +336,10 @@ Bucket::WriteCheckpoint(const MetaData &meta, const uint64_t& rootcas, const std
   lcb_cmdsubdoc_collection(cmd, meta.scope.c_str(), meta.scope.size(), meta.collection.c_str(),
     meta.collection.size());
   lcb_cmdsubdoc_key(cmd, meta.key.c_str(), meta.key.length());
-  lcb_cmdsubdoc_timeout(cmd, lcb_timeout);
+  lcb_cmdsubdoc_timeout(cmd, lcb_cursor_checkpoint_timeout);
 
   // Run command
-  auto [err, err_code, result] = TryLcbCmdWithRefreshConnIfNecessary(*cmd, max_retry, max_timeout, LcbSubdocSet);
+  auto [err, err_code, result] = TryLcbCmdWithRefreshConnIfNecessary(*cmd, max_retry, cursor_checkpoint_timeout, LcbSubdocSet);
   // Destroy command
   lcb_cmdsubdoc_destroy(cmd);
   lcb_subdocspecs_destroy(specs);

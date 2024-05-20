@@ -66,6 +66,7 @@ func NewConsumer(hConfig *common.HandlerConfig, pConfig *common.ProcessConfig, r
 		eventingNodeUUIDs:               eventingNodeUUIDs,
 		executeTimerRoutineCount:        hConfig.ExecuteTimerRoutineCount,
 		executionTimeout:                hConfig.ExecutionTimeout,
+		cursorCheckpointTimeout:         hConfig.CursorCheckpointTimeout,
 		lcbRetryCount:                   hConfig.LcbRetryCount,
 		lcbTimeout:                      hConfig.LcbTimeout,
 		feedbackQueueCap:                hConfig.FeedbackQueueCap,
@@ -317,7 +318,7 @@ func (c *Consumer) HandleV8Worker() error {
 
 	payload, pBuilder := c.makeV8InitPayload(c.app.AppName, c.app.FunctionScope, c.debuggerPort, currHost,
 		c.eventingDir, c.eventingAdminPort, c.eventingSSLPort,
-		c.producer.CfgData(), c.lcbInstCapacity, c.executionTimeout,
+		c.producer.CfgData(), c.lcbInstCapacity, c.executionTimeout, c.cursorCheckpointTimeout,
 		int(c.checkpointInterval.Nanoseconds()/(1000*1000)), false, c.timerContextSize,
 		c.producer.UsingTimer(), c.producer.SrcMutation())
 

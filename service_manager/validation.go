@@ -950,6 +950,10 @@ func (m *ServiceMgr) validateSettings(appName string, settings map[string]interf
 		return
 	}
 
+	if info = m.validatePositiveInteger("cursor_checkpoint_timeout", settings); info.ErrCode != response.Ok {
+		return
+	}
+
 	if info = m.validatePositiveInteger("feedback_batch_size", settings); info.ErrCode != response.Ok {
 		return
 	}

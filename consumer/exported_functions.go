@@ -557,7 +557,7 @@ func (c *Consumer) SpawnCompilationWorker(appCode, appContent, appName, eventing
 
 	// Framing bare minimum V8 worker init payload
 	payload, pBuilder := c.makeV8InitPayload(appName, common.FunctionScope{}, c.debuggerPort, util.Localhost(), "", eventingPort, "",
-		appContent, 5, 10, 10*1000, true, 1024, false, false)
+		appContent, 5, 10, 10, 10*1000, true, 1024, false, false)
 
 	c.sendInitV8Worker(payload, false, pBuilder)
 
@@ -586,6 +586,7 @@ func (c *Consumer) SpawnCompilationWorker(appCode, appContent, appName, eventing
 
 func (c *Consumer) initConsumer(appName string) {
 	c.executionTimeout = 10000
+	c.cursorCheckpointTimeout = 10000
 	c.lcbInstCapacity = 1
 	c.socketWriteBatchSize = 1
 	c.cppWorkerThrCount = 1

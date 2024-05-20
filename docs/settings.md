@@ -21,6 +21,7 @@
 |dcp_stream_boundary|everything|Feed boundary for Function|
 |enable_applog_rotation|true|To enable/disable function log file rotation|
 |execution_timeout|60s|Timeout for execution of Javascript handler code|
+|cursor_checkpoint_timeout|60s|Timeout for execution of checkpointing activity by a cursor_aware function. Defaults to whatever the default for execution_timeout|
 |feedback_batch_size|100|Batch size for messages being written from eventing-consumer to eventing-producer|
 |feedback_read_buffer_size|65536|Buffer size for reading messages from eventing-consumer|
 |lcb_inst_capacity|5|Controls the level of nesting for n1ql iterators|

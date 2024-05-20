@@ -553,12 +553,16 @@ void V8Worker::InitializeIsolateData(const server_settings_t *server_settings,
   data_.op_timeout = h_config->execution_timeout < 5
                          ? h_config->execution_timeout
                          : h_config->execution_timeout - 2;
+  data_.cursor_checkpoint_timeout = h_config->cursor_checkpoint_timeout > 0
+                         ? h_config->cursor_checkpoint_timeout
+                         : data_.op_timeout;
   data_.n1ql_consistency =
       Query::Helper::GetN1qlConsistency(h_config->n1ql_consistency);
   data_.n1ql_prepare_all = h_config->n1ql_prepare_all;
   data_.lang_compat = new LanguageCompatibility(h_config->lang_compat);
   data_.lcb_retry_count = h_config->lcb_retry_count;
   data_.lcb_timeout = ConvertSecondsToMicroSeconds(h_config->lcb_timeout);
+  data_.lcb_cursor_checkpoint_timeout = ConvertSecondsToMicroSeconds(data_.cursor_checkpoint_timeout);
   data_.insight_line_offset = h_config->handler_headers.size();
 
   data_.bucket_ops = new BucketOps(isolate_, context);
