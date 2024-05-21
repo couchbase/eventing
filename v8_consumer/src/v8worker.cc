@@ -1059,27 +1059,6 @@ void V8Worker::HandleDeleteEvent(const std::unique_ptr<WorkerMessage> &msg) {
   }
 
   const auto options = flatbuf::payload::GetPayload(static_cast<const void *>(msg->payload.payload.c_str()));
-  {
-    if (tracker_enabled_) {
-      uint64_t cas = static_cast<uint64_t>(std::stoull(parsed_meta->cas, nullptr, 10));
-      uint64_t rootcas = static_cast<uint64_t>(std::stoull(parsed_meta->rootcas, nullptr, 10));
-      auto cursors = options->cursors()->str();
-      std::vector<std::string> cursors_arr;
-      if (cursors.size() > 0) {
-        splitString(cursors, cursors_arr, ',');
-      }
-      auto err_code = checkpoint_writer_->Write(MetaData(parsed_meta->scope, parsed_meta->collection, parsed_meta->key, cas), rootcas, cursors_arr);
-      if (err_code) {
-        if (err_code == LCB_ERR_CAS_MISMATCH) {
-          ++dcp_delete_checkpoint_cas_mismatch;
-        } else {
-          ++dcp_delete_checkpoint_failure;
-        }
-        return;
-      }
-    }
-  }
-
   SendDelete(options->value()->str(), msg->header.metadata);
 }
 
@@ -1104,7 +1083,6 @@ void V8Worker::HandleMutationEvent(const std::unique_ptr<WorkerMessage> &msg) {
   }
 
   const auto doc = flatbuf::payload::GetPayload(static_cast<const void *>(msg->payload.payload.c_str()));
-
   {
     if (tracker_enabled_) {
       uint64_t cas = static_cast<uint64_t>(std::stoull(parsed_meta->cas, nullptr, 10));
@@ -1114,12 +1092,22 @@ void V8Worker::HandleMutationEvent(const std::unique_ptr<WorkerMessage> &msg) {
       if (cursors.size() > 0) {
         splitString(cursors, cursors_arr, ',');
       }
-      auto err_code = checkpoint_writer_->Write(MetaData(parsed_meta->scope, parsed_meta->collection, parsed_meta->key, cas), rootcas, cursors_arr);
-      if (err_code) {
+      auto [client_err, err_code] = checkpoint_writer_->Write(MetaData(parsed_meta->scope, parsed_meta->collection, parsed_meta->key, cas), rootcas, cursors_arr);
+      if (err_code != LCB_SUCCESS) {
         if (err_code == LCB_ERR_CAS_MISMATCH) {
           ++dcp_mutation_checkpoint_cas_mismatch;
         } else {
           ++dcp_mutation_checkpoint_failure;
+          auto err_cstr = lcb_strerror_short(err_code);
+          if (client_err.length() > 0) {
+            err_cstr = client_err.c_str();
+          }
+          // TODO : Handle scope deletion, collection deletion, document deletion
+          APPLOG << "cursor progression failed for document: "
+                 << parsed_meta->scope << "/"
+                 << parsed_meta->collection << "/"
+                 << parsed_meta->key
+                 << " rootcas: " << parsed_meta->rootcas << " error: " << err_cstr << std::endl;
         }
         return;
       }
