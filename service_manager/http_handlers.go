@@ -5523,8 +5523,9 @@ func (m *ServiceMgr) highCardStats() []byte {
 			stats = populate(fmtStr, appName, "timer_callback_missing_counter", stats, failureStats)
 			stats = populate(fmtStr, appName, "bkt_ops_cas_mismatch_count", stats, failureStats)
 			stats = populate(fmtStr, appName, "checkpoint_failure_count", stats, failureStats)
+			stats = populate(fmtStr, appName, "dcp_delete_checkpoint_failure", stats, failureStats)
+			stats = populate(fmtStr, appName, "dcp_mutation_checkpoint_failure", stats, failureStats)
 		}
-
 	}
 	return stats
 }
