@@ -38,8 +38,6 @@ replace github.com/couchbase/query => ../query
 
 replace github.com/couchbase/query-ee => ../query-ee
 
-replace github.com/couchbase/regulator => ../regulator
-
 require (
     github.com/couchbase/cbauth v0.1.11
     github.com/couchbase/go-couchbase v0.1.1
@@ -62,7 +60,6 @@ require (
     github.com/couchbase/gocbcore/v10 v10.3.0 // indirect
     github.com/couchbase/gocbcoreps v0.1.0 // indirect
     github.com/couchbase/goprotostellar v1.0.0 // indirect
-    github.com/couchbase/regulator v0.0.0-00010101000000-000000000000 // indirect
     github.com/couchbaselabs/gocbconnstr/v2 v2.0.0-20230515165046-68b522a21131 // indirect
     github.com/golang/protobuf v1.5.3 // indirect
     github.com/golang/snappy v0.0.4 // indirect
