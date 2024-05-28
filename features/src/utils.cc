@@ -425,7 +425,7 @@ std::string Utils::ToCPPString(const v8::Local<v8::Value> &str_val) {
   v8::HandleScope handle_scope(isolate_);
 
   v8::String::Utf8Value utf8(isolate_, str_val);
-  std::string str = *utf8;
+  std::string str(*utf8, utf8.length());
   return str;
 }
 
