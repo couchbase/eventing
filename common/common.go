@@ -600,6 +600,7 @@ type HandlerConfig struct {
 	CPPWorkerThrCount         int
 	ExecuteTimerRoutineCount  int
 	ExecutionTimeout          int
+	CursorCheckpointTimeout   int
 	FeedbackBatchSize         int
 	FeedbackQueueCap          int64
 	FeedbackReadBufferSize    int

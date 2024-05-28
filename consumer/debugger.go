@@ -305,7 +305,7 @@ func (c *Consumer) startDebugger(mKeyspace common.KeyspaceName, e *cb.DcpEvent, 
 	payload, pBuilder := c.makeV8InitPayload(c.app.AppName, c.app.FunctionScope, c.debuggerPort,
 		ip, c.eventingDir, c.eventingAdminPort, c.eventingSSLPort,
 		c.producer.CfgData(), c.lcbInstCapacity,
-		c.executionTimeout, int(c.checkpointInterval.Nanoseconds()/(1000*1000)),
+		c.executionTimeout, c.cursorCheckpointTimeout, int(c.checkpointInterval.Nanoseconds()/(1000*1000)),
 		false, c.timerContextSize, c.producer.UsingTimer(), c.producer.SrcMutation())
 
 	c.sendInitV8Worker(payload, true, pBuilder)

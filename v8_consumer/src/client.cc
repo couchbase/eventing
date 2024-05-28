@@ -72,6 +72,8 @@ std::string GetFailureStats() {
   fstats["curl_failure_count"] = Curl::GetStats().GetCurlFailureStat();
   fstats["curl_max_resp_size_exceeded"] =
       Curl::GetStats().GetCurlMaxRespSizeExceededStat();
+  fstats["dcp_delete_checkpoint_failure"] = dcp_delete_checkpoint_failure.load();
+  fstats["dcp_mutation_checkpoint_failure"] = dcp_mutation_checkpoint_failure.load();
   fstats["timestamp"] = GetTimestampNow();
   return fstats.dump();
 }
@@ -105,8 +107,6 @@ std::string GetExecutionStats(const std::map<int16_t, V8Worker *> &workers,
   estats["dcp_mutation_parse_failure"] = dcp_mutation_parse_failure.load();
   estats["filtered_dcp_delete_counter"] = filtered_dcp_delete_counter.load();
   estats["filtered_dcp_mutation_counter"] = filtered_dcp_mutation_counter.load();
-  estats["dcp_delete_checkpoint_failure"] = dcp_delete_checkpoint_failure.load();
-  estats["dcp_mutation_checkpoint_failure"] = dcp_mutation_checkpoint_failure.load();
   estats["dcp_delete_checkpoint_cas_mismatch"] = dcp_delete_checkpoint_cas_mismatch.load();
   estats["dcp_mutation_checkpoint_cas_mismatch"] = dcp_mutation_checkpoint_cas_mismatch.load();
   if (!workers.empty()) {
@@ -554,6 +554,7 @@ void AppWorker::RouteMessageWithResponse(
       handler_config->timer_context_size = payload->timer_context_size();
       handler_config->dep_cfg.assign(payload->depcfg()->str());
       handler_config->execution_timeout = payload->execution_timeout();
+      handler_config->cursor_checkpoint_timeout = payload->cursor_checkpoint_timeout();
       handler_config->lcb_retry_count = payload->lcb_retry_count();
       handler_config->lcb_timeout = payload->lcb_timeout();
       handler_config->lcb_inst_capacity = payload->lcb_inst_capacity();
