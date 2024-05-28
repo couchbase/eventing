@@ -3,6 +3,7 @@ package syncgateway
 import (
 	"errors"
 	"fmt"
+	"github.com/couchbase/eventing/common/collections"
 	"net"
 	"time"
 
@@ -12,9 +13,16 @@ import (
 	"github.com/couchbase/gocb/v2"
 )
 
+const (
+	defaultScope      = "_default"
+	defaultCollection = "_default"
+)
+
 type SourceBucketClient struct {
 	client     *gocb.Collection
 	connection *gocb.Cluster
+	bucketName string
+	restAddr   string
 }
 
 func NewSourceBucketClient(caller, bucketName, restPort string, s common.EventingSuperSup) (*SourceBucketClient, error) {
@@ -41,9 +49,9 @@ func NewSourceBucketClient(caller, bucketName, restPort string, s common.Eventin
 		logging.Errorf("%s OpenBucket failed for bucket: %s, err: %v", logPrefix, bucketName, err)
 		return nil, err
 	}
-	collection := b.Scope("_default").Collection("_default")
+	collection := b.Scope(defaultScope).Collection(defaultCollection)
 
-	return &SourceBucketClient{client: collection}, nil
+	return &SourceBucketClient{client: collection, bucketName: bucketName, restAddr: addr}, nil
 }
 
 func (cl *SourceBucketClient) Close() {
@@ -126,6 +134,10 @@ func (cl *SourceBucketClient) isSeqPresent() (bool, error) {
 }
 
 func (cl *SourceBucketClient) IsDeploymentProhibited(keySpace common.Keyspace) (bool, string, error) {
+	checkErr := util.ValidateAndCheckKeyspaceExist(cl.bucketName, defaultScope, defaultCollection, cl.restAddr, false)
+	if errors.Is(checkErr, collections.SCOPE_NOT_FOUND) || errors.Is(checkErr, collections.COLLECTION_NOT_FOUND) {
+		return false, "", nil
+	}
 	registry, found, err := cl.getRegistry()
 	if err != nil {
 		return true, "", err
@@ -134,8 +146,8 @@ func (cl *SourceBucketClient) IsDeploymentProhibited(keySpace common.Keyspace) (
 	if !found {
 		if !keySpace.Equals(common.Keyspace{
 			BucketName:     keySpace.BucketName,
-			ScopeName:      "_default",
-			CollectionName: "_default",
+			ScopeName:      defaultScope,
+			CollectionName: defaultCollection,
 		}) {
 			return false, "", nil
 		}
