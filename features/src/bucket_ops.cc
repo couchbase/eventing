@@ -798,11 +798,10 @@ void BucketOps::Details(v8::FunctionCallbackInfo<v8::Value> args) {
   auto meta = meta_info.meta;
 
   auto bucket = BucketBinding::GetBucket(isolate_, args[0]);
-
   auto [err, scope, collection] = bucket->get_scope_and_collection_names(meta);
   if (err != nullptr) {
     ++bucket_op_exception_count;
-    js_exception->ThrowEventingError("Temp error");
+    js_exception->ThrowEventingError(*err);
     return;
   }
 
@@ -1004,13 +1003,7 @@ void BucketOps::GetOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
   }
 
   auto bucket = BucketBinding::GetBucket(isolate, args[0]);
-  auto [err, scope, collection] = bucket->get_scope_and_collection_names(meta);
-  if (err != nullptr) {
-    js_exception->ThrowEventingError(*err);
-    return;
-  }
   v8::Local<v8::Object> response_obj = v8::Object::New(isolate);
-
   if (options.cache) {
     ++bucket_op_cachemiss_count;
   }
