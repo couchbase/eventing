@@ -110,9 +110,8 @@ void V8Worker::SetCouchbaseNamespace() {
   proto_t->Set(
       v8::String::NewFromUtf8(isolate_, "lookupInInternal").ToLocalChecked(),
       v8::FunctionTemplate::New(isolate_, BucketOps::LookupInOp));
-  proto_t->Set(
-      v8::String::NewFromUtf8(isolate_, "n1qlQuery").ToLocalChecked(),
-      v8::FunctionTemplate::New(isolate_, Query::N1qlFunction));
+  proto_t->Set(v8::String::NewFromUtf8(isolate_, "n1qlQuery").ToLocalChecked(),
+               v8::FunctionTemplate::New(isolate_, Query::N1qlFunction));
   proto_t->Set(
       v8::String::NewFromUtf8(isolate_, "analyticsQuery").ToLocalChecked(),
       v8::FunctionTemplate::New(isolate_, Query::AnalyticsFunction));
@@ -129,8 +128,8 @@ void V8Worker::SetCouchbaseNamespace() {
   proto_t->Set(v8::String::NewFromUtf8(isolate_, "crc64").ToLocalChecked(),
                v8::FunctionTemplate::New(isolate_, Crc64Function));
   proto_t->Set(
-          v8::String::NewFromUtf8(isolate_, "crc_64_go_iso").ToLocalChecked(),
-          v8::FunctionTemplate::New(isolate_, Crc64GoIsoFunction));
+      v8::String::NewFromUtf8(isolate_, "crc_64_go_iso").ToLocalChecked(),
+      v8::FunctionTemplate::New(isolate_, Crc64GoIsoFunction));
   proto_t->Set(
       v8::String::NewFromUtf8(isolate_, "base64Encode").ToLocalChecked(),
       v8::FunctionTemplate::New(isolate_, Base64EncodeFunction));
@@ -153,7 +152,6 @@ void V8Worker::SetCouchbaseNamespace() {
       v8::String::NewFromUtf8(isolate_, "base64Float32ArrayDecode")
           .ToLocalChecked(),
       v8::FunctionTemplate::New(isolate_, Base64Float32DecodeFunction));
-
 
   auto context = context_.Get(isolate_);
   v8::Local<v8::Object> cb_obj;
@@ -554,15 +552,16 @@ void V8Worker::InitializeIsolateData(const server_settings_t *server_settings,
                          ? h_config->execution_timeout
                          : h_config->execution_timeout - 2;
   data_.cursor_checkpoint_timeout = h_config->cursor_checkpoint_timeout > 0
-                         ? h_config->cursor_checkpoint_timeout
-                         : data_.op_timeout;
+                                        ? h_config->cursor_checkpoint_timeout
+                                        : data_.op_timeout;
   data_.n1ql_consistency =
       Query::Helper::GetN1qlConsistency(h_config->n1ql_consistency);
   data_.n1ql_prepare_all = h_config->n1ql_prepare_all;
   data_.lang_compat = new LanguageCompatibility(h_config->lang_compat);
   data_.lcb_retry_count = h_config->lcb_retry_count;
   data_.lcb_timeout = ConvertSecondsToMicroSeconds(h_config->lcb_timeout);
-  data_.lcb_cursor_checkpoint_timeout = ConvertSecondsToMicroSeconds(data_.cursor_checkpoint_timeout);
+  data_.lcb_cursor_checkpoint_timeout =
+      ConvertSecondsToMicroSeconds(data_.cursor_checkpoint_timeout);
   data_.insight_line_offset = h_config->handler_headers.size();
 
   data_.bucket_ops = new BucketOps(isolate_, context);
@@ -576,27 +575,24 @@ void V8Worker::InitializeCurlBindingValues(
   }
 }
 
-V8Worker::V8Worker(v8::Platform *platform, handler_config_t *h_config,
-                   server_settings_t *server_settings,
-                   const std::string &function_name,
-                   const std::string &function_id,
-                   const std::string &function_instance_id,
-                   const std::string &user_prefix, Histogram *latency_stats,
-                   Histogram *curl_latency_stats,
-                   const std::string &ns_server_port,
-                   const int32_t &num_vbuckets, vb_seq_map_t *vb_seq,
-                   std::vector<uint64_t> *processed_bucketops,
-                   // TODO: put user and domain into Owner class and call
-                   // .ForKv() and .ForQuery()
-                   vb_lock_map_t *vb_locks, int worker_idx,
-                   const std::string &user, const std::string &domain)
+V8Worker::V8Worker(
+    v8::Platform *platform, handler_config_t *h_config,
+    server_settings_t *server_settings, const std::string &function_name,
+    const std::string &function_id, const std::string &function_instance_id,
+    const std::string &user_prefix, Histogram *latency_stats,
+    Histogram *curl_latency_stats, const std::string &ns_server_port,
+    const int32_t &num_vbuckets, vb_seq_map_t *vb_seq,
+    std::vector<uint64_t> *processed_bucketops,
+    // TODO: put user and domain into Owner class and call
+    // .ForKv() and .ForQuery()
+    vb_lock_map_t *vb_locks, const std::string &user, const std::string &domain)
     : app_name_(h_config->app_name), bucket_(h_config->bucket),
       scope_(h_config->scope), settings_(server_settings),
       num_vbuckets_(num_vbuckets),
       timer_reduction_ratio_(
           int(num_vbuckets / h_config->num_timer_partitions)),
       latency_stats_(latency_stats), curl_latency_stats_(curl_latency_stats),
-      vb_seq_(vb_seq), vb_locks_(vb_locks), worker_idx_(worker_idx),
+      vb_seq_(vb_seq), vb_locks_(vb_locks),
       processed_bucketops_(processed_bucketops), platform_(platform),
       certFile_(server_settings->certFile), function_name_(function_name),
       function_id_(function_id), user_prefix_(user_prefix),
@@ -802,13 +798,15 @@ void V8Worker::EnableTracker() {
     return;
   }
   auto fiid_ = GetFunctionInstanceID();
-  checkpoint_writer_ = std::make_unique<CheckpointWriter>(isolate_, fiid_, cb_source_bucket_, cb_source_scope_, cb_source_collection_);
+  checkpoint_writer_ = std::make_unique<CheckpointWriter>(
+      isolate_, fiid_, cb_source_bucket_, cb_source_scope_,
+      cb_source_collection_);
   checkpoint_writer_->Connect();
   tracker_enabled_ = true;
 }
 
 void V8Worker::DisableTracker() {
- return; // [TODO]: Implement
+  return; // [TODO]: Implement
 }
 
 int V8Worker::V8WorkerLoad(std::string script_to_execute) {
@@ -1050,7 +1048,8 @@ void V8Worker::HandleDeleteEvent(const std::unique_ptr<WorkerMessage> &msg) {
 
   {
     std::lock_guard<std::mutex> guard(bucketops_lock_);
-    auto [filter, update] = IsFilteredEventLocked(false, parsed_meta->cid, parsed_meta->vb, parsed_meta->seq_num);
+    auto [filter, update] = IsFilteredEventLocked(
+        false, parsed_meta->cid, parsed_meta->vb, parsed_meta->seq_num);
     if (update) {
       UpdateSeqNumLocked(parsed_meta->vb, parsed_meta->seq_num);
     }
@@ -1059,7 +1058,8 @@ void V8Worker::HandleDeleteEvent(const std::unique_ptr<WorkerMessage> &msg) {
     }
   }
 
-  const auto options = flatbuf::payload::GetPayload(static_cast<const void *>(msg->payload.payload.c_str()));
+  const auto options = flatbuf::payload::GetPayload(
+      static_cast<const void *>(msg->payload.payload.c_str()));
   SendDelete(options->value()->str(), msg->header.metadata);
 }
 
@@ -1074,7 +1074,8 @@ void V8Worker::HandleMutationEvent(const std::unique_ptr<WorkerMessage> &msg) {
 
   {
     std::lock_guard<std::mutex> guard(bucketops_lock_);
-    auto [filter, update] = IsFilteredEventLocked(false, parsed_meta->cid, parsed_meta->vb, parsed_meta->seq_num);
+    auto [filter, update] = IsFilteredEventLocked(
+        false, parsed_meta->cid, parsed_meta->vb, parsed_meta->seq_num);
     if (update) {
       UpdateSeqNumLocked(parsed_meta->vb, parsed_meta->seq_num);
     }
@@ -1083,17 +1084,23 @@ void V8Worker::HandleMutationEvent(const std::unique_ptr<WorkerMessage> &msg) {
     }
   }
 
-  const auto doc = flatbuf::payload::GetPayload(static_cast<const void *>(msg->payload.payload.c_str()));
+  const auto doc = flatbuf::payload::GetPayload(
+      static_cast<const void *>(msg->payload.payload.c_str()));
   {
     if (tracker_enabled_) {
-      uint64_t cas = static_cast<uint64_t>(std::stoull(parsed_meta->cas, nullptr, 10));
-      uint64_t rootcas = static_cast<uint64_t>(std::stoull(parsed_meta->rootcas, nullptr, 10));
+      uint64_t cas =
+          static_cast<uint64_t>(std::stoull(parsed_meta->cas, nullptr, 10));
+      uint64_t rootcas =
+          static_cast<uint64_t>(std::stoull(parsed_meta->rootcas, nullptr, 10));
       auto cursors = doc->cursors()->str();
       std::vector<std::string> cursors_arr;
       if (cursors.size() > 0) {
         splitString(cursors, cursors_arr, ',');
       }
-      auto [client_err, err_code] = checkpoint_writer_->Write(MetaData(parsed_meta->scope, parsed_meta->collection, parsed_meta->key, cas), rootcas, cursors_arr);
+      auto [client_err, err_code] = checkpoint_writer_->Write(
+          MetaData(parsed_meta->scope, parsed_meta->collection,
+                   parsed_meta->key, cas),
+          rootcas, cursors_arr);
       if (err_code != LCB_SUCCESS) {
         if (err_code == LCB_ERR_CAS_MISMATCH) {
           ++dcp_mutation_checkpoint_cas_mismatch;
@@ -1103,12 +1110,12 @@ void V8Worker::HandleMutationEvent(const std::unique_ptr<WorkerMessage> &msg) {
           if (client_err.length() > 0) {
             err_cstr = client_err.c_str();
           }
-          // TODO : Handle scope deletion, collection deletion, document deletion
+          // TODO : Handle scope deletion, collection deletion, document
+          // deletion
           APPLOG << "cursor progression failed for document: "
-                 << parsed_meta->scope << "/"
-                 << parsed_meta->collection << "/"
-                 << parsed_meta->key
-                 << " rootcas: " << parsed_meta->rootcas << " error: " << err_cstr << std::endl;
+                 << parsed_meta->scope << "/" << parsed_meta->collection << "/"
+                 << parsed_meta->key << " rootcas: " << parsed_meta->rootcas
+                 << " error: " << err_cstr << std::endl;
         }
         return;
       }
@@ -1127,7 +1134,8 @@ void V8Worker::HandleNoOpEvent(const std::unique_ptr<WorkerMessage> &msg) {
 
   {
     std::lock_guard<std::mutex> guard(bucketops_lock_);
-    auto [filter, update] = IsFilteredEventLocked(true, parsed_meta->cid, parsed_meta->vb, parsed_meta->seq_num);
+    auto [filter, update] = IsFilteredEventLocked(
+        true, parsed_meta->cid, parsed_meta->vb, parsed_meta->seq_num);
     if (update) {
       UpdateSeqNumLocked(parsed_meta->vb, parsed_meta->seq_num);
     }
@@ -1263,7 +1271,8 @@ int V8Worker::SendUpdate(const std::string &value, const std::string &meta,
   auto context = context_.Get(isolate_);
   v8::Context::Scope context_scope(context);
 
-  LOG(logTrace) << "value: " << RU(value) << " meta: " << RU(meta) << RU(xattr) << std::endl;
+  LOG(logTrace) << "value: " << RU(value) << " meta: " << RU(meta) << RU(xattr)
+                << std::endl;
   v8::TryCatch try_catch(isolate_);
 
   v8::Local<v8::Value> args[on_update_args_count];
@@ -1719,13 +1728,15 @@ V8Worker::ParseMetadata(const std::string &metadata) const {
 }
 
 std::pair<std::optional<ParsedMetadata>, int>
-V8Worker::ParseMetadataWithAck(const std::string &metadata_str, int &skip_ack, const bool ack_check) const {
+V8Worker::ParseMetadataWithAck(const std::string &metadata_str, int &skip_ack,
+                               const bool ack_check) const {
   try {
     auto metadata = nlohmann::json::parse(metadata_str, nullptr, false);
     ParsedMetadata pmeta;
     if (metadata.contains("keyspace")) {
       pmeta.scope = metadata["keyspace"]["scope_name"].get<std::string>();
-      pmeta.collection = metadata["keyspace"]["collection_name"].get<std::string>();
+      pmeta.collection =
+          metadata["keyspace"]["collection_name"].get<std::string>();
     }
     if (metadata.contains("cid")) {
       pmeta.cid = metadata["cid"].get<uint32_t>();
@@ -1745,7 +1756,8 @@ V8Worker::ParseMetadataWithAck(const std::string &metadata_str, int &skip_ack, c
     pmeta.vb = metadata["vb"].get<int>();
     pmeta.seq_num = metadata["seq"].get<uint64_t>();
     return {pmeta, kSuccess};
-  } catch(nlohmann::json::parse_error& ex) {}
+  } catch (nlohmann::json::parse_error &ex) {
+  }
   return {std::nullopt, kJSONParseFailed};
 }
 
@@ -1763,7 +1775,8 @@ void V8Worker::UpdateDeletedCid(const std::unique_ptr<WorkerMessage> &msg) {
 
   std::lock_guard<std::mutex> guard(vbfilter_map_for_cid_lock_);
   auto lock = GetAndLockVbLock(parsed_meta->vb);
-  vbfilter_map_for_cid_[parsed_meta->cid][parsed_meta->vb] = parsed_meta->seq_num;
+  vbfilter_map_for_cid_[parsed_meta->cid][parsed_meta->vb] =
+      parsed_meta->seq_num;
   lock.unlock();
 }
 

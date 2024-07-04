@@ -25,16 +25,16 @@ constexpr int64_t max_backoff_milliseconds = 30000; // 30 seconds
 
 template <typename Predicate, typename Callable, typename... Args,
           // figure out what the callable returns
-          typename R = typename std::decay<
-              typename std::result_of<Callable &(Args...)>::type>::type,
+          typename R = typename std::decay_t<
+              typename std::invoke_result_t<Callable &, Args...>>,
           // require that Predicate is actually a Predicate
-          typename std::enable_if<
-              std::is_convertible<typename std::result_of<Predicate &(R)>::type,
-                                  bool>::value,
-              int>::type = 0>
+          typename std::enable_if_t<
+              std::is_convertible_v<
+                  typename std::invoke_result_t<Predicate &, R>, bool>,
+              int> = 0>
 R RetryWithFixedBackoff(int max_retry_count, int64_t initial_delay_milliseconds,
                         Predicate &&isRetriable, Callable &&callable,
-                        Args &&... args) {
+                        Args &&...args) {
   int retry_count = 0;
   while (true) {
     auto status = callable(std::forward<Args>(args)...);
@@ -59,17 +59,17 @@ R RetryWithFixedBackoff(int max_retry_count, int64_t initial_delay_milliseconds,
 
 template <typename Predicate, typename Callable, typename... Args,
           // figure out what the callable returns
-          typename R = typename std::decay<
-              typename std::result_of<Callable &(Args...)>::type>::type,
+          typename R = typename std::decay_t<
+              typename std::invoke_result_t<Callable &, Args...>>,
           // require that Predicate is actually a Predicate
-          typename std::enable_if<
-              std::is_convertible<typename std::result_of<Predicate &(R)>::type,
-                                  bool>::value,
-              int>::type = 0>
+          typename std::enable_if_t<
+              std::is_convertible_v<
+                  typename std::invoke_result_t<Predicate &, R>, bool>,
+              int> = 0>
 R RetryWithExponentialBackoff(int max_retry_count,
                               int64_t initial_delay_milliseconds,
                               Predicate &&isRetriable, Callable &&callable,
-                              Args &&... args) {
+                              Args &&...args) {
   int retry_count = 0;
   while (true) {
     auto status = callable(std::forward<Args>(args)...);
