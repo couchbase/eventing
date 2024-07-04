@@ -18,8 +18,8 @@
 #include "client.h"
 #include "lcb_utils.h"
 
-#include <nlohmann/json.hpp>
 #include <iostream>
+#include <nlohmann/json.hpp>
 #include <sstream>
 
 uint64_t timer_responses_sent(0);
@@ -72,8 +72,10 @@ std::string GetFailureStats() {
   fstats["curl_failure_count"] = Curl::GetStats().GetCurlFailureStat();
   fstats["curl_max_resp_size_exceeded"] =
       Curl::GetStats().GetCurlMaxRespSizeExceededStat();
-  fstats["dcp_delete_checkpoint_failure"] = dcp_delete_checkpoint_failure.load();
-  fstats["dcp_mutation_checkpoint_failure"] = dcp_mutation_checkpoint_failure.load();
+  fstats["dcp_delete_checkpoint_failure"] =
+      dcp_delete_checkpoint_failure.load();
+  fstats["dcp_mutation_checkpoint_failure"] =
+      dcp_mutation_checkpoint_failure.load();
   fstats["timestamp"] = GetTimestampNow();
   return fstats.dump();
 }
@@ -106,9 +108,12 @@ std::string GetExecutionStats(const std::map<int16_t, V8Worker *> &workers,
   estats["dcp_delete_parse_failure"] = dcp_delete_parse_failure.load();
   estats["dcp_mutation_parse_failure"] = dcp_mutation_parse_failure.load();
   estats["filtered_dcp_delete_counter"] = filtered_dcp_delete_counter.load();
-  estats["filtered_dcp_mutation_counter"] = filtered_dcp_mutation_counter.load();
-  estats["dcp_delete_checkpoint_cas_mismatch"] = dcp_delete_checkpoint_cas_mismatch.load();
-  estats["dcp_mutation_checkpoint_cas_mismatch"] = dcp_mutation_checkpoint_cas_mismatch.load();
+  estats["filtered_dcp_mutation_counter"] =
+      filtered_dcp_mutation_counter.load();
+  estats["dcp_delete_checkpoint_cas_mismatch"] =
+      dcp_delete_checkpoint_cas_mismatch.load();
+  estats["dcp_mutation_checkpoint_cas_mismatch"] =
+      dcp_mutation_checkpoint_cas_mismatch.load();
   if (!workers.empty()) {
     int64_t agg_queue_memory = 0, agg_queue_size = 0;
     for (const auto &w : workers) {
@@ -554,7 +559,8 @@ void AppWorker::RouteMessageWithResponse(
       handler_config->timer_context_size = payload->timer_context_size();
       handler_config->dep_cfg.assign(payload->depcfg()->str());
       handler_config->execution_timeout = payload->execution_timeout();
-      handler_config->cursor_checkpoint_timeout = payload->cursor_checkpoint_timeout();
+      handler_config->cursor_checkpoint_timeout =
+          payload->cursor_checkpoint_timeout();
       handler_config->lcb_retry_count = payload->lcb_retry_count();
       handler_config->lcb_timeout = payload->lcb_timeout();
       handler_config->lcb_inst_capacity = payload->lcb_inst_capacity();
@@ -603,7 +609,7 @@ void AppWorker::RouteMessageWithResponse(
               function_name_, function_id_, handler_instance_id, user_prefix_,
               &latency_stats_, &curl_latency_stats_, ns_server_port_,
               num_vbuckets_, vb_seq_.get(), processed_bucketops_.get(),
-              vb_locks_.get(), i, user_, domain_);
+              vb_locks_.get(), user_, domain_);
 
           LOG(logInfo) << "Init index: " << i << " V8Worker: " << w
                        << std::endl;
@@ -619,7 +625,8 @@ void AppWorker::RouteMessageWithResponse(
     case oTracker:
       for (int16_t i = 0; i < thr_count_; i++) {
         bool enable = false;
-        std::istringstream(worker_msg->header.metadata) >> std::boolalpha >> enable;
+        std::istringstream(worker_msg->header.metadata) >> std::boolalpha >>
+            enable;
         if (enable) {
           workers_[i]->EnableTracker();
         } else {
@@ -768,16 +775,19 @@ void AppWorker::RouteMessageWithResponse(
                      << worker_msg->header.metadata << std::endl;
         auto worker = workers_[worker_index];
         int skip_ack = 0;
-        auto [parsed_meta, status] = worker->ParseMetadataWithAck(worker_msg->header.metadata, skip_ack, true);
+        auto [parsed_meta, status] = worker->ParseMetadataWithAck(
+            worker_msg->header.metadata, skip_ack, true);
         if (status == kSuccess) {
           auto lck = worker->GetAndLockBucketOpsLock();
-          auto last_processed_seq_no = worker->GetBucketopsSeqno(parsed_meta->vb);
+          auto last_processed_seq_no =
+              worker->GetBucketopsSeqno(parsed_meta->vb);
           if (last_processed_seq_no < (parsed_meta->seq_num)) {
             worker->UpdateVbFilter(parsed_meta->vb, parsed_meta->seq_num);
           }
           worker->RemoveTimerPartition(parsed_meta->vb);
           lck.unlock();
-          SendFilterAck(oVbFilter, mFilterAck, parsed_meta->vb, last_processed_seq_no, skip_ack);
+          SendFilterAck(oVbFilter, mFilterAck, parsed_meta->vb,
+                        last_processed_seq_no, skip_ack);
         }
       } else {
         LOG(logError) << "Filter event lost: worker " << worker_index
@@ -790,10 +800,12 @@ void AppWorker::RouteMessageWithResponse(
         LOG(logInfo) << "Received update processed seq_no event from Go "
                      << worker_msg->header.metadata << std::endl;
         current_partition_thr_map_[worker_msg->header.partition] = worker_index;
-        auto [parsed_meta, status] = workers_[worker_index]->ParseMetadata(worker_msg->header.metadata);
+        auto [parsed_meta, status] =
+            workers_[worker_index]->ParseMetadata(worker_msg->header.metadata);
         if (status == kSuccess) {
           auto lck = workers_[worker_index]->GetAndLockBucketOpsLock();
-          workers_[worker_index]->UpdateBucketopsSeqnoLocked(parsed_meta->vb, parsed_meta->seq_num);
+          workers_[worker_index]->UpdateBucketopsSeqnoLocked(
+              parsed_meta->vb, parsed_meta->seq_num);
           workers_[worker_index]->AddTimerPartition(parsed_meta->vb);
         }
       }
