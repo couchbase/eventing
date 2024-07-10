@@ -274,16 +274,20 @@ void Bucket::InvalidateCache(const MetaData &meta) {
 
   auto context = isolate_->GetCurrentContext();
   auto global = context->Global();
-  func->Call(context, global, 1, args);
+  (void)func->Call(context, global, 1, args);
 }
 
 std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
-Bucket::WriteCheckpoint(const MetaData &meta, const uint64_t& rootcas, const std::vector<std::string>& cleanup_checkpoints) {
+Bucket::WriteCheckpoint(const MetaData &meta, const uint64_t &rootcas,
+                        const std::vector<std::string> &cleanup_checkpoints) {
   if (!is_connected_) {
-    return {std::make_unique<std::string>("Connection is not initialized"), nullptr, nullptr};
+    return {std::make_unique<std::string>("Connection is not initialized"),
+            nullptr, nullptr};
   }
-  const auto lcb_cursor_checkpoint_timeout = UnwrapData(isolate_)->lcb_cursor_checkpoint_timeout;
-  const auto cursor_checkpoint_timeout = UnwrapData(isolate_)->cursor_checkpoint_timeout;
+  const auto lcb_cursor_checkpoint_timeout =
+      UnwrapData(isolate_)->lcb_cursor_checkpoint_timeout;
+  const auto cursor_checkpoint_timeout =
+      UnwrapData(isolate_)->cursor_checkpoint_timeout;
   const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
 
   // Setup subdoc specs
@@ -300,10 +304,11 @@ Bucket::WriteCheckpoint(const MetaData &meta, const uint64_t& rootcas, const std
   // Update this function's checkpoint
   std::string checkpoint_cas_path("_checkpoints." + fiid_ + ".cas");
   std::string CAS_macro(R"("${Mutation.CAS}")");
-  lcb_subdocspecs_dict_upsert(specs,0,
-    LCB_SUBDOCSPECS_F_MKINTERMEDIATES | LCB_SUBDOCSPECS_F_XATTR_MACROVALUES,
-    checkpoint_cas_path.c_str(), checkpoint_cas_path.size(),
-    CAS_macro.c_str(), CAS_macro.size());
+  lcb_subdocspecs_dict_upsert(
+      specs, 0,
+      LCB_SUBDOCSPECS_F_MKINTERMEDIATES | LCB_SUBDOCSPECS_F_XATTR_MACROVALUES,
+      checkpoint_cas_path.c_str(), checkpoint_cas_path.size(),
+      CAS_macro.c_str(), CAS_macro.size());
 
   // Note: all cas entries in xattrs are to be stamped with cas bytes swapped
   // to little endian followed by converting to hex string.
@@ -311,18 +316,18 @@ Bucket::WriteCheckpoint(const MetaData &meta, const uint64_t& rootcas, const std
   // comparison with _mou.pcas which is also written in same format.
   std::string checkpoint_pcas_path("_checkpoints." + fiid_ + ".pcas");
   auto hex_cas = "\"" + to_hex(byte_swap_64(rootcas)) + "\"";
-  lcb_subdocspecs_dict_upsert(specs, 1,
-    LCB_SUBDOCSPECS_F_MKINTERMEDIATES | LCB_SUBDOCSPECS_F_XATTRPATH,
-    checkpoint_pcas_path.c_str(), checkpoint_pcas_path.size(),
-    hex_cas.c_str(), hex_cas.size());
+  lcb_subdocspecs_dict_upsert(
+      specs, 1, LCB_SUBDOCSPECS_F_MKINTERMEDIATES | LCB_SUBDOCSPECS_F_XATTRPATH,
+      checkpoint_pcas_path.c_str(), checkpoint_pcas_path.size(),
+      hex_cas.c_str(), hex_cas.size());
 
   // Cleanup dirty checkpoints
   if (cleanup_checkpoints.size() > 0) {
     auto spec_counter = 2;
-    for(const std::string& checkpoint_id : cleanup_checkpoints) {
+    for (const std::string &checkpoint_id : cleanup_checkpoints) {
       std::string cleanup_path("_checkpoints." + checkpoint_id);
       lcb_subdocspecs_remove(specs, spec_counter, LCB_SUBDOCSPECS_F_XATTRPATH,
-        cleanup_path.c_str(), cleanup_path.size());
+                             cleanup_path.c_str(), cleanup_path.size());
       spec_counter++;
     }
   }
@@ -332,14 +337,15 @@ Bucket::WriteCheckpoint(const MetaData &meta, const uint64_t& rootcas, const std
   lcb_cmdsubdoc_create(&cmd);
   lcb_cmdsubdoc_specs(cmd, specs);
   lcb_cmdsubdoc_cas(cmd, meta.cas);
-  //lcb_cmdsubdoc_store_semantics(cmd, LCB_SUBDOC_STORE_UPSERT);
-  lcb_cmdsubdoc_collection(cmd, meta.scope.c_str(), meta.scope.size(), meta.collection.c_str(),
-    meta.collection.size());
+  // lcb_cmdsubdoc_store_semantics(cmd, LCB_SUBDOC_STORE_UPSERT);
+  lcb_cmdsubdoc_collection(cmd, meta.scope.c_str(), meta.scope.size(),
+                           meta.collection.c_str(), meta.collection.size());
   lcb_cmdsubdoc_key(cmd, meta.key.c_str(), meta.key.length());
   lcb_cmdsubdoc_timeout(cmd, lcb_cursor_checkpoint_timeout);
 
   // Run command
-  auto [err, err_code, result] = TryLcbCmdWithRefreshConnIfNecessary(*cmd, max_retry, cursor_checkpoint_timeout, LcbSubdocSet);
+  auto [err, err_code, result] = TryLcbCmdWithRefreshConnIfNecessary(
+      *cmd, max_retry, cursor_checkpoint_timeout, LcbSubdocSet);
   // Destroy command
   lcb_cmdsubdoc_destroy(cmd);
   lcb_subdocspecs_destroy(specs);
@@ -352,7 +358,8 @@ Bucket::WriteCheckpoint(const MetaData &meta, const uint64_t& rootcas, const std
     ++lcb_retry_failure;
     return {nullptr, std::make_unique<lcb_STATUS>(err_code), nullptr};
   }
-  return {nullptr, std::make_unique<lcb_STATUS>(err_code), std::make_unique<Result>(std::move(result))};
+  return {nullptr, std::make_unique<lcb_STATUS>(err_code),
+          std::make_unique<Result>(std::move(result))};
 }
 
 std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
@@ -434,8 +441,8 @@ Bucket::LookupIn(MetaData &meta, LookupInSpecs &specs) {
   lcb_CMDSUBDOC *cmd;
   lcb_cmdsubdoc_create(&cmd);
   lcb_cmdsubdoc_specs(cmd, lcb_specs);
-  lcb_cmdsubdoc_collection(cmd, meta.scope.c_str(), meta.scope.size(), meta.collection.c_str(),
-                           meta.collection.size());
+  lcb_cmdsubdoc_collection(cmd, meta.scope.c_str(), meta.scope.size(),
+                           meta.collection.c_str(), meta.collection.size());
   lcb_cmdsubdoc_key(cmd, meta.key.c_str(), meta.key.size());
   lcb_cmdsubdoc_timeout(cmd, lcb_timeout);
 
@@ -444,7 +451,7 @@ Bucket::LookupIn(MetaData &meta, LookupInSpecs &specs) {
                                on_behalf_of_.size());
   }
   auto [err, err_code, result] = TryLcbCmdWithRefreshConnIfNecessary(
-    *cmd, max_retry, max_timeout, LcbSubdocGet);
+      *cmd, max_retry, max_timeout, LcbSubdocGet);
   lcb_cmdsubdoc_destroy(cmd);
   lcb_subdocspecs_destroy(lcb_specs);
   if (err != nullptr) {
@@ -458,14 +465,16 @@ Bucket::LookupIn(MetaData &meta, LookupInSpecs &specs) {
   std::ostringstream oss;
   oss << "[";
   int index = 0;
-  for (const auto &entry: result.lookupin_entries) {
-    if(index++ > 0) {
+  for (const auto &entry : result.lookupin_entries) {
+    if (index++ > 0) {
       oss << ",";
     }
     if (entry.err_code == LCB_SUCCESS)
-      oss << "{\"value\":" << entry.value << ",\"success\":" << "true}";
+      oss << "{\"value\":" << entry.value << ",\"success\":"
+          << "true}";
     else
-      oss << "{\"success\":" << "false}";
+      oss << "{\"success\":"
+          << "false}";
   }
   oss << "]";
   result.value = oss.str();
@@ -613,7 +622,8 @@ Bucket::CounterWithXattr(MetaData &meta, int64_t delta) {
   auto function_instance_id = GetFunctionInstanceID(isolate_);
   std::string function_instance_id_path("_eventing.fiid");
   lcb_subdocspecs_dict_upsert(
-      lcb_specs, 0, LCB_SUBDOCSPECS_F_MKINTERMEDIATES | LCB_SUBDOCSPECS_F_XATTRPATH,
+      lcb_specs, 0,
+      LCB_SUBDOCSPECS_F_MKINTERMEDIATES | LCB_SUBDOCSPECS_F_XATTRPATH,
       function_instance_id_path.c_str(), function_instance_id_path.size(),
       function_instance_id.c_str(), function_instance_id.size());
 
@@ -627,11 +637,10 @@ Bucket::CounterWithXattr(MetaData &meta, int64_t delta) {
 
   std::string CAS_path("_eventing.cas");
   std::string CAS_macro(R"("${Mutation.CAS}")");
-  lcb_subdocspecs_dict_upsert(lcb_specs,2,
-                              LCB_SUBDOCSPECS_F_MKINTERMEDIATES |
-                                  LCB_SUBDOCSPECS_F_XATTR_MACROVALUES,
-                              CAS_path.c_str(), CAS_path.size(),
-                              CAS_macro.c_str(), CAS_macro.size());
+  lcb_subdocspecs_dict_upsert(
+      lcb_specs, 2,
+      LCB_SUBDOCSPECS_F_MKINTERMEDIATES | LCB_SUBDOCSPECS_F_XATTR_MACROVALUES,
+      CAS_path.c_str(), CAS_path.size(), CAS_macro.c_str(), CAS_macro.size());
 
   std::string value_crc32_path("_eventing.crc");
   std::string value_crc32_macro(R"("${Mutation.value_crc32c}")");
@@ -757,7 +766,8 @@ Bucket::MutateInWithXattr(MetaData &meta, MutateInSpecs &specs) {
   auto function_instance_id = GetFunctionInstanceID(isolate_);
   std::string function_instance_id_path("_eventing.fiid");
   lcb_subdocspecs_dict_upsert(
-      lcb_specs, 0, LCB_SUBDOCSPECS_F_MKINTERMEDIATES | LCB_SUBDOCSPECS_F_XATTRPATH,
+      lcb_specs, 0,
+      LCB_SUBDOCSPECS_F_MKINTERMEDIATES | LCB_SUBDOCSPECS_F_XATTRPATH,
       function_instance_id_path.c_str(), function_instance_id_path.size(),
       function_instance_id.c_str(), function_instance_id.size());
 
@@ -771,11 +781,10 @@ Bucket::MutateInWithXattr(MetaData &meta, MutateInSpecs &specs) {
 
   std::string CAS_path("_eventing.cas");
   std::string CAS_macro(R"("${Mutation.CAS}")");
-  lcb_subdocspecs_dict_upsert(lcb_specs,2,
-                              LCB_SUBDOCSPECS_F_MKINTERMEDIATES |
-                                  LCB_SUBDOCSPECS_F_XATTR_MACROVALUES,
-                              CAS_path.c_str(), CAS_path.size(),
-                              CAS_macro.c_str(), CAS_macro.size());
+  lcb_subdocspecs_dict_upsert(
+      lcb_specs, 2,
+      LCB_SUBDOCSPECS_F_MKINTERMEDIATES | LCB_SUBDOCSPECS_F_XATTR_MACROVALUES,
+      CAS_path.c_str(), CAS_path.size(), CAS_macro.c_str(), CAS_macro.size());
 
   std::string value_crc32_path("_eventing.crc");
   std::string value_crc32_macro(R"("${Mutation.value_crc32c}")");
@@ -846,7 +855,8 @@ Bucket::SetWithXattr(MetaData &meta, const std::string &value,
   auto function_instance_id = GetFunctionInstanceID(isolate_);
   std::string function_instance_id_path("_eventing.fiid");
   lcb_subdocspecs_dict_upsert(
-      lcb_specs, 0, LCB_SUBDOCSPECS_F_MKINTERMEDIATES | LCB_SUBDOCSPECS_F_XATTRPATH,
+      lcb_specs, 0,
+      LCB_SUBDOCSPECS_F_MKINTERMEDIATES | LCB_SUBDOCSPECS_F_XATTRPATH,
       function_instance_id_path.c_str(), function_instance_id_path.size(),
       function_instance_id.c_str(), function_instance_id.size());
 
@@ -860,11 +870,10 @@ Bucket::SetWithXattr(MetaData &meta, const std::string &value,
 
   std::string CAS_path("_eventing.cas");
   std::string CAS_macro(R"("${Mutation.CAS}")");
-  lcb_subdocspecs_dict_upsert(lcb_specs,2,
-                              LCB_SUBDOCSPECS_F_MKINTERMEDIATES |
-                                  LCB_SUBDOCSPECS_F_XATTR_MACROVALUES,
-                              CAS_path.c_str(), CAS_path.size(),
-                              CAS_macro.c_str(), CAS_macro.size());
+  lcb_subdocspecs_dict_upsert(
+      lcb_specs, 2,
+      LCB_SUBDOCSPECS_F_MKINTERMEDIATES | LCB_SUBDOCSPECS_F_XATTR_MACROVALUES,
+      CAS_path.c_str(), CAS_path.size(), CAS_macro.c_str(), CAS_macro.size());
 
   std::string value_crc32_path("_eventing.crc");
   std::string value_crc32_macro(R"("${Mutation.value_crc32c}")");
@@ -989,7 +998,8 @@ Bucket::DeleteWithXattr(MetaData &meta) {
   auto function_instance_id = GetFunctionInstanceID(isolate_);
   std::string function_instance_id_path("_eventing.fiid");
   lcb_subdocspecs_dict_upsert(
-      lcb_specs, 0, LCB_SUBDOCSPECS_F_MKINTERMEDIATES | LCB_SUBDOCSPECS_F_XATTRPATH,
+      lcb_specs, 0,
+      LCB_SUBDOCSPECS_F_MKINTERMEDIATES | LCB_SUBDOCSPECS_F_XATTRPATH,
       function_instance_id_path.c_str(), function_instance_id_path.size(),
       function_instance_id.c_str(), function_instance_id.size());
 
@@ -1003,11 +1013,10 @@ Bucket::DeleteWithXattr(MetaData &meta) {
 
   std::string CAS_path("_eventing.cas");
   std::string CAS_macro(R"("${Mutation.CAS}")");
-  lcb_subdocspecs_dict_upsert(lcb_specs,2,
-                              LCB_SUBDOCSPECS_F_MKINTERMEDIATES |
-                                  LCB_SUBDOCSPECS_F_XATTR_MACROVALUES,
-                              CAS_path.c_str(), CAS_path.size(),
-                              CAS_macro.c_str(), CAS_macro.size());
+  lcb_subdocspecs_dict_upsert(
+      lcb_specs, 2,
+      LCB_SUBDOCSPECS_F_MKINTERMEDIATES | LCB_SUBDOCSPECS_F_XATTR_MACROVALUES,
+      CAS_path.c_str(), CAS_path.size(), CAS_macro.c_str(), CAS_macro.size());
 
   std::string value_crc32_path("_eventing.crc");
   std::string value_crc32_macro(R"("${Mutation.value_crc32c}")");
@@ -1127,7 +1136,8 @@ Bucket::TouchWithXattr(MetaData &meta) {
   auto function_instance_id = GetFunctionInstanceID(isolate_);
   std::string function_instance_id_path("_eventing.fiid");
   lcb_subdocspecs_dict_upsert(
-      lcb_specs, 0, LCB_SUBDOCSPECS_F_MKINTERMEDIATES | LCB_SUBDOCSPECS_F_XATTRPATH,
+      lcb_specs, 0,
+      LCB_SUBDOCSPECS_F_MKINTERMEDIATES | LCB_SUBDOCSPECS_F_XATTRPATH,
       function_instance_id_path.c_str(), function_instance_id_path.size(),
       function_instance_id.c_str(), function_instance_id.size());
 
@@ -1141,11 +1151,10 @@ Bucket::TouchWithXattr(MetaData &meta) {
 
   std::string CAS_path("_eventing.cas");
   std::string CAS_macro(R"("${Mutation.CAS}")");
-  lcb_subdocspecs_dict_upsert(lcb_specs,2,
-                              LCB_SUBDOCSPECS_F_MKINTERMEDIATES |
-                                  LCB_SUBDOCSPECS_F_XATTR_MACROVALUES,
-                              CAS_path.c_str(), CAS_path.size(),
-                              CAS_macro.c_str(), CAS_macro.size());
+  lcb_subdocspecs_dict_upsert(
+      lcb_specs, 2,
+      LCB_SUBDOCSPECS_F_MKINTERMEDIATES | LCB_SUBDOCSPECS_F_XATTR_MACROVALUES,
+      CAS_path.c_str(), CAS_path.size(), CAS_macro.c_str(), CAS_macro.size());
 
   std::string value_crc32_path("_eventing.crc");
   std::string value_crc32_macro(R"("${Mutation.value_crc32c}")");
@@ -1610,7 +1619,8 @@ bool BucketBinding::IsBucketObject(v8::Isolate *isolate,
 
   v8::HandleScope handle_scope(isolate);
 
-  auto binding_id = obj->GetInternalField(InternalFields::kBucketBindingId).As<v8::Value>();
+  auto binding_id =
+      obj->GetInternalField(InternalFields::kBucketBindingId).As<v8::Value>();
   if (binding_id.IsEmpty() || binding_id->IsNullOrUndefined() ||
       !binding_id->IsString()) {
     return false;

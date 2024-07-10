@@ -25,6 +25,7 @@
 #include <list>
 #include <map>
 #include <memory>
+#include <optional>
 #include <regex>
 #include <sstream>
 #include <string>
@@ -33,7 +34,6 @@
 #include <uv.h>
 #include <v8.h>
 #include <vector>
-#include <optional>
 
 #include "blocking_deque.h"
 #include "bucket.h"
@@ -262,7 +262,7 @@ public:
            Histogram *curl_latency_stats, const std::string &ns_server_port,
            const int32_t &num_vbuckets, vb_seq_map_t *vb_seq,
            std::vector<uint64_t> *processed_bucketops, vb_lock_map_t *vb_locks,
-           int worker_idx, const std::string &user, const std::string &domain);
+           const std::string &user, const std::string &domain);
   ~V8Worker();
 
   void EnableTracker();
@@ -318,7 +318,7 @@ public:
 
   std::pair<std::optional<ParsedMetadata>, int>
   ParseMetadataWithAck(const std::string &metadata_str, int &skip_ack,
-    const bool ack_check) const;
+                       const bool ack_check) const;
 
   void SetThreadExitFlag();
 
@@ -426,7 +426,6 @@ private:
 
   vb_seq_map_t *vb_seq_;
   vb_lock_map_t *vb_locks_;
-  int worker_idx_;
 
   std::vector<std::vector<uint64_t>> vbfilter_map_;
   std::map<uint32_t, std::map<uint16_t, uint64_t>> vbfilter_map_for_cid_;
