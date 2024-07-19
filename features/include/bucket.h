@@ -244,7 +244,7 @@ public:
   Bucket &operator=(const Bucket &) = delete;
   Bucket &operator=(Bucket &&) = delete;
 
-  Error Connect();
+  std::tuple<Error, std::unique_ptr<lcb_STATUS>> Connect();
 
   void SetupCacheInvalidateFunc() {
     auto context = isolate_->GetCurrentContext();
@@ -331,25 +331,65 @@ private:
                                   bool should_check_autherr);
   void InvalidateCache(const MetaData &meta);
   template <typename CmdType, typename Callable>
-  std::tuple<Error, lcb_STATUS, Result>
+  std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
   TryLcbCmdWithRefreshConnIfNecessary(CmdType &cmd, int max_retry_count,
                                       uint32_t max_retry_secs,
                                       Callable &&callable) {
+    if (!is_connected_) {
+      Error create_err = nullptr;
+      std::unique_ptr<lcb_STATUS> lcb_status = nullptr;
+      int retry_count = 0;
+      const auto start_time = std::chrono::system_clock::now();
+      while (true) {
+        std::tie(create_err, lcb_status) = Connect();
+        is_connected_ = create_err == nullptr;
+
+        const auto isExceededRetries =
+            max_retry_count && retry_count++ >= max_retry_count;
+        const auto isRetryableLCBError =
+            (lcb_status != nullptr && *lcb_status != LCB_SUCCESS &&
+             IsRetriable(*lcb_status));
+        const auto isLCBRetryNeeded =
+            create_err != nullptr &&
+            (lcb_status == nullptr || isRetryableLCBError);
+        if (isExceededRetries || create_err == nullptr || !isLCBRetryNeeded) {
+          break;
+        }
+
+        const auto elapsed_time = std::chrono::system_clock::now() - start_time;
+        if (max_retry_secs &&
+            elapsed_time >= std::chrono::seconds(max_retry_secs)) {
+          break;
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+      }
+      if (!is_connected_) {
+        return {std::move(create_err), std::move(lcb_status), nullptr};
+      }
+    }
+
     auto [internal_err, err_code, result] =
         TryLcbCmd(cmd, max_retry_count, max_retry_secs, callable);
     if (internal_err != nullptr) {
-      return {std::move(internal_err), err_code, result};
+      return {std::move(internal_err), std::make_unique<lcb_STATUS>(err_code),
+              std::make_unique<Result>(result)};
     }
 
     if (err_code != LCB_SUCCESS) {
-      return {nullptr, err_code, result};
+      return {nullptr, std::make_unique<lcb_STATUS>(err_code),
+              std::make_unique<Result>(result)};
     }
 
     if (!MaybeRecreateConnOnAuthErr(result.rc, true)) {
-      return {nullptr, err_code, result};
+      return {nullptr, std::make_unique<lcb_STATUS>(err_code),
+              std::make_unique<Result>(result)};
     }
 
-    return TryLcbCmd(cmd, max_retry_count, max_retry_secs, callable);
+    std::tie(internal_err, err_code, result) =
+        TryLcbCmd(cmd, max_retry_count, max_retry_secs, callable);
+    return {std::move(internal_err), std::make_unique<lcb_STATUS>(err_code),
+            std::make_unique<Result>(result)};
   }
 
   template <typename CmdType, typename Callable>

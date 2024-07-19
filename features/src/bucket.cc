@@ -82,7 +82,7 @@ Bucket::~Bucket() {
   }
 }
 
-Error Bucket::Connect() {
+std::tuple<Error, std::unique_ptr<lcb_STATUS>> Bucket::Connect() {
   LOG(logTrace) << __func__ << " connecting to bucket " << RU(bucket_name_)
                 << std::endl;
   if (is_connected_) {
@@ -90,14 +90,14 @@ Error Bucket::Connect() {
         << __func__
         << " Attempting to connect an already connected bucket instance"
         << std::endl;
-    return std::make_unique<std::string>("already connected");
+    return {nullptr, nullptr};
   }
 
   auto utils = UnwrapData(isolate_)->utils;
 
   auto conn_str_info = utils->GetConnectionString(bucket_name_);
   if (!conn_str_info.is_valid) {
-    return std::make_unique<std::string>(conn_str_info.msg);
+    return {std::make_unique<std::string>(conn_str_info.msg), nullptr};
   }
 
   LOG(logInfo) << __func__
@@ -112,8 +112,9 @@ Error Bucket::Connect() {
 
   auto result = lcb_create(&connection_, options);
   if (result != LCB_SUCCESS) {
-    return FormatErrorAndDestroyConn("Unable to initialize connection handle",
-                                     result);
+    return {FormatErrorAndDestroyConn("Unable to initialize connection handle",
+                                      result),
+            std::make_unique<lcb_STATUS>(result)};
   }
   lcb_createopts_destroy(options);
 
@@ -121,27 +122,39 @@ Error Bucket::Connect() {
   result = RetryWithFixedBackoff(5, 200, IsRetriable, lcbauth_set_callback,
                                  auth, isolate_, GetUsernameAndPassword);
   if (result != LCB_SUCCESS) {
-    return FormatErrorAndDestroyConn("Unable to set auth callbacks", result);
+    return {FormatErrorAndDestroyConn("Unable to set auth callbacks", result),
+            std::make_unique<lcb_STATUS>(result)};
   }
 
   result = RetryWithFixedBackoff(5, 200, IsRetriable, lcbauth_set_mode, auth,
                                  LCBAUTH_MODE_DYNAMIC);
   if (result != LCB_SUCCESS) {
-    return FormatErrorAndDestroyConn("Unable to set auth mode to dynamic",
-                                     result);
+    return {
+        FormatErrorAndDestroyConn("Unable to set auth mode to dynamic", result),
+        std::make_unique<lcb_STATUS>(result)};
   }
   lcb_set_auth(connection_, auth);
 
   result = RetryWithFixedBackoff(5, 200, IsRetriable, lcb_connect, connection_);
   if (result != LCB_SUCCESS) {
-    return FormatErrorAndDestroyConn("Unable to connect to bucket", result);
+    return {FormatErrorAndDestroyConn("Unable to connect to bucket", result),
+            std::make_unique<lcb_STATUS>(result)};
   }
 
   result = RetryWithFixedBackoff(5, 200, IsRetriable, lcb_wait, connection_,
                                  LCB_WAIT_DEFAULT);
   if (result != LCB_SUCCESS) {
-    return FormatErrorAndDestroyConn("Unable to schedule call for connect",
-                                     result);
+    return {FormatErrorAndDestroyConn("Unable to schedule call for connect",
+                                      result),
+            std::make_unique<lcb_STATUS>(result)};
+  }
+
+  result = RetryWithFixedBackoff(5, 200, IsRetriable, lcb_get_bootstrap_status,
+                                 connection_);
+  if (result != LCB_SUCCESS) {
+    return {
+        FormatErrorAndDestroyConn("Unable to bootstrap LCB instance", result),
+        std::make_unique<lcb_STATUS>(result)};
   }
 
   lcb_install_callback(connection_, LCB_CALLBACK_GET, GetCallback);
@@ -157,8 +170,9 @@ Error Bucket::Connect() {
       RetryWithFixedBackoff(5, 200, IsRetriable, lcb_cntl, connection_,
                             LCB_CNTL_SET, LCB_CNTL_OP_TIMEOUT, &lcb_timeout);
   if (result != LCB_SUCCESS) {
-    return FormatErrorAndDestroyConn("Unable to set timeout for bucket ops",
-                                     result);
+    return {FormatErrorAndDestroyConn("Unable to set timeout for bucket ops",
+                                      result),
+            std::make_unique<lcb_STATUS>(result)};
   }
 
   unsigned int enable_detailed_err_codes = 1;
@@ -166,13 +180,14 @@ Error Bucket::Connect() {
                                  LCB_CNTL_SET, LCB_CNTL_DETAILED_ERRCODES,
                                  &enable_detailed_err_codes);
   if (result != LCB_SUCCESS) {
-    return FormatErrorAndDestroyConn("Unable to set detailed error codes",
-                                     result);
+    return {
+        FormatErrorAndDestroyConn("Unable to set detailed error codes", result),
+        std::make_unique<lcb_STATUS>(result)};
   }
   LOG(logTrace) << __func__ << " connected to bucket " << RU(bucket_name_)
                 << " successfully" << std::endl;
   is_connected_ = true;
-  return nullptr;
+  return {nullptr, nullptr};
 }
 
 Error Bucket::FormatErrorAndDestroyConn(const std::string &message,
@@ -202,7 +217,7 @@ bool Bucket::MaybeRecreateConnOnAuthErr(const lcb_STATUS &status,
       is_connected_ = false;
       connection_ = nullptr;
     }
-    auto create_err = Connect();
+    auto [create_err, _] = Connect();
     if (create_err != nullptr) {
       connection_ = tmp_instance;
       if (connection_ != nullptr)
@@ -274,16 +289,16 @@ void Bucket::InvalidateCache(const MetaData &meta) {
 
   auto context = isolate_->GetCurrentContext();
   auto global = context->Global();
-  func->Call(context, global, 1, args);
+  (void)func->Call(context, global, 1, args);
 }
 
 std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
-Bucket::WriteCheckpoint(const MetaData &meta, const uint64_t& rootcas, const std::vector<std::string>& cleanup_checkpoints) {
-  if (!is_connected_) {
-    return {std::make_unique<std::string>("Connection is not initialized"), nullptr, nullptr};
-  }
-  const auto lcb_cursor_checkpoint_timeout = UnwrapData(isolate_)->lcb_cursor_checkpoint_timeout;
-  const auto cursor_checkpoint_timeout = UnwrapData(isolate_)->cursor_checkpoint_timeout;
+Bucket::WriteCheckpoint(const MetaData &meta, const uint64_t &rootcas,
+                        const std::vector<std::string> &cleanup_checkpoints) {
+  const auto lcb_cursor_checkpoint_timeout =
+      UnwrapData(isolate_)->lcb_cursor_checkpoint_timeout;
+  const auto cursor_checkpoint_timeout =
+      UnwrapData(isolate_)->cursor_checkpoint_timeout;
   const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
 
   // Setup subdoc specs
@@ -300,10 +315,11 @@ Bucket::WriteCheckpoint(const MetaData &meta, const uint64_t& rootcas, const std
   // Update this function's checkpoint
   std::string checkpoint_cas_path("_checkpoints." + fiid_ + ".cas");
   std::string CAS_macro(R"("${Mutation.CAS}")");
-  lcb_subdocspecs_dict_upsert(specs,0,
-    LCB_SUBDOCSPECS_F_MKINTERMEDIATES | LCB_SUBDOCSPECS_F_XATTR_MACROVALUES,
-    checkpoint_cas_path.c_str(), checkpoint_cas_path.size(),
-    CAS_macro.c_str(), CAS_macro.size());
+  lcb_subdocspecs_dict_upsert(
+      specs, 0,
+      LCB_SUBDOCSPECS_F_MKINTERMEDIATES | LCB_SUBDOCSPECS_F_XATTR_MACROVALUES,
+      checkpoint_cas_path.c_str(), checkpoint_cas_path.size(),
+      CAS_macro.c_str(), CAS_macro.size());
 
   // Note: all cas entries in xattrs are to be stamped with cas bytes swapped
   // to little endian followed by converting to hex string.
@@ -311,18 +327,18 @@ Bucket::WriteCheckpoint(const MetaData &meta, const uint64_t& rootcas, const std
   // comparison with _mou.pcas which is also written in same format.
   std::string checkpoint_pcas_path("_checkpoints." + fiid_ + ".pcas");
   auto hex_cas = "\"" + to_hex(byte_swap_64(rootcas)) + "\"";
-  lcb_subdocspecs_dict_upsert(specs, 1,
-    LCB_SUBDOCSPECS_F_MKINTERMEDIATES | LCB_SUBDOCSPECS_F_XATTRPATH,
-    checkpoint_pcas_path.c_str(), checkpoint_pcas_path.size(),
-    hex_cas.c_str(), hex_cas.size());
+  lcb_subdocspecs_dict_upsert(
+      specs, 1, LCB_SUBDOCSPECS_F_MKINTERMEDIATES | LCB_SUBDOCSPECS_F_XATTRPATH,
+      checkpoint_pcas_path.c_str(), checkpoint_pcas_path.size(),
+      hex_cas.c_str(), hex_cas.size());
 
   // Cleanup dirty checkpoints
   if (cleanup_checkpoints.size() > 0) {
     auto spec_counter = 2;
-    for(const std::string& checkpoint_id : cleanup_checkpoints) {
+    for (const std::string &checkpoint_id : cleanup_checkpoints) {
       std::string cleanup_path("_checkpoints." + checkpoint_id);
       lcb_subdocspecs_remove(specs, spec_counter, LCB_SUBDOCSPECS_F_XATTRPATH,
-        cleanup_path.c_str(), cleanup_path.size());
+                             cleanup_path.c_str(), cleanup_path.size());
       spec_counter++;
     }
   }
@@ -332,14 +348,15 @@ Bucket::WriteCheckpoint(const MetaData &meta, const uint64_t& rootcas, const std
   lcb_cmdsubdoc_create(&cmd);
   lcb_cmdsubdoc_specs(cmd, specs);
   lcb_cmdsubdoc_cas(cmd, meta.cas);
-  //lcb_cmdsubdoc_store_semantics(cmd, LCB_SUBDOC_STORE_UPSERT);
-  lcb_cmdsubdoc_collection(cmd, meta.scope.c_str(), meta.scope.size(), meta.collection.c_str(),
-    meta.collection.size());
+  // lcb_cmdsubdoc_store_semantics(cmd, LCB_SUBDOC_STORE_UPSERT);
+  lcb_cmdsubdoc_collection(cmd, meta.scope.c_str(), meta.scope.size(),
+                           meta.collection.c_str(), meta.collection.size());
   lcb_cmdsubdoc_key(cmd, meta.key.c_str(), meta.key.length());
   lcb_cmdsubdoc_timeout(cmd, lcb_cursor_checkpoint_timeout);
 
   // Run command
-  auto [err, err_code, result] = TryLcbCmdWithRefreshConnIfNecessary(*cmd, max_retry, cursor_checkpoint_timeout, LcbSubdocSet);
+  auto [err, err_code, result] = TryLcbCmdWithRefreshConnIfNecessary(
+      *cmd, max_retry, cursor_checkpoint_timeout, LcbSubdocSet);
   // Destroy command
   lcb_cmdsubdoc_destroy(cmd);
   lcb_subdocspecs_destroy(specs);
@@ -348,20 +365,15 @@ Bucket::WriteCheckpoint(const MetaData &meta, const uint64_t& rootcas, const std
   if (err != nullptr) {
     return {std::move(err), nullptr, nullptr};
   }
-  if (err_code != LCB_SUCCESS) {
+  if (err_code != nullptr && *err_code != LCB_SUCCESS) {
     ++lcb_retry_failure;
-    return {nullptr, std::make_unique<lcb_STATUS>(err_code), nullptr};
+    return {nullptr, std::move(err_code), nullptr};
   }
-  return {nullptr, std::make_unique<lcb_STATUS>(err_code), std::make_unique<Result>(std::move(result))};
+  return {nullptr, std::move(err_code), std::move(result)};
 }
 
 std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
 Bucket::Get(MetaData &meta) {
-  if (!is_connected_) {
-    return {std::make_unique<std::string>("Connection is not initialized"),
-            nullptr, nullptr};
-  }
-
   auto [error, scope, collection] = get_scope_and_collection_names(meta);
   if (error != nullptr) {
     return {std::move(error), nullptr, nullptr};
@@ -390,23 +402,17 @@ Bucket::Get(MetaData &meta) {
   if (err != nullptr) {
     return {std::move(err), nullptr, nullptr};
   }
-  if (err_code != LCB_SUCCESS) {
+  if (err_code != nullptr && *err_code != LCB_SUCCESS) {
     ++lcb_retry_failure;
-    return {nullptr, std::make_unique<lcb_STATUS>(err_code), nullptr};
+    return {nullptr, std::move(err_code), nullptr};
   }
 
   InvalidateCache(meta);
-  return {nullptr, std::make_unique<lcb_STATUS>(err_code),
-          std::make_unique<Result>(std::move(result))};
+  return {nullptr, std::move(err_code), std::move(result)};
 }
 
 std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
 Bucket::LookupIn(MetaData &meta, LookupInSpecs &specs) {
-  if (!is_connected_) {
-    return {std::make_unique<std::string>("Connection is not initialized"),
-            nullptr, nullptr};
-  }
-
   auto [error, scope, collection] = get_scope_and_collection_names(meta);
   if (error != nullptr) {
     return {std::move(error), nullptr, nullptr};
@@ -434,8 +440,8 @@ Bucket::LookupIn(MetaData &meta, LookupInSpecs &specs) {
   lcb_CMDSUBDOC *cmd;
   lcb_cmdsubdoc_create(&cmd);
   lcb_cmdsubdoc_specs(cmd, lcb_specs);
-  lcb_cmdsubdoc_collection(cmd, meta.scope.c_str(), meta.scope.size(), meta.collection.c_str(),
-                           meta.collection.size());
+  lcb_cmdsubdoc_collection(cmd, meta.scope.c_str(), meta.scope.size(),
+                           meta.collection.c_str(), meta.collection.size());
   lcb_cmdsubdoc_key(cmd, meta.key.c_str(), meta.key.size());
   lcb_cmdsubdoc_timeout(cmd, lcb_timeout);
 
@@ -444,43 +450,39 @@ Bucket::LookupIn(MetaData &meta, LookupInSpecs &specs) {
                                on_behalf_of_.size());
   }
   auto [err, err_code, result] = TryLcbCmdWithRefreshConnIfNecessary(
-    *cmd, max_retry, max_timeout, LcbSubdocGet);
+      *cmd, max_retry, max_timeout, LcbSubdocGet);
   lcb_cmdsubdoc_destroy(cmd);
   lcb_subdocspecs_destroy(lcb_specs);
   if (err != nullptr) {
     return {std::move(err), nullptr, nullptr};
   }
-  if (err_code != LCB_SUCCESS) {
+  if (err_code != nullptr && *err_code != LCB_SUCCESS) {
     ++lcb_retry_failure;
-    return {nullptr, std::make_unique<lcb_STATUS>(err_code), nullptr};
+    return {nullptr, std::move(err_code), nullptr};
   }
 
   std::ostringstream oss;
   oss << "[";
   int index = 0;
-  for (const auto &entry: result.lookupin_entries) {
-    if(index++ > 0) {
+  for (const auto &entry : result->lookupin_entries) {
+    if (index++ > 0) {
       oss << ",";
     }
     if (entry.err_code == LCB_SUCCESS)
-      oss << "{\"value\":" << entry.value << ",\"success\":" << "true}";
+      oss << "{\"value\":" << entry.value << ",\"success\":"
+          << "true}";
     else
-      oss << "{\"success\":" << "false}";
+      oss << "{\"success\":"
+          << "false}";
   }
   oss << "]";
-  result.value = oss.str();
+  result->value = oss.str();
 
-  return {nullptr, std::make_unique<lcb_STATUS>(err_code),
-          std::make_unique<Result>(std::move(result))};
+  return {nullptr, std::move(err_code), std::move(result)};
 }
 
 std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
 Bucket::GetWithMeta(MetaData &meta) {
-  if (!is_connected_) {
-    return {std::make_unique<std::string>("Connection is not initialized"),
-            nullptr, nullptr};
-  }
-
   auto [error, scope, collection] = get_scope_and_collection_names(meta);
   if (error != nullptr) {
     return {std::move(error), nullptr, nullptr};
@@ -526,26 +528,20 @@ Bucket::GetWithMeta(MetaData &meta) {
   if (err != nullptr) {
     return {std::move(err), nullptr, nullptr};
   }
-  if (err_code != LCB_SUCCESS) {
+  if (err_code != nullptr && *err_code != LCB_SUCCESS) {
     ++lcb_retry_failure;
-    return {nullptr, std::make_unique<lcb_STATUS>(err_code), nullptr};
+    return {nullptr, std::move(err_code), nullptr};
   }
 
-  if (!result.lookupin_entries.empty()) {
-    result.value = result.lookupin_entries[0].value;
+  if (result != nullptr && !(result->lookupin_entries.empty())) {
+    result->value = result->lookupin_entries[0].value;
   }
 
-  return {nullptr, std::make_unique<lcb_STATUS>(err_code),
-          std::make_unique<Result>(std::move(result))};
+  return {nullptr, std::move(err_code), std::move(result)};
 }
 
 std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
 Bucket::CounterWithoutXattr(MetaData &meta, int64_t delta) {
-  if (!is_connected_) {
-    return {std::make_unique<std::string>("Connection is not initialized"),
-            nullptr, nullptr};
-  }
-
   auto [error, scope, collection] = get_scope_and_collection_names(meta);
   if (error != nullptr) {
     return {std::move(error), nullptr, nullptr};
@@ -584,22 +580,16 @@ Bucket::CounterWithoutXattr(MetaData &meta, int64_t delta) {
   if (err != nullptr) {
     return {std::move(err), nullptr, nullptr};
   }
-  if (err_code != LCB_SUCCESS) {
+  if (err_code != nullptr && *err_code != LCB_SUCCESS) {
     ++lcb_retry_failure;
-    return {nullptr, std::make_unique<lcb_STATUS>(err_code), nullptr};
+    return {nullptr, std::move(err_code), nullptr};
   }
 
-  return {nullptr, std::make_unique<lcb_STATUS>(err_code),
-          std::make_unique<Result>(std::move(result))};
+  return {nullptr, std::move(err_code), std::move(result)};
 }
 
 std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
 Bucket::CounterWithXattr(MetaData &meta, int64_t delta) {
-  if (!is_connected_) {
-    return {std::make_unique<std::string>("Connection is not initialized"),
-            nullptr, nullptr};
-  }
-
   auto [error, scope, collection] = get_scope_and_collection_names(meta);
   if (error != nullptr) {
     return {std::move(error), nullptr, nullptr};
@@ -613,7 +603,8 @@ Bucket::CounterWithXattr(MetaData &meta, int64_t delta) {
   auto function_instance_id = GetFunctionInstanceID(isolate_);
   std::string function_instance_id_path("_eventing.fiid");
   lcb_subdocspecs_dict_upsert(
-      lcb_specs, 0, LCB_SUBDOCSPECS_F_MKINTERMEDIATES | LCB_SUBDOCSPECS_F_XATTRPATH,
+      lcb_specs, 0,
+      LCB_SUBDOCSPECS_F_MKINTERMEDIATES | LCB_SUBDOCSPECS_F_XATTRPATH,
       function_instance_id_path.c_str(), function_instance_id_path.size(),
       function_instance_id.c_str(), function_instance_id.size());
 
@@ -627,11 +618,10 @@ Bucket::CounterWithXattr(MetaData &meta, int64_t delta) {
 
   std::string CAS_path("_eventing.cas");
   std::string CAS_macro(R"("${Mutation.CAS}")");
-  lcb_subdocspecs_dict_upsert(lcb_specs,2,
-                              LCB_SUBDOCSPECS_F_MKINTERMEDIATES |
-                                  LCB_SUBDOCSPECS_F_XATTR_MACROVALUES,
-                              CAS_path.c_str(), CAS_path.size(),
-                              CAS_macro.c_str(), CAS_macro.size());
+  lcb_subdocspecs_dict_upsert(
+      lcb_specs, 2,
+      LCB_SUBDOCSPECS_F_MKINTERMEDIATES | LCB_SUBDOCSPECS_F_XATTR_MACROVALUES,
+      CAS_path.c_str(), CAS_path.size(), CAS_macro.c_str(), CAS_macro.size());
 
   std::string value_crc32_path("_eventing.crc");
   std::string value_crc32_macro(R"("${Mutation.value_crc32c}")");
@@ -672,22 +662,16 @@ Bucket::CounterWithXattr(MetaData &meta, int64_t delta) {
   if (err != nullptr) {
     return {std::move(err), nullptr, nullptr};
   }
-  if (err_code != LCB_SUCCESS) {
+  if (err_code != nullptr && *err_code != LCB_SUCCESS) {
     ++lcb_retry_failure;
-    return {nullptr, std::make_unique<lcb_STATUS>(err_code), nullptr};
+    return {nullptr, std::move(err_code), nullptr};
   }
 
-  return {nullptr, std::make_unique<lcb_STATUS>(err_code),
-          std::make_unique<Result>(std::move(result))};
+  return {nullptr, std::move(err_code), std::move(result)};
 }
 
 std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
 Bucket::MutateInWithoutXattr(MetaData &meta, MutateInSpecs &specs) {
-  if (!is_connected_) {
-    return {std::make_unique<std::string>("Connection is not initialized"),
-            nullptr, nullptr};
-  }
-
   auto [error, scope, collection] = get_scope_and_collection_names(meta);
   if (error != nullptr) {
     return {std::move(error), nullptr, nullptr};
@@ -728,22 +712,16 @@ Bucket::MutateInWithoutXattr(MetaData &meta, MutateInSpecs &specs) {
   if (err != nullptr) {
     return {std::move(err), nullptr, nullptr};
   }
-  if (err_code != LCB_SUCCESS) {
+  if (err_code != nullptr && *err_code != LCB_SUCCESS) {
     ++lcb_retry_failure;
-    return {nullptr, std::make_unique<lcb_STATUS>(err_code), nullptr};
+    return {nullptr, std::move(err_code), nullptr};
   }
 
-  return {nullptr, std::make_unique<lcb_STATUS>(err_code),
-          std::make_unique<Result>(std::move(result))};
+  return {nullptr, std::move(err_code), std::move(result)};
 }
 
 std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
 Bucket::MutateInWithXattr(MetaData &meta, MutateInSpecs &specs) {
-  if (!is_connected_) {
-    return {std::make_unique<std::string>("Connection is not initialized"),
-            nullptr, nullptr};
-  }
-
   auto [error, scope, collection] = get_scope_and_collection_names(meta);
   if (error != nullptr) {
     return {std::move(error), nullptr, nullptr};
@@ -757,7 +735,8 @@ Bucket::MutateInWithXattr(MetaData &meta, MutateInSpecs &specs) {
   auto function_instance_id = GetFunctionInstanceID(isolate_);
   std::string function_instance_id_path("_eventing.fiid");
   lcb_subdocspecs_dict_upsert(
-      lcb_specs, 0, LCB_SUBDOCSPECS_F_MKINTERMEDIATES | LCB_SUBDOCSPECS_F_XATTRPATH,
+      lcb_specs, 0,
+      LCB_SUBDOCSPECS_F_MKINTERMEDIATES | LCB_SUBDOCSPECS_F_XATTRPATH,
       function_instance_id_path.c_str(), function_instance_id_path.size(),
       function_instance_id.c_str(), function_instance_id.size());
 
@@ -771,11 +750,10 @@ Bucket::MutateInWithXattr(MetaData &meta, MutateInSpecs &specs) {
 
   std::string CAS_path("_eventing.cas");
   std::string CAS_macro(R"("${Mutation.CAS}")");
-  lcb_subdocspecs_dict_upsert(lcb_specs,2,
-                              LCB_SUBDOCSPECS_F_MKINTERMEDIATES |
-                                  LCB_SUBDOCSPECS_F_XATTR_MACROVALUES,
-                              CAS_path.c_str(), CAS_path.size(),
-                              CAS_macro.c_str(), CAS_macro.size());
+  lcb_subdocspecs_dict_upsert(
+      lcb_specs, 2,
+      LCB_SUBDOCSPECS_F_MKINTERMEDIATES | LCB_SUBDOCSPECS_F_XATTR_MACROVALUES,
+      CAS_path.c_str(), CAS_path.size(), CAS_macro.c_str(), CAS_macro.size());
 
   std::string value_crc32_path("_eventing.crc");
   std::string value_crc32_macro(R"("${Mutation.value_crc32c}")");
@@ -816,23 +794,17 @@ Bucket::MutateInWithXattr(MetaData &meta, MutateInSpecs &specs) {
   if (err != nullptr) {
     return {std::move(err), nullptr, nullptr};
   }
-  if (err_code != LCB_SUCCESS) {
+  if (err_code != nullptr && *err_code != LCB_SUCCESS) {
     ++lcb_retry_failure;
-    return {nullptr, std::make_unique<lcb_STATUS>(err_code), nullptr};
+    return {nullptr, std::move(err_code), nullptr};
   }
 
-  return {nullptr, std::make_unique<lcb_STATUS>(err_code),
-          std::make_unique<Result>(std::move(result))};
+  return {nullptr, std::move(err_code), std::move(result)};
 }
 
 std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
 Bucket::SetWithXattr(MetaData &meta, const std::string &value,
                      lcb_SUBDOC_STORE_SEMANTICS op_type) {
-  if (!is_connected_) {
-    return {std::make_unique<std::string>("Connection is not initialized"),
-            nullptr, nullptr};
-  }
-
   auto [error, scope, collection] = get_scope_and_collection_names(meta);
   if (error != nullptr) {
     return {std::move(error), nullptr, nullptr};
@@ -846,7 +818,8 @@ Bucket::SetWithXattr(MetaData &meta, const std::string &value,
   auto function_instance_id = GetFunctionInstanceID(isolate_);
   std::string function_instance_id_path("_eventing.fiid");
   lcb_subdocspecs_dict_upsert(
-      lcb_specs, 0, LCB_SUBDOCSPECS_F_MKINTERMEDIATES | LCB_SUBDOCSPECS_F_XATTRPATH,
+      lcb_specs, 0,
+      LCB_SUBDOCSPECS_F_MKINTERMEDIATES | LCB_SUBDOCSPECS_F_XATTRPATH,
       function_instance_id_path.c_str(), function_instance_id_path.size(),
       function_instance_id.c_str(), function_instance_id.size());
 
@@ -860,11 +833,10 @@ Bucket::SetWithXattr(MetaData &meta, const std::string &value,
 
   std::string CAS_path("_eventing.cas");
   std::string CAS_macro(R"("${Mutation.CAS}")");
-  lcb_subdocspecs_dict_upsert(lcb_specs,2,
-                              LCB_SUBDOCSPECS_F_MKINTERMEDIATES |
-                                  LCB_SUBDOCSPECS_F_XATTR_MACROVALUES,
-                              CAS_path.c_str(), CAS_path.size(),
-                              CAS_macro.c_str(), CAS_macro.size());
+  lcb_subdocspecs_dict_upsert(
+      lcb_specs, 2,
+      LCB_SUBDOCSPECS_F_MKINTERMEDIATES | LCB_SUBDOCSPECS_F_XATTR_MACROVALUES,
+      CAS_path.c_str(), CAS_path.size(), CAS_macro.c_str(), CAS_macro.size());
 
   std::string value_crc32_path("_eventing.crc");
   std::string value_crc32_macro(R"("${Mutation.value_crc32c}")");
@@ -906,24 +878,18 @@ Bucket::SetWithXattr(MetaData &meta, const std::string &value,
   if (err != nullptr) {
     return {std::move(err), nullptr, nullptr};
   }
-  if (err_code != LCB_SUCCESS) {
+  if (err_code && *err_code != LCB_SUCCESS) {
     ++lcb_retry_failure;
-    return {nullptr, std::make_unique<lcb_STATUS>(err_code), nullptr};
+    return {nullptr, std::move(err_code), nullptr};
   }
 
   InvalidateCache(meta);
-  return {nullptr, std::make_unique<lcb_STATUS>(err_code),
-          std::make_unique<Result>(std::move(result))};
+  return {nullptr, std::move(err_code), std::move(result)};
 }
 
 std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
 Bucket::SetWithoutXattr(MetaData &meta, const std::string &value,
                         lcb_STORE_OPERATION op_type, lcb_U32 doc_type) {
-  if (!is_connected_) {
-    return {std::make_unique<std::string>("Connection is not initialized"),
-            nullptr, nullptr};
-  }
-
   auto [error, scope, collection] = get_scope_and_collection_names(meta);
   if (error != nullptr) {
     return {std::move(error), nullptr, nullptr};
@@ -959,23 +925,17 @@ Bucket::SetWithoutXattr(MetaData &meta, const std::string &value,
     return {std::move(err), nullptr, nullptr};
   }
 
-  if (err_code != LCB_SUCCESS) {
+  if (err_code != nullptr && *err_code != LCB_SUCCESS) {
     ++lcb_retry_failure;
-    return {nullptr, std::make_unique<lcb_STATUS>(err_code), nullptr};
+    return {nullptr, std::move(err_code), nullptr};
   }
 
   InvalidateCache(meta);
-  return {nullptr, std::make_unique<lcb_STATUS>(err_code),
-          std::make_unique<Result>(std::move(result))};
+  return {nullptr, std::move(err_code), std::move(result)};
 }
 
 std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
 Bucket::DeleteWithXattr(MetaData &meta) {
-  if (!is_connected_) {
-    return {std::make_unique<std::string>("Connection is not initialized"),
-            nullptr, nullptr};
-  }
-
   auto [error, scope, collection] = get_scope_and_collection_names(meta);
   if (error != nullptr) {
     return {std::move(error), nullptr, nullptr};
@@ -989,7 +949,8 @@ Bucket::DeleteWithXattr(MetaData &meta) {
   auto function_instance_id = GetFunctionInstanceID(isolate_);
   std::string function_instance_id_path("_eventing.fiid");
   lcb_subdocspecs_dict_upsert(
-      lcb_specs, 0, LCB_SUBDOCSPECS_F_MKINTERMEDIATES | LCB_SUBDOCSPECS_F_XATTRPATH,
+      lcb_specs, 0,
+      LCB_SUBDOCSPECS_F_MKINTERMEDIATES | LCB_SUBDOCSPECS_F_XATTRPATH,
       function_instance_id_path.c_str(), function_instance_id_path.size(),
       function_instance_id.c_str(), function_instance_id.size());
 
@@ -1003,11 +964,10 @@ Bucket::DeleteWithXattr(MetaData &meta) {
 
   std::string CAS_path("_eventing.cas");
   std::string CAS_macro(R"("${Mutation.CAS}")");
-  lcb_subdocspecs_dict_upsert(lcb_specs,2,
-                              LCB_SUBDOCSPECS_F_MKINTERMEDIATES |
-                                  LCB_SUBDOCSPECS_F_XATTR_MACROVALUES,
-                              CAS_path.c_str(), CAS_path.size(),
-                              CAS_macro.c_str(), CAS_macro.size());
+  lcb_subdocspecs_dict_upsert(
+      lcb_specs, 2,
+      LCB_SUBDOCSPECS_F_MKINTERMEDIATES | LCB_SUBDOCSPECS_F_XATTR_MACROVALUES,
+      CAS_path.c_str(), CAS_path.size(), CAS_macro.c_str(), CAS_macro.size());
 
   std::string value_crc32_path("_eventing.crc");
   std::string value_crc32_macro(R"("${Mutation.value_crc32c}")");
@@ -1049,23 +1009,17 @@ Bucket::DeleteWithXattr(MetaData &meta) {
   if (err != nullptr) {
     return {std::move(err), nullptr, nullptr};
   }
-  if (err_code != LCB_SUCCESS) {
+  if (err_code != nullptr && *err_code != LCB_SUCCESS) {
     ++lcb_retry_failure;
-    return {nullptr, std::make_unique<lcb_STATUS>(err_code), nullptr};
+    return {nullptr, std::move(err_code), nullptr};
   }
 
   InvalidateCache(meta);
-  return {nullptr, std::make_unique<lcb_STATUS>(err_code),
-          std::make_unique<Result>(std::move(result))};
+  return {nullptr, std::move(err_code), std::move(result)};
 }
 
 std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
 Bucket::DeleteWithoutXattr(MetaData &meta) {
-  if (!is_connected_) {
-    return {std::make_unique<std::string>("Connection is not initialized"),
-            nullptr, nullptr};
-  }
-
   auto [error, scope, collection] = get_scope_and_collection_names(meta);
   if (error != nullptr) {
     return {std::move(error), nullptr, nullptr};
@@ -1097,23 +1051,17 @@ Bucket::DeleteWithoutXattr(MetaData &meta) {
   if (err != nullptr) {
     return {std::move(err), nullptr, nullptr};
   }
-  if (err_code != LCB_SUCCESS) {
+  if (err_code != nullptr && *err_code != LCB_SUCCESS) {
     ++lcb_retry_failure;
-    return {nullptr, std::make_unique<lcb_STATUS>(err_code), nullptr};
+    return {nullptr, std::move(err_code), nullptr};
   }
 
   InvalidateCache(meta);
-  return {nullptr, std::make_unique<lcb_STATUS>(err_code),
-          std::make_unique<Result>(std::move(result))};
+  return {nullptr, std::move(err_code), std::move(result)};
 }
 
 std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
 Bucket::TouchWithXattr(MetaData &meta) {
-  if (!is_connected_) {
-    return {std::make_unique<std::string>("Connection is not initialized"),
-            nullptr, nullptr};
-  }
-
   auto [error, scope, collection] = get_scope_and_collection_names(meta);
   if (error != nullptr) {
     return {std::move(error), nullptr, nullptr};
@@ -1127,7 +1075,8 @@ Bucket::TouchWithXattr(MetaData &meta) {
   auto function_instance_id = GetFunctionInstanceID(isolate_);
   std::string function_instance_id_path("_eventing.fiid");
   lcb_subdocspecs_dict_upsert(
-      lcb_specs, 0, LCB_SUBDOCSPECS_F_MKINTERMEDIATES | LCB_SUBDOCSPECS_F_XATTRPATH,
+      lcb_specs, 0,
+      LCB_SUBDOCSPECS_F_MKINTERMEDIATES | LCB_SUBDOCSPECS_F_XATTRPATH,
       function_instance_id_path.c_str(), function_instance_id_path.size(),
       function_instance_id.c_str(), function_instance_id.size());
 
@@ -1141,11 +1090,10 @@ Bucket::TouchWithXattr(MetaData &meta) {
 
   std::string CAS_path("_eventing.cas");
   std::string CAS_macro(R"("${Mutation.CAS}")");
-  lcb_subdocspecs_dict_upsert(lcb_specs,2,
-                              LCB_SUBDOCSPECS_F_MKINTERMEDIATES |
-                                  LCB_SUBDOCSPECS_F_XATTR_MACROVALUES,
-                              CAS_path.c_str(), CAS_path.size(),
-                              CAS_macro.c_str(), CAS_macro.size());
+  lcb_subdocspecs_dict_upsert(
+      lcb_specs, 2,
+      LCB_SUBDOCSPECS_F_MKINTERMEDIATES | LCB_SUBDOCSPECS_F_XATTR_MACROVALUES,
+      CAS_path.c_str(), CAS_path.size(), CAS_macro.c_str(), CAS_macro.size());
 
   std::string value_crc32_path("_eventing.crc");
   std::string value_crc32_macro(R"("${Mutation.value_crc32c}")");
@@ -1183,22 +1131,16 @@ Bucket::TouchWithXattr(MetaData &meta) {
   if (err != nullptr) {
     return {std::move(err), nullptr, nullptr};
   }
-  if (err_code != LCB_SUCCESS) {
+  if (err_code != nullptr && *err_code != LCB_SUCCESS) {
     ++lcb_retry_failure;
-    return {nullptr, std::make_unique<lcb_STATUS>(err_code), nullptr};
+    return {nullptr, std::move(err_code), nullptr};
   }
 
-  return {nullptr, std::make_unique<lcb_STATUS>(err_code),
-          std::make_unique<Result>(std::move(result))};
+  return {nullptr, std::move(err_code), std::move(result)};
 }
 
 std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
 Bucket::TouchWithoutXattr(MetaData &meta) {
-  if (!is_connected_) {
-    return {std::make_unique<std::string>("Connection is not initialized"),
-            nullptr, nullptr};
-  }
-
   auto [error, scope, collection] = get_scope_and_collection_names(meta);
   if (error != nullptr) {
     return {std::move(error), nullptr, nullptr};
@@ -1232,13 +1174,12 @@ Bucket::TouchWithoutXattr(MetaData &meta) {
     return {std::move(err), nullptr, nullptr};
   }
 
-  if (err_code != LCB_SUCCESS) {
+  if (err_code != nullptr && *err_code != LCB_SUCCESS) {
     ++lcb_retry_failure;
-    return {nullptr, std::make_unique<lcb_STATUS>(err_code), nullptr};
+    return {nullptr, std::move(err_code), nullptr};
   }
 
-  return {nullptr, std::make_unique<lcb_STATUS>(err_code),
-          std::make_unique<Result>(std::move(result))};
+  return {nullptr, std::move(err_code), std::move(result)};
 }
 
 // Performs the lcb related calls when bucket object is accessed
@@ -1459,9 +1400,14 @@ Error BucketBinding::InstallBinding(v8::Isolate *isolate,
     return std::move(err_new_obj);
   }
 
-  auto err_connect = bucket_.Connect();
+  auto [err_connect, _] = bucket_.Connect();
   if (err_connect != nullptr) {
-    return err_connect;
+    LOG(logWarning) << __func__ << " Unable to initialise bucket binding: "
+                    << RU(bucket_alias_) << " alias of keyspace: "
+                    << RU(bucket_.BucketName() + "." + bucket_.ScopeName() +
+                          "." + bucket_.CollectionName())
+                    << ", during installation because: " << *err_connect
+                    << std::endl;
   }
 
   (*obj)->SetInternalField(InternalFields::kBlockMutation,
@@ -1610,7 +1556,8 @@ bool BucketBinding::IsBucketObject(v8::Isolate *isolate,
 
   v8::HandleScope handle_scope(isolate);
 
-  auto binding_id = obj->GetInternalField(InternalFields::kBucketBindingId).As<v8::Value>();
+  auto binding_id =
+      obj->GetInternalField(InternalFields::kBucketBindingId).As<v8::Value>();
   if (binding_id.IsEmpty() || binding_id->IsNullOrUndefined() ||
       !binding_id->IsString()) {
     return false;
