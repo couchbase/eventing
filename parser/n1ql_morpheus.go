@@ -2,6 +2,7 @@ package parser
 
 import (
 	"github.com/couchbase/query/algebra"
+	"github.com/couchbase/query/expression"
 )
 
 func (qs *queryStmt) VisitCreateUser(stmt *algebra.CreateUser) (interface{}, error) {
@@ -47,4 +48,9 @@ func (qs *queryStmt) VisitAlterBucket(stmt *algebra.AlterBucket) (interface{}, e
 func (qs *queryStmt) VisitDropBucket(stmt *algebra.DropBucket) (interface{}, error) {
 	err := handleStmt(qs, stmt.Expressions())
 	return stmt, err
+}
+
+func (qe *queryExpr) VisitParenInfer(expr expression.ParenInfer) (interface{}, error) {
+	err := handleExpr(qe, expr.Children())
+	return expr, err
 }
