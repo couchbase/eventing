@@ -127,7 +127,7 @@ func (c *Consumer) sendWorkerThrMap(thrPartitionMap map[int][]uint16, sendToDebu
 }
 
 func (c *Consumer) sendFeatureMatrix(featureMatrix uint32) {
-	header, hBuilder := c.makeHeader(configChange, updateFeatureMatrix, 0, strconv.FormatInt(int64(featureMatrix), 10))
+	header, hBuilder := c.makeConfigChangeHeader(updateFeatureMatrix, strconv.FormatInt(int64(featureMatrix), 10))
 	m := &msgToTransmit{
 		msg: &message{
 			Header: header,
@@ -139,7 +139,7 @@ func (c *Consumer) sendFeatureMatrix(featureMatrix uint32) {
 }
 
 func (c *Consumer) sendWorkerMemQuota(memSize int64) {
-	header, hBuilder := c.makeHeader(appWorkerSetting, workerThreadMemQuota, 0, strconv.FormatInt(memSize, 10))
+	header, hBuilder := c.makeThrMemQuotaHeader(strconv.FormatInt(memSize, 10))
 	m := &msgToTransmit{
 		msg: &message{
 			Header: header,
@@ -321,7 +321,7 @@ func (c *Consumer) sendLoadV8Worker(appCode string, sendToDebugger bool) {
 }
 
 func (c *Consumer) sendGetLatencyStats() {
-	header, hBuilder := c.makeHeader(v8WorkerEvent, v8WorkerLatencyStats, 0, "")
+	header, hBuilder := c.makeV8EventHeader(v8WorkerLatencyStats, "")
 
 	c.msgProcessedRWMutex.Lock()
 	if _, ok := c.v8WorkerMessagesProcessed["latency_stats"]; !ok {
@@ -343,7 +343,7 @@ func (c *Consumer) sendGetLatencyStats() {
 }
 
 func (c *Consumer) refreshCurlLatencyStats() {
-	header, hBuilder := c.makeHeader(v8WorkerEvent, v8WorkerCurlLatencyStats, 0, "")
+	header, hBuilder := c.makeV8EventHeader(v8WorkerCurlLatencyStats, "")
 
 	c.msgProcessedRWMutex.Lock()
 	if _, ok := c.v8WorkerMessagesProcessed["curl_latency_stats"]; !ok {
@@ -365,7 +365,7 @@ func (c *Consumer) refreshCurlLatencyStats() {
 }
 
 func (c *Consumer) refreshInsight() {
-	header, hBuilder := c.makeHeader(v8WorkerEvent, v8WorkerInsight, 0, "")
+	header, hBuilder := c.makeV8EventHeader(v8WorkerInsight, "")
 
 	c.msgProcessedRWMutex.Lock()
 	if _, ok := c.v8WorkerMessagesProcessed["insight_stats"]; !ok {
@@ -387,7 +387,7 @@ func (c *Consumer) refreshInsight() {
 }
 
 func (c *Consumer) sendGetFailureStats(sendToDebugger bool) {
-	header, hBuilder := c.makeHeader(v8WorkerEvent, v8WorkerFailureStats, 0, "")
+	header, hBuilder := c.makeV8EventHeader(v8WorkerFailureStats, "")
 
 	c.msgProcessedRWMutex.Lock()
 	if _, ok := c.v8WorkerMessagesProcessed["failure_stats"]; !ok {
@@ -409,7 +409,7 @@ func (c *Consumer) sendGetFailureStats(sendToDebugger bool) {
 }
 
 func (c *Consumer) sendGetExecutionStats(sendToDebugger bool) {
-	header, hBuilder := c.makeHeader(v8WorkerEvent, v8WorkerExecutionStats, 0, "")
+	header, hBuilder := c.makeV8EventHeader(v8WorkerExecutionStats, "")
 
 	c.msgProcessedRWMutex.Lock()
 	if _, ok := c.v8WorkerMessagesProcessed["execution_stats"]; !ok {
@@ -431,7 +431,7 @@ func (c *Consumer) sendGetExecutionStats(sendToDebugger bool) {
 }
 
 func (c *Consumer) sendGetLcbExceptionStats(sendToDebugger bool) {
-	header, hBuilder := c.makeHeader(v8WorkerEvent, v8WorkerLcbExceptions, 0, "")
+	header, hBuilder := c.makeV8EventHeader(v8WorkerLcbExceptions, "")
 
 	c.msgProcessedRWMutex.Lock()
 	if _, ok := c.v8WorkerMessagesProcessed["lcb_exception_stats"]; !ok {
@@ -633,7 +633,7 @@ func (c *Consumer) sendPauseConsumer() {
 func (c *Consumer) sendUpdateEncryptionLevel(enforceTLS, encryptOn bool) {
 	logPrefix := "Consumer::sendUpdateEncryptionLevel"
 	level := c.getEncryptionLevelName(enforceTLS, encryptOn)
-	encryptHeader, hBuilder := c.makeHeader(configChange, updateEncryptionLevel, 0, level)
+	encryptHeader, hBuilder := c.makeConfigChangeHeader(updateEncryptionLevel, level)
 	msg := &msgToTransmit{
 		msg: &message{
 			Header: encryptHeader,
@@ -766,7 +766,7 @@ func (c *Consumer) sendMessage(m *msgToTransmit) error {
 	}
 
 	// Protocol encoding format:
-	//<headerSize><payloadSize><Header><Payload>
+	// <headerSize><payloadSize><Header><Payload>
 
 	c.sendMsgBufferRWMutex.Lock()
 	defer c.sendMsgBufferRWMutex.Unlock()

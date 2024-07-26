@@ -10,115 +10,53 @@
 // permissions and limitations under the License.
 
 #include "commands.h"
+#include <cassert>
 
-event_type getEvent(int8_t event) {
-  if (event == 1)
-    return eDCP;
-  if (event == 2)
-    return eV8_Worker;
-  if (event == 3)
-    return eApp_Worker_Setting;
-  if (event == 4)
-    return eTimer;
-  if (event == 5)
-    return eDebugger;
-  if (event == 6)
-    return eFilter;
-  if (event == 7)
-    return eInternal;
-  if (event == 8)
-    return ePauseConsumer;
-  if (event == 9)
-    return eConfigChange;
-  return Event_Unknown;
+event_type getEvent(uint8_t event) {
+  assert(static_cast<uint8_t>(event_type::startMarker) < event &&
+         event < static_cast<uint8_t>(event_type::endMarker));
+  return static_cast<event_type>(event);
 }
 
-v8_worker_opcode getV8WorkerOpcode(int8_t opcode) {
-  if (opcode == 1)
-    return oDispose;
-  if (opcode == 2)
-    return oInit;
-  if (opcode == 3)
-    return oTracker;
-  if (opcode == 4)
-    return oLoad;
-  if (opcode == 5)
-    return oTerminate;
-  if (opcode == 6)
-    return oUnused1;
-  if (opcode == 7)
-    return oUnused2;
-  if (opcode == 8)
-    return oGetLatencyStats;
-  if (opcode == 9)
-    return oGetFailureStats;
-  if (opcode == 10)
-    return oGetExecutionStats;
-  if (opcode == 11)
-    return oGetCompileInfo;
-  if (opcode == 12)
-    return oGetLcbExceptions;
-  if (opcode == 13)
-    return oGetCurlLatencyStats;
-  if (opcode == 14)
-    return oInsight;
-  return V8_Worker_Opcode_Unknown;
+v8_worker_opcode getV8WorkerOpcode(uint8_t opcode) {
+  assert(static_cast<uint8_t>(v8_worker_opcode::startMarker) < opcode &&
+         opcode < static_cast<uint8_t>(v8_worker_opcode::endMarker));
+  return static_cast<v8_worker_opcode>(opcode);
 }
 
-dcp_opcode getDCPOpcode(int8_t opcode) {
-  if (opcode == 1)
-    return oDelete;
-  if (opcode == 2)
-    return oMutation;
-  if (opcode == 3)
-    return oNoOp;
-  if (opcode == 4)
-    return oDeleteCid;
-  return DCP_Opcode_Unknown;
+dcp_opcode getDCPOpcode(uint8_t opcode) {
+  assert(static_cast<uint8_t>(dcp_opcode::startMarker) < opcode &&
+         opcode < static_cast<uint8_t>(dcp_opcode::endMarker));
+  return static_cast<dcp_opcode>(opcode);
 }
 
-app_worker_setting_opcode getAppWorkerSettingOpcode(int8_t opcode) {
-  if (opcode == 1)
-    return oLogLevel;
-  if (opcode == 2)
-    return oWorkerThreadCount;
-  if (opcode == 3)
-    return oWorkerThreadMap;
-  if (opcode == 4)
-    return oTimerContextSize;
-  if (opcode == 5)
-    return oVbMap;
-  if (opcode == 6)
-    return oWorkerMemQuota;
-  return App_Worker_Setting_Opcode_Unknown;
+app_worker_setting_opcode getAppWorkerSettingOpcode(uint8_t opcode) {
+  assert(static_cast<uint8_t>(app_worker_setting_opcode::startMarker) <
+             opcode &&
+         opcode < static_cast<uint8_t>(app_worker_setting_opcode::endMarker));
+  return static_cast<app_worker_setting_opcode>(opcode);
 }
 
-timer_opcode getTimerOpcode(int8_t opcode) {
-  if (opcode == 1)
-    return oTimer;
-  return Timer_Opcode_Unknown;
+filter_opcode getFilterOpcode(uint8_t opcode) {
+  assert(static_cast<uint8_t>(filter_opcode::startMarker) < opcode &&
+         opcode < static_cast<uint8_t>(filter_opcode::endMarker));
+  return static_cast<filter_opcode>(opcode);
 }
 
-filter_opcode getFilterOpcode(int8_t opcode) {
-  if (opcode == 1)
-    return oVbFilter;
-  if (opcode == 2)
-    return oProcessedSeqNo;
-  return Filter_Opcode_Unknown;
+debugger_opcode getDebuggerOpcode(uint8_t opcode) {
+  assert(static_cast<uint8_t>(debugger_opcode::startMarker) < opcode &&
+         opcode < static_cast<uint8_t>(debugger_opcode::endMarker));
+  return static_cast<debugger_opcode>(opcode);
 }
 
-debugger_opcode getDebuggerOpcode(int8_t opcode) {
-  if (opcode == 1)
-    return oDebuggerStart;
-  if (opcode == 2)
-    return oDebuggerStop;
-  return Debugger_Opcode_Unknown;
+config_opcode getConfigOpcode(uint8_t opcode) {
+  assert(static_cast<uint8_t>(config_opcode::startMarker) < opcode &&
+         opcode < static_cast<uint8_t>(config_opcode::endMarker));
+  return static_cast<config_opcode>(opcode);
 }
 
-config_opcode getConfigOpcode(int8_t opcode) {
-  if (opcode == 1)
-    return oUpdateDisableFeatureList;
-  if (opcode == 2)
-    return oUpdateEncryptionLevel;
-  return Config_Opcode_Unknown;
+internal_opcode getInternalOpcode(uint8_t opcode) {
+  assert(static_cast<uint8_t>(internal_opcode::startMarker) < opcode &&
+         opcode < static_cast<uint8_t>(internal_opcode::endMarker));
+  return static_cast<internal_opcode>(opcode);
 }

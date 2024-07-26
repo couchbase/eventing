@@ -930,37 +930,46 @@ void V8Worker::RouteMessage() {
                   << " partition: " << msg->header.partition << std::endl;
 
     event_processing_ongoing_.store(true);
-    auto evt = getEvent(msg->header.event);
+    const auto evt = getEvent(msg->header.event);
     switch (evt) {
-    case eDCP:
-      switch (getDCPOpcode(msg->header.opcode)) {
-      case oDelete:
+    case event_type::eDCP: {
+      const auto dcpOpcode = getDCPOpcode(msg->header.opcode);
+      switch (dcpOpcode) {
+      case dcp_opcode::oDelete:
         HandleDeleteEvent(msg);
         break;
 
-      case oMutation:
+      case dcp_opcode::oMutation:
         HandleMutationEvent(msg);
         break;
 
-      case oNoOp:
+      case dcp_opcode::oNoOp:
         HandleNoOpEvent(msg);
         break;
 
-      case oDeleteCid:
+      case dcp_opcode::oDeleteCid:
         HandleDeleteCidEvent(msg);
         break;
 
       default:
-        LOG(logError) << "Received invalid DCP opcode" << std::endl;
+        // SNH: Any invalid `uint8_t` to `enum class dcp_opcode` conversion will
+        // get caught by the `assert` in the function `getDCPOpcode` during
+        // testing and development.
+        // This `default` case is only for preventing unnecessary compiler
+        // warnings
+        LOG(logError) << "Received invalid DCP opcode "
+                      << static_cast<int>(dcpOpcode) << std::endl;
         break;
       }
       processed_events_size += msg->payload.GetSize();
       num_processed_events++;
       break;
+    }
 
-    case eInternal:
-      switch (msg->header.opcode) {
-      case oScanTimer: {
+    case event_type::eInternal: {
+      const auto internalOpcode = getInternalOpcode(msg->header.opcode);
+      switch (internalOpcode) {
+      case internal_opcode::oScanTimer: {
         auto iter = timer_store_->GetIterator();
         timer::TimerEvent evt;
         while (!stop_timer_scan_.load() && iter.GetNext(evt)) {
@@ -974,39 +983,57 @@ void V8Worker::RouteMessage() {
         scan_timer_.store(false);
         break;
       }
-      case oUpdateV8HeapSize: {
+      case internal_opcode::oUpdateV8HeapSize: {
         UpdateV8HeapSize();
         update_v8_heap_.store(false);
         break;
       }
-      case oRunGc: {
+      case internal_opcode::oRunGc: {
         ForceRunGarbageCollector();
         run_gc_.store(false);
         break;
       }
       default:
-        LOG(logError) << "Received invalid internal opcode" << std::endl;
+        // SNH: Any invalid `uint8_t` to `enum class internal_opcode` conversion
+        // will get caught by the `assert` in the function `getDCPOpcode` during
+        // testing and development.
+        // This `default` case is only for preventing unnecessary compiler
+        // warnings
+        LOG(logError) << "Received invalid internal opcode "
+                      << static_cast<int>(internalOpcode) << std::endl;
         break;
       }
       break;
-    case eDebugger:
-      switch (getDebuggerOpcode(msg->header.opcode)) {
-      case oDebuggerStart:
+    }
+
+    case event_type::eDebugger: {
+      const auto debuggerOpcode = getDebuggerOpcode(msg->header.opcode);
+      switch (debuggerOpcode) {
+      case debugger_opcode::oDebuggerStart:
         this->StartDebugger();
         break;
 
-      case oDebuggerStop:
+      case debugger_opcode::oDebuggerStop:
         this->StopDebugger();
         break;
 
       default:
-        LOG(logError) << "Received invalid debugger opcode" << std::endl;
+        // SNH: Any invalid `uint8_t` to `enum class debugger_opcode` conversion
+        // will get caught by the `assert` in the function `getDCPOpcode` during
+        // testing and development.
+        // This `default` case is only for preventing unnecessary compiler
+        // warnings
+        LOG(logError) << "Received invalid debugger opcode "
+                      << static_cast<int>(debuggerOpcode) << std::endl;
         break;
       }
       break;
-    case eConfigChange:
-      switch (getConfigOpcode(msg->header.opcode)) {
-      case oUpdateDisableFeatureList: {
+    }
+
+    case event_type::eConfigChange: {
+      const auto configOpcode = getConfigOpcode(msg->header.opcode);
+      switch (configOpcode) {
+      case config_opcode::oUpdateDisableFeatureList: {
         int32_t feature_matrix =
             static_cast<uint32_t>(std::stoul(msg->header.metadata));
         this->SetFeatureList(feature_matrix);
@@ -1014,12 +1041,26 @@ void V8Worker::RouteMessage() {
       }
 
       default:
-        LOG(logError) << "Received invalid config opcode" << std::endl;
+        // SNH: Any invalid `uint8_t` to `enum class config_opcode` conversion
+        // will get caught by the `assert` in the function `getDCPOpcode` during
+        // testing and development.
+        // This `default` case is only for preventing unnecessary compiler
+        // warnings
+        LOG(logError) << "Received invalid config opcode "
+                      << static_cast<int>(configOpcode) << std::endl;
         break;
       }
       break;
+    }
+
     default:
-      LOG(logError) << "Received unsupported event " << evt << std::endl;
+      // SNH: Any invalid `uint8_t` to `enum class event_type` conversion will
+      // get caught by the `assert` in the function `getDCPOpcode` during
+      // testing and development.
+      // This `default` case is only for preventing unnecessary compiler
+      // warnings
+      LOG(logError) << "Received unsupported event " << static_cast<int>(evt)
+                    << std::endl;
       break;
     }
 
@@ -1686,7 +1727,8 @@ void V8Worker::GetBucketOpsMessages(std::vector<uv_buf_t> &messages) {
     if (seq > 0) {
       std::string seq_no = std::to_string(vb) + "::" + std::to_string(seq);
       auto curr_messages =
-          BuildResponse(seq_no, mBucket_Ops_Response, checkpointResponse);
+          BuildResponse(seq_no, resp_msg_type::mBucket_Ops_Response,
+                        bucket_ops_response_opcode::checkpointResponse);
       for (auto &msg : curr_messages) {
         messages.push_back(msg);
       }
@@ -1697,14 +1739,15 @@ void V8Worker::GetBucketOpsMessages(std::vector<uv_buf_t> &messages) {
   }
 }
 
-std::vector<uv_buf_t> V8Worker::BuildResponse(const std::string &payload,
-                                              int8_t msg_type,
-                                              int8_t response_opcode) {
+std::vector<uv_buf_t>
+V8Worker::BuildResponse(const std::string &payload, resp_msg_type msg_type,
+                        bucket_ops_response_opcode response_opcode) {
   std::vector<uv_buf_t> messages;
   flatbuffers::FlatBufferBuilder builder;
   auto msg_offset = builder.CreateString(payload);
-  auto r = flatbuf::response::CreateResponse(builder, msg_type, response_opcode,
-                                             msg_offset);
+  auto r = flatbuf::response::CreateResponse(
+      builder, static_cast<int8_t>(msg_type),
+      static_cast<int8_t>(response_opcode), msg_offset);
   builder.Finish(r);
   uint32_t length = builder.GetSize();
 
