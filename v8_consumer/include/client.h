@@ -32,8 +32,8 @@ int64_t timer_context_size;
 
 typedef struct resp_msg_s {
   std::string msg;
-  uint8_t msg_type;
-  uint8_t opcode;
+  resp_msg_type msg_type;
+  v8_worker_config_opcode opcode;
 } resp_msg_t;
 
 typedef union {
@@ -88,7 +88,7 @@ public:
 
   static void StopUvLoop(uv_async_t *);
 
-  void SendFilterAck(int opcode, int msgtype, int vb_no, int64_t seq_no,
+  void SendFilterAck(filter_opcode opcode, resp_msg_type msgtype, int vb_no, int64_t seq_no,
                      bool skip_ack);
 
   void SetNsServerPort(const std::string &port) { ns_server_port_ = port; }

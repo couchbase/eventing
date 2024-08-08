@@ -420,7 +420,8 @@ void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
 
             auto flatbuf_msg = builder.CreateString(resp_msg_->msg.c_str());
             auto r = flatbuf::response::CreateResponse(
-                builder, resp_msg_->msg_type, resp_msg_->opcode, flatbuf_msg);
+                builder, static_cast<int8_t>(resp_msg_->msg_type),
+                static_cast<int8_t>(resp_msg_->opcode), flatbuf_msg);
             builder.Finish(r);
 
             uint32_t s = builder.GetSize();
@@ -434,8 +435,9 @@ void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
 
             // Reset the values
             resp_msg_->msg.clear();
-            resp_msg_->msg_type = 0;
-            resp_msg_->opcode = 0;
+            resp_msg_->msg_type = resp_msg_type::Msg_Unknown;
+            resp_msg_->opcode =
+                v8_worker_config_opcode::V8_Worker_Config_Opcode_Unknown;
           }
 
           // Flush the aggregate item count in queues for all running
@@ -461,7 +463,9 @@ void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
             flatbuffers::FlatBufferBuilder builder;
             auto flatbuf_msg = builder.CreateString(queue_stats.str());
             auto r = flatbuf::response::CreateResponse(
-                builder, mV8_Worker_Config, oQueueSize, flatbuf_msg);
+                builder, static_cast<int8_t>(resp_msg_type::mV8_Worker_Config),
+                static_cast<int8_t>(v8_worker_config_opcode::oQueueSize),
+                flatbuf_msg);
             builder.Finish(r);
 
             uint32_t s = builder.GetSize();
@@ -535,15 +539,13 @@ void AppWorker::RouteMessageWithResponse(
   const flatbuffers::Vector<flatbuffers::Offset<flatbuf::payload::VbsThreadMap>>
       *thr_map;
 
-  LOG(logTrace) << "Event: " << static_cast<int16_t>(worker_msg->header.event)
-                << " Opcode: "
-                << static_cast<int16_t>(worker_msg->header.opcode) << std::endl;
+  LOG(logTrace) << "Event: " << worker_msg->header.event
+                << " Opcode: " << worker_msg->header.opcode << std::endl;
 
   switch (getEvent(worker_msg->header.event)) {
-  case eV8_Worker:
+  case event_type::eV8_Worker:
     switch (getV8WorkerOpcode(worker_msg->header.opcode)) {
-    case oDispose:
-    case oInit:
+    case v8_worker_opcode::oInit:
       payload = flatbuf::payload::GetPayload(
           (const void *)worker_msg->payload.payload.c_str());
 
@@ -622,7 +624,7 @@ void AppWorker::RouteMessageWithResponse(
         v8worker_init_done_ = true;
       }
       break;
-    case oTracker:
+    case v8_worker_opcode::oTracker:
       for (int16_t i = 0; i < thr_count_; i++) {
         bool enable = false;
         std::istringstream(worker_msg->header.metadata) >> std::boolalpha >>
@@ -635,7 +637,7 @@ void AppWorker::RouteMessageWithResponse(
       }
       msg_priority_ = true;
       break;
-    case oLoad:
+    case v8_worker_opcode::oLoad:
       LOG(logDebug) << "Loading app code:" << RM(worker_msg->header.metadata)
                     << std::endl;
       for (int16_t i = 0; i < thr_count_; i++) {
@@ -646,59 +648,57 @@ void AppWorker::RouteMessageWithResponse(
       }
       msg_priority_ = true;
       break;
-    case oTerminate:
-      break;
 
-    case oGetLatencyStats:
+    case v8_worker_opcode::oGetLatencyStats:
       resp_msg_->msg = latency_stats_.ToString();
-      resp_msg_->msg_type = mV8_Worker_Config;
-      resp_msg_->opcode = oLatencyStats;
+      resp_msg_->msg_type = resp_msg_type::mV8_Worker_Config;
+      resp_msg_->opcode = v8_worker_config_opcode::oLatencyStats;
       msg_priority_ = true;
       break;
 
-    case oGetCurlLatencyStats:
+    case v8_worker_opcode::oGetCurlLatencyStats:
       resp_msg_->msg = curl_latency_stats_.ToString();
-      resp_msg_->msg_type = mV8_Worker_Config;
-      resp_msg_->opcode = oCurlLatencyStats;
+      resp_msg_->msg_type = resp_msg_type::mV8_Worker_Config;
+      resp_msg_->opcode = v8_worker_config_opcode::oCurlLatencyStats;
       msg_priority_ = true;
       break;
 
-    case oInsight:
+    case v8_worker_opcode::oInsight:
       resp_msg_->msg = GetInsight();
-      resp_msg_->msg_type = mV8_Worker_Config;
-      resp_msg_->opcode = oCodeInsights;
+      resp_msg_->msg_type = resp_msg_type::mV8_Worker_Config;
+      resp_msg_->opcode = v8_worker_config_opcode::oCodeInsights;
       msg_priority_ = true;
       LOG(logDebug) << "Responding with insight " << resp_msg_->msg
                     << std::endl;
       break;
 
-    case oGetFailureStats:
+    case v8_worker_opcode::oGetFailureStats:
       LOG(logTrace) << "v8worker failure stats : " << GetFailureStats()
                     << std::endl;
 
       resp_msg_->msg.assign(GetFailureStats());
-      resp_msg_->msg_type = mV8_Worker_Config;
-      resp_msg_->opcode = oFailureStats;
+      resp_msg_->msg_type = resp_msg_type::mV8_Worker_Config;
+      resp_msg_->opcode = v8_worker_config_opcode::oFailureStats;
       msg_priority_ = true;
       break;
-    case oGetExecutionStats:
+    case v8_worker_opcode::oGetExecutionStats:
       resp_msg_->msg.assign(
           GetExecutionStats(workers_, (function_name_ == "test")));
-      resp_msg_->msg_type = mV8_Worker_Config;
-      resp_msg_->opcode = oExecutionStats;
+      resp_msg_->msg_type = resp_msg_type::mV8_Worker_Config;
+      resp_msg_->opcode = v8_worker_config_opcode::oExecutionStats;
       msg_priority_ = true;
       break;
-    case oGetCompileInfo:
+    case v8_worker_opcode::oGetCompileInfo:
       LOG(logDebug) << "Compiling app code:" << RM(worker_msg->header.metadata)
                     << std::endl;
       compile_resp = workers_[0]->Compile(worker_msg->header.metadata);
 
       resp_msg_->msg.assign(compile_resp);
-      resp_msg_->msg_type = mV8_Worker_Config;
-      resp_msg_->opcode = oCompileInfo;
+      resp_msg_->msg_type = resp_msg_type::mV8_Worker_Config;
+      resp_msg_->opcode = v8_worker_config_opcode::oCompileInfo;
       msg_priority_ = true;
       break;
-    case oGetLcbExceptions:
+    case v8_worker_opcode::oGetLcbExceptions:
       for (const auto &w : workers_) {
         w.second->ListLcbExceptions(agg_lcb_exceptions);
       }
@@ -710,21 +710,20 @@ void AppWorker::RouteMessageWithResponse(
       }
 
       resp_msg_->msg.assign(estats.dump());
-      resp_msg_->msg_type = mV8_Worker_Config;
-      resp_msg_->opcode = oLcbExceptions;
+      resp_msg_->msg_type = resp_msg_type::mV8_Worker_Config;
+      resp_msg_->opcode = v8_worker_config_opcode::oLcbExceptions;
       msg_priority_ = true;
       break;
-    case oVersion:
     default:
-      LOG(logError) << "Opcode " << getV8WorkerOpcode(worker_msg->header.opcode)
+      LOG(logError) << "Opcode " << worker_msg->header.opcode
                     << "is not implemented for eV8Worker" << std::endl;
       ++e_v8_worker_lost;
       break;
     }
     break;
-  case eDCP:
+  case event_type::eDCP:
     switch (getDCPOpcode(worker_msg->header.opcode)) {
-    case oDelete:
+    case dcp_opcode::oDelete:
       worker_index = current_partition_thr_map_[worker_msg->header.partition];
       if (workers_[worker_index] != nullptr) {
         enqueued_dcp_delete_msg_counter++;
@@ -735,7 +734,7 @@ void AppWorker::RouteMessageWithResponse(
         ++delete_events_lost;
       }
       break;
-    case oMutation:
+    case dcp_opcode::oMutation:
       worker_index = current_partition_thr_map_[worker_msg->header.partition];
       if (workers_[worker_index] != nullptr) {
         enqueued_dcp_mutation_msg_counter++;
@@ -746,13 +745,13 @@ void AppWorker::RouteMessageWithResponse(
         ++mutation_events_lost;
       }
       break;
-    case oNoOp:
+    case dcp_opcode::oNoOp:
       worker_index = current_partition_thr_map_[worker_msg->header.partition];
       if (workers_[worker_index] != nullptr) {
         workers_[worker_index]->PushBack(std::move(worker_msg));
       }
       break;
-    case oDeleteCid:
+    case dcp_opcode::oDeleteCid:
       worker_index = current_partition_thr_map_[worker_msg->header.partition];
       if (workers_[worker_index] != nullptr) {
         workers_[worker_index]->UpdateDeletedCid(worker_msg);
@@ -760,15 +759,15 @@ void AppWorker::RouteMessageWithResponse(
       }
       break;
     default:
-      LOG(logError) << "Opcode " << getDCPOpcode(worker_msg->header.opcode)
+      LOG(logError) << "Opcode " << worker_msg->header.opcode
                     << "is not implemented for eDCP" << std::endl;
       ++e_dcp_lost;
       break;
     }
     break;
-  case eFilter:
+  case event_type::eFilter:
     switch (getFilterOpcode(worker_msg->header.opcode)) {
-    case oVbFilter: {
+    case filter_opcode::oVbFilter: {
       worker_index = current_partition_thr_map_[worker_msg->header.partition];
       if (workers_[worker_index] != nullptr) {
         LOG(logInfo) << "Received filter event from Go "
@@ -786,7 +785,8 @@ void AppWorker::RouteMessageWithResponse(
           }
           worker->RemoveTimerPartition(parsed_meta->vb);
           lck.unlock();
-          SendFilterAck(oVbFilter, mFilterAck, parsed_meta->vb,
+          SendFilterAck(filter_opcode::oVbFilter,
+                        resp_msg_type::mFilterAck, parsed_meta->vb,
                         last_processed_seq_no, skip_ack);
         }
       } else {
@@ -794,7 +794,7 @@ void AppWorker::RouteMessageWithResponse(
                       << " is null" << std::endl;
       }
     } break;
-    case oProcessedSeqNo:
+    case filter_opcode::oProcessedSeqNo:
       worker_index = elected_partition_thr_map_[worker_msg->header.partition];
       if (workers_[worker_index] != nullptr) {
         LOG(logInfo) << "Received update processed seq_no event from Go "
@@ -811,12 +811,12 @@ void AppWorker::RouteMessageWithResponse(
       }
       break;
     default:
-      LOG(logError) << "Opcode " << getFilterOpcode(worker_msg->header.opcode)
+      LOG(logError) << "Opcode " << worker_msg->header.opcode
                     << "is not implemented for filtering" << std::endl;
       break;
     }
     break;
-  case ePauseConsumer: {
+  case event_type::ePauseConsumer: {
     pause_consumer_.store(true);
     std::unordered_map<int64_t, uint64_t> lps_map;
     LOG(logInfo) << "Received pause event from Go" << std::endl;
@@ -835,21 +835,21 @@ void AppWorker::RouteMessageWithResponse(
     LOG(logInfo) << "Pause event processing complete. Sending ack" << std::endl;
     SendPauseAck(lps_map);
   } break;
-  case eApp_Worker_Setting:
+  case event_type::eApp_Worker_Setting:
     switch (getAppWorkerSettingOpcode(worker_msg->header.opcode)) {
-    case oLogLevel:
+    case app_worker_setting_opcode::oLogLevel:
       SystemLog::setLogLevel(LevelFromString(worker_msg->header.metadata));
       LOG(logInfo) << "Configured log level: " << worker_msg->header.metadata
                    << std::endl;
       msg_priority_ = true;
       break;
-    case oWorkerThreadCount:
+    case app_worker_setting_opcode::oWorkerThreadCount:
       LOG(logInfo) << "Worker thread count: " << worker_msg->header.metadata
                    << std::endl;
       thr_count_ = int16_t(std::stoi(worker_msg->header.metadata));
       msg_priority_ = true;
       break;
-    case oWorkerThreadMap:
+    case app_worker_setting_opcode::oWorkerThreadMap:
       // TODO: Depricate oWorkerThreadMap because the new thread_map is being
       // computed in the Appworker
       payload = flatbuf::payload::GetPayload(
@@ -870,14 +870,14 @@ void AppWorker::RouteMessageWithResponse(
       }
       msg_priority_ = true;
       break;
-    case oTimerContextSize:
+    case app_worker_setting_opcode::oTimerContextSize:
       timer_context_size = std::stol(worker_msg->header.metadata);
       LOG(logInfo) << "Setting timer_context_size to " << timer_context_size
                    << std::endl;
       msg_priority_ = true;
       break;
 
-    case oVbMap: {
+    case app_worker_setting_opcode::oVbMap: {
       payload = flatbuf::payload::GetPayload(
           (const void *)worker_msg->payload.payload.c_str());
       auto vb_map = payload->vb_map();
@@ -920,23 +920,24 @@ void AppWorker::RouteMessageWithResponse(
       LOG(logInfo) << "Updating vbucket map, vbmap :" << oss.str() << std::endl;
     } break;
 
-    case oWorkerMemQuota: {
+    case app_worker_setting_opcode::oWorkerMemQuota: {
       memory_quota_ = std::stoll(worker_msg->header.metadata);
       msg_priority_ = true;
       break;
     }
     default:
       LOG(logError) << "Opcode "
-                    << getAppWorkerSettingOpcode(worker_msg->header.opcode)
+                    << static_cast<int>(
+                           getAppWorkerSettingOpcode(worker_msg->header.opcode))
                     << "is not implemented for eApp_Worker_Setting"
                     << std::endl;
       ++e_app_worker_setting_lost;
       break;
     }
     break;
-  case eDebugger:
+  case event_type::eDebugger:
     switch (getDebuggerOpcode(worker_msg->header.opcode)) {
-    case oDebuggerStart:
+    case debugger_opcode::oDebuggerStart:
       worker_index = elected_partition_thr_map_[worker_msg->header.partition];
       if (workers_[worker_index] != nullptr) {
         workers_[worker_index]->PushBack(std::move(worker_msg));
@@ -946,7 +947,7 @@ void AppWorker::RouteMessageWithResponse(
                       << " is null" << std::endl;
       }
       break;
-    case oDebuggerStop:
+    case debugger_opcode::oDebuggerStop:
       worker_index = elected_partition_thr_map_[worker_msg->header.partition];
       if (workers_[worker_index] != nullptr) {
         workers_[worker_index]->PushBack(std::move(worker_msg));
@@ -957,15 +958,15 @@ void AppWorker::RouteMessageWithResponse(
       }
       break;
     default:
-      LOG(logError) << "Opcode " << getDebuggerOpcode(worker_msg->header.opcode)
+      LOG(logError) << "Opcode " << worker_msg->header.opcode
                     << "is not implemented for eDebugger" << std::endl;
       ++e_debugger_lost;
       break;
     }
     break;
-  case eConfigChange:
+  case event_type::eConfigChange:
     switch (getConfigOpcode(worker_msg->header.opcode)) {
-    case oUpdateDisableFeatureList:
+    case config_opcode::oUpdateDisableFeatureList:
       for (auto &v8_worker : workers_) {
         std::unique_ptr<WorkerMessage> msg(new WorkerMessage);
         msg->header.event = worker_msg->header.event;
@@ -974,7 +975,7 @@ void AppWorker::RouteMessageWithResponse(
         v8_worker.second->PushFront(std::move(msg));
       }
       break;
-    case oUpdateEncryptionLevel: {
+    case config_opcode::oUpdateEncryptionLevel: {
       auto new_encryption_level = worker_msg->header.metadata;
       if (curr_encryption_level != new_encryption_level) {
         LOG(logInfo) << "Encryption level changed from "
@@ -1167,8 +1168,9 @@ void AppWorker::EventGenLoop() {
               if (!v8_worker.second->scan_timer_.load()) {
                 v8_worker.second->scan_timer_.store(true);
                 std::unique_ptr<WorkerMessage> msg(new WorkerMessage);
-                msg->header.event = eInternal + 1;
-                msg->header.opcode = oScanTimer;
+                msg->header.event = static_cast<uint8_t>(event_type::eInternal);
+                msg->header.opcode =
+                    static_cast<uint8_t>(internal_opcode::oScanTimer);
                 v8_worker.second->PushFront(std::move(msg));
               }
             }
@@ -1179,8 +1181,9 @@ void AppWorker::EventGenLoop() {
             if (!v8_worker.second->update_v8_heap_.load()) {
               v8_worker.second->update_v8_heap_.store(true);
               std::unique_ptr<WorkerMessage> msg(new WorkerMessage);
-              msg->header.event = eInternal + 1;
-              msg->header.opcode = oUpdateV8HeapSize;
+              msg->header.event = static_cast<uint8_t>(event_type::eInternal);
+              msg->header.opcode =
+                  static_cast<uint8_t>(internal_opcode::oUpdateV8HeapSize);
               v8_worker.second->PushFront(std::move(msg));
             }
           }
@@ -1198,8 +1201,9 @@ void AppWorker::EventGenLoop() {
                  approx_memory > worker->memory_quota_ * 0.8)) {
               v8_worker.second->run_gc_.store(true);
               std::unique_ptr<WorkerMessage> msg(new WorkerMessage);
-              msg->header.event = eInternal + 1;
-              msg->header.opcode = oRunGc;
+              msg->header.event = static_cast<uint8_t>(event_type::eInternal);
+              msg->header.opcode =
+                  static_cast<uint8_t>(internal_opcode::oRunGc);
               v8_worker.second->PushFront(std::move(msg));
             }
           }
@@ -1220,7 +1224,7 @@ void AppWorker::StopUvLoop(uv_async_t *async) {
   uv_stop(handle);
 }
 
-void AppWorker::SendFilterAck(int opcode, int msgtype, int vb_no,
+void AppWorker::SendFilterAck(filter_opcode opcode, resp_msg_type msgtype, int vb_no,
                               int64_t seq_no, bool skip_ack) {
   std::ostringstream filter_ack;
   filter_ack << R"({"vb":)";
@@ -1229,8 +1233,8 @@ void AppWorker::SendFilterAck(int opcode, int msgtype, int vb_no,
   filter_ack << skip_ack << "}";
 
   resp_msg_->msg.assign(filter_ack.str());
-  resp_msg_->msg_type = msgtype;
-  resp_msg_->opcode = opcode;
+  resp_msg_->msg_type = static_cast<resp_msg_type>(msgtype);
+  resp_msg_->opcode = static_cast<v8_worker_config_opcode>(opcode);
   msg_priority_ = true;
   LOG(logInfo) << "vb: " << vb_no << " seqNo: " << seq_no
                << " skip_ack: " << skip_ack << " sending filter ack to Go"
@@ -1259,7 +1263,7 @@ void AppWorker::SendPauseAck(
     lps_list.push_back(lps_info);
   }
   resp_msg_->msg.assign(lps_list.dump());
-  resp_msg_->msg_type = mPauseAck;
+  resp_msg_->msg_type = resp_msg_type::mPauseAck;
   msg_priority_ = true;
 }
 

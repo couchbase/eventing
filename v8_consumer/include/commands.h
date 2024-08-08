@@ -13,98 +13,116 @@
 #define COMMANDS_H
 
 #include <iostream>
+#include <cstdint>
+
+// This enum class is only used within the C++ layer. It does not have any Go
+// counterpart.
+enum class internal_opcode {
+  startMarker,
+  oScanTimer,
+  oUpdateV8HeapSize,
+  oRunGc,
+  endMarker
+};
 
 // Opcodes for incoming messages from Go to C++
-enum event_type {
+
+// This aligns with the `eventType` in the file `consumer/protocol.go`
+enum class event_type {
+  startMarker,
   eDCP,
   eV8_Worker,
   eApp_Worker_Setting,
-  eTimer,
   eDebugger,
   eFilter,
   eInternal,
   ePauseConsumer,
   eConfigChange,
-  Event_Unknown
+  endMarker
 };
 
-enum v8_worker_opcode {
-  oDispose,
+// This aligns with the `v8WorkerOpcode` in the file `consumer/protocol.go`
+enum class v8_worker_opcode {
+  startMarker,
   oInit,
   oTracker,
   oLoad,
-  oTerminate,
-  oUnused1,
-  oUnused2,
   oGetLatencyStats,
   oGetFailureStats,
   oGetExecutionStats,
   oGetCompileInfo,
   oGetLcbExceptions,
   oGetCurlLatencyStats,
-  oVersion,
   oInsight,
-  V8_Worker_Opcode_Unknown
+  endMarker
 };
 
-enum dcp_opcode { oDelete, oMutation, oNoOp, oDeleteCid, DCP_Opcode_Unknown };
-
-enum filter_opcode { oVbFilter, oProcessedSeqNo, Filter_Opcode_Unknown };
-
-enum internal_opcode {
-  oScanTimer,
-  oUpdateV8HeapSize,
-  oRunGc,
-  Internal_Opcode_Unknown
+// This aligns with the `dcpOpcode` in the file `consumer/protocol.go`
+enum class dcp_opcode {
+  startMarker,
+  oDelete,
+  oMutation,
+  oNoOp,
+  oDeleteCid,
+  endMarker,
 };
 
-enum app_worker_setting_opcode {
+// This aligns with the `filterOpcode` in the file `consumer/protocol.go`
+enum class filter_opcode { startMarker, oVbFilter, oProcessedSeqNo, endMarker };
+
+// This aligns with the `appWorkerSettingsOpcode` in the file
+// `consumer/protocol.go`
+enum class app_worker_setting_opcode {
+  startMarker,
   oLogLevel,
   oWorkerThreadCount,
   oWorkerThreadMap,
   oTimerContextSize,
   oVbMap,
   oWorkerMemQuota,
-  App_Worker_Setting_Opcode_Unknown
+  endMarker
 };
 
-enum timer_opcode { oTimer, oCronTimer, Timer_Opcode_Unknown };
+// This aligns with the `debuggerOpcode` in the file `consumer/protocol.go`
+enum class debugger_opcode {
+  startMarker,
+  oDebuggerStart,
+  oDebuggerStop,
+  endMarker
+};
 
-enum debugger_opcode { oDebuggerStart, oDebuggerStop, Debugger_Opcode_Unknown };
-
-enum config_opcode {
+// This aligns with the `configOpcode` in the file `consumer/protocol.go`
+enum class config_opcode {
+  startMarker,
   oUpdateDisableFeatureList,
   oUpdateEncryptionLevel,
-  Config_Opcode_Unknown
+  endMarker
 };
 
-event_type getEvent(int8_t event);
-v8_worker_opcode getV8WorkerOpcode(int8_t opcode);
-dcp_opcode getDCPOpcode(int8_t opcode);
-app_worker_setting_opcode getAppWorkerSettingOpcode(int8_t opcode);
-filter_opcode getFilterOpcode(int8_t opcode);
-timer_opcode getTimerOpcode(int8_t opcode);
-debugger_opcode getDebuggerOpcode(int8_t opcode);
-config_opcode getConfigOpcode(int8_t opcode);
+event_type getEvent(uint8_t event);
+v8_worker_opcode getV8WorkerOpcode(uint8_t opcode);
+dcp_opcode getDCPOpcode(uint8_t opcode);
+app_worker_setting_opcode getAppWorkerSettingOpcode(uint8_t opcode);
+filter_opcode getFilterOpcode(uint8_t opcode);
+debugger_opcode getDebuggerOpcode(uint8_t opcode);
+config_opcode getConfigOpcode(uint8_t opcode);
+internal_opcode getInternalOpcode(uint8_t opcode);
 
 // Opcodes for outgoing messages from C++ to Go
-enum msg_type {
-  mType,
-  mV8_Worker_Config,
-  mTimer_Response,
+
+// This aligns with the `respMsgType` in the file `consumer/protocol.go`
+enum class resp_msg_type {
+  mV8_Worker_Config = 1,
   mBucket_Ops_Response,
   mFilterAck,
   mPauseAck,
   Msg_Unknown
 };
 
-enum v8_worker_config_opcode {
-  oConfigOpcode,
-  oUnused3,
-  oUnused4,
-  oAppLogMessage,
-  oSysLogMessage,
-  oLatencyStats,
+// This aligns with the `respV8WorkerConfigOpcode` in the file
+// `consumer/protocol.go`
+enum class v8_worker_config_opcode {
+  oLatencyStats = 1,
   oFailureStats,
   oExecutionStats,
   oCompileInfo,
@@ -115,8 +133,14 @@ enum v8_worker_config_opcode {
   V8_Worker_Config_Opcode_Unknown
 };
 
-enum doc_timer_response_opcode { timerResponse };
-
-enum bucket_ops_response_opcode { checkpointResponse };
+// `bucket_ops_response_opcode` has only one enum variant, which is
+// `checkpointResponse`.
+// Hence, on the Go side, when we receive `bucketOpsResponse` in the
+// file `consumer/protocol.go`, we assume the opcode must be
+// `checkpointResponse` and proceed to parse it.
+// However, in the future, if this enum class has multiple enum variants, then
+// only we would need a switch case on the Go side to check each possible
+// opcode.
+enum class bucket_ops_response_opcode { checkpointResponse };
 
 #endif

@@ -412,8 +412,9 @@ private:
   void
   InitializeCurlBindingValues(const std::vector<CurlBinding> &curl_bindings);
   void FreeCurlBindings();
-  std::vector<uv_buf_t> BuildResponse(const std::string &payload,
-                                      int8_t msg_type, int8_t response_opcode);
+  std::vector<uv_buf_t>
+  BuildResponse(const std::string &payload, resp_msg_type msg_type,
+                bucket_ops_response_opcode response_opcode);
   bool ExecuteScript(const v8::Local<v8::String> &script);
 
   void UpdateV8HeapSize();

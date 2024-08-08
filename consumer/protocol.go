@@ -14,12 +14,13 @@ import (
 	flatbuffers "github.com/google/flatbuffers/go"
 )
 
+// This aligns with the `enum class event_type` in the file `v8_consumer/include/commands.h`
+type eventType int8
+
 const (
-	eventType int8 = iota
-	dcpEvent
+	dcpEvent eventType = iota + 1
 	v8WorkerEvent
 	appWorkerSetting
-	timerEvent
 	debuggerEvent
 	filterEvent
 	reservedEvent
@@ -27,32 +28,29 @@ const (
 	configChange
 )
 
+// This aligns with the `enum class debugger_opcode` in the file `v8_consumer/include/commands.h`
+type debuggerOpcode int8
+
 const (
-	debuggerOpcode int8 = iota
-	startDebug
+	startDebug debuggerOpcode = iota + 1
 	stopDebug
 )
 
-const (
-	timerOpcode int8 = iota
-	timer
-)
+// This aligns with the `enum class filter_opcode` in the file `v8_consumer/include/commands.h`
+type filterOpcode int8
 
 const (
-	filterOpcode int8 = iota
-	vbFilter
+	vbFilter filterOpcode = iota + 1
 	processedSeqNo
 )
 
+// This aligns with the `enum class v8_worker_opcode` in the file `v8_consumer/include/commands.h`
+type v8WorkerOpcode int8
+
 const (
-	v8WorkerOpcode int8 = iota
-	v8WorkerDispose
-	v8WorkerInit
+	v8WorkerInit v8WorkerOpcode = iota + 1
 	v8WorkerTracker
 	v8WorkerLoad
-	v8WorkerTerminate
-	v8WorkerUnused1
-	v8WorkerUnused2
 	v8WorkerLatencyStats
 	v8WorkerFailureStats
 	v8WorkerExecutionStats
@@ -62,17 +60,21 @@ const (
 	v8WorkerInsight
 )
 
+// This aligns with the `enum class dcp_opcode` in the file `v8_consumer/include/commands.h`
+type dcpOpcode int8
+
 const (
-	dcpOpcode int8 = iota
-	dcpDeletion
+	dcpDeletion dcpOpcode = iota + 1
 	dcpMutation
 	dcpNoOp
 	dcpDeleteCid
 )
 
+// This aligns with the `enum class app_worker_setting_opcode` in the file `v8_consumer/include/commands.h`
+type appWorkerSettingsOpcode int8
+
 const (
-	appWorkerSettingsOpcode int8 = iota
-	logLevel
+	logLevel appWorkerSettingsOpcode = iota + 1
 	workerThreadCount
 	workerThreadPartitionMap
 	timerContextSize
@@ -80,29 +82,30 @@ const (
 	workerThreadMemQuota
 )
 
+// This aligns with the `enum class config_opcode` in the file `v8_consumer/include/commands.h`
+type configOpcode int8
+
 const (
-	configOpcode int8 = iota
-	updateFeatureMatrix
+	updateFeatureMatrix configOpcode = iota + 1
 	updateEncryptionLevel
 )
 
+// This aligns with the `enum class resp_msg_type` in the file `v8_consumer/include/commands.h`
 // message and opcode types for interpreting messages from C++ To Go
+type respMsgType int8
+
 const (
-	respMsgType int8 = iota
-	respV8WorkerConfig
-	docTimerResponse
+	respV8WorkerConfig respMsgType = iota + 1
 	bucketOpsResponse
 	bucketOpsFilterAck
 	pauseAck
 )
 
+// This aligns with the `enum class v8_worker_config_opcode` in the file `v8_consumer/include/commands.h`
+type respV8WorkerConfigOpcode int8
+
 const (
-	respV8WorkerConfigOpcode int8 = iota
-	Unused3
-	Unused4
-	appLogMessage
-	sysLogMessage
-	latencyStats
+	latencyStats respV8WorkerConfigOpcode = iota + 1
 	failureStats
 	executionStats
 	compileInfo
@@ -110,18 +113,6 @@ const (
 	lcbExceptions
 	curlLatencyStats
 	insight
-)
-
-const (
-	docTimerResponseOpcode int8 = iota
-)
-
-const (
-	bucketOpsResponseOpcode int8 = iota
-)
-
-const (
-	bucketOpsFilterAckOpCode int8 = iota
 )
 
 type message struct {
@@ -145,12 +136,12 @@ func (c *Consumer) makeDcpDeleteCidEvent(partition int16, meta string) ([]byte, 
 	return c.makeDcpHeader(dcpDeleteCid, partition, meta)
 }
 
-func (c *Consumer) makeDcpHeader(opcode int8, partition int16, meta string) ([]byte, *flatbuffers.Builder) {
-	return c.makeHeader(dcpEvent, opcode, partition, meta)
+func (c *Consumer) makeDcpHeader(opcode dcpOpcode, partition int16, meta string) ([]byte, *flatbuffers.Builder) {
+	return c.makeHeader(dcpEvent, int8(opcode), partition, meta)
 }
 
-func (c *Consumer) filterEventHeader(opcode int8, partition int16, meta string) ([]byte, *flatbuffers.Builder) {
-	return c.makeHeader(filterEvent, opcode, partition, meta)
+func (c *Consumer) filterEventHeader(opcode filterOpcode, partition int16, meta string) ([]byte, *flatbuffers.Builder) {
+	return c.makeHeader(filterEvent, int8(opcode), partition, meta)
 }
 
 func (c *Consumer) makeVbFilterHeader(partition int16, meta string) ([]byte, *flatbuffers.Builder) {
@@ -173,8 +164,8 @@ func (c *Consumer) makeV8DebuggerStopHeader() ([]byte, *flatbuffers.Builder) {
 	return c.makeV8DebuggerHeader(stopDebug, "")
 }
 
-func (c *Consumer) makeV8DebuggerHeader(opcode int8, meta string) ([]byte, *flatbuffers.Builder) {
-	return c.makeHeader(debuggerEvent, opcode, 0, meta)
+func (c *Consumer) makeV8DebuggerHeader(opcode debuggerOpcode, meta string) ([]byte, *flatbuffers.Builder) {
+	return c.makeHeader(debuggerEvent, int8(opcode), 0, meta)
 }
 
 func (c *Consumer) makeV8InitOpcodeHeader() ([]byte, *flatbuffers.Builder) {
@@ -193,38 +184,46 @@ func (c *Consumer) makeV8LoadOpcodeHeader(appCode string) ([]byte, *flatbuffers.
 	return c.makeV8EventHeader(v8WorkerLoad, appCode)
 }
 
-func (c *Consumer) makeV8EventHeader(opcode int8, meta string) ([]byte, *flatbuffers.Builder) {
-	return c.makeHeader(v8WorkerEvent, opcode, 0, meta)
+func (c *Consumer) makeV8EventHeader(opcode v8WorkerOpcode, meta string) ([]byte, *flatbuffers.Builder) {
+	return c.makeHeader(v8WorkerEvent, int8(opcode), 0, meta)
 }
 
 func (c *Consumer) makeLogLevelHeader(meta string) ([]byte, *flatbuffers.Builder) {
-	return c.makeHeader(appWorkerSetting, logLevel, 0, meta)
+	return c.makeHeader(appWorkerSetting, int8(logLevel), 0, meta)
 }
 
 func (c *Consumer) makeTimerContextSizeHeader(meta string) ([]byte, *flatbuffers.Builder) {
-	return c.makeHeader(appWorkerSetting, timerContextSize, 0, meta)
+	return c.makeHeader(appWorkerSetting, int8(timerContextSize), 0, meta)
 }
 
 func (c *Consumer) makeThrCountHeader(meta string) ([]byte, *flatbuffers.Builder) {
-	return c.makeHeader(appWorkerSetting, workerThreadCount, 0, meta)
+	return c.makeHeader(appWorkerSetting, int8(workerThreadCount), 0, meta)
 }
 
 func (c *Consumer) makeThrMapHeader() ([]byte, *flatbuffers.Builder) {
-	return c.makeHeader(appWorkerSetting, workerThreadPartitionMap, 0, "")
+	return c.makeHeader(appWorkerSetting, int8(workerThreadPartitionMap), 0, "")
 }
 
 func (c *Consumer) makeVbMapHeader() ([]byte, *flatbuffers.Builder) {
-	return c.makeHeader(appWorkerSetting, vbMap, 0, "")
+	return c.makeHeader(appWorkerSetting, int8(vbMap), 0, "")
 }
 
-func (c *Consumer) makeHeader(event int8, opcode int8, partition int16, meta string) (encodedHeader []byte, builder *flatbuffers.Builder) {
+func (c *Consumer) makeThrMemQuotaHeader(meta string) ([]byte, *flatbuffers.Builder) {
+	return c.makeHeader(appWorkerSetting, int8(workerThreadMemQuota), 0, meta)
+}
+
+func (c *Consumer) makeConfigChangeHeader(opcode configOpcode, meta string) ([]byte, *flatbuffers.Builder) {
+	return c.makeHeader(configChange, int8(opcode), 0, meta)
+}
+
+func (c *Consumer) makeHeader(event eventType, opcode int8, partition int16, meta string) (encodedHeader []byte, builder *flatbuffers.Builder) {
 	builder = c.getBuilder()
 
 	metadata := builder.CreateString(meta)
 
 	header.HeaderStart(builder)
 
-	header.HeaderAddEvent(builder, event)
+	header.HeaderAddEvent(builder, int8(event))
 	header.HeaderAddOpcode(builder, opcode)
 	header.HeaderAddPartition(builder, partition)
 	header.HeaderAddMetadata(builder, metadata)
@@ -463,10 +462,10 @@ func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {
 	logPrefix := "Consumer::routeResponse"
 
 	switch msgType {
-	case respV8WorkerConfig:
+	case int8(respV8WorkerConfig):
 		switch opcode {
 
-		case latencyStats:
+		case int8(latencyStats):
 			c.workerRespMainLoopTs.Store(time.Now())
 
 			deltas := make(common.StatsData)
@@ -477,7 +476,7 @@ func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {
 			}
 			c.producer.AppendLatencyStats(deltas)
 
-		case curlLatencyStats:
+		case int8(curlLatencyStats):
 			c.workerRespMainLoopTs.Store(time.Now())
 
 			deltas := make(common.StatsData)
@@ -488,7 +487,7 @@ func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {
 			}
 			c.producer.AppendCurlLatencyStats(deltas)
 
-		case insight:
+		case int8(insight):
 			c.workerRespMainLoopTs.Store(time.Now())
 			logging.Debugf("%s [%s:%s:%d] Received insight: %v", logPrefix, c.workerName, c.tcpPort, c.Pid(), msg)
 			insight := common.NewInsight()
@@ -499,7 +498,7 @@ func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {
 			}
 			c.insight <- insight
 
-		case failureStats:
+		case int8(failureStats):
 			c.workerRespMainLoopTs.Store(time.Now())
 
 			c.statsRWMutex.Lock()
@@ -509,7 +508,7 @@ func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {
 				logging.Errorf("%s [%s:%s:%d] Failed to unmarshal failure stats, msg: %v err: %v",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), msg, err)
 			}
-		case executionStats:
+		case int8(executionStats):
 			c.workerRespMainLoopTs.Store(time.Now())
 
 			c.statsRWMutex.Lock()
@@ -526,13 +525,13 @@ func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {
 					c.timerMessagesProcessed = uint64(val.(float64))
 				}
 			}
-		case compileInfo:
+		case int8(compileInfo):
 			err := json.Unmarshal([]byte(msg), &c.compileInfo)
 			if err != nil {
 				logging.Errorf("%s [%s:%s:%d] Failed to unmarshal compilation stats, msg: %v err: %v",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), msg, err)
 			}
-		case queueSize:
+		case int8(queueSize):
 			c.workerRespMainLoopTs.Store(time.Now())
 
 			err := json.Unmarshal([]byte(msg), &c.cppQueueSizes)
@@ -540,7 +539,7 @@ func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {
 				logging.Errorf("%s [%s:%s:%d] Failed to unmarshal cpp queue sizes, msg: %v err: %v",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), msg, err)
 			}
-		case lcbExceptions:
+		case int8(lcbExceptions):
 			c.workerRespMainLoopTs.Store(time.Now())
 
 			c.statsRWMutex.Lock()
@@ -552,7 +551,7 @@ func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {
 			}
 		}
 
-	case bucketOpsResponse:
+	case int8(bucketOpsResponse):
 		data := strings.Split(msg, "::")
 		if len(data) != 2 {
 			logging.Errorf("%s [%s:%s:%d] Invalid bucket ops message received: %s",
@@ -579,7 +578,7 @@ func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {
 			logging.Tracef("%s [%s:%s:%d] vb: %d Updating last_processed_seq_no to seqNo: %d",
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), vb, seqNo)
 		}
-	case bucketOpsFilterAck:
+	case int8(bucketOpsFilterAck):
 		var ack vbSeqNo
 		err := json.Unmarshal([]byte(msg), &ack)
 		if err != nil {
@@ -595,7 +594,7 @@ func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {
 			c.filterDataCh <- &ack
 		}
 
-	case pauseAck:
+	case int8(pauseAck):
 		var acks []vbSeqNo
 		if err := json.Unmarshal([]byte(msg), &acks); err != nil {
 			logging.Errorf("%s [%s:%s:%d] Failed to unmarshal pause ack, msg: %v err: %v",
