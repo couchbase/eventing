@@ -895,7 +895,7 @@ func (m *ServiceMgr) rbacSupport() bool {
 	version, minVer := cinfo.GetNodeCompatVersion()
 	cinfo.RUnlock()
 
-	return version >= 7 && minVer >= 1
+	return version > 7 || (version == 7 && minVer >= 1)
 }
 
 func (m *ServiceMgr) fetchAppCompositeState(appName string) (int8, *response.RuntimeInfo) {
