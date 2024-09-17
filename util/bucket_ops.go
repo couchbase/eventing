@@ -157,7 +157,7 @@ func GetCluster(caller, connstr string, s common.EventingSuperSup) (*gocb.Cluste
 
 	if couchbase.GetUseTLS() == true {
 		clusterOptions.SecurityConfig = gocb.SecurityConfig{TLSRootCAs: securityConfig.RootCAs}
-		connstr = strings.ReplaceAll(connstr, "couchbase", "couchbases")
+		connstr = strings.ReplaceAll(connstr, "couchbase://", "couchbases://")
 	}
 
 	conn, err := gocb.Connect(connstr, clusterOptions)
