@@ -14,7 +14,6 @@
 #include <thread>
 
 #include "breakpad.h"
-#include "bucket_cache.h"
 #include "client.h"
 #include "lcb_utils.h"
 
@@ -26,121 +25,17 @@ uint64_t timer_responses_sent(0);
 uint64_t messages_parsed(0);
 
 std::string curr_encryption_level("control_or_off");
-std::atomic<int64_t> e_app_worker_setting_lost = {0};
-std::atomic<int64_t> e_dcp_lost = {0};
-std::atomic<int64_t> e_debugger_lost = {0};
-std::atomic<int64_t> e_timer_lost = {0};
-std::atomic<int64_t> e_v8_worker_lost = {0};
-
-std::atomic<int64_t> delete_events_lost = {0};
-std::atomic<int64_t> timer_events_lost = {0};
-std::atomic<int64_t> mutation_events_lost = {0};
-std::atomic<int64_t> uv_msg_parse_failure = {0};
-std::atomic<int64_t> bucket_cache_overflow_count_ = {0};
-
-extern std::atomic<int64_t> timer_context_size_exceeded_counter;
-extern std::atomic<int64_t> timer_callback_missing_counter;
-
-std::atomic<int64_t> uv_try_write_failure_counter = {0};
 
 std::string executable_img;
 
 std::string GetFailureStats() {
   nlohmann::json fstats;
-  fstats["bucket_op_exception_count"] = bucket_op_exception_count.load();
-  fstats["bucket_op_cache_miss_count"] = bucket_op_cachemiss_count.load();
-  fstats["bucket_cache_overflow_count"] = bucket_cache_overflow_count_.load();
-  fstats["bkt_ops_cas_mismatch_count"] = bkt_ops_cas_mismatch_count.load();
-  fstats["n1ql_op_exception_count"] = n1ql_op_exception_count.load();
-  fstats["analytics_op_exception_count"] = analytics_op_exception_count.load();
-  fstats["timeout_count"] = timeout_count.load();
-  fstats["checkpoint_failure_count"] = checkpoint_failure_count.load();
-  fstats["dcp_events_lost"] = e_dcp_lost.load();
-  fstats["v8worker_events_lost"] = e_v8_worker_lost.load();
-  fstats["app_worker_setting_events_lost"] = e_app_worker_setting_lost.load();
-  fstats["timer_events_lost"] = e_timer_lost.load();
-  fstats["debugger_events_lost"] = e_debugger_lost.load();
-  fstats["mutation_events_lost"] = mutation_events_lost.load();
-  fstats["timer_context_size_exceeded_counter"] =
-      timer_context_size_exceeded_counter.load();
-  fstats["timer_callback_missing_counter"] =
-      timer_callback_missing_counter.load();
-  fstats["delete_events_lost"] = delete_events_lost.load();
-  fstats["timer_events_lost"] = timer_events_lost.load();
-  fstats["curl_non_200_response"] = Curl::GetStats().GetCurlNon200Stat();
-  fstats["curl_timeout_count"] = Curl::GetStats().GetCurlTimeoutStat();
-  fstats["curl_failure_count"] = Curl::GetStats().GetCurlFailureStat();
-  fstats["curl_max_resp_size_exceeded"] =
-      Curl::GetStats().GetCurlMaxRespSizeExceededStat();
-  fstats["dcp_delete_checkpoint_failure"] =
-      dcp_delete_checkpoint_failure.load();
-  fstats["dcp_mutation_checkpoint_failure"] =
-      dcp_mutation_checkpoint_failure.load();
-  fstats["timestamp"] = GetTimestampNow();
   return fstats.dump();
 }
 
 std::string GetExecutionStats(const std::map<int16_t, V8Worker *> &workers,
                               bool test) {
   nlohmann::json estats;
-  estats["on_update_success"] = on_update_success.load();
-  estats["on_update_failure"] = on_update_failure.load();
-  estats["on_delete_success"] = on_delete_success.load();
-  estats["on_delete_failure"] = on_delete_failure.load();
-  estats["no_op_counter"] = no_op_counter.load();
-  estats["timer_callback_success"] = timer_callback_success.load();
-  estats["timer_callback_failure"] = timer_callback_failure.load();
-  estats["timer_create_failure"] = timer_create_failure.load();
-  estats["messages_parsed"] = messages_parsed;
-  estats["dcp_delete_msg_counter"] = dcp_delete_msg_counter.load();
-  estats["dcp_mutation_msg_counter"] = dcp_mutation_msg_counter.load();
-  estats["timer_msg_counter"] = timer_msg_counter.load();
-  estats["timer_create_counter"] = timer_create_counter.load();
-  estats["timer_cancel_counter"] = timer_cancel_counter.load();
-  estats["enqueued_dcp_delete_msg_counter"] =
-      enqueued_dcp_delete_msg_counter.load();
-  estats["enqueued_dcp_mutation_msg_counter"] =
-      enqueued_dcp_mutation_msg_counter.load();
-  estats["enqueued_timer_msg_counter"] = enqueued_timer_msg_counter.load();
-  estats["timer_responses_sent"] = timer_responses_sent;
-  estats["uv_try_write_failure_counter"] = uv_try_write_failure_counter.load();
-  estats["lcb_retry_failure"] = lcb_retry_failure.load();
-  estats["dcp_delete_parse_failure"] = dcp_delete_parse_failure.load();
-  estats["dcp_mutation_parse_failure"] = dcp_mutation_parse_failure.load();
-  estats["filtered_dcp_delete_counter"] = filtered_dcp_delete_counter.load();
-  estats["filtered_dcp_mutation_counter"] =
-      filtered_dcp_mutation_counter.load();
-  estats["dcp_delete_checkpoint_cas_mismatch"] =
-      dcp_delete_checkpoint_cas_mismatch.load();
-  estats["dcp_mutation_checkpoint_cas_mismatch"] =
-      dcp_mutation_checkpoint_cas_mismatch.load();
-  if (!workers.empty()) {
-    int64_t agg_queue_memory = 0, agg_queue_size = 0;
-    for (const auto &w : workers) {
-      agg_queue_size += w.second->worker_queue_->GetSize();
-      agg_queue_memory += w.second->worker_queue_->GetMemory();
-      if (w.second->event_processing_ongoing_.load())
-        agg_queue_size += 1;
-    }
-
-    if (test) {
-      agg_queue_size = agg_queue_size + 1000;
-      agg_queue_memory = agg_queue_memory + 10;
-    }
-    estats["agg_queue_size"] = agg_queue_size;
-    estats["feedback_queue_size"] = 0;
-    estats["agg_queue_memory"] = agg_queue_memory;
-    estats["processed_events_size"] = processed_events_size.load();
-    estats["num_processed_events"] = num_processed_events.load();
-  }
-  estats["curl"]["get"] = Curl::GetStats().GetCurlGetStat();
-  estats["curl"]["post"] = Curl::GetStats().GetCurlPostStat();
-  estats["curl"]["delete"] = Curl::GetStats().GetCurlDeleteStat();
-  estats["curl"]["head"] = Curl::GetStats().GetCurlHeadStat();
-  estats["curl"]["put"] = Curl::GetStats().GetCurlPutStat();
-  estats["curl_success_count"] = Curl::GetStats().GetCurlSuccessStat();
-  estats["timestamp"] = GetTimestampNow();
-  estats["uv_msg_parse_failure"] = uv_msg_parse_failure.load();
   return estats.dump();
 }
 
@@ -173,7 +68,6 @@ int combineAsciiToInt(std::vector<int> *input) {
 std::pair<bool, std::unique_ptr<WorkerMessage>>
 AppWorker::GetWorkerMessage(int encoded_header_size, int encoded_payload_size,
                             const std::string &msg) {
-  messages_parsed++;
   std::unique_ptr<WorkerMessage> worker_msg(new WorkerMessage);
 
   // Parsing payload
@@ -234,9 +128,6 @@ void AppWorker::InitTcpSock(const std::string &function_name,
   app_location_ = app_location;
   batch_size_ = bsize;
   feedback_batch_size_ = fbsize;
-  messages_processed_counter = 0;
-  processed_events_size = 0;
-  num_processed_events = 0;
 
   LOG(logInfo) << "Starting worker with af_inet for appname:" << app_location
                << " worker id:" << worker_id << " batch size:" << batch_size_
@@ -279,9 +170,6 @@ void AppWorker::InitUDS(const std::string &function_name,
   app_location_ = app_location;
   batch_size_ = bsize;
   feedback_batch_size_ = fbsize;
-  messages_processed_counter = 0;
-  processed_events_size = 0;
-  num_processed_events = 0;
 
   LOG(logInfo) << "Starting worker with af_unix for appname:" << app_location
                << " worker id:" << worker_id << " batch size:" << batch_size_
@@ -409,9 +297,7 @@ void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
       if (worker_msg.first) {
         RouteMessageWithResponse(std::move(worker_msg.second));
 
-        if (messages_processed_counter >= batch_size_ || msg_priority_) {
-
-          messages_processed_counter = 0;
+        if (msg_priority_) {
 
           // Reset the message priority flag
           msg_priority_ = false;
@@ -452,13 +338,6 @@ void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
             }
 
             std::ostringstream queue_stats;
-            queue_stats << R"({"agg_queue_size":)";
-            queue_stats << agg_queue_size << R"(, "feedback_queue_size":)";
-            queue_stats << 0 << R"(, "agg_queue_memory":)";
-            queue_stats << agg_queue_memory << R"(, "processed_events_size":)";
-            queue_stats << processed_events_size
-                        << R"(, "num_processed_events":)";
-            queue_stats << num_processed_events << "}";
 
             flatbuffers::FlatBufferBuilder builder;
             auto flatbuf_msg = builder.CreateString(queue_stats.str());
@@ -479,14 +358,8 @@ void AppWorker::ParseValidChunk(uv_stream_t *stream, int nread,
           }
         }
       } else {
-        ++uv_msg_parse_failure;
         // We only need to know the first message which failed to parse as the
         // subsequent messages will fail to get parsed anyway
-        if (uv_msg_parse_failure == 1) {
-          LOG(logError)
-              << "Failed to parse message from uv buffer. Buffer contents : "
-              << RU(buf_base) << std::endl;
-        }
       }
     }
     buf_base.erase(0, message_size);
@@ -513,7 +386,6 @@ void AppWorker::FlushToConn(uv_stream_t *stream, char *msg, int length) {
       LOG(logError) << " uv_try_write failed while flushing payload content"
                        ",bytes_written: "
                     << bytes_written << std::endl;
-      uv_try_write_failure_counter++;
       break;
     }
 
@@ -724,7 +596,6 @@ void AppWorker::RouteMessageWithResponse(
     default:
       LOG(logError) << "Opcode " << worker_msg->header.opcode
                     << "is not implemented for eV8Worker" << std::endl;
-      ++e_v8_worker_lost;
       break;
     }
     break;
@@ -733,23 +604,19 @@ void AppWorker::RouteMessageWithResponse(
     case dcp_opcode::oDelete:
       worker_index = current_partition_thr_map_[worker_msg->header.partition];
       if (workers_[worker_index] != nullptr) {
-        enqueued_dcp_delete_msg_counter++;
         workers_[worker_index]->PushBack(std::move(worker_msg));
       } else {
         LOG(logError) << "Delete event lost: worker " << worker_index
                       << " is null" << std::endl;
-        ++delete_events_lost;
       }
       break;
     case dcp_opcode::oMutation:
       worker_index = current_partition_thr_map_[worker_msg->header.partition];
       if (workers_[worker_index] != nullptr) {
-        enqueued_dcp_mutation_msg_counter++;
         workers_[worker_index]->PushBack(std::move(worker_msg));
       } else {
         LOG(logError) << "Mutation event lost: worker " << worker_index
                       << " is null" << std::endl;
-        ++mutation_events_lost;
       }
       break;
     case dcp_opcode::oNoOp:
@@ -768,7 +635,6 @@ void AppWorker::RouteMessageWithResponse(
     default:
       LOG(logError) << "Opcode " << worker_msg->header.opcode
                     << "is not implemented for eDCP" << std::endl;
-      ++e_dcp_lost;
       break;
     }
     break;
@@ -938,7 +804,6 @@ void AppWorker::RouteMessageWithResponse(
                            getAppWorkerSettingOpcode(worker_msg->header.opcode))
                     << "is not implemented for eApp_Worker_Setting"
                     << std::endl;
-      ++e_app_worker_setting_lost;
       break;
     }
     break;
@@ -967,7 +832,6 @@ void AppWorker::RouteMessageWithResponse(
     default:
       LOG(logError) << "Opcode " << worker_msg->header.opcode
                     << "is not implemented for eDebugger" << std::endl;
-      ++e_debugger_lost;
       break;
     }
     break;
@@ -1070,8 +934,6 @@ void AppWorker::WriteResponseWithRetry(uv_stream_t *handle,
     int bytes_written =
         uv_try_write(handle, messages.data() + curr_idx, batch_size);
     if (bytes_written < 0) {
-      uv_try_write_failure_counter++;
-      counter++;
       if (counter < 100) {
         std::this_thread::sleep_for(std::chrono::milliseconds(10 * counter));
       } else {
@@ -1274,21 +1136,7 @@ void AppWorker::SendPauseAck(
   msg_priority_ = true;
 }
 
-void AppWorker::SendOnDeployAck() {
-  nlohmann::json on_deploy_ack;
-  std::string on_deploy_status = "Pending";
-  OnDeployState current_state = on_deploy_stat.load();
-  if(current_state == OnDeployState::FINISHED)
-    on_deploy_status = "Finished";
-  else if(current_state == OnDeployState::FAILED)
-    on_deploy_status = "Failed";
-  on_deploy_ack["on_deploy_status"] = on_deploy_status;
-  std::cerr << "AppWorker::SendOnDeployAck The status for OnDeploy: " << on_deploy_status << std::endl;
-  resp_msg_->msg.assign(on_deploy_ack.dump());
-  resp_msg_->msg_type = resp_msg_type::mOnDeployAck;
-  msg_priority_ = true;
-}
-
+/*
 int main(int argc, char **argv) {
 
   if (argc < 16) {
@@ -1358,9 +1206,10 @@ int main(int argc, char **argv) {
   curl_global_cleanup();
   return 0;
 }
+*/
 
 std::string AppWorker::GetInsight() {
-  CodeInsight sum(nullptr);
+  CodeInsight sum;
   for (int16_t i = 0; i < thr_count_; i++) {
     auto &entry = workers_[i]->GetInsight();
     sum.Accumulate(entry);
@@ -1396,7 +1245,7 @@ void AppWorker::LogExceptionSummary() {
     return;
   }
 
-  ExceptionInsight summary(nullptr);
+  ExceptionInsight summary;
 
   for (int16_t i = 0; i < thr_count_; i++) {
     auto &workerExceptionInsight = workers_[i]->GetExceptionInsight();

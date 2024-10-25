@@ -20,16 +20,15 @@ struct ExceptionInfoEntry {
 
 class ExceptionInsight {
 public:
-  explicit ExceptionInsight(v8::Isolate *isolate);
+  ExceptionInsight();
 
-  void Setup(const std::string &function_name);
+  void Setup(const std::string &instance_id);
 
-  void AccumulateException(v8::TryCatch &, bool script_timeout = false, bool on_deploy_timeout = false);
+  void AccumulateException(v8::Isolate *isolate, v8::TryCatch &,
+                           bool timeout = false);
 
   void AccumulateAndClear(ExceptionInsight &from);
   void LogExceptionSummary(ExceptionInsight &summary);
-
-  static ExceptionInsight &Get(v8::Isolate *isolate);
 
 private:
   ExceptionInsight(const ExceptionInsight &) = delete;
@@ -40,13 +39,11 @@ private:
 
   void InitStartTime();
 
+  std::string location_;
   std::mutex lock_;
-  std::string function_name_;
   char start_time_[sizeof "2021-02-10T15:46:00"];
 
   std::map<uint64_t, ExceptionInfoEntry> entries_;
-
-  v8::Isolate *isolate_;
 };
 
 #endif

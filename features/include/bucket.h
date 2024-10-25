@@ -19,7 +19,6 @@
 #include <utility>
 #include <v8.h>
 
-#include "bucket_cache.h"
 #include "error.h"
 #include "info.h"
 #include "isolate_data.h"
@@ -40,10 +39,10 @@ struct MetaData {
   MetaData(bool invalidate)
       : scope(""), collection(""), key(""), cas(0), expiry(0),
         invalidate_cache_(invalidate) {}
-  MetaData(const std::string& scope, const std::string& collection,
-    const std::string& key, const uint64_t& cas)
-      : scope(scope), collection(collection), key(key), cas(cas),
-        expiry(0), invalidate_cache_(false) {}
+  MetaData(const std::string &scope, const std::string &collection,
+           const std::string &key, const uint64_t &cas)
+      : scope(scope), collection(collection), key(key), cas(cas), expiry(0),
+        invalidate_cache_(false) {}
 };
 
 struct MutateInSpecs {
@@ -66,7 +65,8 @@ struct MutateInSpecs {
     std::string value_;
     uint32_t flags = 0;
 
-    spec(spec_type specType, std::string key, std::string value, bool create_path, bool is_user_xattr)
+    spec(spec_type specType, std::string key, std::string value,
+         bool create_path, bool is_user_xattr)
         : specType_(specType), key_(key), value_(value) {
       if (create_path && allow_create_path(specType)) {
         flags |= LCB_SUBDOCSPECS_F_MKINTERMEDIATES;
@@ -77,7 +77,8 @@ struct MutateInSpecs {
     }
 
     inline bool allow_create_path(spec_type specType) {
-      return specType != oReplace && specType != oRemove && specType != oArrayInsert;
+      return specType != oReplace && specType != oRemove &&
+             specType != oArrayInsert;
     }
   };
 
@@ -86,7 +87,7 @@ struct MutateInSpecs {
   int get_num_fields() const { return specs.size(); }
 
   bool emplace_spec(int spec, std::string key, std::string value,
-                         bool create_path, bool is_user_xattr) {
+                    bool create_path, bool is_user_xattr) {
     if (spec <= oBaseOp || spec >= oInvalidOp) {
       return false;
     }
@@ -113,12 +114,13 @@ struct MutateInSpecs {
       } break;
 
       case oReplace: {
-        lcb_subdocspecs_replace(lcb_specs, index, it->flags, key.c_str(), key.size(),
-                                value.c_str(), value.size());
+        lcb_subdocspecs_replace(lcb_specs, index, it->flags, key.c_str(),
+                                key.size(), value.c_str(), value.size());
       } break;
 
       case oRemove: {
-        lcb_subdocspecs_remove(lcb_specs, index, it->flags, key.c_str(), key.size());
+        lcb_subdocspecs_remove(lcb_specs, index, it->flags, key.c_str(),
+                               key.size());
       } break;
 
       case oArrayAppend: {
@@ -127,19 +129,19 @@ struct MutateInSpecs {
       } break;
 
       case oArrayPrepend: {
-        lcb_subdocspecs_array_add_first(lcb_specs, index, it->flags, key.c_str(),
-                                        key.size(), value.c_str(),
+        lcb_subdocspecs_array_add_first(lcb_specs, index, it->flags,
+                                        key.c_str(), key.size(), value.c_str(),
                                         value.size());
       } break;
 
       case oArrayInsert: {
-        lcb_subdocspecs_array_insert(lcb_specs, index, it->flags, key.c_str(), key.size(),
-                                     value.c_str(), value.size());
+        lcb_subdocspecs_array_insert(lcb_specs, index, it->flags, key.c_str(),
+                                     key.size(), value.c_str(), value.size());
       } break;
 
       case oArrayAddUnique: {
-        lcb_subdocspecs_array_add_unique(lcb_specs, index, it->flags, key.c_str(),
-                                         key.size(), value.c_str(),
+        lcb_subdocspecs_array_add_unique(lcb_specs, index, it->flags,
+                                         key.c_str(), key.size(), value.c_str(),
                                          value.size());
       } break;
 
@@ -152,11 +154,7 @@ struct MutateInSpecs {
 };
 
 struct LookupInSpecs {
-  enum class spec_type {
-    oBaseOp,
-    oGet,
-    oInvalidOp
-  };
+  enum class spec_type { oBaseOp, oGet, oInvalidOp };
 
   struct spec {
     spec_type specType_;
@@ -191,7 +189,8 @@ struct LookupInSpecs {
 
       switch (it->specType_) {
       case spec_type::oGet:
-        lcb_subdocspecs_get(lcb_specs, index, it->flags, key.c_str(), key.size());
+        lcb_subdocspecs_get(lcb_specs, index, it->flags, key.c_str(),
+                            key.size());
         break;
 
       default:
@@ -270,7 +269,8 @@ public:
   }
 
   std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
-  WriteCheckpoint(const MetaData &meta, const uint64_t& rootcas, const std::vector<std::string>& cleanup_cursors);
+  WriteCheckpoint(const MetaData &meta, const uint64_t &rootcas,
+                  const std::vector<std::string> &cleanup_cursors);
 
   std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
   Get(MetaData &meta);
@@ -541,7 +541,7 @@ private:
 };
 
 // TODO : Must be implemented by the component that wants to use Bucket
-void AddLcbException(const IsolateData *isolate_data, lcb_STATUS error);
+void AddLcbException(const IsolateData *isolate_data, int code);
 std::string GetFunctionInstanceID(v8::Isolate *isolate);
 
 #endif

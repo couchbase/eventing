@@ -18,11 +18,11 @@
 #include <libplatform/libplatform.h>
 #include <limits>
 #include <sstream>
+#include <stdint.h>
 #include <string>
 #include <unordered_map>
 #include <v8.h>
 #include <vector>
-#include <stdint.h>
 
 #include "comm.h"
 #include "info.h"
@@ -257,13 +257,11 @@ std::string GetTranspilerSrc();
 std::string ExceptionString(v8::Isolate *isolate,
                             v8::Local<v8::Context> &context,
                             v8::TryCatch *try_catch,
-                            bool script_timeout = false,
-                            bool on_deploy_timeout = false);
+                            bool script_timeout = false);
 V8ExceptionInfo GetV8ExceptionInfo(v8::Isolate *isolate,
                                    v8::Local<v8::Context> &context,
                                    v8::TryCatch *try_catch,
-                                   bool script_timeout = false,
-                                   bool on_deploy_timeout = false);
+                                   bool script_timeout = false);
 
 CompilationInfo BuildCompileInfo(v8::Isolate *isolate,
                                  v8::Local<v8::Context> &context,
@@ -302,7 +300,7 @@ void Base64Float32EncodeFunction(
 void Base64Float32DecodeFunction(
     const v8::FunctionCallbackInfo<v8::Value> &args);
 
-std::string GetConnectionStr(const std::string &end_point,
+std::string GetConnectionStr(const KVNodesInfo &node_info,
                              const std::string &bucket_name,
                              const std::string certFile);
 
@@ -319,10 +317,8 @@ void ReplaceSubstringsInPlace(std::string &subject, const std::string &search,
                               const std::string &replace, int count);
 
 static inline uint64_t byte_swap_64(uint64_t x) {
-  return (((x & UINT64_C(0xFF)) << 56) |
-          ((x & UINT64_C(0xFF00)) << 40) |
-          ((x & UINT64_C(0xFF0000)) << 24) |
-          ((x & UINT64_C(0xFF000000)) << 8) |
+  return (((x & UINT64_C(0xFF)) << 56) | ((x & UINT64_C(0xFF00)) << 40) |
+          ((x & UINT64_C(0xFF0000)) << 24) | ((x & UINT64_C(0xFF000000)) << 8) |
           ((x & UINT64_C(0xFF00000000)) >> 8) |
           ((x & UINT64_C(0xFF0000000000)) >> 24) |
           ((x & UINT64_C(0xFF000000000000)) >> 40) |
@@ -330,5 +326,5 @@ static inline uint64_t byte_swap_64(uint64_t x) {
 }
 
 std::string to_hex(uint64_t);
-void splitString(const std::string&, std::vector<std::string>&, char);
+void splitString(const std::string &, std::vector<std::string> &, char);
 #endif

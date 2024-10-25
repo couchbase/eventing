@@ -15,7 +15,6 @@
 #include <unordered_map>
 
 #include "bucket.h"
-#include "bucket_cache.h"
 #include "bucket_ops.h"
 #include "curl.h"
 #include "exceptioninsight.h"
@@ -31,44 +30,6 @@
 #include "v8worker.h"
 
 bool V8Worker::debugger_started_ = false;
-
-std::atomic<int64_t> timeout_count = {0};
-std::atomic<int16_t> checkpoint_failure_count = {0};
-
-std::atomic<int64_t> on_update_success = {0};
-std::atomic<int64_t> on_update_failure = {0};
-std::atomic<int64_t> on_delete_success = {0};
-std::atomic<int64_t> on_delete_failure = {0};
-std::atomic<int64_t> no_op_counter = {0};
-std::atomic<int64_t> timer_callback_success = {0};
-std::atomic<int64_t> timer_callback_failure = {0};
-std::atomic<int64_t> timer_create_failure = {0};
-
-std::atomic<int64_t> messages_processed_counter = {0};
-std::atomic<int64_t> processed_events_size = {0};
-std::atomic<int64_t> num_processed_events = {0};
-
-std::atomic<int64_t> dcp_delete_msg_counter = {0};
-std::atomic<int64_t> dcp_mutation_msg_counter = {0};
-std::atomic<int64_t> dcp_delete_parse_failure = {0};
-std::atomic<int64_t> dcp_mutation_parse_failure = {0};
-std::atomic<int64_t> filtered_dcp_delete_counter = {0};
-std::atomic<int64_t> filtered_dcp_mutation_counter = {0};
-std::atomic<int64_t> dcp_mutation_checkpoint_cas_mismatch = {0};
-std::atomic<int64_t> dcp_delete_checkpoint_cas_mismatch = {0};
-std::atomic<int64_t> dcp_mutation_checkpoint_failure = {0};
-std::atomic<int64_t> dcp_delete_checkpoint_failure = {0};
-std::atomic<int64_t> timer_msg_counter = {0};
-std::atomic<int64_t> timer_create_counter = {0};
-std::atomic<int64_t> timer_cancel_counter = {0};
-
-std::atomic<int64_t> enqueued_dcp_delete_msg_counter = {0};
-std::atomic<int64_t> enqueued_dcp_mutation_msg_counter = {0};
-std::atomic<int64_t> enqueued_timer_msg_counter = {0};
-
-std::atomic<int64_t> timer_callback_missing_counter = {0};
-
-std::atomic<OnDeployState> on_deploy_stat = {OnDeployState::PENDING};
 
 void V8Worker::SetCouchbaseNamespace() {
   v8::EscapableHandleScope handle_scope(isolate_);
@@ -528,8 +489,6 @@ void V8Worker::InitializeIsolateData(const server_settings_t *server_settings,
       isolate_, context, h_config->curl_max_allowed_resp_size);
   data_.custom_error = new CustomError(isolate_, context);
   data_.curl_codex = new CurlCodex;
-  data_.code_insight = new CodeInsight(isolate_);
-  data_.exception_insight = new ExceptionInsight(isolate_);
   data_.query_mgr = new Query::Manager(
       isolate_, cb_source_bucket_,
       static_cast<std::size_t>(h_config->lcb_inst_capacity), user_, domain_);
@@ -712,7 +671,6 @@ V8Worker::~V8Worker() {
   delete data->req_builder;
   delete data->resp_builder;
   delete data->curl_codex;
-  delete data->exception_insight;
   delete data->query_mgr;
   delete data->query_iterable;
   delete data->query_iterable_impl;
@@ -729,6 +687,7 @@ V8Worker::~V8Worker() {
   delete timer_store_;
 }
 
+/*
 struct DebugExecuteGuard {
   DebugExecuteGuard(v8::Isolate *isolate) : isolate_(isolate) {
     UnwrapData(isolate_)->is_executing_ = true;
@@ -744,6 +703,7 @@ struct DebugExecuteGuard {
 private:
   v8::Isolate *isolate_;
 };
+*/
 
 // Re-compile and execute handler code for debugger
 bool V8Worker::DebugExecute(const char *func_name, v8::Local<v8::Value> *args,
@@ -783,7 +743,7 @@ bool V8Worker::DebugExecute(const char *func_name, v8::Local<v8::Value> *args,
   RetryWithFixedBackoff(std::numeric_limits<int>::max(), 10,
                         IsTerminatingRetriable, IsExecutionTerminating,
                         isolate_);
-  DebugExecuteGuard guard(isolate_);
+  //DebugExecuteGuard guard(isolate_);
   if (!TO_LOCAL(func->Call(context, v8::Null(isolate_), args_len, args),
                 &result)) {
     return false;
@@ -831,14 +791,14 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
   LOG(logTrace) << "script to execute: " << RM(script_to_execute) << std::endl;
   script_to_execute_ = script_to_execute;
 
-  CodeInsight::Get(isolate_).Setup(script_to_execute);
+  // CodeInsight::Get(isolate_).Setup(script_to_execute);
 
   auto source = v8Str(isolate_, script_to_execute);
   if (!ExecuteScript(source)) {
     return kFailedToCompileJs;
   }
 
-  ExceptionInsight::Get(isolate_).Setup(function_name_);
+  // ExceptionInsight::Get(isolate_).Setup(function_name_);
 
   auto global = context->Global();
   v8::Local<v8::Value> on_update_def;
@@ -978,8 +938,6 @@ void V8Worker::RouteMessage() {
                       << static_cast<int>(dcpOpcode) << std::endl;
         break;
       }
-      processed_events_size += msg->payload.GetSize();
-      num_processed_events++;
       break;
     }
 
@@ -990,7 +948,6 @@ void V8Worker::RouteMessage() {
         auto iter = timer_store_->GetIterator();
         timer::TimerEvent evt;
         while (!stop_timer_scan_.load() && iter.GetNext(evt)) {
-          ++timer_msg_counter;
           this->SendTimer(evt.callback, evt.context);
           timer_store_->DeleteTimer(evt);
         }
@@ -1081,7 +1038,6 @@ void V8Worker::RouteMessage() {
       break;
     }
 
-    ++messages_processed_counter;
     event_processing_ongoing_.store(false);
   }
 }
@@ -1096,11 +1052,10 @@ void V8Worker::UpdateSeqNumLocked(const int vb, const uint64_t seq_num) {
 }
 
 void V8Worker::HandleDeleteEvent(const std::unique_ptr<WorkerMessage> &msg) {
+  /*
 
-  ++dcp_delete_msg_counter;
-  auto [parsed_meta, is_valid] = ParseWorkerMessage(msg);
-  if (!is_valid || !parsed_meta.has_value()) {
-    ++dcp_delete_parse_failure;
+  auto [cid, vb, seq_num, is_valid] = GetCidVbAndSeqNum(msg);
+  if (!is_valid) {
     return;
   }
 
@@ -1119,14 +1074,14 @@ void V8Worker::HandleDeleteEvent(const std::unique_ptr<WorkerMessage> &msg) {
   const auto options = flatbuf::payload::GetPayload(
       static_cast<const void *>(msg->payload.payload.c_str()));
   SendDelete(options->value()->str(), msg->header.metadata);
+  */
 }
 
 void V8Worker::HandleMutationEvent(const std::unique_ptr<WorkerMessage> &msg) {
+  /*
 
-  ++dcp_mutation_msg_counter;
-  auto [parsed_meta, is_valid] = ParseWorkerMessage(msg);
-  if (!is_valid || !parsed_meta.has_value()) {
-    ++dcp_mutation_parse_failure;
+  auto [cid, vb, seq_num, is_valid] = GetCidVbAndSeqNum(msg);
+  if (!is_valid) {
     return;
   }
 
@@ -1161,9 +1116,9 @@ void V8Worker::HandleMutationEvent(const std::unique_ptr<WorkerMessage> &msg) {
           rootcas, cursors_arr);
       if (err_code != LCB_SUCCESS) {
         if (err_code == LCB_ERR_CAS_MISMATCH) {
-          ++dcp_mutation_checkpoint_cas_mismatch;
+          //++dcp_mutation_checkpoint_cas_mismatch;
         } else {
-          ++dcp_mutation_checkpoint_failure;
+          //++dcp_mutation_checkpoint_failure;
           auto err_cstr = lcb_strerror_short(err_code);
           if (client_err.length() > 0) {
             err_cstr = client_err.c_str();
@@ -1182,6 +1137,7 @@ void V8Worker::HandleMutationEvent(const std::unique_ptr<WorkerMessage> &msg) {
 
   SendUpdate(doc->value()->str(), msg->header.metadata, doc->xattr()->str(),
              doc->is_binary());
+  */
 }
 
 void V8Worker::HandleDeployEvent(const std::unique_ptr<WorkerMessage> &msg) {
@@ -1211,7 +1167,6 @@ void V8Worker::HandleNoOpEvent(const std::unique_ptr<WorkerMessage> &msg) {
       return;
     }
   }
-  no_op_counter++;
 }
 
 void V8Worker::HandleDeleteCidEvent(const std::unique_ptr<WorkerMessage> &msg) {
@@ -1246,7 +1201,6 @@ std::tuple<bool, bool> V8Worker::IsFilteredEventLocked(bool skip_cid_check,
   const auto filter_seq_no = GetVbFilter(vb);
   if (filter_seq_no > 0 && seq_num <= filter_seq_no) {
     // Skip filtered event
-    ++filtered_dcp_mutation_counter;
     if (seq_num == filter_seq_no) {
       EraseVbFilter(vb);
     }
@@ -1305,8 +1259,6 @@ bool V8Worker::ExecuteScript(const v8::Local<v8::String> &script) {
 }
 
 void V8Worker::AddLcbException(int err_code) {
-  std::lock_guard<std::mutex> lock(lcb_exception_mtx_);
-  lcb_exceptions_[err_code]++;
 }
 
 void V8Worker::ListLcbExceptions(std::map<int, int64_t> &agg_lcb_exceptions) {
@@ -1383,8 +1335,8 @@ int V8Worker::SendUpdate(const std::string &value, const std::string &meta,
   if (try_catch.HasCaught()) {
     auto emsg = ExceptionString(isolate_, context, &try_catch);
     LOG(logDebug) << "OnUpdate Exception: " << emsg << std::endl;
-    CodeInsight::Get(isolate_).AccumulateException(try_catch);
-    ExceptionInsight::Get(isolate_).AccumulateException(try_catch);
+    // CodeInsight::Get(isolate_).AccumulateException(try_catch);
+    // ExceptionInsight::Get(isolate_).AccumulateException(try_catch);
   }
 
   if (debugger_started_) {
@@ -1418,15 +1370,13 @@ int V8Worker::SendUpdate(const std::string &value, const std::string &meta,
 
   if (try_catch.HasCaught()) {
     UpdateHistogram(start_time);
-    on_update_failure++;
-    auto emsg = ExceptionString(isolate_, context, &try_catch, timed_out_);
+    auto emsg = ExceptionString(isolate_, context, &try_catch);
     LOG(logDebug) << "OnUpdate Exception: " << emsg << std::endl;
-    CodeInsight::Get(isolate_).AccumulateException(try_catch, timed_out_);
-    ExceptionInsight::Get(isolate_).AccumulateException(try_catch, timed_out_);
+    // CodeInsight::Get(isolate_).AccumulateException(try_catch);
+    // ExceptionInsight::Get(isolate_).AccumulateException(try_catch);
     return kOnUpdateCallFail;
   }
 
-  on_update_success++;
   UpdateHistogram(start_time);
   return kSuccess;
 }
@@ -1476,8 +1426,8 @@ int V8Worker::SendDelete(const std::string &options, const std::string &meta) {
   if (try_catch.HasCaught()) {
     auto emsg = ExceptionString(isolate_, context, &try_catch);
     LOG(logDebug) << "OnDelete Exception: " << emsg << std::endl;
-    CodeInsight::Get(isolate_).AccumulateException(try_catch);
-    ExceptionInsight::Get(isolate_).AccumulateException(try_catch);
+    // CodeInsight::Get(isolate_).AccumulateException(try_catch);
+    // ExceptionInsight::Get(isolate_).AccumulateException(try_catch);
   }
 
   if (debugger_started_) {
@@ -1515,15 +1465,13 @@ int V8Worker::SendDelete(const std::string &options, const std::string &meta) {
                   << ExceptionString(isolate_, context, &try_catch, timed_out_)
                   << std::endl;
     UpdateHistogram(start_time);
-    CodeInsight::Get(isolate_).AccumulateException(try_catch, timed_out_);
-    ExceptionInsight::Get(isolate_).AccumulateException(try_catch, timed_out_);
+    // CodeInsight::Get(isolate_).AccumulateException(try_catch);
+    // ExceptionInsight::Get(isolate_).AccumulateException(try_catch);
 
-    ++on_delete_failure;
     return kOnDeleteCallFail;
   }
 
   UpdateHistogram(start_time);
-  on_delete_success++;
   return kSuccess;
 }
 
@@ -1633,7 +1581,6 @@ void V8Worker::SendTimer(std::string callback, std::string timer_ctx) {
   auto utils = UnwrapData(isolate_)->utils;
   auto callback_func_val = utils->GetPropertyFromGlobal(callback);
   if (!utils->IsFuncGlobal(callback_func_val)) {
-    timer_callback_missing_counter++;
     return;
   }
   auto callback_func = callback_func_val.As<v8::Function>();
@@ -1642,8 +1589,8 @@ void V8Worker::SendTimer(std::string callback, std::string timer_ctx) {
   if (try_catch.HasCaught()) {
     auto emsg = ExceptionString(isolate_, context, &try_catch);
     LOG(logDebug) << "Timer callback Exception: " << emsg << std::endl;
-    CodeInsight::Get(isolate_).AccumulateException(try_catch);
-    ExceptionInsight::Get(isolate_).AccumulateException(try_catch);
+    // CodeInsight::Get(isolate_).AccumulateException(try_catch);
+    // ExceptionInsight::Get(isolate_).AccumulateException(try_catch);
   }
 
   if (debugger_started_) {
@@ -1673,16 +1620,13 @@ void V8Worker::SendTimer(std::string callback, std::string timer_ctx) {
 
   if (try_catch.HasCaught()) {
     UpdateHistogram(execute_start_time_);
-    timer_callback_failure++;
-    auto emsg = ExceptionString(isolate_, context, &try_catch, timed_out_);
+    auto emsg = ExceptionString(isolate_, context, &try_catch);
     LOG(logDebug) << "Timer callback Exception: " << emsg << std::endl;
-    CodeInsight::Get(isolate_).AccumulateException(try_catch, timed_out_);
-    ExceptionInsight::Get(isolate_).AccumulateException(try_catch, timed_out_);
+    // CodeInsight::Get(isolate_).AccumulateException(try_catch);
+    // ExceptionInsight::Get(isolate_).AccumulateException(try_catch);
 
     return;
   }
-
-  timer_callback_success++;
 }
 
 void V8Worker::StartDebugger() {
@@ -2000,13 +1944,13 @@ void V8Worker::FreeCurlBindings() {
 }
 
 CodeInsight &V8Worker::GetInsight() {
-  auto &insight = CodeInsight::Get(isolate_);
-  return insight;
+  CodeInsight c;
+  return c;
 }
 
 ExceptionInsight &V8Worker::GetExceptionInsight() {
-  auto &exception_insight = ExceptionInsight::Get(isolate_);
-  return exception_insight;
+  ExceptionInsight e;
+  return e;
 }
 
 // Watches the duration of the event and terminates its execution if it goes
@@ -2046,8 +1990,6 @@ void V8Worker::TaskDurationWatcher() {
       std::lock_guard<std::mutex> guard(
           UnwrapData(isolate_)->termination_lock_);
 
-      timed_out_ = true;
-      timeout_count++;
       isolate_->TerminateExecution();
       UnwrapData(isolate_)->is_executing_ = false;
     }
@@ -2112,17 +2054,19 @@ void AddLcbException(const IsolateData *isolate_data, lcb_STATUS error) {
   w->AddLcbException(static_cast<int>(error));
 }
 
+/*
 std::string GetFunctionInstanceID(v8::Isolate *isolate) {
-  auto w = UnwrapData(isolate)->v8worker;
+  auto w = UnwrapData(isolate)->v8worker2;
   return w->GetFunctionInstanceID();
 }
 
 void UpdateCurlLatencyHistogram(
     v8::Isolate *isolate,
     const std::chrono::high_resolution_clock::time_point &start) {
-  auto w = UnwrapData(isolate)->v8worker;
+  auto w = UnwrapData(isolate)->v8worker2;
   w->UpdateCurlLatencyHistogram(start);
 }
+*/
 
 void V8Worker::UpdateV8HeapSize() {
   v8::HeapStatistics stats;

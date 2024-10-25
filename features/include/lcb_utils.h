@@ -24,12 +24,14 @@ const uint8_t UNKNOWN_TYPE = 8;
 
 const uint16_t UNKNOWN_SCOPE = 0x8C;
 const uint16_t UNKNOWN_COLLECTION = 0x88;
+const uint16_t BUCKET_NOT_FOUND = 0xff;
 
 struct LookupInResultEntry {
   std::string value;
   lcb_STATUS err_code{LCB_SUCCESS};
 
-  LookupInResultEntry(std::string value_, lcb_STATUS err_code_) : value(value_), err_code(err_code_) {}
+  LookupInResultEntry(std::string value_, lcb_STATUS err_code_)
+      : value(value_), err_code(err_code_) {}
 };
 
 struct Result {
@@ -97,6 +99,7 @@ std::pair<lcb_STATUS, Result> LcbUnlock(lcb_INSTANCE *instance,
                                         lcb_CMDUNLOCK &cmd);
 
 bool IsErrCodeRetriable(lcb_STATUS error, uint16_t err_code);
+bool IsKeyspaceExist(uint16_t err_code);
 bool IsRetriable(lcb_STATUS error);
 
 template <typename CmdType, typename Callable>

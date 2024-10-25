@@ -16,12 +16,7 @@
 #include "js_exception.h"
 #include "lcb_utils.h"
 #include "utils.h"
-#include "v8worker.h"
-
-extern std::atomic<int64_t> bucket_op_exception_count;
-extern std::atomic<int64_t> bucket_op_cachemiss_count;
-extern std::atomic<int64_t> lcb_retry_failure;
-std::atomic<int64_t> bkt_ops_cas_mismatch_count = {0};
+#include "v8worker2.h"
 
 BucketOps::BucketOps(v8::Isolate *isolate,
                      const v8::Local<v8::Context> &context)
@@ -62,7 +57,8 @@ void BucketOps::HandleBucketOpFailure(lcb_INSTANCE *connection,
                                       lcb_STATUS error) {
   auto isolate_data = UnwrapData(isolate_);
   AddLcbException(isolate_data, error);
-  ++bucket_op_exception_count;
+  const auto v8worker = isolate_data->v8worker2;
+  v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
 
   auto js_exception = isolate_data->js_exception;
   js_exception->ThrowKVError(connection, error);
@@ -421,7 +417,8 @@ OptionsInfo BucketOps::ExtractOptionsInfo(v8::Local<v8::Value> options_object) {
   return {true, options};
 }
 
-MutateInSpecsInfo BucketOps::ExtractMutateInSpecsInfo(v8::Local<v8::Value> mutateinspecs_object) {
+MutateInSpecsInfo
+BucketOps::ExtractMutateInSpecsInfo(v8::Local<v8::Value> mutateinspecs_object) {
   v8::HandleScope handle_scope(isolate_);
 
   auto context = context_.Get(isolate_);
@@ -527,9 +524,11 @@ MutateInSpecsInfo BucketOps::ExtractMutateInSpecsInfo(v8::Local<v8::Value> mutat
     }
 
     bool is_user_xattr = false;
-    if (options_obj->Has(context, v8Str(isolate_, user_xattr_str_)).FromJust()) {
+    if (options_obj->Has(context, v8Str(isolate_, user_xattr_str_))
+            .FromJust()) {
       v8::Local<v8::Value> user_xattr_v8val;
-      if (TO_LOCAL(options_obj->Get(context, v8Str(isolate_, user_xattr_str_)), &user_xattr_v8val)) {
+      if (TO_LOCAL(options_obj->Get(context, v8Str(isolate_, user_xattr_str_)),
+                   &user_xattr_v8val)) {
         if (!user_xattr_v8val->IsBoolean()) {
           return {false, "xattr must be a boolean value"};
         }
@@ -539,12 +538,13 @@ MutateInSpecsInfo BucketOps::ExtractMutateInSpecsInfo(v8::Local<v8::Value> mutat
       if (is_user_xattr && !key.empty() && key[0] == '_') {
         return {false, "XATTR path cannot start with underscore"};
       }
-      if(is_user_xattr && !utils->ValidateXattrKeyLength(key)) {
-          return {false, "XATTR key size must be less than 16 characters"};
+      if (is_user_xattr && !utils->ValidateXattrKeyLength(key)) {
+        return {false, "XATTR key size must be less than 16 characters"};
       }
     }
 
-    auto valid = specs.emplace_spec(specType, key, value, create_path, is_user_xattr);
+    auto valid =
+        specs.emplace_spec(specType, key, value, create_path, is_user_xattr);
     if (!valid) {
       return {false, "Invalid specs"};
     }
@@ -553,7 +553,8 @@ MutateInSpecsInfo BucketOps::ExtractMutateInSpecsInfo(v8::Local<v8::Value> mutat
   return {true, specs};
 }
 
-LookupInSpecsInfo BucketOps::ExtractLookupInSpecsInfo(v8::Local<v8::Value> lookupinspecs_object) {
+LookupInSpecsInfo
+BucketOps::ExtractLookupInSpecsInfo(v8::Local<v8::Value> lookupinspecs_object) {
   v8::HandleScope handle_scope(isolate_);
 
   auto context = context_.Get(isolate_);
@@ -631,15 +632,14 @@ LookupInSpecsInfo BucketOps::ExtractLookupInSpecsInfo(v8::Local<v8::Value> looku
     if (options_obj->Has(context, v8Str(isolate_, user_xattr_str_))
             .FromJust()) {
       v8::Local<v8::Value> xattr_v8val;
-      if (TO_LOCAL(
-              options_obj->Get(context, v8Str(isolate_, user_xattr_str_)),
-              &xattr_v8val)) {
+      if (TO_LOCAL(options_obj->Get(context, v8Str(isolate_, user_xattr_str_)),
+                   &xattr_v8val)) {
         if (!xattr_v8val->IsBoolean()) {
           return {false, "xattr must be a boolean value"};
         }
         auto xattr_v8 = xattr_v8val.As<v8::Boolean>();
         xattr = xattr_v8->Value();
-        if(xattr && !key.empty() && key[0] == '_') {
+        if (xattr && !key.empty() && key[0] == '_') {
           return {false, "XATTR path cannot start with underscore"};
         }
       }
@@ -755,7 +755,7 @@ BucketOps::BucketSet(MetaData &meta, v8::Local<v8::Value> value,
 
 std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
 BucketOps::BucketMutateIn(MetaData &meta, MutateInSpecs &value,
-                           bool suppress_recursion, Bucket *bucket) {
+                          bool suppress_recursion, Bucket *bucket) {
   if (suppress_recursion) {
     return bucket->MutateInWithXattr(meta, value);
   }
@@ -768,9 +768,10 @@ void BucketOps::Details(v8::FunctionCallbackInfo<v8::Value> args) {
 
   auto isolate_data = UnwrapData(isolate_);
   auto js_exception = isolate_data->js_exception;
+  const auto v8worker = isolate_data->v8worker2;
 
   if (args.Length() < 2) {
-    ++bucket_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
     js_exception->ThrowTypeError(
         "couchbase.bindingDetails requires at least 2 argument");
     return;
@@ -778,7 +779,7 @@ void BucketOps::Details(v8::FunctionCallbackInfo<v8::Value> args) {
 
   auto info = VerifyBucketObject(args[0]);
   if (info.is_fatal) {
-    ++bucket_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
     js_exception->ThrowTypeError(info.msg);
     return;
   }
@@ -791,7 +792,7 @@ void BucketOps::Details(v8::FunctionCallbackInfo<v8::Value> args) {
 
   auto meta_info = ExtractMetaInfo(args[1], false, false);
   if (!meta_info.is_valid) {
-    ++bucket_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
     js_exception->ThrowTypeError(meta_info.msg);
     return;
   }
@@ -800,7 +801,7 @@ void BucketOps::Details(v8::FunctionCallbackInfo<v8::Value> args) {
   auto bucket = BucketBinding::GetBucket(isolate_, args[0]);
   auto [err, scope, collection] = bucket->get_scope_and_collection_names(meta);
   if (err != nullptr) {
-    ++bucket_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
     js_exception->ThrowEventingError(*err);
     return;
   }
@@ -815,7 +816,7 @@ void BucketOps::Details(v8::FunctionCallbackInfo<v8::Value> args) {
                         v8Str(isolate_, bucket_name)),
           &success) ||
       !success) {
-    ++bucket_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
     js_exception->ThrowEventingError("Temp error");
   }
 
@@ -823,7 +824,7 @@ void BucketOps::Details(v8::FunctionCallbackInfo<v8::Value> args) {
                         v8Str(isolate_, scope)),
           &success) ||
       !success) {
-    ++bucket_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
     js_exception->ThrowEventingError("Temp error");
   }
 
@@ -831,7 +832,7 @@ void BucketOps::Details(v8::FunctionCallbackInfo<v8::Value> args) {
                         v8Str(isolate_, collection)),
           &success) ||
       !success) {
-    ++bucket_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
     js_exception->ThrowEventingError("Temp error");
   }
 
@@ -839,14 +840,14 @@ void BucketOps::Details(v8::FunctionCallbackInfo<v8::Value> args) {
                             v8Str(isolate_, access)),
           &success) ||
       !success) {
-    ++bucket_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
     js_exception->ThrowEventingError("Temp error");
   }
 
   if (!TO(response_obj->Set(context, v8Str(isolate_, "keyspace"), meta_obj),
           &success) ||
       !success) {
-    ++bucket_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
     js_exception->ThrowEventingError("Temp error");
   }
 
@@ -859,9 +860,11 @@ void BucketOps::CounterOps(v8::FunctionCallbackInfo<v8::Value> args,
 
   auto isolate_data = UnwrapData(isolate_);
   auto js_exception = isolate_data->js_exception;
+  const auto v8worker = isolate_data->v8worker2;
 
   if (args.Length() < 2) {
-    ++bucket_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
+    ;
     js_exception->ThrowTypeError(
         "couchbase.counter requires at least 2 arguments");
     return;
@@ -869,21 +872,23 @@ void BucketOps::CounterOps(v8::FunctionCallbackInfo<v8::Value> args,
 
   auto info = VerifyBucketObject(args[0]);
   if (info.is_fatal) {
-    ++bucket_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
     js_exception->ThrowTypeError(info.msg);
     return;
   }
 
   auto block_mutation = BucketBinding::GetBlockMutation(isolate_, args[0]);
   if (block_mutation) {
-    ++bucket_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
+    ;
     js_exception->ThrowEventingError("Writing to source bucket is forbidden");
     return;
   }
 
   auto meta_info = ExtractMetaInfo(args[1]);
   if (!meta_info.is_valid) {
-    ++bucket_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
+    ;
     js_exception->ThrowTypeError(meta_info.msg);
     return;
   }
@@ -901,7 +906,8 @@ void BucketOps::CounterOps(v8::FunctionCallbackInfo<v8::Value> args,
       Counter(meta, delta, is_source_mutation, bucket);
 
   if (error != nullptr) {
-    ++bucket_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
+    ;
     js_exception->ThrowEventingError(*error);
     return;
   }
@@ -918,7 +924,8 @@ void BucketOps::CounterOps(v8::FunctionCallbackInfo<v8::Value> args,
                           result->kv_err_code, invalid_counter_str_, true);
 
     if (info.is_fatal) {
-      ++bucket_op_exception_count;
+      v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
+      ;
       js_exception->ThrowEventingError(info.msg);
       return;
     }
@@ -932,11 +939,12 @@ void BucketOps::CounterOps(v8::FunctionCallbackInfo<v8::Value> args,
         "The document key exists with a CAS value different than specified",
         result->kv_err_code, cas_mismatch_str_, true);
     if (info.is_fatal) {
-      ++bucket_op_exception_count;
+      v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
+      ;
       js_exception->ThrowEventingError(info.msg);
       return;
     }
-    ++bkt_ops_cas_mismatch_count;
+    v8worker->stats_->IncrementFailureStat("bkt_ops_cas_mismatch_count");
     args.GetReturnValue().Set(response_obj);
     return;
   }
@@ -951,7 +959,8 @@ void BucketOps::CounterOps(v8::FunctionCallbackInfo<v8::Value> args,
 
   info = ResponseSuccessObject(std::move(result), response_obj, false, true);
   if (info.is_fatal) {
-    ++bucket_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
+    ;
     js_exception->ThrowEventingError(info.msg);
   }
   args.GetReturnValue().Set(response_obj);
@@ -969,23 +978,27 @@ void BucketOps::GetOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
   auto js_exception = isolate_data->js_exception;
   auto bucket_ops = isolate_data->bucket_ops;
+  const auto v8worker = isolate_data->v8worker2;
 
   if (args.Length() < 2) {
-    ++bucket_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
+    ;
     js_exception->ThrowTypeError("couchbase.get requires at least 2 arguments");
     return;
   }
 
   auto info = bucket_ops->VerifyBucketObject(args[0]);
   if (info.is_fatal) {
-    ++bucket_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
+    ;
     js_exception->ThrowTypeError(info.msg);
     return;
   }
 
   auto meta_info = bucket_ops->ExtractMetaInfo(args[1]);
   if (!meta_info.is_valid) {
-    ++bucket_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
+    ;
     js_exception->ThrowTypeError(meta_info.msg);
     return;
   }
@@ -995,7 +1008,7 @@ void BucketOps::GetOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
   if (args.Length() > 2) {
     auto options_info = bucket_ops->ExtractOptionsInfo(args[2]);
     if (!options_info.is_valid) {
-      ++bucket_op_exception_count;
+      v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
       js_exception->ThrowTypeError(options_info.msg);
       return;
     }
@@ -1005,12 +1018,12 @@ void BucketOps::GetOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
   auto bucket = BucketBinding::GetBucket(isolate, args[0]);
   v8::Local<v8::Object> response_obj = v8::Object::New(isolate);
   if (options.cache) {
-    ++bucket_op_cachemiss_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_cache_miss_count");
   }
 
   auto [error, err_code, result] = bucket->GetWithMeta(meta);
   if (error != nullptr) {
-    ++bucket_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
     js_exception->ThrowEventingError(*error);
     return;
   }
@@ -1027,7 +1040,7 @@ void BucketOps::GetOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
         bucket_ops->key_not_found_str_, true);
 
     if (info.is_fatal) {
-      ++bucket_op_exception_count;
+      v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
       js_exception->ThrowEventingError(info.msg);
       return;
     }
@@ -1045,7 +1058,8 @@ void BucketOps::GetOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
   info = bucket_ops->ResponseSuccessObject(std::move(result), response_obj,
                                            true, false, true);
   if (info.is_fatal) {
-    ++bucket_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
+    ;
     js_exception->ThrowEventingError(info.msg);
     return;
   }
@@ -1065,9 +1079,11 @@ void BucketOps::InsertOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
   auto js_exception = isolate_data->js_exception;
   auto bucket_ops = isolate_data->bucket_ops;
+  const auto v8worker = isolate_data->v8worker2;
 
   if (args.Length() < 3) {
-    ++bucket_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
+    ;
     js_exception->ThrowTypeError(
         "couchbase.insert requires at least 3 arguments");
     return;
@@ -1075,28 +1091,32 @@ void BucketOps::InsertOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
   auto info = bucket_ops->VerifyBucketObject(args[0]);
   if (info.is_fatal) {
-    ++bucket_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
+    ;
     js_exception->ThrowTypeError(info.msg);
     return;
   }
 
   auto block_mutation = BucketBinding::GetBlockMutation(isolate, args[0]);
   if (block_mutation) {
-    ++bucket_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
+    ;
     js_exception->ThrowEventingError("Writing to source bucket is forbidden");
     return;
   }
 
   auto meta_info = bucket_ops->ExtractMetaInfo(args[1], false, true);
   if (!meta_info.is_valid) {
-    ++bucket_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
+    ;
     js_exception->ThrowTypeError(meta_info.msg);
     return;
   }
 
   info = Utils::ValidateDataType(args[2]);
   if (info.is_fatal) {
-    ++bucket_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
+    ;
     auto err_msg = "Invalid data type for 3rd argument: " + info.msg;
     js_exception->ThrowTypeError(err_msg);
     return;
@@ -1106,7 +1126,7 @@ void BucketOps::InsertOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
   if (args.Length() > 3) {
     auto options_info = bucket_ops->ExtractOptionsInfo(args[3]);
     if (!options_info.is_valid) {
-      ++bucket_op_exception_count;
+      v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
       js_exception->ThrowTypeError(options_info.msg);
       return;
     }
@@ -1132,7 +1152,8 @@ void BucketOps::InsertOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
       meta, args[2], LCB_STORE_INSERT, suppress_recursion, bucket);
 
   if (error != nullptr) {
-    ++bucket_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
+    ;
     js_exception->ThrowEventingError(*error);
     return;
   }
@@ -1152,7 +1173,8 @@ void BucketOps::InsertOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
         bucket_ops->key_exist_str_, true);
 
     if (info.is_fatal) {
-      ++bucket_op_exception_count;
+      v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
+      ;
       js_exception->ThrowEventingError(info.msg);
       return;
     }
@@ -1170,7 +1192,8 @@ void BucketOps::InsertOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
   info = bucket_ops->ResponseSuccessObject(std::move(result), response_obj);
   if (info.is_fatal) {
-    ++bucket_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
+    ;
     js_exception->ThrowEventingError(info.msg);
     return;
   }
@@ -1190,9 +1213,11 @@ void BucketOps::ReplaceOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
   auto js_exception = isolate_data->js_exception;
   auto bucket_ops = isolate_data->bucket_ops;
+  const auto v8worker = isolate_data->v8worker2;
 
   if (args.Length() < 3) {
-    ++bucket_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
+    ;
     js_exception->ThrowTypeError(
         "couchbase.upsert requires at least 3 arguments");
     return;
@@ -1200,21 +1225,24 @@ void BucketOps::ReplaceOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
   auto info = bucket_ops->VerifyBucketObject(args[0]);
   if (info.is_fatal) {
-    ++bucket_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
+    ;
     js_exception->ThrowTypeError(info.msg);
     return;
   }
 
   auto block_mutation = BucketBinding::GetBlockMutation(isolate, args[0]);
   if (block_mutation) {
-    ++bucket_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
+    ;
     js_exception->ThrowEventingError("Writing to source bucket is forbidden");
     return;
   }
 
   auto meta_info = bucket_ops->ExtractMetaInfo(args[1], true, true);
   if (!meta_info.is_valid) {
-    ++bucket_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
+    ;
     js_exception->ThrowTypeError(meta_info.msg);
     return;
   }
@@ -1222,7 +1250,8 @@ void BucketOps::ReplaceOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
   info = Utils::ValidateDataType(args[2]);
   if (info.is_fatal) {
-    ++bucket_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
+    ;
     auto err_msg = "Invalid data type for 3rd argument: " + info.msg;
     js_exception->ThrowTypeError(err_msg);
     return;
@@ -1232,7 +1261,7 @@ void BucketOps::ReplaceOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
   if (args.Length() > 3) {
     auto options_info = bucket_ops->ExtractOptionsInfo(args[3]);
     if (!options_info.is_valid) {
-      ++bucket_op_exception_count;
+      v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
       js_exception->ThrowTypeError(options_info.msg);
       return;
     }
@@ -1256,7 +1285,8 @@ void BucketOps::ReplaceOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
       meta, args[2], LCB_STORE_REPLACE, suppress_recursion, bucket);
 
   if (error != nullptr) {
-    ++bucket_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
+    ;
     js_exception->ThrowEventingError(*error);
     return;
   }
@@ -1275,11 +1305,12 @@ void BucketOps::ReplaceOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
         result->kv_err_code, bucket_ops->cas_mismatch_str_, true);
 
     if (info.is_fatal) {
-      ++bucket_op_exception_count;
+      v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
+      ;
       js_exception->ThrowEventingError(info.msg);
       return;
     }
-    ++bkt_ops_cas_mismatch_count;
+    v8worker->stats_->IncrementFailureStat("bkt_ops_cas_mismatch_count");
     args.GetReturnValue().Set(response_obj);
     return;
   }
@@ -1291,7 +1322,8 @@ void BucketOps::ReplaceOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
         bucket_ops->key_not_found_str_, true);
 
     if (info.is_fatal) {
-      ++bucket_op_exception_count;
+      v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
+      ;
       js_exception->ThrowEventingError(info.msg);
       return;
     }
@@ -1309,7 +1341,8 @@ void BucketOps::ReplaceOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
   info = bucket_ops->ResponseSuccessObject(std::move(result), response_obj);
   if (info.is_fatal) {
-    ++bucket_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
+    ;
     js_exception->ThrowEventingError(info.msg);
     return;
   }
@@ -1329,9 +1362,11 @@ void BucketOps::UpsertOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
   auto js_exception = isolate_data->js_exception;
   auto bucket_ops = isolate_data->bucket_ops;
+  const auto v8worker = isolate_data->v8worker2;
 
   if (args.Length() < 3) {
-    ++bucket_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
+    ;
     js_exception->ThrowTypeError(
         "couchbase.upsert requires at least 3 arguments");
     return;
@@ -1339,21 +1374,24 @@ void BucketOps::UpsertOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
   auto info = bucket_ops->VerifyBucketObject(args[0]);
   if (info.is_fatal) {
-    ++bucket_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
+    ;
     js_exception->ThrowTypeError(info.msg);
     return;
   }
 
   auto block_mutation = BucketBinding::GetBlockMutation(isolate, args[0]);
   if (block_mutation) {
-    ++bucket_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
+    ;
     js_exception->ThrowEventingError("Writing to source bucket is forbidden");
     return;
   }
 
   auto meta_info = bucket_ops->ExtractMetaInfo(args[1], false, true);
   if (!meta_info.is_valid) {
-    ++bucket_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
+    ;
     js_exception->ThrowTypeError(meta_info.msg);
     return;
   }
@@ -1361,7 +1399,8 @@ void BucketOps::UpsertOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
   info = Utils::ValidateDataType(args[2]);
   if (info.is_fatal) {
-    ++bucket_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
+    ;
     auto err_msg = "Invalid data type for 3rd argument: " + info.msg;
     js_exception->ThrowTypeError(err_msg);
     return;
@@ -1371,7 +1410,7 @@ void BucketOps::UpsertOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
   if (args.Length() > 3) {
     auto options_info = bucket_ops->ExtractOptionsInfo(args[3]);
     if (!options_info.is_valid) {
-      ++bucket_op_exception_count;
+      v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
       js_exception->ThrowTypeError(options_info.msg);
       return;
     }
@@ -1394,7 +1433,8 @@ void BucketOps::UpsertOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
       meta, args[2], LCB_STORE_UPSERT, suppress_recursion, bucket);
 
   if (error != nullptr) {
-    ++bucket_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
+    ;
     js_exception->ThrowEventingError(*error);
     return;
   }
@@ -1415,7 +1455,8 @@ void BucketOps::UpsertOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
   info = bucket_ops->ResponseSuccessObject(std::move(result), response_obj);
   if (info.is_fatal) {
-    ++bucket_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
+    ;
     js_exception->ThrowEventingError(info.msg);
     return;
   }
@@ -1435,9 +1476,10 @@ void BucketOps::DeleteOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
   auto bucket_ops = isolate_data->bucket_ops;
   auto js_exception = isolate_data->js_exception;
+  const auto v8worker = isolate_data->v8worker2;
 
   if (args.Length() < 2) {
-    ++bucket_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
     js_exception->ThrowTypeError(
         "couchbase.delete requires at least 2 arguments");
     return;
@@ -1445,21 +1487,21 @@ void BucketOps::DeleteOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
   auto info = bucket_ops->VerifyBucketObject(args[0]);
   if (info.is_fatal) {
-    ++bucket_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
     js_exception->ThrowTypeError(info.msg);
     return;
   }
 
   auto block_mutation = BucketBinding::GetBlockMutation(isolate, args[0]);
   if (block_mutation) {
-    ++bucket_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
     js_exception->ThrowEventingError("Delete from source bucket is forbidden");
     return;
   }
 
   auto meta_info = bucket_ops->ExtractMetaInfo(args[1], true);
   if (!meta_info.is_valid) {
-    ++bucket_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
     js_exception->ThrowTypeError(meta_info.msg);
     return;
   }
@@ -1476,7 +1518,7 @@ void BucketOps::DeleteOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
   auto [error, err_code, result] =
       bucket_ops->Delete(meta, is_source_mutation, bucket);
   if (error != nullptr) {
-    ++bucket_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
     js_exception->ThrowEventingError(*error);
     return;
   }
@@ -1494,11 +1536,11 @@ void BucketOps::DeleteOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
         result->kv_err_code, bucket_ops->cas_mismatch_str_, true);
 
     if (info.is_fatal) {
-      ++bucket_op_exception_count;
+      v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
       js_exception->ThrowEventingError(info.msg);
       return;
     }
-    ++bkt_ops_cas_mismatch_count;
+    v8worker->stats_->IncrementFailureStat("bkt_ops_cas_mismatch_count");
     args.GetReturnValue().Set(response_obj);
     return;
   }
@@ -1510,7 +1552,7 @@ void BucketOps::DeleteOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
         bucket_ops->key_not_found_str_, true);
 
     if (info.is_fatal) {
-      ++bucket_op_exception_count;
+      v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
       js_exception->ThrowEventingError(info.msg);
       return;
     }
@@ -1526,7 +1568,7 @@ void BucketOps::DeleteOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
   result->key = meta.key;
   info = bucket_ops->ResponseSuccessObject(std::move(result), response_obj);
   if (info.is_fatal) {
-    ++bucket_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
     js_exception->ThrowEventingError(info.msg);
     return;
   }
@@ -1568,9 +1610,10 @@ void BucketOps::TouchOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
   auto bucket_ops = isolate_data->bucket_ops;
   auto js_exception = isolate_data->js_exception;
+  const auto v8worker = isolate_data->v8worker2;
 
   if (args.Length() < 2) {
-    ++bucket_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
     js_exception->ThrowTypeError(
         "couchbase.touch requires at least 2 arguments");
     return;
@@ -1578,21 +1621,21 @@ void BucketOps::TouchOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
   auto info = bucket_ops->VerifyBucketObject(args[0]);
   if (info.is_fatal) {
-    ++bucket_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
     js_exception->ThrowTypeError(info.msg);
     return;
   }
 
   auto block_mutation = BucketBinding::GetBlockMutation(isolate, args[0]);
   if (block_mutation) {
-    ++bucket_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
     js_exception->ThrowEventingError("Touch operation is forbidden");
     return;
   }
 
   auto meta_info = bucket_ops->ExtractMetaInfo(args[1], false, true);
   if (!meta_info.is_valid) {
-    ++bucket_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
     js_exception->ThrowTypeError(meta_info.msg);
     return;
   }
@@ -1609,7 +1652,7 @@ void BucketOps::TouchOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
   auto [error, err_code, result] =
       bucket_ops->Touch(meta, is_source_mutation, bucket);
   if (error != nullptr) {
-    ++bucket_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
     js_exception->ThrowEventingError(*error);
     return;
   }
@@ -1628,7 +1671,7 @@ void BucketOps::TouchOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
         bucket_ops->key_not_found_str_, true);
 
     if (info.is_fatal) {
-      ++bucket_op_exception_count;
+      v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
       js_exception->ThrowEventingError(info.msg);
       return;
     }
@@ -1643,7 +1686,7 @@ void BucketOps::TouchOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
   info = bucket_ops->ResponseSuccessObject(std::move(result), response_obj);
   if (info.is_fatal) {
-    ++bucket_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
     js_exception->ThrowEventingError(info.msg);
     return;
   }
@@ -1676,9 +1719,10 @@ void BucketOps::MutateInOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
   auto js_exception = isolate_data->js_exception;
   auto bucket_ops = isolate_data->bucket_ops;
+  const auto v8worker = isolate_data->v8worker2;
 
   if (args.Length() < 3) {
-    ++bucket_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
     js_exception->ThrowTypeError(
         "couchbase.MutateIn requires at least 3 arguments");
     return;
@@ -1686,21 +1730,21 @@ void BucketOps::MutateInOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
   auto info = bucket_ops->VerifyBucketObject(args[0]);
   if (info.is_fatal) {
-    ++bucket_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
     js_exception->ThrowTypeError(info.msg);
     return;
   }
 
   auto block_mutation = BucketBinding::GetBlockMutation(isolate, args[0]);
   if (block_mutation) {
-    ++bucket_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
     js_exception->ThrowEventingError("Writing to source bucket is forbidden");
     return;
   }
 
   auto meta_info = bucket_ops->ExtractMetaInfo(args[1], true, true);
   if (!meta_info.is_valid) {
-    ++bucket_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
     js_exception->ThrowTypeError(meta_info.msg);
     return;
   }
@@ -1708,7 +1752,7 @@ void BucketOps::MutateInOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
   info = Utils::ValidateDataType(args[2]);
   if (info.is_fatal) {
-    ++bucket_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
     auto err_msg = "Invalid data type for 3rd argument: " + info.msg;
     js_exception->ThrowTypeError(err_msg);
     return;
@@ -1718,7 +1762,7 @@ void BucketOps::MutateInOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
   if (args.Length() > 3) {
     auto options_info = bucket_ops->ExtractOptionsInfo(args[3]);
     if (!options_info.is_valid) {
-      ++bucket_op_exception_count;
+      v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
       js_exception->ThrowTypeError(options_info.msg);
       return;
     }
@@ -1739,7 +1783,7 @@ void BucketOps::MutateInOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
   auto bucket = BucketBinding::GetBucket(isolate, args[0]);
   auto mutateinspecs_info = bucket_ops->ExtractMutateInSpecsInfo(args[2]);
   if (!mutateinspecs_info.is_valid) {
-    ++bucket_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
     js_exception->ThrowTypeError(mutateinspecs_info.msg);
     return;
   }
@@ -1748,7 +1792,7 @@ void BucketOps::MutateInOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
       meta, mutateinspecs_info.specs, suppress_recursion, bucket);
 
   if (error != nullptr) {
-    ++bucket_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
     js_exception->ThrowEventingError(*error);
     return;
   }
@@ -1766,11 +1810,11 @@ void BucketOps::MutateInOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
         result->kv_err_code, bucket_ops->cas_mismatch_str_, true);
 
     if (info.is_fatal) {
-      ++bucket_op_exception_count;
+      v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
       js_exception->ThrowEventingError(info.msg);
       return;
     }
-    ++bkt_ops_cas_mismatch_count;
+    v8worker->stats_->IncrementFailureStat("bkt_ops_cas_mismatch_count");
     args.GetReturnValue().Set(response_obj);
     return;
   }
@@ -1782,7 +1826,7 @@ void BucketOps::MutateInOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
         bucket_ops->key_not_found_str_, true);
 
     if (info.is_fatal) {
-      ++bucket_op_exception_count;
+      v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
       js_exception->ThrowEventingError(info.msg);
       return;
     }
@@ -1797,7 +1841,7 @@ void BucketOps::MutateInOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
         bucket_ops->field_exist_str_, true);
 
     if (info.is_fatal) {
-      ++bucket_op_exception_count;
+      v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
       js_exception->ThrowEventingError(info.msg);
       return;
     }
@@ -1812,7 +1856,7 @@ void BucketOps::MutateInOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
         bucket_ops->field_not_found_str_, true);
 
     if (info.is_fatal) {
-      ++bucket_op_exception_count;
+      v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
       js_exception->ThrowEventingError(info.msg);
       return;
     }
@@ -1830,7 +1874,7 @@ void BucketOps::MutateInOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
   info = bucket_ops->ResponseSuccessObject(std::move(result), response_obj);
   if (info.is_fatal) {
-    ++bucket_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
     js_exception->ThrowEventingError(info.msg);
     return;
   }
@@ -1850,9 +1894,10 @@ void BucketOps::LookupInOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
   auto js_exception = isolate_data->js_exception;
   auto bucket_ops = isolate_data->bucket_ops;
+  const auto v8worker = isolate_data->v8worker2;
 
   if (args.Length() < 3) {
-    ++bucket_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
     js_exception->ThrowTypeError(
         "couchbase.LookupIn requires at least 3 arguments");
     return;
@@ -1861,14 +1906,14 @@ void BucketOps::LookupInOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
   // Validation and extraction phase
   auto info = bucket_ops->VerifyBucketObject(args[0]);
   if (info.is_fatal) {
-    ++bucket_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
     js_exception->ThrowTypeError(info.msg);
     return;
   }
 
   auto meta_info = bucket_ops->ExtractMetaInfo(args[1], true, true);
   if (!meta_info.is_valid) {
-    ++bucket_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
     js_exception->ThrowTypeError(meta_info.msg);
     return;
   }
@@ -1876,7 +1921,7 @@ void BucketOps::LookupInOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
   info = Utils::ValidateDataType(args[2]);
   if (info.is_fatal) {
-    ++bucket_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
     auto err_msg = "Invalid data type for 3rd argument: " + info.msg;
     js_exception->ThrowTypeError(err_msg);
     return;
@@ -1886,13 +1931,14 @@ void BucketOps::LookupInOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
   auto bucket = BucketBinding::GetBucket(isolate, args[0]);
   auto lookupinspecs_info = bucket_ops->ExtractLookupInSpecsInfo(args[2]);
   if (!lookupinspecs_info.is_valid) {
-    ++bucket_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
     js_exception->ThrowTypeError(lookupinspecs_info.msg);
     return;
   }
-  auto [error, err_code, result] = bucket->LookupIn(meta, lookupinspecs_info.specs);
+  auto [error, err_code, result] =
+      bucket->LookupIn(meta, lookupinspecs_info.specs);
   if (error != nullptr) {
-    ++bucket_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
     js_exception->ThrowEventingError(*error);
     return;
   }
@@ -1910,7 +1956,7 @@ void BucketOps::LookupInOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
         bucket_ops->key_not_found_str_, true);
 
     if (info.is_fatal) {
-      ++bucket_op_exception_count;
+      v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
       js_exception->ThrowEventingError(info.msg);
       return;
     }
@@ -1924,9 +1970,10 @@ void BucketOps::LookupInOp(const v8::FunctionCallbackInfo<v8::Value> &args) {
   }
 
   result->key = meta.key;
-  info = bucket_ops->ResponseSuccessObject(std::move(result), response_obj, true);
+  info =
+      bucket_ops->ResponseSuccessObject(std::move(result), response_obj, true);
   if (info.is_fatal) {
-    ++bucket_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
     js_exception->ThrowEventingError(info.msg);
     return;
   }

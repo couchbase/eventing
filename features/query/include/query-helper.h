@@ -111,5 +111,4 @@ private:
 } // namespace Query
 
 void AddLcbException(const IsolateData *isolate_data, int code);
-
 #endif

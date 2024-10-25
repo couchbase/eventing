@@ -17,9 +17,8 @@
 #include "js_exception.h"
 #include "timer.h"
 #include "utils.h"
-#include "v8worker.h"
+#include "v8worker2.h"
 
-std::atomic<int64_t> timer_context_size_exceeded_counter = {0};
 thread_local std::mt19937_64
     rng(std::random_device{}() +
         std::hash<std::thread::id>()(std::this_thread::get_id()));
@@ -75,10 +74,10 @@ Timer::CreateTimerImpl(const v8::FunctionCallbackInfo<v8::Value> &args) {
   }
 
   auto utils = UnwrapData(isolate_)->utils;
-  auto v8worker = UnwrapData(isolate_)->v8worker;
+  auto v8worker = UnwrapData(isolate_)->v8worker2;
   timer::TimerInfo timer_info;
   timer_info.epoch = epoch_info.epoch;
-  timer_info.seq_num = v8worker->currently_processed_seqno_;
+  timer_info.seq_num = v8worker->processing_seq_num();
   timer_info.callback = utils->GetFunctionName(args[0]);
   timer_info.context = JSONStringify(isolate_, args[3]);
 
@@ -92,14 +91,17 @@ Timer::CreateTimerImpl(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
   FillTimerPartition(timer_info, v8worker->num_vbuckets_);
 
-  if (timer_info.context.size() > static_cast<unsigned>(timer_context_size)) {
+  auto timer_context_size = UnwrapData(isolate_)->timer_context_size;
+  if (timer_info.context.size() > timer_context_size) {
     std::string err_msg =
         "The context payload size is more than the configured size:" +
         std::to_string(timer_context_size) + " bytes";
     js_exception->ThrowEventingError(err_msg);
-    timer_context_size_exceeded_counter++;
+    v8worker->stats_->IncrementFailureStat(
+        "timer_context_size_exceeded_counter");
     return TIMER_MSG(false, err_msg);
   }
+
   auto err = v8worker->SetTimer(timer_info);
   if (err != LCB_SUCCESS) {
     js_exception->ThrowKVError(v8worker->GetTimerLcbHandle(), err);
@@ -119,7 +121,7 @@ bool Timer::CancelTimerImpl(const v8::FunctionCallbackInfo<v8::Value> &args) {
   auto js_exception = UnwrapData(isolate_)->js_exception;
 
   auto utils = UnwrapData(isolate_)->utils;
-  auto v8worker = UnwrapData(isolate_)->v8worker;
+  auto v8worker = UnwrapData(isolate_)->v8worker2;
   timer::TimerInfo timer_info;
   timer_info.callback = utils->GetFunctionName(args[0]);
   timer_info.reference = utils->ToCPPString(args[1]);
@@ -221,11 +223,12 @@ void CreateTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
   }
 
   auto timer = UnwrapData(isolate)->timer;
+  auto v8worker = UnwrapData(isolate)->v8worker2;
   auto response = timer->CreateTimerImpl(args);
   if (response.success) {
-    ++timer_create_counter;
+    v8worker->stats_->IncrementExecutionStat("timer_create_counter");
   } else {
-    ++timer_create_failure;
+    v8worker->stats_->IncrementExecutionStat("timer_create_failure");
     LOG(logError) << "Timer Creation failed with message: " << response.message
                   << "\n";
   }
@@ -239,7 +242,8 @@ void CancelTimer(const v8::FunctionCallbackInfo<v8::Value> &args) {
   }
 
   auto timer = UnwrapData(isolate)->timer;
+  auto v8worker = UnwrapData(isolate)->v8worker2;
   if (timer->CancelTimerImpl(args)) {
-    ++timer_cancel_counter;
+    v8worker->stats_->IncrementExecutionStat("timer_cancel_counter");
   }
 }

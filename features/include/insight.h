@@ -37,18 +37,17 @@ typedef std::map<int, LineEntry> Insight;
 
 class CodeInsight {
 public:
-  explicit CodeInsight(v8::Isolate *isolate);
+  CodeInsight(){};
 
   void Setup(const std::string &script);
 
   void AccumulateTime(uint64_t nanotime);
-  void AccumulateException(v8::TryCatch &, bool script_timeout = false, bool on_deploy_timeout = false);
-  void AccumulateLog(const std::string &msg);
+  void AccumulateException(v8::Isolate *isolate_, v8::TryCatch &,
+                           bool timeout = false);
+  void AccumulateLog(v8::Isolate *isolate_, const std::string &msg);
 
   std::string ToJSON();
   void Accumulate(CodeInsight &other);
-
-  static CodeInsight &Get(v8::Isolate *isolate);
 
 private:
   CodeInsight(const CodeInsight &) = delete;
