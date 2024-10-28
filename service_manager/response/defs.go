@@ -126,6 +126,7 @@ var (
 	ErrInvalidRequest         = errCode(63)
 	ErrAppPaused              = errCode(64)
 	ErrCursorLimitReached     = errCode(65)
+	ErrOnDeployFailed         = errCode(66)
 )
 
 // Shouldn't expose internal details
@@ -180,6 +181,7 @@ var (
 		ErrInvalidRequest:         ErrorInfo{httpStatusCode: http.StatusBadRequest, Name: "ERR_INVALID_REQUEST", Code: 63},
 		ErrAppPaused:              ErrorInfo{httpStatusCode: http.StatusUnprocessableEntity, Name: "ERR_APP_PAUSED", Code: 64},
 		ErrCursorLimitReached:     ErrorInfo{httpStatusCode: http.StatusBadRequest, Name: "ERR_CURSOR_LIMIT_REACHED", Code: 65},
+		ErrOnDeployFailed:         ErrorInfo{httpStatusCode: http.StatusInternalServerError, Name: "ERR_ONDEPLOY_FAILED", Code: 66},
 	}
 )
 

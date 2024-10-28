@@ -11,7 +11,9 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
+	"unsafe"
 
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/common/collections"
@@ -735,6 +737,107 @@ func (s *SuperSupervisor) setinitLifecycleEncryptData() {
 		s.initLifecycleEncryptData = securitySetting.EncryptData
 		s.initEncryptDataMutex.Unlock()
 	}
+}
+
+func (s *SuperSupervisor) getDCPconfig(appName string) (map[string]interface{}, error) {
+	const logPrefix string = "SuperSupervisor::getDCPconfig"
+
+	dcpConfig := make(map[string]interface{})
+
+	var sData []byte
+	onDeployPath := MetakvOnDeployPath + appName
+	util.Retry(util.NewFixedBackoff(time.Second), nil, metakvGetCallback, s, onDeployPath, &sData)
+
+	settings := make(map[string]interface{})
+	uErr := json.Unmarshal(sData, &settings)
+	if uErr != nil {
+		logging.Errorf("%s [%s] Failed to unmarshal settings received from metakv, err: %v", logPrefix, appName, uErr)
+		return dcpConfig, uErr
+	}
+
+	if val, ok := settings["data_chan_size"]; ok {
+		dcpConfig["dataChanSize"] = int(val.(float64))
+	} else {
+		dcpConfig["dataChanSize"] = 50
+	}
+
+	if val, ok := settings["dcp_window_size"]; ok {
+		dcpConfig["dcpWindowSize"] = uint32(val.(float64))
+	} else {
+		dcpConfig["dcpWindowSize"] = uint32(20 * 1024 * 1024)
+	}
+
+	if val, ok := settings["tick_duration"]; ok {
+		dcpConfig["latencyTick"] = int(val.(float64))
+	} else {
+		dcpConfig["latencyTick"] = 60 * 1000
+	}
+
+	if val, ok := settings["dcp_gen_chan_size"]; ok {
+		dcpConfig["genChanSize"] = int(val.(float64))
+	} else {
+		dcpConfig["genChanSize"] = 10000
+	}
+
+	if val, ok := settings["dcp_num_connections"]; ok {
+		dcpConfig["numConnections"] = int(val.(float64))
+	} else {
+		dcpConfig["numConnections"] = 1
+	}
+
+	dcpConfig["activeVbOnly"] = true
+
+	var err error
+	dcpConfig["collectionAware"], err = util.CollectionAware(s.gocbGlobalConfigHandle.nsServerPort)
+	if err != nil {
+		logging.Errorf("%s [%s] Failed to cluster collection aware status, err: %v", logPrefix, appName, err)
+	}
+
+	dcpConfig["ignorePurgedTombstone"], err = util.IgnorePurgeSeqFlagAvailable(s.gocbGlobalConfigHandle.nsServerPort)
+	if err != nil {
+		logging.Errorf("%s [%s] Failed to fetch ignore purge seq flag, err: %v", logPrefix, appName, err)
+	}
+
+	return dcpConfig, nil
+}
+
+func (s *SuperSupervisor) getKvNodeAddrs() []string {
+	kvNodeAddrs := (*[]string)(atomic.LoadPointer(
+		(*unsafe.Pointer)(unsafe.Pointer(&s.kvNodeAddrs))))
+	if kvNodeAddrs != nil {
+		return *kvNodeAddrs
+	}
+	return nil
+}
+
+func (s *SuperSupervisor) getUserPrefix(appName string) string {
+	const logPrefix string = "SuperSupervisor::getUserPrefix"
+
+	defaultUserPrefix := "eventing"
+
+	var sData []byte
+	onDeployPath := MetakvOnDeployPath + appName
+	util.Retry(util.NewFixedBackoff(time.Second), nil, metakvGetCallback, s, onDeployPath, &sData)
+
+	settings := make(map[string]interface{})
+	uErr := json.Unmarshal(sData, &settings)
+	if uErr != nil {
+		logging.Errorf("%s [%s] Failed to unmarshal settings received from metakv, err: %v", logPrefix, appName, uErr)
+		return defaultUserPrefix
+	}
+
+	if val, ok := settings["user_prefix"]; ok {
+		return val.(string)
+	}
+	return defaultUserPrefix
+}
+
+func (s *SuperSupervisor) updateMetadataHandle(appName string, metadataKeyspace common.Keyspace) error {
+	var err error
+	s.metadataHandleMutex.Lock()
+	defer s.metadataHandleMutex.Unlock()
+	s.appToMetadataHandle[appName], err = s.GetMetadataHandle(metadataKeyspace.BucketName, metadataKeyspace.ScopeName, metadataKeyspace.CollectionName, appName)
+	return err
 }
 
 // Forceful refresh all the buckets

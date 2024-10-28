@@ -59,7 +59,7 @@ GoModBuild(
 )
 
 ADD_CUSTOM_COMMAND(
-        OUTPUT auditevent/events.go
+        OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/auditevent/events.go
         COMMAND ${CMAKE_CURRENT_BINARY_DIR}/convertaudit
         ARGS ../audit/audit_descriptor.json auditevent/events.go
         DEPENDS ../audit/audit_descriptor.json
@@ -68,7 +68,7 @@ ADD_CUSTOM_COMMAND(
 )
 
 ADD_CUSTOM_COMMAND(
-        OUTPUT parser/handler_schema.go
+        OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/parser/handler_schema.go
         COMMAND ${CMAKE_CURRENT_BINARY_DIR}/convertgo
         ARGS ../parser/handler_schema.json HandlerSchema parser/handler_schema.go
         DEPENDS ../parser/handler_schema.json
@@ -77,7 +77,7 @@ ADD_CUSTOM_COMMAND(
 )
 
 ADD_CUSTOM_COMMAND(
-        OUTPUT parser/depcfg_schema.go
+        OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/parser/depcfg_schema.go
         COMMAND ${CMAKE_CURRENT_BINARY_DIR}/convertgo
         ARGS ../parser/depcfg_schema.json DepcfgSchema parser/depcfg_schema.go
         DEPENDS ../parser/depcfg_schema.json
@@ -86,7 +86,7 @@ ADD_CUSTOM_COMMAND(
 )
 
 ADD_CUSTOM_COMMAND(
-        OUTPUT parser/settings_schema.go
+        OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/parser/settings_schema.go
         COMMAND ${CMAKE_CURRENT_BINARY_DIR}/convertgo
         ARGS ../parser/settings_schema.json SettingsSchema parser/settings_schema.go
         DEPENDS ../parser/settings_schema.json
@@ -95,7 +95,7 @@ ADD_CUSTOM_COMMAND(
 )
 
 ADD_CUSTOM_COMMAND(
-        OUTPUT parser/list_schema.go
+        OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/parser/list_schema.go
         COMMAND ${CMAKE_CURRENT_BINARY_DIR}/convertgo
         ARGS ../parser/list_schema.json ListSchema parser/list_schema.go
         DEPENDS ../parser/list_schema.json
@@ -104,7 +104,7 @@ ADD_CUSTOM_COMMAND(
 )
 
 ADD_CUSTOM_COMMAND(
-        OUTPUT parser/function_scope_schema.go
+        OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/parser/function_scope_schema.go
         COMMAND ${CMAKE_CURRENT_BINARY_DIR}/convertgo
         ARGS ../parser/function_scope_schema.json FunctionScopeSchema parser/function_scope_schema.go
         DEPENDS ../parser/function_scope_schema.json
@@ -113,7 +113,7 @@ ADD_CUSTOM_COMMAND(
 )
 
 ADD_CUSTOM_COMMAND(
-        OUTPUT inspector/v8_inspector_protocol_json.h
+        OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/inspector/v8_inspector_protocol_json.h
         COMMAND ${PYTHON_EXE}
         ARGS
           ../third_party/inspector/compress_json.py
@@ -128,7 +128,8 @@ ADD_CUSTOM_COMMAND(
 )
 
 ADD_CUSTOM_COMMAND(
-        OUTPUT flatbuf/header_generated.h flatbuf/header/Header.go
+        OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/flatbuf/header_generated.h
+               ${CMAKE_CURRENT_SOURCE_DIR}/flatbuf/header/Header.go
         COMMAND ${FLATC} -c ARGS -o ../gen/flatbuf header.fbs
         COMMAND ${FLATC} -g ARGS -o ../gen header.fbs
         DEPENDS ../flatbuf/header.fbs
@@ -137,7 +138,8 @@ ADD_CUSTOM_COMMAND(
 )
 
 ADD_CUSTOM_COMMAND(
-        OUTPUT flatbuf/payload_generated.h flatbuf/payload/Payload.go
+        OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/flatbuf/payload_generated.h
+               ${CMAKE_CURRENT_SOURCE_DIR}/flatbuf/payload/Payload.go
         COMMAND ${FLATC} -c ARGS -o ../gen/flatbuf payload.fbs
         COMMAND ${FLATC} -g ARGS -o ../gen payload.fbs
         DEPENDS ../flatbuf/payload.fbs
@@ -146,16 +148,17 @@ ADD_CUSTOM_COMMAND(
 )
 
 ADD_CUSTOM_COMMAND(
-        OUTPUT flatbuf/cfg_schema_generated.h flatbuf/cfg_schema/Cfg_schema.go
+        OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/flatbuf/cfg_schema_generated.h
         COMMAND ${FLATC} -c ARGS -o ../gen/flatbuf cfg_schema.fbs
         COMMAND ${FLATC} -g ARGS -o ../gen cfg_schema.fbs
         DEPENDS ../flatbuf/cfg_schema.fbs
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../flatbuf
-        COMMENT "Converting ../flatbuf/cfg_schema.fbs to flatbuf/cfg_schema_generated.h and flatbuf/cfg_schema/Cfg_schema.go"
+        COMMENT "Converting ../flatbuf/cfg_schema.fbs to flatbuf/cfg_schema_generated.h"
 )
 
 ADD_CUSTOM_COMMAND(
-        OUTPUT flatbuf/response_generated.h flatbuf/response/Response.go
+        OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/flatbuf/response_generated.h
+               ${CMAKE_CURRENT_SOURCE_DIR}/flatbuf/response/Response.go
         COMMAND ${FLATC} -c ARGS -o ../gen/flatbuf response.fbs
         COMMAND ${FLATC} -g ARGS -o ../gen response.fbs
         DEPENDS ../flatbuf/response.fbs
@@ -164,15 +167,22 @@ ADD_CUSTOM_COMMAND(
 )
 
 ADD_CUSTOM_TARGET(eventing-generated DEPENDS
-        inspector/v8_inspector_protocol_json.h
-        flatbuf/header_generated.h flatbuf/header/Header.go
-        flatbuf/payload_generated.h flatbuf/payload/Payload.go
-        flatbuf/response_generated.h flatbuf/response/Response.go
-        flatbuf/cfg_schema_generated.h flatbuf/cfg_schema/Cfg_schema.go
-        auditevent/events.go
-        parser/handler_schema.go parser/depcfg_schema.go parser/settings_schema.go parser/list_schema.go parser/function_scope_schema.go
-        version/version.go
-        version/version.cc
+        ${CMAKE_CURRENT_SOURCE_DIR}/inspector/v8_inspector_protocol_json.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/flatbuf/header_generated.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/flatbuf/header/Header.go
+        ${CMAKE_CURRENT_SOURCE_DIR}/flatbuf/payload_generated.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/flatbuf/payload/Payload.go
+        ${CMAKE_CURRENT_SOURCE_DIR}/flatbuf/response_generated.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/flatbuf/response/Response.go
+        ${CMAKE_CURRENT_SOURCE_DIR}/flatbuf/cfg_schema_generated.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/auditevent/events.go
+        ${CMAKE_CURRENT_SOURCE_DIR}/parser/handler_schema.go
+        ${CMAKE_CURRENT_SOURCE_DIR}/parser/depcfg_schema.go
+        ${CMAKE_CURRENT_SOURCE_DIR}/parser/settings_schema.go
+        ${CMAKE_CURRENT_SOURCE_DIR}/parser/list_schema.go
+        ${CMAKE_CURRENT_SOURCE_DIR}/parser/function_scope_schema.go
+        ${CMAKE_CURRENT_SOURCE_DIR}/version/version.go
+        ${CMAKE_CURRENT_SOURCE_DIR}/version/version.cc
 )
 
 ADD_DEPENDENCIES(eventing-generated convertgo convertaudit)

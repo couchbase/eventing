@@ -38,6 +38,7 @@ enum class event_type {
   eInternal,
   ePauseConsumer,
   eConfigChange,
+  eOnDeploy,
   endMarker
 };
 
@@ -54,6 +55,7 @@ enum class v8_worker_opcode {
   oGetLcbExceptions,
   oGetCurlLatencyStats,
   oInsight,
+  oGetOnDeployStats,
   endMarker
 };
 
@@ -116,6 +118,7 @@ enum class resp_msg_type {
   mBucket_Ops_Response,
   mFilterAck,
   mPauseAck,
+  mOnDeployAck,
   Msg_Unknown
 };
 

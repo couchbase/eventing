@@ -209,6 +209,7 @@ type Consumer struct {
 	executeTimerRoutineCount   int
 	executionTimeout           int
 	cursorCheckpointTimeout    int
+	onDeployTimeout            int
 	lcbRetryCount              int
 	lcbTimeout                 int
 	filterVbEvents             map[uint16]struct{} // Access controlled by filterVbEventsRWMutex
@@ -540,4 +541,8 @@ type streamRequestInfo struct {
 	startSeqNo  uint64
 	vb          uint16
 	vbBlob      *vbucketKVBlob
+}
+
+type OnDeployAckMsg struct {
+	Status string `json:"on_deploy_status"`
 }

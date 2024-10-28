@@ -26,6 +26,9 @@ const (
 	MetakvAppSettingsPath       = metakvEventingPath + "appsettings/"
 	metakvProducerHostPortsPath = metakvEventingPath + "hostports/"
 
+	// MetakvOnDeployPath refers to the path under metakv where OnDeploy is triggered when the user clicks deploy/resume for an eventing function in the UI
+	MetakvOnDeployPath = metakvEventingPath + "ondeploy/"
+
 	// MetakvClusterSettings houses global configs related to Eventing
 	MetakvClusterSettings = metakvEventingPath + "settings/"
 
@@ -106,6 +109,7 @@ type SuperSupervisor struct {
 	eventingDir string
 	keepNodes   []string
 	kvPort      string
+	kvNodeAddrs []string
 	restPort    string
 	retryCount  int64
 	superSup    *suptree.Supervisor
@@ -170,4 +174,23 @@ type SuperSupervisor struct {
 
 	// -1 means cgroup is not supported
 	systemMemLimit float64
+
+	// GoCB Metadata Collection handle
+	appToMetadataHandle map[string]*gocb.Collection
+	metadataHandleMutex *sync.RWMutex
+
+	// OnDeploy fields for each app
+	onDeployMsgBuffer  map[string][]string
+	onDeployStatus     map[string]common.OnDeployState
+	prevOnDeployStatus map[string]common.OnDeployState
+}
+
+type onDeployDoc struct {
+	NodeUUID       string `json:"node_uuid"`
+	RestPort       string `json:"rest_port"`
+	OnDeployStatus string `json:"on_deploy_status"`
+}
+
+type pauseTimestampDoc struct {
+	LastPausedTimestamp time.Time `json:"last_paused_timestamp"`
 }

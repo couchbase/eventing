@@ -91,6 +91,7 @@ const (
 	numTimerPartitions       = 128
 
 	executionTimeout = 5
+	onDeployTimeout  = 5
 
 	bucketCacheSize = 64 * 1024 * 1024
 	bucketCacheAge  = 1000 // ms
@@ -162,6 +163,7 @@ type commonSettings struct {
 	batchSize                int
 	executeTimerRoutineCount int
 	executionTimeout         int
+	onDeployTimeout          int
 	lcbInstCap               int
 	logLevel                 string
 	metaBucket               string

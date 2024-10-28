@@ -256,11 +256,14 @@ std::string ConvertToISO8601(std::string timestamp);
 std::string GetTranspilerSrc();
 std::string ExceptionString(v8::Isolate *isolate,
                             v8::Local<v8::Context> &context,
-                            v8::TryCatch *try_catch, bool timeout = false);
+                            v8::TryCatch *try_catch,
+                            bool script_timeout = false,
+                            bool on_deploy_timeout = false);
 V8ExceptionInfo GetV8ExceptionInfo(v8::Isolate *isolate,
                                    v8::Local<v8::Context> &context,
                                    v8::TryCatch *try_catch,
-                                   bool timeout = false);
+                                   bool script_timeout = false,
+                                   bool on_deploy_timeout = false);
 
 CompilationInfo BuildCompileInfo(v8::Isolate *isolate,
                                  v8::Local<v8::Context> &context,

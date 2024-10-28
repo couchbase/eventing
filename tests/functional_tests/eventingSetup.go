@@ -333,6 +333,12 @@ func createDefaultSettings(s *commonSettings, processingStatus, deploymentStatus
 		settings["execution_timeout"] = s.executionTimeout
 	}
 
+	if s.onDeployTimeout == 0 {
+		settings["ondeploy_timeout"] = onDeployTimeout
+	} else {
+		settings["ondeploy_timeout"] = s.onDeployTimeout
+	}
+
 	settings["timer_context_size"] = 15 * 1024 * 1024
 
 	if s.n1qlConsistency == "" {

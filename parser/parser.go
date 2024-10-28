@@ -254,7 +254,8 @@ func TranspileQueries(input string, n1ql_params string) (result string, info []N
 }
 
 type parsedStatements struct {
-	stmts []string
+	stmts           []string
+	onDeployPresent bool
 }
 
 func GetStatements(input string) *parsedStatements {
@@ -281,7 +282,7 @@ func GetStatements(input string) *parsedStatements {
 }
 
 func (parsed *parsedStatements) ValidateStructure() error {
-	depth, onDeletes, onUpdates := 0, 0, 0
+	depth, onDeletes, onUpdates, onDeploys := 0, 0, 0, 0
 	for _, stmt := range parsed.stmts {
 		switch stmt {
 		case "{":
@@ -300,6 +301,9 @@ func (parsed *parsedStatements) ValidateStructure() error {
 				}
 				if functionName == "OnDelete" {
 					onDeletes++
+				}
+				if functionName == "OnDeploy" {
+					onDeploys++
 				}
 			}
 			if !strings.HasPrefix(stmt, "function") {
@@ -327,7 +331,18 @@ func (parsed *parsedStatements) ValidateStructure() error {
 		return err
 	}
 
+	if onDeploys > 1 {
+		err := errors.New("handler code cannot have multiple OnDeploy() functions")
+		return err
+	} else if onDeploys == 1 {
+		parsed.onDeployPresent = true
+	}
+
 	return nil
+}
+
+func (parsed *parsedStatements) UsingOnDeploy() bool {
+	return parsed.onDeployPresent
 }
 
 func UsingTimer(input string) bool {

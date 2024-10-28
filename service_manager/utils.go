@@ -131,6 +131,7 @@ func (m *ServiceMgr) fillMissingWithDefaults(appName string, settings map[string
 	fillMissingDefault(app, settings, "curl_max_allowed_resp_size", float64(100))
 	fillMissingDefault(app, settings, "execution_timeout", float64(60))
 	fillMissingDefault(app, settings, "cursor_checkpoint_timeout", float64(60))
+	fillMissingDefault(app, settings, "ondeploy_timeout", float64(60))
 	fillMissingDefault(app, settings, "feedback_batch_size", float64(100))
 	fillMissingDefault(app, settings, "feedback_read_buffer_size", float64(65536))
 	fillMissingDefault(app, settings, "idle_checkpoint_interval", float64(30000))
@@ -465,6 +466,42 @@ func (m *ServiceMgr) GetFunctionId(id common.Identity) (uint32, error) {
 	return app.FunctionID, nil
 }
 
+func (m *ServiceMgr) GetPreparedApp(appLocation string) common.Application {
+	const logPrefix string = "ServiceMgr::GetPreparedApp"
+
+	var app common.Application
+	data, err := util.ReadAppContent(metakvAppsPath, metakvChecksumPath, appLocation)
+	if err == nil && data != nil {
+		app = util.ParseFunctionPayload(data, appLocation)
+	}
+	onDeployPath := metakvOnDeployPath + appLocation
+	sData, sErr := util.MetakvGet(onDeployPath)
+	if sErr == nil {
+		settings := make(map[string]interface{})
+		uErr := json.Unmarshal(sData, &settings)
+		if uErr != nil {
+			logging.Errorf("%s failed to unmarshal settings data from metakv, err: %v", logPrefix, uErr)
+		} else {
+			delete(settings, "is_ondeploy_handler_present")
+			app.Settings = settings
+			if _, ok := app.Settings["language_compatibility"]; !ok {
+				app.Settings["language_compatibility"] = common.LanguageCompatibility[0]
+			}
+		}
+	} else {
+		logging.Errorf("%s failed to fetch settings data from metakv, err: %v", logPrefix, sErr)
+	}
+	return app
+}
+
+func (m *ServiceMgr) SetSettings(appLocation string, data []byte, force bool) {
+	m.setSettings(appLocation, data, force)
+}
+
+func (m *ServiceMgr) GetAdminHTTPPort() string {
+	return m.adminHTTPPort
+}
+
 func (m *ServiceMgr) validateQueryKey(query url.Values) (info *response.RuntimeInfo) {
 	info = &response.RuntimeInfo{}
 
@@ -655,7 +692,7 @@ func (m *ServiceMgr) getFunctionList(query url.Values) (fnlist functionList, inf
 	return
 }
 
-func (m *ServiceMgr) getStatuses(appName string) (dStatus bool, pStatus bool, err error) {
+func (m *ServiceMgr) getStatuses(appName string) (dStatus bool, pStatus bool, onDeploying bool, err error) {
 	logPrefix := "ServiceMgr::getStatuses"
 
 	defer func() {
@@ -667,40 +704,45 @@ func (m *ServiceMgr) getStatuses(appName string) (dStatus bool, pStatus bool, er
 	}()
 
 	var sData []byte
-	metakvPath := metakvAppSettingsPath + appName
+	metakvPath := metakvOnDeployPath + appName
 	util.Retry(util.NewFixedBackoff(time.Second), nil, metakvGetCallback, metakvPath, &sData)
 	settings := make(map[string]interface{})
 	err = json.Unmarshal(sData, &settings)
 	if err != nil {
 		logging.Errorf("%s Failed to unmarshal settings", logPrefix)
-		return false, false, err
+		return false, false, false, err
 	}
 
 	val, ok := settings["deployment_status"]
 	if !ok {
 		logging.Errorf("%s Missing deployment_status", logPrefix)
-		return false, false, fmt.Errorf("missing deployment_status")
+		return false, false, false, fmt.Errorf("missing deployment_status")
 	}
 
 	dStatus, ok = val.(bool)
 	if !ok {
 		logging.Errorf("%s Supplied deployment_status unexpected", logPrefix)
-		return false, false, fmt.Errorf("non boolean deployment_status")
+		return false, false, false, fmt.Errorf("non boolean deployment_status")
 	}
 
 	val, ok = settings["processing_status"]
 	if !ok {
 		logging.Errorf("%s Missing processing_status", logPrefix)
-		return false, false, fmt.Errorf("missing processing_status")
+		return false, false, false, fmt.Errorf("missing processing_status")
 	}
 
 	pStatus, ok = val.(bool)
 	if !ok {
 		logging.Errorf("%s Supplied processing_status unexpected", logPrefix)
-		return false, false, fmt.Errorf("non boolean processing_status")
+		return false, false, false, fmt.Errorf("non boolean processing_status")
 	}
 
-	return dStatus, pStatus, nil
+	if onDeployStatus := m.superSup.GetOnDeployStatus(appName); onDeployStatus == common.PENDING {
+		onDeploying = true
+	} else {
+		onDeploying = false
+	}
+	return dStatus, pStatus, onDeploying, nil
 }
 
 func (m *ServiceMgr) SetFailoverStatus(changeId string) {

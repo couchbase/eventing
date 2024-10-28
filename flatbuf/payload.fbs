@@ -66,6 +66,10 @@ table Payload {
 
   bucket:string;
   scope:string;
+
+  // OnDeploy fields
+  action:string;
+  delay:int64;
 }
 
 root_type Payload;

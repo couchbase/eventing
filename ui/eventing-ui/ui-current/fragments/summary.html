@@ -54,8 +54,14 @@
             class="cbui-table-cell flex-grow-2-5">{{app.depcfg.source_bucket}}.{{app.depcfg.source_scope}}.{{app.depcfg.source_collection}}</span>
           <span class="cbui-table-cell text-left">
             {{app.status === 'deployed' || app.status === 'undeployed' || app.status === 'paused' ? app.status : app.status + '...'}}
-            <span class="icon fa-warning orange-3"
-               ng-show="app.status === 'deployed' && (!!app.failed_count || !!app.timeout_count)"></span>
+            <span class="icon fa-warning orange-3" ng-mouseenter="summaryCtrl.toggleWarningTooltip(appname)" ng-mouseleave="summaryCtrl.toggleWarningTooltip(appname)"
+               ng-if="(app.status === 'deployed' && (!!app.failed_count || !!app.timeout_count)) || (app.status === 'undeployed' && !!app.on_deploy_failure)">
+               <span ng-if="app.status === 'undeployed' && !!app.on_deploy_failure"
+                     ng-show="!!summaryCtrl.showWarningTooltip.get(appname)"
+                     style="position:absolute; color: black; display: inline-block; text-align: center; padding:4px; width: 175px; word-wrap: break-word; border: 1px solid black; background-color: white; border-radius: 5px">
+                 Prior deployment attempt <br> failed in OnDeploy
+               </span>
+            </span>
           </span>
           <span class="cbui-table-cell text-right">
             <a ng-click="$event.stopPropagation();summaryCtrl.openWarnings(app.appname, app.function_scope);"
@@ -86,10 +92,9 @@
               style="display:flex;justify-content:flex-start;flex-wrap:wrap-reverse;">
               <div class="text-small"
                  style="display:table;clear:both;float:left;"
-                 ng-if="app.status === 'deployed'"
                  ng-controller="SummaryDeployedStatsItemCtrl as statsItemCtrl">
-                <div
-                  style="margin-top:4px;margin-left:6px;margin-right:6px;display:inline-block;white-space:nowrap;">
+                <div ng-if="app.status === 'deployed'"
+                     style="margin-top:4px;margin-left:6px;margin-right:6px;display:inline-block;white-space:nowrap;">
                   <div class="text-medium"
                     style="float:left;width:12em;font-weight:400;">
                     Deployment Statistics:

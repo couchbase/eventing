@@ -47,6 +47,18 @@ func main() {
 		}
 	}(s)
 
+	// For OnDeploy listener
+	go func(s *supervisor.SuperSupervisor) {
+		cancelCh := make(chan struct{})
+		for {
+			err := metakv.RunObserveChildren(supervisor.MetakvOnDeployPath, s.OnDeployCallback, cancelCh)
+			if err != nil {
+				logging.Errorf("Eventing::main metakv observe error for ondeploy, err: %v. Retrying...", err)
+				time.Sleep(2 * time.Second)
+			}
+		}
+	}(s)
+
 	// For app settings update
 	go func(s *supervisor.SuperSupervisor) {
 		cancelCh := make(chan struct{})

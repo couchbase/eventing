@@ -3,13 +3,18 @@ package supervisor
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"github.com/couchbase/eventing/common/collections"
+	"github.com/couchbase/gocbcore/v9"
 	"io/ioutil"
 	"math"
 	"net"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"time"
+	"unsafe"
 
 	"github.com/couchbase/cbauth"
 	"github.com/couchbase/eventing/common"
@@ -334,4 +339,185 @@ var gocbConnectBucket = func(args ...interface{}) error {
 	}
 	*bucketHandle = bucket
 	return nil
+}
+
+var getKVNodesAddressesOpCallback = func(args ...interface{}) error {
+	const logPrefix string = "Supervisor::getKVNodesAddressesOpCallback"
+
+	s := args[0].(*SuperSupervisor)
+	bucket := args[1].(string)
+	appName := args[2].(string)
+
+	hostAddress := net.JoinHostPort(util.Localhost(), s.gocbGlobalConfigHandle.nsServerPort)
+	kvNodeAddrs, err := util.KVNodesAddresses(hostAddress, bucket)
+	if err != nil {
+		logging.Errorf("%s [%s] Failed to get all KV nodes, err: %v", logPrefix, appName, err)
+	} else {
+		atomic.StorePointer(
+			(*unsafe.Pointer)(unsafe.Pointer(&s.kvNodeAddrs)), unsafe.Pointer(&kvNodeAddrs))
+		logging.Infof("%s [%s] Got KV nodes: %rs", logPrefix, appName, kvNodeAddrs)
+	}
+
+	bucketNodeCount := util.CountActiveKVNodes(bucket, hostAddress)
+	if bucketNodeCount == 0 {
+		logging.Infof("%s [%s] Bucket: %s bucketNodeCount: %d exiting",
+			logPrefix, appName, bucket, bucketNodeCount)
+		return common.ErrRetryTimeout
+	}
+	return err
+}
+
+var initCleanStaleTimersCallback = func(args ...interface{}) error {
+	const logPrefix string = "Supervisor::initCleanStaleTimersCallback"
+	s := args[0].(*SuperSupervisor)
+	b := args[1].(**couchbase.Bucket)
+	dcpFeed := args[2].(**couchbase.DcpFeed)
+	workerID := args[3].(int)
+	appName := args[4].(string)
+	dcpConfig := args[5].(map[string]interface{})
+
+	kvNodeAddrs := s.getKvNodeAddrs()
+	bucketName := (*b).Name
+	var err error
+
+	id, _ := common.GetIdentityFromLocation(appName)
+	functionId, err := s.getFunctionId(id)
+	if err == util.AppNotExist {
+		return err
+	}
+
+	feedName := couchbase.NewDcpFeedName(fmt.Sprintf("%d_delete_timer_docs_%s_%d", functionId, appName, workerID))
+
+	(*b), err = s.GetBucket(bucketName, appName)
+	if err != nil {
+		logging.Errorf("%s [%s] Failed to get bucket: %s, err: %v",
+			logPrefix, appName, bucketName, err)
+		return err
+	}
+
+	*dcpFeed, err = (*b).StartDcpFeedOver(feedName, uint32(0), 0, kvNodeAddrs, 0xABCD, dcpConfig)
+	if err != nil {
+		logging.Errorf("%s [%s] Failed to start dcp feed for bucket: %s, err: %v",
+			logPrefix, appName, bucketName, err)
+	}
+
+	return err
+}
+
+var deleteOpCallback = func(args ...interface{}) error {
+	const logPrefix string = "Supervisor::deleteOpCallback"
+	s := args[0].(*SuperSupervisor)
+	key := args[1].(string)
+	operr := args[2].(*error)
+	appName := args[3].(string)
+	bucketName := args[4].(string)
+
+	s.metadataHandleMutex.RLock()
+	defer s.metadataHandleMutex.RUnlock()
+
+	metadataHandle, ok := s.appToMetadataHandle[appName]
+	if !ok {
+		logging.Errorf("%s [%s] Failed to fetch metadata handle", logPrefix, s.uuid)
+		return errors.New("couldn't fetch metadata handle during deleteOpCallback")
+	}
+
+	_, err := metadataHandle.Remove(key, nil)
+	// TODO: Check isBootstrapping and isPausing here
+	if err != nil && s.EncryptionChangedDuringLifecycle() {
+		*operr = common.ErrEncryptionLevelChanged
+		return nil
+	}
+	if errors.Is(err, gocb.ErrDocumentNotFound) || errors.Is(err, gocbcore.ErrShutdown) || errors.Is(err, gocbcore.ErrCollectionsUnsupported) {
+		return nil
+	}
+
+	if err != nil {
+		logging.Errorf("%s [%s] Bucket delete failed for key: %ru, err: %v",
+			logPrefix, appName, key, err)
+
+		hostAddress := net.JoinHostPort(util.Localhost(), s.gocbGlobalConfigHandle.nsServerPort)
+
+		metaBucketNodeCount := util.CountActiveKVNodes(bucketName, hostAddress)
+		if metaBucketNodeCount == 0 {
+			logging.Infof("%s [%s:%d] MetaBucketNodeCount: %d returning",
+				logPrefix, appName, metaBucketNodeCount)
+			return nil
+		}
+	}
+	return err
+}
+
+var getFailoverLogOpCallback = func(args ...interface{}) error {
+	const logPrefix string = "Supervisor::getFailoverLogOpCallback"
+
+	appName := args[0].(string)
+	b := args[1].(**couchbase.Bucket)
+	flogs := args[2].(*couchbase.FailoverLog)
+	vbs := args[3].([]uint16)
+	dcpConfig := args[4].(map[string]interface{})
+
+	var err error
+	*flogs, err = (*b).GetFailoverLogs(0xABCD, vbs, dcpConfig)
+	if err != nil {
+		logging.Errorf("%s [%s] Failed to get failover logs, err: %v",
+			logPrefix, appName, err)
+	}
+
+	return err
+}
+
+var openDcpStreamFromZero = func(args ...interface{}) error {
+	const logPrefix string = "Supervisor::openDcpStreamFromZero"
+
+	dcpFeed := args[0].(*couchbase.DcpFeed)
+	vb := args[1].(uint16)
+	vbuuid := args[2].(uint64)
+	s := args[3].(*SuperSupervisor)
+	id := args[4].(int)
+	endSeqNumber := args[5].(uint64)
+	keyspaceExist := args[6].(*bool)
+	metadataKeyspace := args[7].(common.Keyspace)
+	appName := args[8].(string)
+
+	metaKeyspaceID, err := s.GetKeyspaceID(metadataKeyspace.BucketName, metadataKeyspace.ScopeName, metadataKeyspace.CollectionName)
+	if err != nil {
+		logging.Errorf("%s [%s] metadata bucket, scope or collection not found %v", logPrefix, appName, err)
+		return err
+	}
+	hexCid := common.Uint32ToHex(metaKeyspaceID.Cid)
+
+	*keyspaceExist = true
+	err = dcpFeed.DcpRequestStream(vb, uint16(vb), uint32(0), vbuuid, uint64(0),
+		endSeqNumber, uint64(0), uint64(0), "0", "", hexCid)
+	if err != nil {
+		logging.Errorf("%s [%s:id_%d] vb: %d failed to request stream error: %v",
+			logPrefix, appName, id, vb, err)
+
+		hostAddress := net.JoinHostPort(util.Localhost(), s.gocbGlobalConfigHandle.nsServerPort)
+		cic, err := util.FetchClusterInfoClient(hostAddress)
+		if err != nil {
+			return err
+		}
+
+		cinfo := cic.GetClusterInfoCache()
+		cinfo.RLock()
+		cid, err := cinfo.GetCollectionID(metadataKeyspace.BucketName, metadataKeyspace.ScopeName, metadataKeyspace.CollectionName)
+		cinfo.RUnlock()
+
+		if err == couchbase.ErrBucketNotFound || err == collections.SCOPE_NOT_FOUND || err == collections.COLLECTION_NOT_FOUND {
+			*keyspaceExist = false
+			return nil
+		}
+
+		if err != nil {
+			return err
+		}
+
+		if common.Uint32ToHex(cid) != hexCid {
+			*keyspaceExist = false
+			return nil
+		}
+
+	}
+	return err
 }

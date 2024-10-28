@@ -24,7 +24,7 @@ public:
 
   void Setup(const std::string &function_name);
 
-  void AccumulateException(v8::TryCatch &, bool timeout = false);
+  void AccumulateException(v8::TryCatch &, bool script_timeout = false, bool on_deploy_timeout = false);
 
   void AccumulateAndClear(ExceptionInsight &from);
   void LogExceptionSummary(ExceptionInsight &summary);

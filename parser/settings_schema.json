@@ -36,6 +36,12 @@
       "minimum": 1,
       "default": 60
     },
+    "ondeploy_timeout": {
+      "type": "integer",
+      "description": "maximum duration OnDeploy of the function can run before it is forcefully terminated (in seconds)",
+      "minimum": 1,
+      "default": 60
+    },
     "language_compatibility": {
       "type": "string",
       "description": "eventing language version this handler assumes in terms of syntax and behavior",
