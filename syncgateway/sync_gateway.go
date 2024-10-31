@@ -3,9 +3,10 @@ package syncgateway
 import (
 	"errors"
 	"fmt"
-	"github.com/couchbase/eventing/common/collections"
 	"net"
 	"time"
+
+	"github.com/couchbase/eventing/common/collections"
 
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/logging"
@@ -17,6 +18,8 @@ const (
 	defaultScope      = "_default"
 	defaultCollection = "_default"
 )
+
+var registryVersionNotFound error = fmt.Errorf("No registry version found")
 
 type SourceBucketClient struct {
 	client     *gocb.Collection
@@ -72,16 +75,26 @@ func (cl *SourceBucketClient) getRegistryFromXattrs() (*GatewayRegistry, bool, e
 	if lookuperr != nil {
 		return nil, false, lookuperr
 	}
-	var sgRegistry GatewayRegistry
-	if decodingErr := lookupInResult.ContentAt(0, &sgRegistry); decodingErr != nil {
+	var sgRegistryWrapper GatewayRegistryWrapper
+	if decodingErr := lookupInResult.ContentAt(0, &sgRegistryWrapper); decodingErr != nil {
 		return nil, true, decodingErr
 	}
-	sgVersion, versionParseErr := NewBuildVersion(sgRegistry.SGVersionStr)
-	if versionParseErr != nil {
-		return &sgRegistry, true, versionParseErr
+	// No version found; this is not a registry object
+	if len(sgRegistryWrapper.Registry.Version) == 0 {
+		return nil, true, registryVersionNotFound
 	}
-	sgRegistry.SGVersion = *sgVersion
-	return &sgRegistry, true, nil
+	if len(sgRegistryWrapper.Registry.SGVersionStr) == 0 {
+		sgRegistryWrapper.Registry.SGVersion.major = 3
+		sgRegistryWrapper.Registry.SGVersion.minor = 1
+	} else {
+		sgVersion, versionParseErr := NewBuildVersion(sgRegistryWrapper.Registry.SGVersionStr)
+		if versionParseErr != nil {
+			return &sgRegistryWrapper.Registry, true, versionParseErr
+		}
+		sgRegistryWrapper.Registry.SGVersion.major = sgVersion.major
+		sgRegistryWrapper.Registry.SGVersion.minor = sgVersion.minor
+	}
+	return &sgRegistryWrapper.Registry, true, nil
 }
 
 func (cl *SourceBucketClient) getRegistryFromBody() (*GatewayRegistry, bool, error) {
@@ -99,20 +112,33 @@ func (cl *SourceBucketClient) getRegistryFromBody() (*GatewayRegistry, bool, err
 	if decodingErr := responsepld.Content(&sgRegistry); decodingErr != nil {
 		return nil, true, decodingErr
 	}
-	sgVersion, versionParseErr := NewBuildVersion(sgRegistry.SGVersionStr)
-	if versionParseErr != nil {
-		return &sgRegistry, true, versionParseErr
+	// No version found; this is not a registry object
+	if len(sgRegistry.Version) == 0 {
+		return nil, true, registryVersionNotFound
 	}
-	sgRegistry.SGVersion = *sgVersion
+	if len(sgRegistry.SGVersionStr) == 0 {
+		sgRegistry.SGVersion.major = 3
+		sgRegistry.SGVersion.minor = 1
+	} else {
+		sgVersion, versionParseErr := NewBuildVersion(sgRegistry.SGVersionStr)
+		if versionParseErr != nil {
+			return &sgRegistry, true, versionParseErr
+		}
+		sgRegistry.SGVersion.major = sgVersion.major
+		sgRegistry.SGVersion.minor = sgVersion.minor
+	}
 	return &sgRegistry, true, nil
 }
 
 func (cl *SourceBucketClient) getRegistry() (*GatewayRegistry, bool, error) {
+	const logPrefix = "getRegistry"
 	registry, found, err := cl.getRegistryFromBody()
 	if err != nil {
 		if !found {
+			logging.Errorf("%s Registry document fetch failed with error: %v", logPrefix, err)
 			return registry, found, err
 		}
+		logging.Warnf("%s Unable to decode Sync Gateway version from body. Re-attempting with xattr. err: %v", logPrefix, err)
 		// parsing error from body, check in xattrs
 		return cl.getRegistryFromXattrs()
 	}
@@ -134,12 +160,18 @@ func (cl *SourceBucketClient) isSeqPresent() (bool, error) {
 }
 
 func (cl *SourceBucketClient) IsDeploymentProhibited(keySpace common.Keyspace) (bool, string, error) {
+	const logPrefix = "IsDeploymentProhibited"
 	checkErr := util.ValidateAndCheckKeyspaceExist(cl.bucketName, defaultScope, defaultCollection, cl.restAddr, false)
 	if errors.Is(checkErr, collections.SCOPE_NOT_FOUND) || errors.Is(checkErr, collections.COLLECTION_NOT_FOUND) {
 		return false, "", nil
 	}
 	registry, found, err := cl.getRegistry()
 	if err != nil {
+		if !found {
+			logging.Errorf("%s Registry document fetch or subdoc path lookup failed with error: %v", logPrefix, err)
+		} else {
+			logging.Errorf("%s Unable to decode Sync Gateway version error: %v", logPrefix, err)
+		}
 		return true, "", err
 	}
 	// No _sync:registry: Either SGW is not present or a legacy deployment
