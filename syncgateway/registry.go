@@ -23,3 +23,7 @@ type GatewayRegistry struct {
 	SGVersionStr string                          `json:"sg_version"`    // Latest patch version of Sync Gateway that touched the registry
 	SGVersion    BuildVersion
 }
+
+type GatewayRegistryWrapper struct {
+	Registry GatewayRegistry `json:"config"`
+}

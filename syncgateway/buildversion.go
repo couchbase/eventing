@@ -37,12 +37,12 @@ type BuildVersion struct {
 }
 
 // Expected format: `[epoch:]major.minor.patch[.other][@build][-edition]`
-func NewBuildVersion(version string) (*BuildVersion, error) {
+func NewBuildVersion(version string) (BuildVersion, error) {
 	major, minor, err := parseBuildVersion(version)
 	if err != nil {
-		return nil, err
+		return BuildVersion{}, err
 	}
-	return &BuildVersion{
+	return BuildVersion{
 		major: major,
 		minor: minor,
 	}, nil
@@ -96,7 +96,7 @@ func parseBuildVersion(version string) (major, minor uint8, err error) {
 }
 
 func (ver BuildVersion) String() string {
-	return string(ver.major) + "." + string(ver.minor)
+	return fmt.Sprintf("%v.%v", ver.major, ver.minor)
 }
 
 func (pv BuildVersion) Equal(b BuildVersion) bool {
