@@ -862,3 +862,70 @@ func (cm *checkpointManager) ownershipTakeover() {
 		}
 	}
 }
+
+// ReadOnDeployCheckpoint returns contents of the OnDeploy checkpoint from the Metadata collection of the app
+func (cm *checkpointManager) ReadOnDeployCheckpoint() (string, uint32, string) {
+	logPrefix := fmt.Sprintf("checkpointManager::ReadOnDeployCheckpoint[%s]", cm.checkpointConfig.Applocation)
+
+	nodeLeader, seq, status, err := readOnDeployCheckpoint(cm.checkpointConfig.Applocation, cm.getCollectionHandle())
+	if err != nil {
+		logging.Errorf("%s Error while reading OnDeploy checkpoint: %v", logPrefix, err)
+		if !common.CheckKeyspaceExist(cm.observer, cm.checkpointConfig.Keyspace) {
+			cm.keyspaceExists.Store(false)
+			status = common.FAILED.String()
+		}
+	}
+	return nodeLeader, seq, status
+}
+
+// WriteOnDeployCheckpoint inserts OnDeploy checkpoint in metadata collection,
+// retries until OnDeploy checkpoint is successfully inserted and returns if current node is leader
+func (cm *checkpointManager) WriteOnDeployCheckpoint(nodeUUID string, seq uint32, appLocation application.AppLocation) bool {
+	doc := onDeployCheckpoint{
+		NodeUUID:       nodeUUID,
+		Seq:            seq,
+		OnDeployStatus: common.PENDING.String(),
+	}
+	key := fmt.Sprintf(onDeployLeaderKeyTemplate, appLocation)
+	for {
+		_, err := cm.getCollectionHandle().Insert(key, doc, &gocb.InsertOptions{Timeout: opsTimeout})
+		if err != nil {
+			if errors.Is(err, gocb.ErrDocumentExists) {
+				return false
+			}
+			if !common.CheckKeyspaceExist(cm.observer, cm.checkpointConfig.Keyspace) {
+				cm.keyspaceExists.Store(false)
+				// Let the caller routine handle this
+				return false
+			}
+			continue
+		}
+		break
+	}
+	return true
+}
+
+func (cm *checkpointManager) PollUntilOnDeployCompletes() {
+	_, _, onDeployStatus := cm.ReadOnDeployCheckpoint()
+	for onDeployStatus == common.PENDING.String() {
+		time.Sleep(1 * time.Second)
+		_, _, onDeployStatus = cm.ReadOnDeployCheckpoint()
+	}
+
+	// TODO: Add for select, periodic timer with waitforevent, similar to broadcast observer, for Node failure
+}
+
+// PublishOnDeployStatus upserts the status field in the OnDeploy checkpoint
+func (cm *checkpointManager) PublishOnDeployStatus(status string) error {
+	upsertOptions := &gocb.UpsertSpecOptions{CreatePath: true}
+	mutateIn := []gocb.MutateInSpec{gocb.UpsertSpec("on_deploy_status", status, upsertOptions)}
+	key := fmt.Sprintf(onDeployLeaderKeyTemplate, cm.checkpointConfig.Applocation)
+	_, err := cm.getCollectionHandle().MutateIn(key, mutateIn, &gocb.MutateInOptions{PreserveExpiry: true})
+	if err != nil {
+		if !common.CheckKeyspaceExist(cm.observer, cm.checkpointConfig.Keyspace) {
+			cm.keyspaceExists.Store(false)
+			return nil
+		}
+	}
+	return err
+}

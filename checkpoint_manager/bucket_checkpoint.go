@@ -1,13 +1,12 @@
 package checkpointManager
 
 import (
-	"sync"
-	"sync/atomic"
-
 	"github.com/couchbase/eventing/application"
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/notifier"
 	"github.com/couchbase/gocb/v2"
+	"sync"
+	"sync/atomic"
 )
 
 type bucketCheckpoint struct {
@@ -141,4 +140,20 @@ func (cw *checkpointWrapper) DeleteKeys(deleteKeys []string) {
 
 func (cw *checkpointWrapper) TryTobeLeader(lType leaderType) (bool, error) {
 	return cw.checkpoint.TryTobeLeader(lType)
+}
+
+func (cw *checkpointWrapper) ReadOnDeployCheckpoint() (nodeLeader string, seq uint32, onDeployStatus string) {
+	return cw.checkpoint.ReadOnDeployCheckpoint()
+}
+
+func (cw *checkpointWrapper) WriteOnDeployCheckpoint(nodeUUID string, seq uint32, appLocation application.AppLocation) bool {
+	return cw.checkpoint.WriteOnDeployCheckpoint(nodeUUID, seq, appLocation)
+}
+
+func (cw *checkpointWrapper) PollUntilOnDeployCompletes() {
+	cw.checkpoint.PollUntilOnDeployCompletes()
+}
+
+func (cw *checkpointWrapper) PublishOnDeployStatus(status string) error {
+	return cw.checkpoint.PublishOnDeployStatus(status)
 }
