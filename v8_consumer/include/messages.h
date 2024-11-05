@@ -29,7 +29,8 @@ enum init_opcode {
   eCompileHandler,
   eInitHandler,
   eDebugHandlerStart,
-  eDebugHandlerStop
+  eDebugHandlerStop,
+  eOnDeployHandler
 };
 
 enum dynamic_opcode { eLogLevelChange, eTimeContextSize };

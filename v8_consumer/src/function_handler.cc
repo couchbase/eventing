@@ -38,6 +38,10 @@ void function_worker::init_event(
   case messages::eDebugHandlerStop:
     workers_[0]->push_msg(std::move(msg), true);
     break;
+  case messages::eOnDeployHandler:
+    // We choose the first v8 worker of this function handler to perform OnDeploy
+    workers_[0]->push_msg(std::move(msg));
+    break;
   }
 }
 
