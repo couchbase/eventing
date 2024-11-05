@@ -98,6 +98,7 @@ table MetaInfo {
   MetaID:KeyspaceInfo;
   IsUsingTimer:bool;
   Seq:uint32;
+  LastPaused:string;
 
   sboundary:string;
   SourceID:KeyspaceInfo;

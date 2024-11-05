@@ -7,10 +7,11 @@ import (
 )
 
 var (
-	ErrNoApp                = errors.New("App not defined")
-	ErrAlreadyTransitioning = errors.New("Already in transitioning")
-	ErrNoStartStateChange   = errors.New("No state transition triggered")
-	ErrAlreadyInGivenState  = errors.New("Already in the given state")
+	ErrNoApp                = errors.New("app not defined")
+	ErrAlreadyTransitioning = errors.New("already in transitioning")
+	ErrNoStartStateChange   = errors.New("no state transition triggered")
+	ErrAlreadyInGivenState  = errors.New("already in the given state")
+	ErrSeqIncorrect         = errors.New("seq number for app state incorrect")
 )
 
 const DefaultState = application.Undeployed
@@ -80,7 +81,7 @@ func DetermineStatus(state1, state2 AppState) (appState AppState) {
 type StateMachine interface {
 	StartStateChange(seq uint32, appLocation application.AppLocation, event application.AppState) (application.LifeCycleOp, error)
 	DoneStateChange(seq uint32, appLocation application.AppLocation) (application.State, error)
-	FailStateChange(seq uint32, appLocation application.AppLocation) error
+	FailStateChange(seq uint32, appLocation application.AppLocation) (application.State, error)
 
 	GetAppState(appLocation application.AppLocation) (AppState, error)
 	DeleteApp(appLocation application.AppLocation)

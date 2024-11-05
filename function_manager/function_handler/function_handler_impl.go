@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"github.com/couchbase/eventing/parser"
 	"regexp"
 	"sync/atomic"
 	"time"
@@ -53,6 +54,11 @@ type command struct {
 	seq       uint32
 }
 
+type onDeployInfo struct {
+	seq    uint32
+	status string
+}
+
 type funcHandler struct {
 	logPrefix         string
 	id                uint16
@@ -75,7 +81,7 @@ type funcHandler struct {
 	appLogWriter          *appLogCloser
 	isSrcMutationPossible bool
 	utilityWorker         UtilityWorker
-	boradcaster           common.Broadcaster
+	broadcaster           common.Broadcaster
 
 	currState *state
 
@@ -91,6 +97,9 @@ type funcHandler struct {
 	// 0th bit will be trap event
 	// 1st bit will be that this is the leader for the trap event
 	trapEvent *atomic.Int32
+
+	// Stores last OnDeploy status with seq number of the state
+	onDeployInfo *onDeployInfo
 }
 
 func NewFunctionHandler(id uint16, config Config, location application.AppLocation,
@@ -110,7 +119,7 @@ func NewFunctionHandler(id uint16, config Config, location application.AppLocati
 		serverConfig:            serverConfig,
 		cursorCheckpointHandler: cursorCheckpointHandler,
 		utilityWorker:           utilityWorker,
-		boradcaster:             broadcaster,
+		broadcaster:             broadcaster,
 
 		vbHandler:    NewVbHandlerWrapper(),
 		vbMapVersion: &atomic.Value{},
@@ -119,7 +128,8 @@ func NewFunctionHandler(id uint16, config Config, location application.AppLocati
 		currState:   newState(),
 		commandChan: make(chan command, 3),
 
-		trapEvent: &atomic.Int32{},
+		trapEvent:    &atomic.Int32{},
+		onDeployInfo: &onDeployInfo{},
 	}
 
 	fHandler.statsHandler = newStatsHandler(fHandler.logPrefix, location)
@@ -131,6 +141,8 @@ func NewFunctionHandler(id uint16, config Config, location application.AppLocati
 }
 
 func (fHandler *funcHandler) commandReceiver() {
+	logPrefix := fmt.Sprintf("funcHandler::commandReceiver[%s]", fHandler.logPrefix)
+
 	for {
 		select {
 		case msg, ok := <-fHandler.commandChan:
@@ -140,6 +152,12 @@ func (fHandler *funcHandler) commandReceiver() {
 
 			switch msg.command {
 			case lifeCycle:
+				logging.Infof("%s Lifecycle msg command received: Seq: %d, NextState: %s", logPrefix, msg.seq, msg.nextState)
+				ok := fHandler.handleOnDeploy(msg.seq, msg.nextState)
+				if !ok {
+					logging.Warnf("%s Skipping state change from %s -> %s due to OnDeploy failure", logPrefix, fHandler.currState.getCurrState(), msg.nextState)
+					break
+				}
 				fHandler.changeState(msg.seq, msg.re, msg.nextState)
 
 			case vbChangeNotifier:
@@ -257,6 +275,9 @@ func (fHandler *funcHandler) changeState(seq uint32, re RuntimeEnvironment, next
 			// Delete all the checkpoints along with normal checkpoints
 			// Delete everything no need to wait for c++ response
 			fHandler.currState.changeStateTo(seq, undeploying)
+			fHandler.notifyInterrupt()
+
+		case Paused:
 			fHandler.notifyInterrupt()
 
 		case Deployed:
@@ -384,6 +405,106 @@ func (fHandler *funcHandler) handleRunningState(seq uint32, newState funcHandler
 	}
 }
 
+// handleOnDeploy checks if OnDeploy needs to run for this state change, and returns if we should proceed to fhandler change State
+func (fHandler *funcHandler) handleOnDeploy(seq uint32, nextState funcHandlerState) bool {
+	logPrefix := fmt.Sprintf("funcHandler::handleOnDeploy[%s]", fHandler.logPrefix)
+
+	// Implies OnDeploy is done for this state change
+	if fHandler.onDeployInfo.seq == seq {
+		// OnDeploy finished for this state change, proceed to other state changes normally for the func handler
+		if fHandler.onDeployInfo.status == common.FINISHED.String() {
+			return true
+		}
+		// OnDeploy failed for this state change, so ignore rest of state changes from async funcSet spawnApp
+		if nextState == TempPause || nextState == Deployed {
+			return false
+		}
+		return true
+	}
+
+	// Check if operation is Deploy/Resume
+	if !fHandler.validateStateForOnDeploy(nextState) {
+		return true
+	}
+
+	if parser.IsCodeUsingOnDeploy(fHandler.fd.AppCode) {
+		fHandler.initOnDeploy()
+		fHandler.runOnDeploy(seq)
+
+		status := fHandler.getOnDeployStatus()
+		switch status {
+		case common.FAILED.String():
+			if fHandler.funcHandlerConfig.OnDeployLeader {
+				logging.Errorf("%s OnDeploy failed for function: %s", logPrefix, fHandler.fd.AppLocation)
+			}
+			// Give interrupt for failing state change to upper layers
+			fHandler.interruptHandler(fHandler.id, seq, fHandler.fd.AppLocation, common.ErrOnDeployFail)
+			return false
+		case common.FINISHED.String():
+			// OnDeploy completed successfully, proceed to deployment
+			return true
+		}
+	}
+
+	return true
+}
+
+func (fHandler *funcHandler) initOnDeploy() {
+	logPrefix := fmt.Sprintf("funcHandler::initOnDeploy[%s]", fHandler.logPrefix)
+
+	fHandler.instanceID = []byte(fHandler.fd.AppInstanceID)
+
+	var err error
+	if fHandler.funcHandlerConfig.SpawnLogWriter && fHandler.appLogWriter == nil {
+		_, logFileLocation := application.GetLogDirectoryAndFileName(fHandler.fd, fHandler.clusterSettings.EventingDir)
+		fHandler.appLogWriter, err = openAppLog(logFileLocation, 0640, int64(fHandler.fd.Settings.AppLogMaxSize), int64(fHandler.fd.Settings.AppLogMaxFiles))
+		if err != nil {
+			logging.Errorf("%s Error in opening file: %s, err: %v", logPrefix, err)
+		}
+	}
+
+	if fHandler.checkpointManager == nil {
+		fHandler.checkpointManager = fHandler.pool.GetCheckpointManager(fHandler.fd.AppID, fHandler.interrupt, fHandler.fd.AppLocation, fHandler.fd.DeploymentConfig.MetaKeyspace)
+	}
+
+	fHandler.isSrcMutationPossible = fHandler.fd.IsSourceMutationPossible()
+}
+
+// runOnDeploy executes OnDeploy in a blocking way till OnDeploy is completed/failed
+func (fHandler *funcHandler) runOnDeploy(seq uint32) {
+	logPrefix := fmt.Sprintf("functionHandler::runOnDeploy[%s:%d]", fHandler.fd.AppLocation, fHandler.id)
+
+	currState := fHandler.currState.getCurrState()
+
+	isNodeLeader := false
+	// There is one function handler OnDeploy leader per node
+	if fHandler.funcHandlerConfig.OnDeployLeader {
+		// Now choose the node which will do OnDeploy
+		isNodeLeader = fHandler.chooseNodeLeaderOnDeploy(seq)
+
+		if isNodeLeader {
+			// Only the leader function handler on the chosen node starts OnDeploy process
+			logging.Infof("%s Starting OnDeploy process", logPrefix)
+			args := &runtimeArgs{
+				currState: currState,
+			}
+			fHandler.createRuntimeSystem(forOnDeploy, fHandler.fd.Clone(false), args)
+		}
+	}
+
+	// Function handlers on all nodes for the app keep polling till OnDeploy status gets updated by ReceiveMessage
+	fHandler.checkpointManager.PollUntilOnDeployCompletes()
+
+	fHandler.onDeployInfo = &onDeployInfo{
+		seq:    seq,
+		status: fHandler.getOnDeployStatus(),
+	}
+
+	if isNodeLeader && fHandler.funcHandlerConfig.OnDeployLeader {
+		fHandler.utilityWorker.DoneUtilityWorker(string(fHandler.instanceID))
+	}
+}
+
 // TODO: This function should always succeed
 // Start the function checkpoint handler and dcp stream for ownership vbs
 func (fHandler *funcHandler) spawnFunction(re RuntimeEnvironment) {
@@ -494,7 +615,7 @@ func (fHandler *funcHandler) IsTrapEvent() (vbhandler.RuntimeSystem, bool) {
 		return nil, false
 	}
 
-	return fHandler.createRuntimeSystem(forDebugger, fHandler.fd.Clone(false)), true
+	return fHandler.createRuntimeSystem(forDebugger, fHandler.fd.Clone(false), nil), true
 }
 
 func (fHandler *funcHandler) notifyOwnershipChange() {
@@ -673,7 +794,7 @@ func (fHandler *funcHandler) notifyInterrupt() {
 	}
 
 	logging.Infof("%s state changed interrupt called: %s seq: %v", logPrefix, stateChanged, seq)
-	fHandler.interruptHandler(fHandler.id, seq, fHandler.fd.AppLocation)
+	fHandler.interruptHandler(fHandler.id, seq, fHandler.fd.AppLocation, nil)
 }
 
 func (fHandler *funcHandler) CloseFunctionHandler() {

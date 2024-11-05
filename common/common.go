@@ -911,24 +911,3 @@ func (msg UndeployAction) String() string {
 	return fmt.Sprintf("DeleteFunction: %v, SkipMetadataCleanup: %v, UpdateMetakv: %v",
 		msg.DeleteFunction, msg.SkipMetadataCleanup, msg.UpdateMetakv)
 }
-
-type OnDeployState int8
-
-const (
-	PENDING OnDeployState = iota + 1
-	FINISHED
-	FAILED
-)
-
-func (state OnDeployState) String() string {
-	switch state {
-	case PENDING:
-		return "Pending"
-	case FINISHED:
-		return "Finished"
-	case FAILED:
-		return "Failed"
-	default:
-		return fmt.Sprintf("Unknown OnDeployState: %d", state)
-	}
-}

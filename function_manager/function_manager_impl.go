@@ -260,8 +260,8 @@ func (fm *functionManager) RemoveFunction(funcDetails *application.FunctionDetai
 	return count
 }
 
-func (t *functionManager) TrapEventOp(trapEvent functionHandler.TrapEventOp, appLocation application.AppLocation, value interface{}) error {
-	fh, ok := t.getAggFunctionHandlerFromLocation(appLocation)
+func (fm *functionManager) TrapEventOp(trapEvent functionHandler.TrapEventOp, appLocation application.AppLocation, value interface{}) error {
+	fh, ok := fm.getAggFunctionHandlerFromLocation(appLocation)
 	if !ok {
 		return nil
 	}
@@ -296,6 +296,7 @@ func (fm *functionManager) lifeCycleOp(fd *application.FunctionDetails, nextStat
 		fm.incrementalFuncHandlerCount++
 		config := functionHandler.Config{
 			SpawnLogWriter: true,
+			OnDeployLeader: true,
 		}
 		fHandler := functionHandler.NewFunctionHandler(fm.incrementalFuncHandlerCount, config, fd.AppLocation, fm.clusterSettings,
 			fm.interruptForStateChange, fm.observer, fm, fm.pool, fm.serverConfig, fm.cursorCheckpointHandler, fm.utilityWorker, fm.broadcaster)
@@ -358,6 +359,7 @@ func (fm *functionManager) deployFunctionLocked(fd *application.FunctionDetails,
 				fm.incrementalFuncHandlerCount++
 				config := functionHandler.Config{
 					SpawnLogWriter: false,
+					OnDeployLeader: false,
 				}
 				fHandler = functionHandler.NewFunctionHandler(fm.incrementalFuncHandlerCount, config, fd.AppLocation, fm.clusterSettings,
 					fm.interruptForStateChange, fm.observer, fm, fm.pool, fm.serverConfig, fm.cursorCheckpointHandler, fm.utilityWorker, fm.broadcaster)
@@ -463,7 +465,7 @@ func (fm *functionManager) appCallback(handlerID string, msg string) {
 	}
 }
 
-func (fm *functionManager) interruptForStateChange(id uint16, seq uint32, appLocation application.AppLocation) {
+func (fm *functionManager) interruptForStateChange(id uint16, seq uint32, appLocation application.AppLocation, err error) {
 	logPrefix := fmt.Sprintf("functionManager::interruptForStateChange[%s]", fm.id)
 
 	fm.Lock()
@@ -476,8 +478,14 @@ func (fm *functionManager) interruptForStateChange(id uint16, seq uint32, appLoc
 		return
 	}
 
-	// If state is undeploy or pause then move it to functionSet serverlessProcessID
-	switch funcDetails.state {
+	lifecycleChange := funcDetails.state
+	// TODO: Change this to appropriate previous state, although should not affect functionality
+	if err == common.ErrOnDeployFail {
+		lifecycleChange = application.Undeploy
+	}
+
+	// If lifecycle is undeploy or pause then move it to functionSet serverlessProcessID
+	switch lifecycleChange {
 	case application.Undeploy, application.Pause:
 		fm.pool.CloseConditional()
 
@@ -505,13 +513,23 @@ func (fm *functionManager) interruptForStateChange(id uint16, seq uint32, appLoc
 			}
 			fm.funcSet[serverlessProcessID].AddFunctionHandler(instanceID, fHandler)
 			funcDetails.resetTo(fHandlerID, serverlessProcessID)
-
 		} else {
 			// Serverless mode already in correct state
 		}
 
 	case application.Deploy:
 		// No need to take any action
+	}
+
+	if err != nil {
+		logging.Infof("%s state change failing for %s seq: %d", logPrefix, appLocation, seq)
+		msg := common.LifecycleMsg{
+			InstanceID:  instanceID,
+			Applocation: appLocation,
+		}
+		// Calls supervisor's FailStateInterrupt to restore previous state in the app state machine
+		fm.interrupt.FailStateInterrupt(seq, appLocation, msg)
+		return
 	}
 
 	logging.Infof("%s state change done for %s seq: %d. state: %s", logPrefix, appLocation, seq, funcDetails.state)

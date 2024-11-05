@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 const (
@@ -1267,6 +1268,7 @@ type MetaInfo struct {
 
 	IsUsingTimer bool
 	Seq          uint32
+	LastPaused   time.Time
 
 	Sboundary streamBoundary
 }
@@ -1283,6 +1285,7 @@ func (mi MetaInfo) Clone() (clone MetaInfo) {
 	clone.MetaID = mi.MetaID
 	clone.IsUsingTimer = mi.IsUsingTimer
 	clone.Seq = mi.Seq
+	clone.LastPaused = mi.LastPaused
 	return
 }
 

@@ -13,7 +13,7 @@ type appState struct {
 }
 
 const (
-        initSeq = math.MaxUint32
+	initSeq = math.MaxUint32
 )
 
 func NewAppState(presentState application.State) *appState {
@@ -40,12 +40,13 @@ func (as *appState) startStateChange(seq uint32, op application.LifeCycleOp) err
 	return nil
 }
 
-func (as *appState) failStateChange(seq uint32) {
+func (as *appState) failStateChange(seq uint32) (application.State, error) {
 	if as.seq != seq {
-		return
+		return application.NoState, ErrSeqIncorrect
 	}
 
 	as.lifeCycleOp = application.NoLifeCycleOp
+	return as.currentState, nil
 }
 
 func (as *appState) doneStateChange(seq uint32) (application.State, error) {

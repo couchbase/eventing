@@ -5,6 +5,7 @@ import (
 	"compress/flate"
 	"encoding/json"
 	"io/ioutil"
+	"time"
 
 	"github.com/couchbase/eventing/gen/flatbuf/cfgv2"
 	flatbuffers "github.com/google/flatbuffers/go"
@@ -420,6 +421,7 @@ func encodeMetaInfo(builder *flatbuffers.Builder, metaInfo MetaInfo) flatbuffers
 	if metaInfo.IsUsingTimer {
 		isUsingTimer = trueByte
 	}
+	lastPaused := builder.CreateString(metaInfo.LastPaused.Format(time.RFC3339))
 
 	cfgv2.KeyspaceInfoStart(builder)
 	cfgv2.KeyspaceInfoAddUID(builder, funcID)
@@ -451,6 +453,7 @@ func encodeMetaInfo(builder *flatbuffers.Builder, metaInfo MetaInfo) flatbuffers
 	cfgv2.MetaInfoAddMetaID(builder, metaOffset)
 	cfgv2.MetaInfoAddIsUsingTimer(builder, isUsingTimer)
 	cfgv2.MetaInfoAddSeq(builder, metaInfo.Seq)
+	cfgv2.MetaInfoAddLastPaused(builder, lastPaused)
 
 	cfgv2.MetaInfoAddSboundary(builder, boundaryOffset)
 	cfgv2.MetaInfoAddSourceID(builder, sourceOffset)
@@ -481,6 +484,7 @@ func decodeMetaInfo(config *cfgv2.Config) (metaInfo MetaInfo) {
 		metaInfo.IsUsingTimer = true
 	}
 	metaInfo.Seq = configMetaInfo.Seq()
+	metaInfo.LastPaused, _ = time.Parse(time.RFC3339, string(configMetaInfo.LastPaused()))
 
 	metaInfo.Sboundary = streamBoundary(configMetaInfo.Sboundary())
 	sourceID := configMetaInfo.SourceID(nil)
