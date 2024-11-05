@@ -145,7 +145,13 @@ const (
 	InitHandler
 	DebugHandlerStart
 	DebugHandlerStop
+	OnDeployHandler
 )
+
+type OnDeployActionObject struct {
+	Reason string `json:"reason""`
+	Delay  int64  `json:"delay""`
+}
 
 func (mb *flatbufMessageBuilder) InitMessage(opcode uint8, handlerID []byte, value interface{}) (*communicator.CommMessage, *flatbuffers.Builder) {
 	var val []byte
@@ -158,6 +164,10 @@ func (mb *flatbufMessageBuilder) InitMessage(opcode uint8, handlerID []byte, val
 	case CompileHandler:
 		code := value.(string)
 		val = []byte(code)
+
+	case OnDeployHandler:
+		v := value.(*OnDeployActionObject)
+		val, _ = json.Marshal(v)
 
 	case DebugHandlerStart:
 		val, _ = json.Marshal(value)
@@ -231,6 +241,11 @@ const (
 
 func (mb *flatbufMessageBuilder) LifeCycleChangeMessage(opcode uint8, handlerID []byte) (*communicator.CommMessage, *flatbuffers.Builder) {
 	return mb.buildMessage(nil, LifeCycleChange, opcode, handlerID, nil, nil, nil, nil)
+}
+
+// For OnDeploy status received from C++ layer
+type OnDeployAckMsg struct {
+	Status string `json:"on_deploy_status"`
 }
 
 // For StatsEvent
