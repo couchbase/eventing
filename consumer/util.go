@@ -2,7 +2,6 @@ package consumer
 
 import (
 	"encoding/json"
-	"hash/crc32"
 	"net"
 	"strconv"
 	"sync"
@@ -126,14 +125,12 @@ func (c *Consumer) shouldSuppressEventingMutation(evt *memcached.DcpEvent, rootC
 	}, rootCas), nil
 }
 
+// (Note) MB-64186 : Validating the checksum current evt.Value against the stored checksum is no longer correct
+// and should be avoided. This is because actors such as cursor_aware functions, _mou aware sync_gateway are writing their
+// checkpoints to the  system xattr hence changing the checksum.
 func (c *Consumer) isSourceMutation(evt *memcached.DcpEvent, evtMetadata *xattrEventing, rootCas uint64) bool {
 	const logPrefix = "Consumer::isSourceMutation"
-	if evtMetadata == nil ||
-		(evtMetadata.FunctionInstanceID != c.functionInstanceId) ||
-		(evtMetadata.CAS != rootCas && evtMetadata.SeqNo != evt.Seqno) {
-		return false
-	}
-	return uint64(crc32.Checksum(evt.Value, util.CrcTable)) == evtMetadata.ValueCRC
+	return (evtMetadata != nil && (evtMetadata.FunctionInstanceID == c.functionInstanceId) && (evtMetadata.CAS == rootCas || evtMetadata.SeqNo == evt.Seqno))
 }
 
 // Can potentially reach here because mutation was not an SBM.
@@ -141,15 +138,17 @@ func (c *Consumer) isSourceMutation(evt *memcached.DcpEvent, evtMetadata *xattrE
 // of the checkpoint updates on top of an SBM.
 // Hence, attempt to parse _checkpoints regardless of whether this handler
 // is cursor aware or not
+
+// (Note) MB-64186 : Always assume rootCas as this mutation's CAS unless calculated otherwise by the function!
 func (c *Consumer) processCheckpointMutation(evt *memcached.DcpEvent) (bool, uint64, error) {
 	const logPrefix = "Consumer::processCheckpointMutation"
 	if evt.SystemXattrs == nil || len(evt.SystemXattrs) == 0 {
-		return false, 0, nil
+		return false, evt.Cas, nil
 	}
 	xattrMouBody, xattrMouFound := evt.SystemXattrs[XATTR_MOU]
 	xattrChkptBody, xattrChkptFound := evt.SystemXattrs[XATTR_CHKPT]
 	if !xattrMouFound && !xattrChkptFound {
-		return false, 0, nil
+		return false, evt.Cas, nil
 	}
 	if !xattrMouFound {
 		xattrMouBody = memcached.XattrVal{}
@@ -172,7 +171,7 @@ func (c *Consumer) processCheckpointMutation1(thisMutationCas uint64, key, dataM
 			c.dcpChkptParseFailCounter++
 			logging.Tracef("%s [%s:%s:%d] key: %ru failed to parse _mou xattr, err: %v",
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), string(key), err)
-			return false, 0, err
+			return false, thisMutationRootCas, err
 		}
 
 		var xImportCAS uint64
@@ -182,7 +181,7 @@ func (c *Consumer) processCheckpointMutation1(thisMutationCas uint64, key, dataM
 			c.dcpChkptParseFailCounter++
 			logging.Tracef("%s [%s:%s:%d] key: %ru failed to read ImportCAS from XATTR: _mou, err: %v",
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), string(key), casErr)
-			return false, 0, casErr
+			return false, thisMutationRootCas, casErr
 		}
 
 		if thisMutationCas == xImportCAS {
@@ -192,7 +191,7 @@ func (c *Consumer) processCheckpointMutation1(thisMutationCas uint64, key, dataM
 				c.dcpChkptParseFailCounter++
 				logging.Tracef("%s [%s:%s:%d] key: %ru failed to read PCAS from XATTR: _mou, err: %v",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), string(key), casErr)
-				return false, 0, casErr
+				return false, thisMutationRootCas, casErr
 			}
 			thisMutationCas = xPCAS
 			thisMutationRootCas = xPCAS
@@ -205,7 +204,7 @@ func (c *Consumer) processCheckpointMutation1(thisMutationCas uint64, key, dataM
 			c.dcpChkptParseFailCounter++
 			logging.Tracef("%s [%s:%s:%d] key: %ru failed to parse _checkpoints xattr, err: %v",
 				logPrefix, c.workerName, c.tcpPort, c.Pid(), string(key), err)
-			return false, 0, err
+			return false, thisMutationRootCas, err
 		}
 
 		var appRootCasFound, mutationRootCasFound bool
@@ -218,7 +217,7 @@ func (c *Consumer) processCheckpointMutation1(thisMutationCas uint64, key, dataM
 				c.dcpChkptParseFailCounter++
 				logging.Tracef("%s [%s:%s:%d] key: %ru failed to read CAS from XATTR: _checkpoints, err: %v",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), string(key), casErr)
-				return false, 0, casErr
+				return false, thisMutationRootCas, casErr
 			}
 
 			xPCAS, casErr = util.HexLittleEndianToUint64([]byte(value.PCAS))
@@ -226,7 +225,7 @@ func (c *Consumer) processCheckpointMutation1(thisMutationCas uint64, key, dataM
 				c.dcpChkptParseFailCounter++
 				logging.Tracef("%s [%s:%s:%d] key: %ru failed to read PCAS from XATTR: _checkpoints, err: %v",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), string(key), casErr)
-				return false, 0, casErr
+				return false, thisMutationRootCas, casErr
 			}
 
 			if !appRootCasFound {
