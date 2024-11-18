@@ -178,11 +178,9 @@ const (
 	WaitingForMutation    = "WaitingForMutation" // Debugger has been started and consumers are waiting to trap
 	MutationTrapped       = "MutationTrapped"    // One of the consumers have trapped the mutation
 	DebuggerTokenKey      = "debugger"
-	MetakvEventingPath    = "/eventing/"
 	MetakvDebuggerPath    = MetakvEventingPath + "debugger/"
 	MetakvTempAppsPath    = MetakvEventingPath + "tempApps/"
 	MetakvCredentialsPath = MetakvEventingPath + "credentials/"
-	MetakvConfigPath      = MetakvEventingPath + "settings/config"
 )
 
 type DebuggerInstance struct {

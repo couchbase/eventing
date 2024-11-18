@@ -96,37 +96,32 @@ func (c checkType) String() string {
 func ValidateArray(val interface{}, valType checkType) error {
 	values, ok := val.([]interface{})
 	if !ok {
-		return fmt.Errorf("expected slice of %s", valType)
+		return fmt.Errorf("expected array of %s", valType)
 	}
 
-	switch valType {
-	case TypeString:
-		for _, val := range values {
+	for _, val := range values {
+		switch valType {
+		case TypeString:
 			err := ValidateString(val, nil)
 			if err != nil {
 				return err
 			}
-		}
 
-	case TypeInt:
-		for _, val := range values {
+		case TypeInt:
 			err := ValidateInteger[float64](val, NewOptional[float64](), NewOptional[float64](), nil)
 			if err != nil {
 				return err
 			}
-		}
 
-	case TypeBoolean:
-		for _, val := range values {
+		case TypeBoolean:
 			err := ValidateBoolean(val)
 			if err != nil {
 				return err
 			}
+
+		default:
+			return fmt.Errorf("invalid type supplied")
 		}
-
-	default:
-		return fmt.Errorf("invalid type supplied")
 	}
-
 	return nil
 }
