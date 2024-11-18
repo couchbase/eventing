@@ -157,6 +157,16 @@ ADD_CUSTOM_COMMAND(
 )
 
 ADD_CUSTOM_COMMAND(
+        OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/flatbuf/cfg_schema_v2_generated.h
+               ${CMAKE_CURRENT_SOURCE_DIR}/flatbuf/cfg_schema_v2/Cfg_schema_v2.go
+        COMMAND ${FLATC} -c ARGS -o ../gen/flatbuf cfg_schema_v2.fbs
+        COMMAND ${FLATC} -g ARGS -o ../gen cfg_schema_v2.fbs
+        DEPENDS ../flatbuf/cfg_schema_v2.fbs
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../flatbuf
+        COMMENT "Converting ../flatbuf/cfg_schema_v2.fbs to flatbuf/cfg_schema_v2_generated.h and flatbuf/cfg_schema_v2/Cfg_schema_v2.go"
+)
+
+ADD_CUSTOM_COMMAND(
         OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/flatbuf/response_generated.h
                ${CMAKE_CURRENT_SOURCE_DIR}/flatbuf/response/Response.go
         COMMAND ${FLATC} -c ARGS -o ../gen/flatbuf response.fbs
@@ -172,6 +182,8 @@ ADD_CUSTOM_TARGET(eventing-generated DEPENDS
         ${CMAKE_CURRENT_SOURCE_DIR}/flatbuf/header/Header.go
         ${CMAKE_CURRENT_SOURCE_DIR}/flatbuf/payload_generated.h
         ${CMAKE_CURRENT_SOURCE_DIR}/flatbuf/payload/Payload.go
+        ${CMAKE_CURRENT_SOURCE_DIR}/flatbuf/cfg_schema_v2_generated.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/flatbuf/cfg_schema_v2/Cfg_schema_v2.go
         ${CMAKE_CURRENT_SOURCE_DIR}/flatbuf/response_generated.h
         ${CMAKE_CURRENT_SOURCE_DIR}/flatbuf/response/Response.go
         ${CMAKE_CURRENT_SOURCE_DIR}/flatbuf/cfg_schema_generated.h

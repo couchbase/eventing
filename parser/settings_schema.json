@@ -36,12 +36,6 @@
       "minimum": 1,
       "default": 60
     },
-    "ondeploy_timeout": {
-      "type": "integer",
-      "description": "maximum duration OnDeploy of the function can run before it is forcefully terminated (in seconds)",
-      "minimum": 1,
-      "default": 60
-    },
     "language_compatibility": {
       "type": "string",
       "description": "eventing language version this handler assumes in terms of syntax and behavior",
@@ -181,6 +175,46 @@
       "type": "integer",
       "description": "maximum allowable curl call response in 'MegaBytes'. Setting the value to 0 lifts the upper limit off. This parameters affects v8 engine stability since it defines the maximum amount of heap space acquired by a curl call",
       "default": 100
+    },
+    "allow_transaction_mutations": {
+       "type": "boolean",
+       "description": "allow staged transaction mutations",
+       "default": "false"
+    },
+    "allow_sync_documents": {
+       "type": "boolean",
+       "description": "allow sync gateway mutations",
+       "default": "false"
+    },
+    "cursor_aware": {
+       "type": "boolean",
+       "description": "syncgateway aware function",
+       "default": "false"
+    },
+    "high_seq_check_interval": {
+       "type": "integer",
+       "description": "number of milliseconds before checking for high seq number",
+       "default": 50
+    },
+    "max_unacked_bytes": {
+       "type": "integer",
+       "description": "max MBs to wait to send more bytes to c++ side",
+       "default": 61
+    },
+    "max_unacked_count": {
+       "type": "integer",
+       "description": "max number of messages on c++ side",
+       "default": 100000
+    },
+    "message_flush_time": {
+       "type": "integer",
+       "description": "number of milliseconds before sending message to c++ side",
+       "default": 50
+    },
+    "max_parallel_vb": {
+       "type": "integer",
+       "description": "number of parallel vb request per cpp thread",
+       "default": 5
     }
   }
 }
