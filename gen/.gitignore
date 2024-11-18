@@ -5,6 +5,7 @@ auditevent/events.go
 flatbuf/cfg_schema_generated.h
 flatbuf/header_generated.h
 flatbuf/cfg_schema_v2_generated.h
+flatbuf/header_v2_generated.h
 flatbuf/payload_generated.h
 flatbuf/response_generated.h
 flatbuf/cfg/Bucket.go
@@ -32,6 +33,7 @@ flathuf/cfgv2/MetaInfo.go
 flathuf/cfgv2/Owner.go
 flathuf/cfgv2/SensitiveConfig.go
 flatbuf/header/Header.go
+flatbuf/header_v2/HeaderV2.go
 flatbuf/payload/Payload.go
 flatbuf/payload/VbsThreadMap.go
 flatbuf/response/Response.go

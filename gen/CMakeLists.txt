@@ -138,6 +138,16 @@ ADD_CUSTOM_COMMAND(
 )
 
 ADD_CUSTOM_COMMAND(
+        OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/flatbuf/header_v2_generated.h
+               ${CMAKE_CURRENT_SOURCE_DIR}/flatbuf/header_v2/HeaderV2.go
+        COMMAND ${FLATC} -c ARGS -o ../gen/flatbuf header_v2.fbs
+        COMMAND ${FLATC} -g ARGS -o ../gen header_v2.fbs
+        DEPENDS ../flatbuf/header_v2.fbs
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../flatbuf
+        COMMENT "Converting ../flatbuf/header_v2.fbs to flatbuf/header_v2_generated.h and flatbuf/header_v2/HeaderV2.go"
+)
+
+ADD_CUSTOM_COMMAND(
         OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/flatbuf/payload_generated.h
                ${CMAKE_CURRENT_SOURCE_DIR}/flatbuf/payload/Payload.go
         COMMAND ${FLATC} -c ARGS -o ../gen/flatbuf payload.fbs
@@ -180,6 +190,8 @@ ADD_CUSTOM_TARGET(eventing-generated DEPENDS
         ${CMAKE_CURRENT_SOURCE_DIR}/inspector/v8_inspector_protocol_json.h
         ${CMAKE_CURRENT_SOURCE_DIR}/flatbuf/header_generated.h
         ${CMAKE_CURRENT_SOURCE_DIR}/flatbuf/header/Header.go
+        ${CMAKE_CURRENT_SOURCE_DIR}/flatbuf/header_v2_generated.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/flatbuf/header_v2/HeaderV2.go
         ${CMAKE_CURRENT_SOURCE_DIR}/flatbuf/payload_generated.h
         ${CMAKE_CURRENT_SOURCE_DIR}/flatbuf/payload/Payload.go
         ${CMAKE_CURRENT_SOURCE_DIR}/flatbuf/cfg_schema_v2_generated.h
