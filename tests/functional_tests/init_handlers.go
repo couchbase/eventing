@@ -1,3 +1,4 @@
+//go:build all || handler || n1ql || analytics || curl
 // +build all handler n1ql analytics curl
 
 package eventing

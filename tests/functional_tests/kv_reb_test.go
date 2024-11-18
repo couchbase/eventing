@@ -1,3 +1,4 @@
+//go:build all || rebalance || kv_reb
 // +build all rebalance kv_reb
 
 package eventing
@@ -517,6 +518,8 @@ func TestKVFailoverOnUpdateBucketOp(t *testing.T) {
 	flushFunctionAndBucket(handler)
 }
 
+/*
+// Commenting since this use case not valid for new architecture
 func TestBootstrapAfterKVHardFailover(t *testing.T) {
 	time.Sleep(5 * time.Second)
 	handler := "bucket_op_on_update"
@@ -555,3 +558,4 @@ func TestBootstrapAfterKVHardFailover(t *testing.T) {
 
 	flushFunctionAndBucket(handler)
 }
+*/

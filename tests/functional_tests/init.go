@@ -1,16 +1,44 @@
 package eventing
 
 import (
+	"log"
 	"os"
 	"sync"
 	"time"
+
+	"github.com/couchbase/gocb/v2"
 )
 
+var cluster *gocb.Cluster
+var srcBucketHandler *gocb.Bucket
+var metadataBucketHandler *gocb.Bucket
+
 func init() {
+	log.SetOutput(os.Stdout)
 	statsSetup()
 	initSetup()
 	setIndexStorageMode()
-	time.Sleep(5 * time.Second)
+	time.Sleep(25 * time.Second)
+	var err error
+	cluster, err = gocb.Connect("couchbase://127.0.0.1:12000", gocb.ClusterOptions{
+		Username: rbacuser,
+		Password: rbacpass,
+	})
+	if err != nil {
+		panic("Not able to create gocb cluster")
+	}
+
+	metadataBucketHandler = cluster.Bucket(metaBucket)
+	err = metadataBucketHandler.WaitUntilReady(10*time.Second, nil)
+	if err != nil {
+		panic("Not able to create metadata bucket cluster")
+	}
+
+	srcBucketHandler = cluster.Bucket(srcBucket)
+	err = srcBucketHandler.WaitUntilReady(10*time.Second, nil)
+	if err != nil {
+		panic("Not able to create src bucket cluster")
+	}
 	curlSetup()
 }
 

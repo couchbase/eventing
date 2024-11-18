@@ -42,23 +42,7 @@ func random(min int, max int) int {
 // snapshot, that may be invalid as per the planner.
 func mangleCheckpointBlobs(appName, prefix string, start, end int) {
 	time.Sleep(15 * time.Second)
-
-	cluster, err := gocb.Connect("couchbase://127.0.0.1:12000", gocb.ClusterOptions{
-		Username: rbacuser,
-		Password: rbacpass,
-	})
-	if err != nil {
-		fmt.Println("Error connecting to cluster, err: ", err)
-		return
-	}
-
-	bucket := cluster.Bucket(metaBucket)
-	err = bucket.WaitUntilReady(5*time.Second, nil)
-	if err != nil {
-		fmt.Printf("Error connecting to bucket %s  err: %s \n", metaBucket, err)
-		return
-	}
-	collection := bucket.DefaultCollection()
+	collection := metadataBucketHandler.DefaultCollection()
 
 	// Grab functionID from metakv
 	metakvPath := fmt.Sprintf("/eventing/tempApps/%s/0", appName)
@@ -112,22 +96,7 @@ func mangleCheckpointBlobs(appName, prefix string, start, end int) {
 
 func purgeCheckpointBlobs(appName, prefix string, start, end int) {
 	time.Sleep(15 * time.Second) // Hopefully enough time for bootstrap loop to exit on new node
-
-	cluster, err := gocb.Connect("couchbase://127.0.0.1:12000", gocb.ClusterOptions{
-		Username: rbacuser,
-		Password: rbacpass,
-	})
-	if err != nil {
-		fmt.Println("Error connecting to cluster, err: ", err)
-		return
-	}
-	bucket := cluster.Bucket(metaBucket)
-	err = bucket.WaitUntilReady(5*time.Second, nil)
-	if err != nil {
-		fmt.Printf("Error connecting to bucket %s  err: %s \n", metaBucket, err)
-		return
-	}
-	collection := bucket.DefaultCollection()
+	collection := metadataBucketHandler.DefaultCollection()
 
 	// Grab functionID from metakv
 	metakvPath := fmt.Sprintf("/eventing/tempApps/%s/0", appName)
@@ -165,21 +134,13 @@ func pumpBucketOpsSrc(ops opsType, bucket string, rate *rateLimit) {
 }
 
 func pumpBucketOpsKeyspace(ops opsType, srcKeyspace common.Keyspace, rate *rateLimit) {
-	log.Println("Starting bucket ops to source bucket")
 	srcBucket := srcKeyspace.BucketName
+	log.Println("Starting bucket ops to source bucket ", srcBucket)
 	srcScope := srcKeyspace.ScopeName
 	srcCollection := srcKeyspace.CollectionName
-
+	var err error
 	if ops.count == 0 {
 		ops.count = itemCount
-	}
-
-	cluster, err := gocb.Connect("couchbase://127.0.0.1:12000", gocb.ClusterOptions{
-		Username: rbacuser,
-		Password: rbacpass,
-	})
-	if err != nil {
-		panic(fmt.Sprintf("Bucket open, err: %s", err))
 	}
 	bucket := cluster.Bucket(srcBucket)
 	err = bucket.WaitUntilReady(5*time.Second, nil)
@@ -211,6 +172,7 @@ func pumpBucketOpsKeyspace(ops opsType, srcKeyspace common.Keyspace, rate *rateL
 					_, err = collection.Upsert(fmt.Sprintf("doc_id_%d", i+ops.startIndex), u, upsertOptions)
 				}
 				if err != nil {
+					log.Println("Error pushing upsert op: ", err)
 					time.Sleep(time.Second)
 					goto retryOp1
 				}
@@ -218,7 +180,7 @@ func pumpBucketOpsKeyspace(ops opsType, srcKeyspace common.Keyspace, rate *rateL
 
 			retryOp2:
 				mutateIn := make([]gocb.MutateInSpec, 0)
-				upsertOptions := &gocb.MutateInOptions{Expiry: time.Duration(ops.expiry), StoreSemantic: gocb.StoreSemanticsUpsert,}
+				upsertOptions := &gocb.MutateInOptions{Expiry: time.Duration(ops.expiry), StoreSemantic: gocb.StoreSemanticsUpsert}
 				upsertSpecOptionsBothSet := &gocb.UpsertSpecOptions{CreatePath: true, IsXattr: true}
 				upsertSpecOptionsNoneSet := &gocb.UpsertSpecOptions{CreatePath: false, IsXattr: false}
 				mutateIn = append(mutateIn, gocb.UpsertSpec(fmt.Sprintf("test_%s", ops.xattrPrefix), "user xattr test value", upsertSpecOptionsBothSet))
@@ -226,6 +188,7 @@ func pumpBucketOpsKeyspace(ops opsType, srcKeyspace common.Keyspace, rate *rateL
 				_, err = collection.MutateIn(fmt.Sprintf("doc_id_%d", i+ops.startIndex), mutateIn, upsertOptions)
 
 				if err != nil {
+					log.Println("Error pushing mutatein op: ", err)
 					time.Sleep(time.Second)
 					goto retryOp2
 				}
@@ -238,6 +201,7 @@ func pumpBucketOpsKeyspace(ops opsType, srcKeyspace common.Keyspace, rate *rateL
 			retryOp3:
 				_, err := collection.Remove(fmt.Sprintf("doc_id_%d", i), nil)
 				if err != nil && !errors.Is(err, gocb.ErrDocumentNotFound) {
+					log.Println("removing do error: ", err)
 					time.Sleep(time.Second)
 					goto retryOp3
 				}
@@ -256,6 +220,7 @@ func pumpBucketOpsKeyspace(ops opsType, srcKeyspace common.Keyspace, rate *rateL
 				retryOp4:
 					_, err := collection.Remove(fmt.Sprintf("doc_id_%d", u.ID), nil)
 					if err != nil && !errors.Is(err, gocb.ErrDocumentNotFound) {
+						log.Println("removing do error: ", err)
 						time.Sleep(time.Second)
 						goto retryOp4
 					}
@@ -272,6 +237,7 @@ func pumpBucketOpsKeyspace(ops opsType, srcKeyspace common.Keyspace, rate *rateL
 							_, err = collection.Upsert(fmt.Sprintf("doc_id_%d", i+ops.startIndex), u, upsertOptions)
 						}
 						if err != nil {
+							log.Println("Error pushing upsert op: ", err)
 							time.Sleep(time.Second)
 							goto retryOp5
 						}
@@ -287,6 +253,7 @@ func pumpBucketOpsKeyspace(ops opsType, srcKeyspace common.Keyspace, rate *rateL
 						_, err = collection.MutateIn(fmt.Sprintf("doc_id_%d", i+ops.startIndex), mutateIn, upsertOptions)
 
 						if err != nil {
+							log.Println("Error pushing mutatein op: ", err)
 							time.Sleep(time.Second)
 							goto retryOp6
 						}
@@ -322,17 +289,10 @@ func CreateCollection(bucketName, scopeName, collectionName string) error {
 }
 
 func DropCollection(bucketName, scopeName, collectionName string) error {
-	cluster, err := gocb.Connect("couchbase://127.0.0.1:12000", gocb.ClusterOptions{
-		Username: rbacuser,
-		Password: rbacpass,
-	})
-	if err != nil {
-		panic(fmt.Sprintf("Bucket open, err: %s", err))
-	}
 	bucket := cluster.Bucket(bucketName)
 	mgr := bucket.Collections()
 
-	err = mgr.DropCollection(gocb.CollectionSpec{
+	err := mgr.DropCollection(gocb.CollectionSpec{
 		Name:      collectionName,
 		ScopeName: scopeName,
 	}, nil)
@@ -340,23 +300,9 @@ func DropCollection(bucketName, scopeName, collectionName string) error {
 }
 
 func CheckXattrTestValues(bucketName string) error {
-	srcBucket := bucketName
 	srcScope := "_default"
 	srcCollection := "_default"
-
-	cluster, err := gocb.Connect("couchbase://127.0.0.1:12000", gocb.ClusterOptions{
-		Username: rbacuser,
-		Password: rbacpass,
-	})
-	if err != nil {
-		panic(fmt.Sprintf("Bucket open, err: %s", err))
-	}
-	bucket := cluster.Bucket(srcBucket)
-	err = bucket.WaitUntilReady(5*time.Second, nil)
-	if err != nil {
-		return err
-	}
-	scope := bucket.Scope(srcScope)
+	scope := srcBucketHandler.Scope(srcScope)
 	collection := scope.Collection(srcCollection)
 
 retryLookupOp:

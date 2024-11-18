@@ -114,7 +114,7 @@ const (
 
 const (
 	indexMemQuota   = 500
-	bucketmemQuota  = 500
+	bucketmemQuota  = 1024
 	bucketType      = "ephemeral"
 	replicas        = 0
 	n1qlConsistency = "request"
