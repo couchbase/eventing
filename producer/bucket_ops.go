@@ -179,7 +179,7 @@ var setOpCallback = func(args ...interface{}) error {
 	}
 
 	if err != nil {
-		logging.Errorf("%s [%s:%d] Bucket set failed for key: %ru , err: %v",
+		logging.Errorf("%s [%s:%d] Bucket set failed for key: %s , err: %v",
 			logPrefix, p.appName, p.LenRunningConsumers(), key.Raw(), err)
 	}
 	return err
@@ -258,7 +258,7 @@ var getOpCallback = func(args ...interface{}) error {
 		return nil
 	}
 	if err != nil {
-		logging.Errorf("%s [%s:%d] Bucket get failed for key: %ru , err: %v",
+		logging.Errorf("%s [%s:%d] Bucket get failed for key: %s , err: %v",
 			logPrefix, p.appName, p.LenRunningConsumers(), key.Raw(), err)
 		return err
 	}
@@ -285,7 +285,7 @@ var deleteOpCallback = func(args ...interface{}) error {
 	}
 
 	if err != nil {
-		logging.Errorf("%s [%s:%d] Bucket delete failed for key: %ru, err: %v",
+		logging.Errorf("%s [%s:%d] Bucket delete failed for key: %s, err: %v",
 			logPrefix, p.appName, p.LenRunningConsumers(), key, err)
 
 		// Bucket op fail with generic timeout error even in case of bucket being dropped/deleted.

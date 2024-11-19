@@ -146,7 +146,7 @@ var getOpCallback = func(args ...interface{}) error {
 	}
 
 	if err != nil {
-		logging.Errorf("%s [%s:%s:%d] Bucket fetch failed for key: %ru, err: %v",
+		logging.Errorf("%s [%s:%s:%d] Bucket fetch failed for key: %s, err: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbKey.Raw(), err)
 		return err
 	}
@@ -338,7 +338,7 @@ var periodicCheckpointCallback = func(args ...interface{}) error {
 	}
 
 	if err != nil {
-		logging.Errorf("%s [%s:%s:%d] Key: %ru, subdoc operation failed while performing periodic checkpoint update, err: %v",
+		logging.Errorf("%s [%s:%s:%d] Key: %s, subdoc operation failed while performing periodic checkpoint update, err: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbKey.Raw(), err)
 	}
 
