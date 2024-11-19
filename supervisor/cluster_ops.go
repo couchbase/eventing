@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/couchbase/eventing/common/collections"
-	"github.com/couchbase/gocbcore/v9"
 	"io/ioutil"
 	"math"
 	"net"
@@ -15,6 +13,9 @@ import (
 	"sync/atomic"
 	"time"
 	"unsafe"
+
+	"github.com/couchbase/eventing/common/collections"
+	"github.com/couchbase/gocbcore/v9"
 
 	"github.com/couchbase/cbauth"
 	"github.com/couchbase/eventing/common"
@@ -432,7 +433,7 @@ var deleteOpCallback = func(args ...interface{}) error {
 	}
 
 	if err != nil {
-		logging.Errorf("%s [%s] Bucket delete failed for key: %ru, err: %v",
+		logging.Errorf("%s [%s] Bucket delete failed for key: %s, err: %v",
 			logPrefix, appName, key, err)
 
 		hostAddress := net.JoinHostPort(util.Localhost(), s.gocbGlobalConfigHandle.nsServerPort)
