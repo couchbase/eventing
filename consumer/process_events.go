@@ -1522,7 +1522,11 @@ func (c *Consumer) isTransactionMutation(e *cb.DcpEvent) bool {
 }
 
 func (c *Consumer) isSGWMutation(e *cb.DcpEvent) bool {
-	return bytes.HasPrefix(e.Key, cb.SyncGatewayMutationPrefix)
+	if bytes.HasPrefix(e.Key, cb.SyncGatewayMutationPrefix) &&
+		!bytes.HasPrefix(e.Key, cb.SyncGatewayAttachmentPrefix) {
+		return true
+	}
+	return false
 }
 
 // If fetchFresh is true then it will fetch the latest failover log if vbBlob doesn't contain failover log
