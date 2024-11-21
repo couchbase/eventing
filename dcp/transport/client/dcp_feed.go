@@ -36,6 +36,8 @@ var TransactionMutationPrefix = []byte("_txn:")
 
 var SyncGatewayMutationPrefix = []byte("_sync:")
 
+var SyncGatewayAttachmentPrefix = []byte("_sync:att")
+
 const systemXattrPrefix = "_"
 
 const IncludeXATTRs = uint32(4)
