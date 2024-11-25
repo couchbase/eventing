@@ -19,6 +19,10 @@ type Ownership interface {
 	GetVbMap(keyspaceInfo *application.KeyspaceInfo, id uint16, numVb uint16, appLocation application.AppLocation) (string, []uint16, error)
 }
 
+type SystemResourceDetails interface {
+	MemRequiredPerThread(application.KeyspaceInfo) float64
+}
+
 type FilterInterface interface {
 	CheckAndGetEventsInternalDetails(msg *dcpMessage.DcpEvent) (*checkpointManager.ParsedInternalDetails, bool)
 	IsTrapEvent() (RuntimeSystem, bool)
@@ -45,17 +49,21 @@ type Config struct {
 	HandlerSettings application.HandlerSettings
 	MetaInfo        application.MetaInfo
 
-	RuntimeSystem     RuntimeSystem
-	OwnershipRoutine  Ownership
-	CheckpointManager checkpointManager.Checkpoint
-	Pool              eventPool.ManagerPool
-	StatsHandler      StatsHandler
-	Filter            FilterInterface
+	RuntimeSystem         RuntimeSystem
+	OwnershipRoutine      Ownership
+	CheckpointManager     checkpointManager.Checkpoint
+	Pool                  eventPool.ManagerPool
+	StatsHandler          StatsHandler
+	SystemResourceDetails SystemResourceDetails
+	Filter                FilterInterface
 }
 
 type VbHandler interface {
 	// GetHighSeqNum returns the high seq number of the owned vbs
 	GetHighSeqNum() map[uint16]uint64
+
+	// RefreshSystemResourceLimits refreshes the system resource limits
+	RefreshSystemResourceLimits()
 
 	// NotifyOwnershipChange notifies the new vb map. Returns newly added and closed vbs
 	NotifyOwnershipChange() (vbMapVersion string, newVbs []uint16, closedVbs []uint16, notFullyOwned []uint16, err error)
@@ -87,6 +95,10 @@ type dummy uint8
 
 func NewDummyVbHandler() VbHandler {
 	return DummyVbHandler
+}
+
+func (_ dummy) RefreshSystemResourceLimits() {
+	return
 }
 
 func (_ dummy) GetHighSeqNum() map[uint16]uint64 {

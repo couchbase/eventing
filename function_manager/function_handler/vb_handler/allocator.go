@@ -22,7 +22,8 @@ import (
 )
 
 const (
-	minTimeWait = 5 * time.Minute
+	minTimeWait     = 5 * time.Minute
+	maxUnackedBytes = uint64(61 * common.MiB)
 
 	noOpThreshold = 50
 	lowerMark     = 0.5
@@ -43,7 +44,7 @@ type allocator struct {
 	requestType  dcpMessage.RequestType
 	isStreamMode *atomic.Bool
 
-	maxUnackedBytes float64
+	maxUnackedBytes atomic.Uint64
 	maxUnackedCount float64
 	dcpManager      requester
 	seqManager      eventPool.SeqNumerInterface
@@ -77,6 +78,7 @@ func NewAllocatorWithContext(ctx context.Context, logPrefix string, keyspace app
 		closedVbsLock:    &sync.RWMutex{},
 		closedVbs:        make(map[uint16]struct{}),
 		isStreamMode:     &atomic.Bool{},
+		maxUnackedBytes:  atomic.Uint64{},
 	}
 
 	if dcpManager.mode != serverConfig.FunctionGroup {
@@ -96,7 +98,7 @@ func NewAllocatorWithContext(ctx context.Context, logPrefix string, keyspace app
 	// uint32 cause uint16 atomic operations are not possible and need locks for concurrency control
 	al.workerParallelRequest = int32((totalParallelRequest / uint16(al.config.HandlerSettings.CppWorkerThread)) + 1)
 
-	al.maxUnackedBytes = math.Ceil(config.HandlerSettings.MaxUnackedBytes / float64(al.config.HandlerSettings.CppWorkerThread))
+	al.refreshMemory()
 	al.maxUnackedCount = math.Ceil(config.HandlerSettings.MaxUnackedCount / float64(al.config.HandlerSettings.CppWorkerThread))
 
 	al.requestType = dcpMessage.Request_Collections
@@ -113,7 +115,7 @@ func NewAllocatorWithContext(ctx context.Context, logPrefix string, keyspace app
 	ctx2, closeContext := context.WithCancel(ctx)
 	al.close = closeContext
 
-	go al.spawnObserevr(ctx2)
+	go al.spawnObserver(ctx2)
 
 	return al
 }
@@ -153,7 +155,7 @@ func (al *allocator) FilterEvent(msg *dcpMessage.DcpEvent) (*checkpointManager.P
 		}
 
 		totalMsg, totalBytes := worker.unackedDetails.UnackedMessageCount()
-		if totalBytes > upperMark*al.maxUnackedBytes ||
+		if totalBytes > upperMark*float64(al.maxUnackedBytes.Load()) ||
 			totalMsg > upperMark*al.maxUnackedCount {
 
 			yieldGoRoutine = true
@@ -180,7 +182,7 @@ func (al *allocator) FilterEvent(msg *dcpMessage.DcpEvent) (*checkpointManager.P
 			return parsedDetails, workerID, true, false
 		}
 
-		if !al.isStreamMode.Load() && totalBytes > pauseMark*al.maxUnackedBytes ||
+		if !al.isStreamMode.Load() && totalBytes > pauseMark*float64(al.maxUnackedBytes.Load()) ||
 			totalMsg > pauseMark*al.maxUnackedCount {
 			if status.status != paused {
 				sr := &dcpMessage.StreamReq{Vbno: msg.Vbno}
@@ -316,7 +318,7 @@ func (al *allocator) DoneVb(streamReq *dcpMessage.StreamReq) (sendNoop bool) {
 	worker.Unlock()
 
 	totalCount, totalBytes := worker.unackedDetails.UnackedMessageCount()
-	if al.isStreamMode.Load() || (totalBytes < lowerMark*al.maxUnackedBytes ||
+	if al.isStreamMode.Load() || (totalBytes < lowerMark*float64(al.maxUnackedBytes.Load()) ||
 		totalCount < lowerMark*al.maxUnackedCount) {
 		al.notify()
 	}
@@ -380,14 +382,14 @@ func (al *allocator) checkAndMakeRequest() {
 
 			unackedMsg, unackedBytes := worker.unackedDetails.UnackedMessageCount()
 			if unackedMsg > lowerMark*al.maxUnackedCount &&
-				unackedBytes > lowerMark*al.maxUnackedBytes {
+				unackedBytes > lowerMark*float64(al.maxUnackedBytes.Load()) {
 				continue
 			}
 
 			worker.Lock()
 			unackedMsg, unackedBytes = worker.unackedDetails.UnackedMessageCount()
 			if unackedMsg > lowerMark*al.maxUnackedCount &&
-				unackedBytes > lowerMark*al.maxUnackedBytes {
+				unackedBytes > lowerMark*float64(al.maxUnackedBytes.Load()) {
 				worker.Unlock()
 				continue
 			}
@@ -551,7 +553,7 @@ func (al *allocator) GetSeqNumber() {
 	al.highSeqNum.Store(vbToSeq)
 }
 
-func (al *allocator) spawnObserevr(ctx context.Context) {
+func (al *allocator) spawnObserver(ctx context.Context) {
 	logPrefix := fmt.Sprintf("allocator::AllocatorDetails[%s]", al.logPrefix)
 	seqChecker := time.NewTicker(time.Duration(al.config.HandlerSettings.CheckInterval) * time.Millisecond)
 	printLog := time.NewTicker(30 * time.Second)
@@ -580,6 +582,16 @@ func (al *allocator) spawnObserevr(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		}
+	}
+}
+
+func (al *allocator) refreshMemory() {
+	if al.config.HandlerSettings.MaxUnackedBytes == 0 {
+		// Get it from system resource limit of max 61MB or given memory
+		memRequired := al.config.SystemResourceDetails.MemRequiredPerThread(al.config.MetaInfo.FunctionScopeID)
+		al.maxUnackedBytes.Store(max(maxUnackedBytes, uint64(memRequired)))
+	} else {
+		al.maxUnackedBytes.Store(uint64(math.Ceil(al.config.HandlerSettings.MaxUnackedBytes / float64(al.config.HandlerSettings.CppWorkerThread))))
 	}
 }
 

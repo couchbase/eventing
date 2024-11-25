@@ -251,6 +251,10 @@ func (handler *vbHandler) AddVb(vb uint16, vbBlob *checkpointManager.VbBlob) int
 	return numCurrent
 }
 
+func (handler *vbHandler) RefreshSystemResourceLimits() {
+	handler.allocator.refreshMemory()
+}
+
 func (handler *vbHandler) CloseVb(vb uint16) int {
 	return handler.allocator.CloseVb(vb)
 }

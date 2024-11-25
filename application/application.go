@@ -658,7 +658,7 @@ func DefaultSettings() HandlerSettings {
 	hSettings.AllowTransactionDocument = false
 	hSettings.CursorAware = false
 	hSettings.CheckInterval = 50
-	hSettings.MaxUnackedBytes = float64(61 * 1024 * 1024)
+	hSettings.MaxUnackedBytes = float64(0)
 	hSettings.MaxUnackedCount = float64(100000)
 	hSettings.FlushTimer = 50
 	hSettings.MaxParallelVb = 8
@@ -1243,6 +1243,32 @@ func (k KeyspaceInfo) String() string {
 		return fmt.Sprintf("%s/%s", k.BucketID, k.ScopeID)
 	}
 	return fmt.Sprintf("%s/%s/%s", k.BucketID, k.ScopeID, k.CollectionID)
+}
+
+func GetKeyspaceFromString(keyspaceString string) (keyspaceInfo KeyspaceInfo) {
+	keyspaceInfo = NewKeyspaceInfo("", "", "", "", 0)
+	if keyspaceString == GlobalValue {
+		return
+	}
+
+	keyspaceSlice := strings.Split(keyspaceString, "/")
+	if len(keyspaceSlice) == 1 {
+		keyspaceInfo.BucketID = keyspaceSlice[0]
+		return
+	}
+
+	if len(keyspaceSlice) == 2 {
+		keyspaceInfo.BucketID = keyspaceSlice[0]
+		keyspaceInfo.ScopeID = keyspaceSlice[1]
+		return
+	}
+
+	if len(keyspaceSlice) >= 3 {
+		keyspaceInfo.BucketID = keyspaceSlice[0]
+		keyspaceInfo.ScopeID = keyspaceSlice[1]
+		keyspaceInfo.CollectionID = keyspaceSlice[2]
+	}
+	return
 }
 
 func GetKeyspaceInfoFromString(keyspace string) (KeyspaceInfo, error) {

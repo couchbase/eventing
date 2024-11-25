@@ -27,5 +27,6 @@ type Supervisor2 interface {
 
 	LifeCycleOperationAllowed() bool
 
+	MemRequiredPerThread(application.KeyspaceInfo) float64
 	GetCollectionObject(funcDetails application.Keyspace) (*gocb.Collection, error)
 }

@@ -10,8 +10,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/couchbase/eventing/parser"
-
 	"github.com/couchbase/eventing/application"
 	checkpointManager "github.com/couchbase/eventing/checkpoint_manager"
 	"github.com/couchbase/eventing/common"
@@ -20,6 +18,7 @@ import (
 	vbhandler "github.com/couchbase/eventing/function_manager/function_handler/vb_handler"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/notifier"
+	"github.com/couchbase/eventing/parser"
 	processManager "github.com/couchbase/eventing/process_manager"
 	serverConfig "github.com/couchbase/eventing/server_config"
 )
@@ -83,6 +82,7 @@ type funcHandler struct {
 	isSrcMutationPossible bool
 	utilityWorker         UtilityWorker
 	broadcaster           common.Broadcaster
+	systemResourceDetails vbhandler.SystemResourceDetails
 
 	currState *state
 
@@ -105,6 +105,7 @@ type funcHandler struct {
 
 func NewFunctionHandler(id uint16, config Config, location application.AppLocation,
 	clusterSettings *common.ClusterSettings, interruptHandler InterruptHandler,
+	systemResourceDetails vbhandler.SystemResourceDetails,
 	observer notifier.Observer, ownershipRoutine vbhandler.Ownership,
 	pool eventPool.ManagerPool, serverConfig serverConfig.ServerConfig, cursorCheckpointHandler CursorCheckpointHandler, utilityWorker UtilityWorker, broadcaster common.Broadcaster) FunctionHandler {
 
@@ -121,6 +122,7 @@ func NewFunctionHandler(id uint16, config Config, location application.AppLocati
 		cursorCheckpointHandler: cursorCheckpointHandler,
 		utilityWorker:           utilityWorker,
 		broadcaster:             broadcaster,
+		systemResourceDetails:   systemResourceDetails,
 
 		vbHandler:    NewVbHandlerWrapper(),
 		vbMapVersion: &atomic.Value{},
@@ -539,21 +541,22 @@ func (fHandler *funcHandler) spawnFunction(re RuntimeEnvironment) {
 	_, serverConfig := fHandler.serverConfig.GetServerConfig(fHandler.fd.MetaInfo.FunctionScopeID)
 
 	config := &vbhandler.Config{
-		Version:           fHandler.version,
-		FuncID:            fHandler.id,
-		TenantID:          fHandler.fd.MetaInfo.FunctionScopeID.BucketID,
-		AppLocation:       fHandler.fd.AppLocation,
-		ConfiguredVbs:     fHandler.fd.MetaInfo.SourceID.NumVbuckets,
-		InstanceID:        fHandler.instanceID,
-		DcpType:           serverConfig.DeploymentMode,
-		HandlerSettings:   fHandler.fd.Settings,
-		MetaInfo:          fHandler.fd.MetaInfo,
-		RuntimeSystem:     re,
-		OwnershipRoutine:  fHandler.ownershipRoutine,
-		Pool:              fHandler.pool,
-		StatsHandler:      fHandler.statsHandler,
-		CheckpointManager: fHandler.checkpointManager,
-		Filter:            fHandler,
+		Version:               fHandler.version,
+		FuncID:                fHandler.id,
+		TenantID:              fHandler.fd.MetaInfo.FunctionScopeID.BucketID,
+		AppLocation:           fHandler.fd.AppLocation,
+		ConfiguredVbs:         fHandler.fd.MetaInfo.SourceID.NumVbuckets,
+		InstanceID:            fHandler.instanceID,
+		DcpType:               serverConfig.DeploymentMode,
+		HandlerSettings:       fHandler.fd.Settings,
+		MetaInfo:              fHandler.fd.MetaInfo,
+		RuntimeSystem:         re,
+		OwnershipRoutine:      fHandler.ownershipRoutine,
+		Pool:                  fHandler.pool,
+		StatsHandler:          fHandler.statsHandler,
+		CheckpointManager:     fHandler.checkpointManager,
+		SystemResourceDetails: fHandler.systemResourceDetails,
+		Filter:                fHandler,
 	}
 	vbHandler := vbhandler.NewVbHandler(ctx, fHandler.logPrefix, fHandler.fd.DeploymentConfig.SourceKeyspace, config)
 	fHandler.vbHandler.Store(vbHandler)
@@ -661,6 +664,7 @@ func (fHandler *funcHandler) notifyGlobalConfigChange() {
 		return
 	}
 
+	fHandler.vbHandler.Load().RefreshSystemResourceLimits()
 	_, config := fHandler.serverConfig.GetServerConfig(fHandler.fd.MetaInfo.FunctionScopeID)
 	defer func() {
 		fHandler.config = config
