@@ -1,123 +1,27 @@
 package main
 
 import (
+	"context"
 	"time"
 
-	"github.com/couchbase/cbauth/metakv"
-	"github.com/couchbase/eventing/audit"
-	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/logging"
-	"github.com/couchbase/eventing/supervisor"
-	"github.com/couchbase/eventing/util"
-	"github.com/couchbase/gocb/v2"
+	"github.com/couchbase/eventing/supervisor2"
 )
 
 func main() {
-	initFlags()
-
-	logging.Infof("Started eventing producer version: %v", util.EventingVer())
-
-	util.SetIPFlags(flags.ipv6, flags.ipv4)
-	util.SetRestPort(flags.restPort)
-
-	audit.Init(flags.restPort)
-
-	adminPort := supervisor.AdminPortConfig{
-		DebuggerPort: flags.debugPort,
-		HTTPPort:     flags.adminHTTPPort,
-		SslPort:      flags.adminSSLPort,
-		CAFile:       flags.sslCAFile,
-		CertFile:     flags.sslCertFile,
-		KeyFile:      flags.sslKeyFile,
+	logPrefix := "eventing::main"
+	clusterSetting, err := initFlags()
+	if err != nil {
+		logging.Errorf("%s Error in getting cluster setting: %v. Exiting...", logPrefix, err)
+		time.Sleep(2 * time.Second)
+		return
 	}
 
-	gocb.SetLogger(&util.GocbLogger{})
-
-	s := supervisor.NewSuperSupervisor(adminPort, flags.eventingDir, flags.kvPort, flags.restPort, flags.uuid, flags.diagDir)
-
-	// For app reloads
-	go func(s *supervisor.SuperSupervisor) {
-		cancelCh := make(chan struct{})
-		for {
-			err := metakv.RunObserveChildren(supervisor.MetakvChecksumPath, s.EventHandlerLoadCallback, cancelCh)
-			if err != nil {
-				logging.Errorf("Eventing::main metakv observe error for event handler code, err: %v. Retrying...", err)
-				time.Sleep(2 * time.Second)
-			}
-		}
-	}(s)
-
-	// For OnDeploy listener
-	go func(s *supervisor.SuperSupervisor) {
-		cancelCh := make(chan struct{})
-		for {
-			err := metakv.RunObserveChildren(supervisor.MetakvOnDeployPath, s.OnDeployCallback, cancelCh)
-			if err != nil {
-				logging.Errorf("Eventing::main metakv observe error for ondeploy, err: %v. Retrying...", err)
-				time.Sleep(2 * time.Second)
-			}
-		}
-	}(s)
-
-	// For app settings update
-	go func(s *supervisor.SuperSupervisor) {
-		cancelCh := make(chan struct{})
-		for {
-			err := metakv.RunObserveChildren(supervisor.MetakvAppSettingsPath, s.SettingsChangeCallback, cancelCh)
-			if err != nil {
-				logging.Errorf("Eventing::main metakv observe error for settings, err: %v. Retrying...", err)
-				time.Sleep(2 * time.Second)
-			}
-		}
-	}(s)
-
-	// For topology change notifications
-	go func(s *supervisor.SuperSupervisor) {
-		cancelCh := make(chan struct{})
-		for {
-			err := metakv.RunObserveChildren(supervisor.MetakvRebalanceTokenPath, s.TopologyChangeNotifCallback, cancelCh)
-			if err != nil {
-				logging.Errorf("Eventing::main metakv observe error for rebalance token, err: %v. Retrying...", err)
-				time.Sleep(2 * time.Second)
-			}
-		}
-	}(s)
-
-	// For global Eventing related configs
-	go func(s *supervisor.SuperSupervisor) {
-		cancelCh := make(chan struct{})
-		for {
-			err := metakv.RunObserveChildren(supervisor.MetakvClusterSettings, s.GlobalConfigChangeCallback, cancelCh)
-			if err != nil {
-				logging.Errorf("Eventing::main metakv observe error for global config, err: %v. Retrying...", err)
-				time.Sleep(2 * time.Second)
-			}
-		}
-	}(s)
-
-	// For aborting the retries during bootstrap
-	go func(s *supervisor.SuperSupervisor) {
-		cancelCh := make(chan struct{})
-		for {
-			err := metakv.RunObserveChildren(supervisor.MetakvAppsRetryPath, s.AppsRetryCallback, cancelCh)
-			if err != nil {
-				logging.Errorf("Eventing::main metakv observe error for apps retry, err: %v. Retrying.", err)
-				time.Sleep(2 * time.Second)
-			}
-		}
-	}(s)
-
-	// For starting debugger
-	go func(s *supervisor.SuperSupervisor) {
-		cancelCh := make(chan struct{})
-		for {
-			err := metakv.RunObserveChildren(common.MetakvDebuggerPath, s.DebuggerCallback, cancelCh)
-			if err != nil {
-				logging.Errorf("Eventing::main metakv observe error for debugger, err: %v. Retrying.", err)
-				time.Sleep(2 * time.Second)
-			}
-		}
-	}(s)
-
-	s.HandleSupCmdMsg()
+	logging.Infof("%s started with config: %s", logPrefix, clusterSetting)
+	ctx, _ := context.WithCancel(context.TODO())
+	_, err = supervisor2.StartSupervisor(ctx, clusterSetting)
+	if err != nil {
+		logging.Errorf("%s Error starting supervisor: %v. Exiting...", logPrefix, err)
+		time.Sleep(2 * time.Second)
+	}
 }

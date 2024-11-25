@@ -371,7 +371,7 @@ func waitForRebalanceFinish() error {
 }
 
 func waitForDeployToFinish(appName string) {
-	timer := time.NewTimer(time.Hour)
+	timer := time.NewTimer(5 * time.Minute)
 	for {
 		select {
 		case <-timer.C:

@@ -1,0 +1,10 @@
+namespace flatbuf.header_v2;
+
+table HeaderV2 {
+  extras:string;
+  meta:string;
+  value:string;
+  xattr:string;
+}
+
+root_type HeaderV2;

@@ -1,3 +1,4 @@
+//go:build all || handler
 // +build all handler
 
 package eventing

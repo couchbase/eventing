@@ -11,7 +11,7 @@ import (
 )
 
 func init() {
-	rebalanceFromRest([]string{"127.0.0.1:19003",})
+	rebalanceFromRest([]string{"127.0.0.1:19003"})
 	waitForRebalanceFinish()
 
 	addNodeFromRest("https://127.0.0.1:19003", "cbas")

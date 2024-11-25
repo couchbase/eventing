@@ -205,49 +205,6 @@ class BucketBinding;
 class ConnectionPool;
 class V8Worker;
 
-extern std::atomic<int64_t> bucket_op_exception_count;
-extern std::atomic<int64_t> bucket_op_cachemiss_count;
-extern std::atomic<int64_t> n1ql_op_exception_count;
-extern std::atomic<int64_t> analytics_op_exception_count;
-extern std::atomic<int64_t> timeout_count;
-extern std::atomic<int16_t> checkpoint_failure_count;
-extern std::atomic<int64_t> bkt_ops_cas_mismatch_count;
-
-extern std::atomic<int64_t> on_update_success;
-extern std::atomic<int64_t> on_update_failure;
-extern std::atomic<int64_t> on_delete_success;
-extern std::atomic<int64_t> on_delete_failure;
-extern std::atomic<OnDeployState> on_deploy_stat;
-extern std::atomic<int64_t> no_op_counter;
-extern std::atomic<int64_t> timer_callback_success;
-extern std::atomic<int64_t> timer_callback_failure;
-extern std::atomic<int64_t> timer_create_failure;
-
-extern std::atomic<int64_t> lcb_retry_failure;
-
-extern std::atomic<int64_t> messages_processed_counter;
-extern std::atomic<int64_t> processed_events_size;
-extern std::atomic<int64_t> num_processed_events;
-
-// DCP or Timer event counter
-extern std::atomic<int64_t> dcp_delete_msg_counter;
-extern std::atomic<int64_t> dcp_mutation_msg_counter;
-extern std::atomic<int64_t> timer_msg_counter;
-extern std::atomic<int64_t> timer_create_counter;
-extern std::atomic<int64_t> timer_cancel_counter;
-extern std::atomic<int64_t> enqueued_dcp_delete_msg_counter;
-extern std::atomic<int64_t> enqueued_dcp_mutation_msg_counter;
-extern std::atomic<int64_t> dcp_delete_parse_failure;
-extern std::atomic<int64_t> dcp_mutation_parse_failure;
-extern std::atomic<int64_t> filtered_dcp_delete_counter;
-extern std::atomic<int64_t> filtered_dcp_mutation_counter;
-extern std::atomic<int64_t> dcp_mutation_checkpoint_cas_mismatch;
-extern std::atomic<int64_t> dcp_delete_checkpoint_cas_mismatch;
-extern std::atomic<int64_t> dcp_mutation_checkpoint_failure;
-extern std::atomic<int64_t> dcp_delete_checkpoint_failure;
-
-extern std::atomic<int64_t> enqueued_timer_msg_counter;
-
 struct ParsedMetadata {
   int vb{0};
   uint64_t seq_num{0};

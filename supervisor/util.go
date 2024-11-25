@@ -657,7 +657,7 @@ func (s *SuperSupervisor) watchBucketChanges() {
 
 func (s *SuperSupervisor) getConfig() (c common.Config) {
 
-	data, err := util.MetakvGet(common.MetakvConfigPath)
+	data, err := util.MetakvGet(common.EventingConfigPath)
 	if err != nil {
 		logging.Errorf("Failed to get config, err: %v", err)
 		return

@@ -24,11 +24,7 @@
 #include "lcb_utils.h"
 #include "retry_util.h"
 #include "utils.h"
-#include "v8worker.h"
-
-std::atomic<int64_t> bucket_op_exception_count = {0};
-std::atomic<int64_t> bucket_op_cachemiss_count = {0};
-std::atomic<int64_t> lcb_retry_failure = {0};
+#include "v8worker2.h"
 
 BucketFactory::BucketFactory(v8::Isolate *isolate,
                              const v8::Local<v8::Context> &context)
@@ -300,6 +296,7 @@ Bucket::WriteCheckpoint(const MetaData &meta, const uint64_t &rootcas,
   const auto cursor_checkpoint_timeout =
       UnwrapData(isolate_)->cursor_checkpoint_timeout;
   const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
+  const auto v8worker = UnwrapData(isolate_)->v8worker2;
 
   // Setup subdoc specs
   lcb_SUBDOCSPECS *specs;
@@ -366,7 +363,7 @@ Bucket::WriteCheckpoint(const MetaData &meta, const uint64_t &rootcas,
     return {std::move(err), nullptr, nullptr};
   }
   if (err_code != nullptr && *err_code != LCB_SUCCESS) {
-    ++lcb_retry_failure;
+    v8worker->stats_->IncrementExecutionStat("lcb_retry_failure");
     return {nullptr, std::move(err_code), nullptr};
   }
   return {nullptr, std::move(err_code), std::move(result)};
@@ -384,6 +381,7 @@ Bucket::Get(MetaData &meta) {
   const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
   const auto lcb_timeout = UnwrapData(isolate_)->lcb_timeout;
   const auto max_timeout = UnwrapData(isolate_)->op_timeout;
+  const auto v8worker = UnwrapData(isolate_)->v8worker2;
 
   lcb_CMDGET *cmd;
   lcb_cmdget_create(&cmd);
@@ -403,7 +401,7 @@ Bucket::Get(MetaData &meta) {
     return {std::move(err), nullptr, nullptr};
   }
   if (err_code != nullptr && *err_code != LCB_SUCCESS) {
-    ++lcb_retry_failure;
+    v8worker->stats_->IncrementExecutionStat("lcb_retry_failure");
     return {nullptr, std::move(err_code), nullptr};
   }
 
@@ -423,6 +421,7 @@ Bucket::LookupIn(MetaData &meta, LookupInSpecs &specs) {
   const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
   const auto lcb_timeout = UnwrapData(isolate_)->lcb_timeout;
   const auto max_timeout = UnwrapData(isolate_)->op_timeout;
+  const auto v8worker = UnwrapData(isolate_)->v8worker2;
 
   lcb_SUBDOCSPECS *lcb_specs;
   lcb_subdocspecs_create(&lcb_specs, specs.get_num_fields() + 2);
@@ -457,7 +456,7 @@ Bucket::LookupIn(MetaData &meta, LookupInSpecs &specs) {
     return {std::move(err), nullptr, nullptr};
   }
   if (err_code != nullptr && *err_code != LCB_SUCCESS) {
-    ++lcb_retry_failure;
+    v8worker->stats_->IncrementExecutionStat("lcb_retry_failure");
     return {nullptr, std::move(err_code), nullptr};
   }
 
@@ -493,6 +492,7 @@ Bucket::GetWithMeta(MetaData &meta) {
   const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
   const auto lcb_timeout = UnwrapData(isolate_)->lcb_timeout;
   const auto max_timeout = UnwrapData(isolate_)->op_timeout;
+  const auto v8worker = UnwrapData(isolate_)->v8worker2;
 
   lcb_SUBDOCSPECS *lcb_specs;
   lcb_subdocspecs_create(&lcb_specs, 3);
@@ -529,7 +529,7 @@ Bucket::GetWithMeta(MetaData &meta) {
     return {std::move(err), nullptr, nullptr};
   }
   if (err_code != nullptr && *err_code != LCB_SUCCESS) {
-    ++lcb_retry_failure;
+    v8worker->stats_->IncrementExecutionStat("lcb_retry_failure");
     return {nullptr, std::move(err_code), nullptr};
   }
 
@@ -552,6 +552,7 @@ Bucket::CounterWithoutXattr(MetaData &meta, int64_t delta) {
   const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
   const auto lcb_timeout = UnwrapData(isolate_)->lcb_timeout;
   const auto max_timeout = UnwrapData(isolate_)->op_timeout;
+  const auto v8worker = UnwrapData(isolate_)->v8worker2;
 
   lcb_SUBDOCSPECS *lcb_specs;
   lcb_subdocspecs_create(&lcb_specs, 1);
@@ -581,7 +582,7 @@ Bucket::CounterWithoutXattr(MetaData &meta, int64_t delta) {
     return {std::move(err), nullptr, nullptr};
   }
   if (err_code != nullptr && *err_code != LCB_SUCCESS) {
-    ++lcb_retry_failure;
+    v8worker->stats_->IncrementExecutionStat("lcb_retry_failure");
     return {nullptr, std::move(err_code), nullptr};
   }
 
@@ -635,6 +636,7 @@ Bucket::CounterWithXattr(MetaData &meta, int64_t delta) {
   const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
   const auto lcb_timeout = UnwrapData(isolate_)->lcb_timeout;
   const auto max_timeout = UnwrapData(isolate_)->op_timeout;
+  const auto v8worker = UnwrapData(isolate_)->v8worker2;
 
   lcb_CMDSUBDOC *cmd;
   lcb_cmdsubdoc_create(&cmd);
@@ -663,7 +665,7 @@ Bucket::CounterWithXattr(MetaData &meta, int64_t delta) {
     return {std::move(err), nullptr, nullptr};
   }
   if (err_code != nullptr && *err_code != LCB_SUCCESS) {
-    ++lcb_retry_failure;
+    v8worker->stats_->IncrementExecutionStat("lcb_retry_failure");
     return {nullptr, std::move(err_code), nullptr};
   }
 
@@ -686,6 +688,7 @@ Bucket::MutateInWithoutXattr(MetaData &meta, MutateInSpecs &specs) {
   const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
   const auto lcb_timeout = UnwrapData(isolate_)->lcb_timeout;
   const auto max_timeout = UnwrapData(isolate_)->op_timeout;
+  const auto v8worker = UnwrapData(isolate_)->v8worker2;
 
   lcb_CMDSUBDOC *cmd;
   lcb_cmdsubdoc_create(&cmd);
@@ -713,7 +716,7 @@ Bucket::MutateInWithoutXattr(MetaData &meta, MutateInSpecs &specs) {
     return {std::move(err), nullptr, nullptr};
   }
   if (err_code != nullptr && *err_code != LCB_SUCCESS) {
-    ++lcb_retry_failure;
+    v8worker->stats_->IncrementExecutionStat("lcb_retry_failure");
     return {nullptr, std::move(err_code), nullptr};
   }
 
@@ -768,6 +771,7 @@ Bucket::MutateInWithXattr(MetaData &meta, MutateInSpecs &specs) {
   const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
   const auto lcb_timeout = UnwrapData(isolate_)->lcb_timeout;
   const auto max_timeout = UnwrapData(isolate_)->op_timeout;
+  const auto v8worker = UnwrapData(isolate_)->v8worker2;
 
   lcb_CMDSUBDOC *cmd;
   lcb_cmdsubdoc_create(&cmd);
@@ -795,7 +799,7 @@ Bucket::MutateInWithXattr(MetaData &meta, MutateInSpecs &specs) {
     return {std::move(err), nullptr, nullptr};
   }
   if (err_code != nullptr && *err_code != LCB_SUCCESS) {
-    ++lcb_retry_failure;
+    v8worker->stats_->IncrementExecutionStat("lcb_retry_failure");
     return {nullptr, std::move(err_code), nullptr};
   }
 
@@ -851,6 +855,7 @@ Bucket::SetWithXattr(MetaData &meta, const std::string &value,
   const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
   const auto lcb_timeout = UnwrapData(isolate_)->lcb_timeout;
   const auto max_timeout = UnwrapData(isolate_)->op_timeout;
+  const auto v8worker = UnwrapData(isolate_)->v8worker2;
 
   lcb_CMDSUBDOC *cmd;
   lcb_cmdsubdoc_create(&cmd);
@@ -878,8 +883,8 @@ Bucket::SetWithXattr(MetaData &meta, const std::string &value,
   if (err != nullptr) {
     return {std::move(err), nullptr, nullptr};
   }
-  if (err_code && *err_code != LCB_SUCCESS) {
-    ++lcb_retry_failure;
+  if (err_code != nullptr && *err_code != LCB_SUCCESS) {
+    v8worker->stats_->IncrementExecutionStat("lcb_retry_failure");
     return {nullptr, std::move(err_code), nullptr};
   }
 
@@ -901,6 +906,7 @@ Bucket::SetWithoutXattr(MetaData &meta, const std::string &value,
   const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
   const auto lcb_timeout = UnwrapData(isolate_)->lcb_timeout;
   const auto max_timeout = UnwrapData(isolate_)->op_timeout;
+  const auto v8worker = UnwrapData(isolate_)->v8worker2;
 
   lcb_CMDSTORE *cmd;
   lcb_cmdstore_create(&cmd, op_type);
@@ -926,7 +932,7 @@ Bucket::SetWithoutXattr(MetaData &meta, const std::string &value,
   }
 
   if (err_code != nullptr && *err_code != LCB_SUCCESS) {
-    ++lcb_retry_failure;
+    v8worker->stats_->IncrementExecutionStat("lcb_retry_failure");
     return {nullptr, std::move(err_code), nullptr};
   }
 
@@ -982,6 +988,7 @@ Bucket::DeleteWithXattr(MetaData &meta) {
   const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
   const auto lcb_timeout = UnwrapData(isolate_)->lcb_timeout;
   const auto max_timeout = UnwrapData(isolate_)->op_timeout;
+  const auto v8worker = UnwrapData(isolate_)->v8worker2;
 
   lcb_CMDSUBDOC *cmd;
   lcb_cmdsubdoc_create(&cmd);
@@ -1010,7 +1017,7 @@ Bucket::DeleteWithXattr(MetaData &meta) {
     return {std::move(err), nullptr, nullptr};
   }
   if (err_code != nullptr && *err_code != LCB_SUCCESS) {
-    ++lcb_retry_failure;
+    v8worker->stats_->IncrementExecutionStat("lcb_retry_failure");
     return {nullptr, std::move(err_code), nullptr};
   }
 
@@ -1030,6 +1037,7 @@ Bucket::DeleteWithoutXattr(MetaData &meta) {
   const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
   const auto lcb_timeout = UnwrapData(isolate_)->lcb_timeout;
   const auto max_timeout = UnwrapData(isolate_)->op_timeout;
+  const auto v8worker = UnwrapData(isolate_)->v8worker2;
 
   lcb_CMDREMOVE *cmd;
   lcb_cmdremove_create(&cmd);
@@ -1052,7 +1060,7 @@ Bucket::DeleteWithoutXattr(MetaData &meta) {
     return {std::move(err), nullptr, nullptr};
   }
   if (err_code != nullptr && *err_code != LCB_SUCCESS) {
-    ++lcb_retry_failure;
+    v8worker->stats_->IncrementExecutionStat("lcb_retry_failure");
     return {nullptr, std::move(err_code), nullptr};
   }
 
@@ -1106,6 +1114,7 @@ Bucket::TouchWithXattr(MetaData &meta) {
   const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
   const auto lcb_timeout = UnwrapData(isolate_)->lcb_timeout;
   const auto max_timeout = UnwrapData(isolate_)->op_timeout;
+  const auto v8worker = UnwrapData(isolate_)->v8worker2;
 
   lcb_CMDSUBDOC *cmd;
   lcb_cmdsubdoc_create(&cmd);
@@ -1132,7 +1141,7 @@ Bucket::TouchWithXattr(MetaData &meta) {
     return {std::move(err), nullptr, nullptr};
   }
   if (err_code != nullptr && *err_code != LCB_SUCCESS) {
-    ++lcb_retry_failure;
+    v8worker->stats_->IncrementExecutionStat("lcb_retry_failure");
     return {nullptr, std::move(err_code), nullptr};
   }
 
@@ -1152,6 +1161,7 @@ Bucket::TouchWithoutXattr(MetaData &meta) {
   const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
   const auto lcb_timeout = UnwrapData(isolate_)->lcb_timeout;
   const auto max_timeout = UnwrapData(isolate_)->op_timeout;
+  const auto v8worker = UnwrapData(isolate_)->v8worker2;
 
   lcb_CMDTOUCH *cmd;
   lcb_cmdtouch_create(&cmd);
@@ -1175,7 +1185,7 @@ Bucket::TouchWithoutXattr(MetaData &meta) {
   }
 
   if (err_code != nullptr && *err_code != LCB_SUCCESS) {
-    ++lcb_retry_failure;
+    v8worker->stats_->IncrementExecutionStat("lcb_retry_failure");
     return {nullptr, std::move(err_code), nullptr};
   }
 
@@ -1191,6 +1201,8 @@ void BucketBinding::BucketGet<v8::Local<v8::Name>>(
   auto isolate_data = UnwrapData(isolate);
   auto js_exception = isolate_data->js_exception;
   auto utils = isolate_data->utils;
+  const auto v8worker = UnwrapData(isolate)->v8worker2;
+
   std::lock_guard<std::mutex> guard(isolate_data->termination_lock_);
   if (!isolate_data->is_executing_) {
     return;
@@ -1200,7 +1212,7 @@ void BucketBinding::BucketGet<v8::Local<v8::Name>>(
   auto validate_info = ValidateKey(name);
   if (validate_info.is_fatal) {
     js_exception->ThrowEventingError(validate_info.msg);
-    ++bucket_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
     return;
   }
 
@@ -1264,6 +1276,7 @@ void BucketBinding::BucketSet<v8::Local<v8::Name>>(
   auto isolate = info.GetIsolate();
   auto js_exception = UnwrapData(isolate)->js_exception;
   std::string value_str;
+  const auto v8worker = UnwrapData(isolate)->v8worker2;
 
   v8::Local<v8::ArrayBuffer> array_buf;
   std::lock_guard<std::mutex> guard(UnwrapData(isolate)->termination_lock_);
@@ -1275,14 +1288,14 @@ void BucketBinding::BucketSet<v8::Local<v8::Name>>(
   auto validate_info = ValidateKeyValue(name, value_obj);
   if (validate_info.is_fatal) {
     js_exception->ThrowEventingError(validate_info.msg);
-    ++bucket_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
     return;
   }
 
   auto block_mutation =
       UnwrapInternalField<bool>(info.Holder(), InternalFields::kBlockMutation);
   if (*block_mutation) {
-    ++bucket_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
     js_exception->ThrowEventingError("Writing to source bucket is forbidden");
     return;
   }
@@ -1335,6 +1348,8 @@ void BucketBinding::BucketDelete<v8::Local<v8::Name>>(
     const v8::PropertyCallbackInfo<v8::Boolean> &info) {
   auto isolate = info.GetIsolate();
   auto js_exception = UnwrapData(isolate)->js_exception;
+  const auto v8worker = UnwrapData(isolate)->v8worker2;
+
   std::lock_guard<std::mutex> guard(UnwrapData(isolate)->termination_lock_);
   if (!UnwrapData(isolate)->is_executing_) {
     return;
@@ -1344,7 +1359,7 @@ void BucketBinding::BucketDelete<v8::Local<v8::Name>>(
   auto validate_info = ValidateKey(name);
   if (validate_info.is_fatal) {
     js_exception->ThrowKVError(validate_info.msg);
-    ++bucket_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
     return;
   }
 
@@ -1352,7 +1367,7 @@ void BucketBinding::BucketDelete<v8::Local<v8::Name>>(
       info.Holder(), static_cast<int>(InternalFields::kBlockMutation));
   if (*block_mutation) {
     js_exception->ThrowEventingError("Delete from source bucket is forbidden");
-    ++bucket_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
     return;
   }
 
@@ -1435,8 +1450,9 @@ void BucketBinding::HandleBucketOpFailure(v8::Isolate *isolate,
                                           lcb_INSTANCE *connection,
                                           lcb_STATUS error) {
   auto isolate_data = UnwrapData(isolate);
+  const auto v8worker = isolate_data->v8worker2;
   AddLcbException(isolate_data, error);
-  ++bucket_op_exception_count;
+  v8worker->stats_->IncrementFailureStat("bucket_op_exception_count");
 
   auto js_exception = isolate_data->js_exception;
   js_exception->ThrowKVError(connection, error);
@@ -1608,7 +1624,7 @@ BucketBinding::IsSourceMutation(v8::Isolate *isolate,
     return {nullptr, false};
   }
 
-  const auto v8Worker = UnwrapData(isolate)->v8worker;
+  const auto v8Worker = UnwrapData(isolate)->v8worker2;
   const auto cb_scope = v8Worker->cb_source_scope_;
   const auto cb_collection = v8Worker->cb_source_collection_;
 

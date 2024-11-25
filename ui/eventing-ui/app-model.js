@@ -12,7 +12,18 @@ export {
 
 function Application(data) {
   for (var key of Object.keys(data)) {
-    this[key] = data[key];
+    if (key == "function_scope") {
+      this[key] = {"bucket": "*", "scope": "*"};
+      if (data[key].bucket == undefined && data[key].scope == undefined) {
+        this[key].bucket = data[key].bucket_name;
+        this[key].scope = data[key].scope_name;
+        return
+      }
+      this[key].bucket = data[key].bucket;
+      this[key].scope = data[key].scope;
+    } else {
+      this[key] = data[key];
+    }
   }
 }
 
@@ -117,7 +128,7 @@ ApplicationManager.prototype.getAppByName = function(appName, function_scope) {
   if (appList[appLocation]) {
     return appList[appLocation];
   } else {
-    throw appName+ " in " + function_scope + ' does not exist';
+    throw appName + " in " + function_scope + ' does not exist';
   }
 };
 
@@ -128,7 +139,7 @@ ApplicationManager.prototype.deleteApp = function(appName, function_scope) {
   if (appList[appLocation]) {
     delete appList[appLocation];
   } else {
-    throw appName+ " in " + function_scope + ' does not exist';
+    throw appName + " in " + function_scope + ' does not exist';
   }
 };
 
@@ -256,21 +267,30 @@ function getWarnings(app) {
 
 function getAppLocation(appname, function_scope) {
   var appLocation = appname;
-  if(function_scope && function_scope.bucket != "" && function_scope.bucket != "*" && function_scope.bucket != undefined) {
-    appLocation = function_scope.bucket+"/"+function_scope.scope+"/"+appname
+  if (function_scope && function_scope.bucket != "" && function_scope.bucket !=
+    "*" && function_scope.bucket != undefined) {
+    return function_scope.bucket + "/" + function_scope.scope + "/" +
+      appname
+  }
+
+   if (function_scope && function_scope.bucket_name != "" && function_scope.bucket_name !=
+    "*" && function_scope.bucket_name != undefined) {
+     return function_scope.bucket_name + "/" + function_scope.scope_name + "/" +
+      appname
   }
   return appLocation
 }
 
 function getReverseAppLocation(app_location) {
   var values = app_location.split("/")
-  if(values.length == 3) {
-    return {name: values[2],
-            function_scope: {
-              bucket: values[1],
-              scope: values[0]
-            }
-        }
+  if (values.length == 3) {
+    return {
+      name: values[2],
+      function_scope: {
+        bucket: values[1],
+        scope: values[0]
+      }
     }
-  return {name: app_location, function_scope: {bucket: "*", scope: "*"}}
+  }
+  return { name: app_location, function_scope: { bucket: "*", scope: "*" } }
 }

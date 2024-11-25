@@ -13,13 +13,13 @@
 #include "log.h"
 #include "utils.h"
 
-void ExceptionInsight::AccumulateException(v8::TryCatch &try_catch,
-                                           bool script_timeout, bool on_deploy_timeout) {
-
+void ExceptionInsight::AccumulateException(v8::Isolate *isolate_,
+                                           v8::TryCatch &try_catch,
+                                           bool timeout) {
   auto newEntry = false;
   auto context = isolate_->GetCurrentContext();
   auto v8exception_info =
-      GetV8ExceptionInfo(isolate_, context, &try_catch, script_timeout, on_deploy_timeout);
+      GetV8ExceptionInfo(isolate_, context, &try_catch, timeout);
 
   // compute a hash for the exception-info to identify duplicates:
   // The field 'stack' contains the exception as well as the stack-track and
@@ -55,7 +55,19 @@ void ExceptionInsight::AccumulateException(v8::TryCatch &try_catch,
 
     PopulateExceptionInfo(exceptionInfo, v8exception_info);
 
-    APPLOG << exceptionInfo.dump() << std::endl;
+    auto log_msg = exceptionInfo.dump();
+
+    std::ostringstream ss;
+    auto locationSize = location_.length();
+    auto msgSize = log_msg.length();
+
+    ss << static_cast<uint8_t>(locationSize >> 8)
+       << static_cast<uint8_t>(locationSize);
+    ss << static_cast<uint8_t>(msgSize >> 24)
+       << static_cast<uint8_t>(msgSize >> 16)
+       << static_cast<uint8_t>(msgSize >> 8) << static_cast<uint8_t>(msgSize);
+
+    APPLOG << ss.str() << location_ << log_msg << std::flush;
   }
 }
 
@@ -103,7 +115,19 @@ void ExceptionInsight::LogExceptionSummary(
 
     PopulateExceptionInfo(exceptionInfo, iter.second.v8exception_info_);
 
-    APPLOG << exceptionInfo.dump() << std::endl;
+    auto log_msg = exceptionInfo.dump();
+
+    std::ostringstream ss;
+    auto locationSize = location_.length();
+    auto msgSize = log_msg.length();
+
+    ss << static_cast<uint8_t>(locationSize >> 8)
+       << static_cast<uint8_t>(locationSize);
+    ss << static_cast<uint8_t>(msgSize >> 24)
+       << static_cast<uint8_t>(msgSize >> 16)
+       << static_cast<uint8_t>(msgSize >> 8) << static_cast<uint8_t>(msgSize);
+
+    APPLOG << ss.str() << location_ << log_msg << std::flush;
   }
 }
 
@@ -117,19 +141,15 @@ void ExceptionInsight::PopulateExceptionInfo(nlohmann::json &exceptionInfo,
   exceptionInfo["stack"] = v8exception_info.stack;
 }
 
-ExceptionInsight::ExceptionInsight(v8::Isolate *isolate)
-    : entries_(std::map<uint64_t, ExceptionInfoEntry>()), isolate_(isolate) {
+ExceptionInsight::ExceptionInsight()
+    : entries_(std::map<uint64_t, ExceptionInfoEntry>()) {
 
   InitStartTime();
 }
 
-ExceptionInsight &ExceptionInsight::Get(v8::Isolate *isolate) {
-  return *(UnwrapData(isolate)->exception_insight);
-}
-
-void ExceptionInsight::Setup(const std::string &function_name) {
+void ExceptionInsight::Setup(const std::string &instance_id) {
   std::lock_guard<std::mutex> lock(lock_);
-  function_name_ = function_name;
+  location_ = instance_id;
 }
 
 void ExceptionInsight::InitStartTime() {

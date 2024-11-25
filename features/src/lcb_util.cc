@@ -34,7 +34,8 @@ void GetUsernameAndPassword(lcbauth_CREDENTIALS *credentials) {
   auto endpoint = JoinHostPort(host, port);
 
   auto reason = lcbauth_credentials_reason(credentials);
-  if (reason == LCBAUTH_REASON_AUTHENTICATION_FAILURE || reason == LCBAUTH_REASON_AUTHORIZATION_FAILURE) {
+  if (reason == LCBAUTH_REASON_AUTHENTICATION_FAILURE ||
+      reason == LCBAUTH_REASON_AUTHORIZATION_FAILURE) {
     comm->removeCachedEntry(endpoint);
   }
 
@@ -179,7 +180,7 @@ void SubDocumentLookupCallback(lcb_INSTANCE *instance, int cbtype,
   if (total > 0) {
     result->rc = lcb_respsubdoc_result_status(resp, 0);
     if (result->rc != LCB_SUCCESS) {
-        return;
+      return;
     }
   }
   for (size_t index = 0; index < total; index++) {
@@ -207,7 +208,7 @@ void SubDocumentLookupCallback(lcb_INSTANCE *instance, int cbtype,
       }
     } else {
       auto err_code = lcb_respsubdoc_result_status(resp, index);
-      if(err_code == LCB_SUCCESS) {
+      if (err_code == LCB_SUCCESS) {
         std::string temp;
         temp.assign(cValue, nValue);
         result->lookupin_entries.emplace_back(temp, err_code);
@@ -477,11 +478,16 @@ std::pair<lcb_STATUS, Result> LcbUnlock(lcb_INSTANCE *instance,
 }
 
 bool IsErrCodeRetriable(lcb_STATUS error, uint16_t err_code) {
-  if (err_code == UNKNOWN_SCOPE || err_code == UNKNOWN_COLLECTION) {
+  if (!IsKeyspaceExist(err_code)) {
     return false;
   }
 
   return LCB_ERROR_IS_TRANSIENT(error);
+}
+
+bool IsKeyspaceExist(uint16_t err_code) {
+  return (err_code != UNKNOWN_SCOPE && err_code != UNKNOWN_COLLECTION &&
+          err_code != BUCKET_NOT_FOUND);
 }
 
 bool IsRetriable(lcb_STATUS error) { return LCB_ERROR_IS_TRANSIENT(error); }

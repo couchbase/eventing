@@ -202,12 +202,12 @@ std::string ConvertToISO8601(std::string timestamp) {
 
 std::string ExceptionString(v8::Isolate *isolate,
                             v8::Local<v8::Context> &context,
-                            v8::TryCatch *try_catch, bool script_timeout, bool on_deploy_timeout) {
+                            v8::TryCatch *try_catch, bool script_timeout) {
 
   std::ostringstream os;
 
   V8ExceptionInfo v8exception_info =
-      GetV8ExceptionInfo(isolate, context, try_catch, script_timeout, on_deploy_timeout);
+      GetV8ExceptionInfo(isolate, context, try_catch, script_timeout);
 
   // The actual exception
   if (!v8exception_info.exception.empty()) {
@@ -237,17 +237,13 @@ std::string ExceptionString(v8::Isolate *isolate,
 
 V8ExceptionInfo GetV8ExceptionInfo(v8::Isolate *isolate,
                                    v8::Local<v8::Context> &context,
-                                   v8::TryCatch *try_catch, bool script_timeout, bool on_deploy_timeout) {
+                                   v8::TryCatch *try_catch, bool script_timeout) {
 
   V8ExceptionInfo v8exception_info;
   if (script_timeout) {
     // If function is terminated all the info like line stack trace is lost and
     // will be populated with wrong info Populate the exception and return
     v8exception_info.exception = "function execution timed out";
-    return v8exception_info;
-  }
-  if (on_deploy_timeout) {
-    v8exception_info.exception = "OnDeploy timed out";
     return v8exception_info;
   }
   auto offset = UnwrapData(isolate)->insight_line_offset;
@@ -532,16 +528,7 @@ ConnStrInfo Utils::GetConnectionString(const std::string &bucket) const {
     return conn_info;
   }
   conn_info.is_valid = true;
-  std::string nodes_list;
-  for (std::vector<std::string>::const_iterator nodes_iter =
-           nodes_info.kv_nodes.begin();
-       nodes_iter != nodes_info.kv_nodes.end(); ++nodes_iter) {
-    nodes_list += *nodes_iter;
-    if (nodes_iter != nodes_info.kv_nodes.end() - 1) {
-      nodes_list += ',';
-    }
-  }
-  conn_info.conn_str = GetConnectionStr(nodes_list, bucket, certFile_);
+  conn_info.conn_str = GetConnectionStr(nodes_info, bucket, certFile_);
   return conn_info;
 }
 
@@ -911,7 +898,7 @@ void Crc64Function(const v8::FunctionCallbackInfo<v8::Value> &args) {
   }
 
   char crc_str[32] = {0};
-  std::sprintf(crc_str, "%016lx", (unsigned long)crc);
+  std::snprintf(crc_str, sizeof(crc_str), "%016lx", (unsigned long)crc);
   args.GetReturnValue().Set(v8Str(isolate, crc_str));
 }
 
@@ -1239,16 +1226,26 @@ void Base64Float32DecodeFunction(
   base64FloatArrayDecode(args, arrayEncoding::Float32Encoding);
 }
 
-std::string GetConnectionStr(const std::string &end_point,
+std::string GetConnectionStr(const KVNodesInfo &nodes_info,
                              const std::string &bucket_name,
                              const std::string certFile) {
+  std::string nodes_list;
+  for (std::vector<std::string>::const_iterator nodes_iter =
+           nodes_info.kv_nodes.begin();
+       nodes_iter != nodes_info.kv_nodes.end(); ++nodes_iter) {
+    nodes_list += *nodes_iter;
+    if (nodes_iter != nodes_info.kv_nodes.end() - 1) {
+      nodes_list += ',';
+    }
+  }
+
   std::stringstream conn_str;
-  if (certFile != "")
-    conn_str << "couchbases://" << end_point << '/' << bucket_name
+  if (nodes_info.encrypt_data)
+    conn_str << "couchbases://" << nodes_list << '/' << bucket_name
              << "?select_bucket=true&detailed_errcodes=1&truststorepath="
              << certFile;
   else
-    conn_str << "couchbase://" << end_point << '/' << bucket_name
+    conn_str << "couchbase://" << nodes_list << '/' << bucket_name
              << "?select_bucket=true&detailed_errcodes=1";
   if (IsIPv6()) {
     conn_str << "&ipv6=allow";

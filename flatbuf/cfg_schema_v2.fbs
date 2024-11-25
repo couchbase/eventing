@@ -1,0 +1,140 @@
+namespace flatbuf.cfgv2;
+
+table Config {
+  version:int8;
+  Applocation:AppLocation; // do you need this to store
+  AppCode:string;
+  AppID:uint;
+  AppInstanceID:string;
+  Settings:HandlerSetting;
+  AppState:AppState;
+  DeploymentConfig:DeploymentConfig;
+  Bindings:[Bindings];
+  MetaInfo:MetaInfo;
+  Owner:Owner;
+}
+
+table Namespace {
+  BucketName:string;
+  ScopeName:string;
+}
+
+table Keyspace {
+  BucketName:string;
+  ScopeName:string;
+  CollectionName:string;
+}
+
+table AppLocation {
+  Namespace:Namespace;
+  AppName:string;
+}
+
+table HandlerSetting {
+  CppWorkerThread:uint32;
+  DcpStreamBoundary:string;
+  Description:string;
+  LogLevel:string;
+  NumTimerPartition:uint16;
+  StatsDuration:uint64;
+  TimerContextSize:uint32;
+  WorkerCount:uint32;
+  AppLogDir:string;
+  EnableAppRotation:bool;
+  AppLogMaxSize:uint64;
+  AppLogMaxFiles:uint32;
+  CheckpointInterval:uint64;
+  CursorAware:bool;
+  AllowTransactionDocument:bool;
+  AllowSyncDocument:bool;
+  CheckInterval:uint64;
+  MaxUnackedBytes:float64;
+  MaxUnackedCount:float64;
+  FlushTimer:uint64;
+  MaxParallelVb:uint16;
+
+  ExecutionTimeout:uint64;
+  LanguageCompat:string;
+  LcbInstCapacity:uint32;
+  LcbRetryCount:uint32;
+  LcbTimeout:uint64;
+  N1qlConsistency:string;
+  N1qlPrepare:bool;
+  HandlerHeader:[string];
+  HandlerFooter:[string];
+  BucketCacheSize:uint64;
+  BucketCacheAge:uint64;
+  CurlRespSize:uint64;
+}
+
+table AppState {
+  ProcessingState:bool;
+  DeploymentState:bool;
+}
+
+table DeploymentConfig {
+  SourceKeyspace:Keyspace;
+  MetadataKeyspace:Keyspace;
+}
+
+table Bindings {
+  BindingType:uint;
+  BucketBinding:BucketBinding;
+  CurlBinding:CurlBinding;
+  ConstantBinding:ConstantBinding;
+}
+
+table KeyspaceInfo {
+  UID:string;
+  ScopeID:string;
+  CID:string;
+  UUID:string;
+  NumVbs:uint16;
+}
+
+table MetaInfo {
+  RequestType:uint8;
+  FuncID:KeyspaceInfo;
+  MetaID:KeyspaceInfo;
+  IsUsingTimer:bool;
+  Seq:uint32;
+
+  sboundary:string;
+  SourceID:KeyspaceInfo;
+}
+
+table Owner {
+  Username:string;
+  Domain:string;
+  UUID:string;
+}
+
+table BucketBinding {
+  Alias:string;
+  Keyspace:Keyspace;
+  Access:string;
+}
+
+table CurlBinding {
+  hostname:string;
+  alias:string;
+  authType:string;
+  allowCookies:bool;
+  validateSSLCertificate:bool;
+}
+
+table ConstantBinding {
+  Literal:string;
+  Value:string;
+}
+
+table SensitiveConfig {
+  sensitive:[Sensitive];
+}
+
+table Sensitive {
+  curlIndex:int32;
+  username:string;
+  password:string;
+  bearerKey:string;
+}

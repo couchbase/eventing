@@ -24,7 +24,7 @@ void CodeInsight::AccumulateTime(uint64_t nanotime) {
   entry.time_ += nanotime / window_size;
 }
 
-void CodeInsight::AccumulateLog(const std::string &log) {
+void CodeInsight::AccumulateLog(v8::Isolate *isolate_, const std::string &log) {
   auto stack = v8::StackTrace::CurrentStackTrace(isolate_, 1,
                                                  v8::StackTrace::kLineNumber);
   if (stack->GetFrameCount() < 1)
@@ -37,10 +37,11 @@ void CodeInsight::AccumulateLog(const std::string &log) {
   entry.last_log_ = log;
 }
 
-void CodeInsight::AccumulateException(v8::TryCatch &try_catch, bool script_timeout, bool on_deploy_timeout) {
+void CodeInsight::AccumulateException(v8::Isolate *isolate_,
+                                      v8::TryCatch &try_catch, bool script_timeout) {
   auto context = isolate_->GetCurrentContext();
   auto offset = UnwrapData(isolate_)->insight_line_offset;
-  auto emsg = ExceptionString(isolate_, context, &try_catch, script_timeout, on_deploy_timeout);
+  auto emsg = ExceptionString(isolate_, context, &try_catch, script_timeout);
   v8::Local<v8::Message> msg = try_catch.Message();
   if (msg.IsEmpty())
     return;
@@ -87,12 +88,6 @@ void CodeInsight::Log(LineEntry &line, const std::string &msg) {
   if (action == RateLimiter::no_more)
     str += "\n(above exceeded log rate limit, squelching)";
   LOG(logInfo) << str << std::endl;
-}
-
-CodeInsight::CodeInsight(v8::Isolate *isolate) : isolate_(isolate) {}
-
-CodeInsight &CodeInsight::Get(v8::Isolate *isolate) {
-  return *(UnwrapData(isolate)->code_insight);
 }
 
 void CodeInsight::Setup(const std::string &script) {

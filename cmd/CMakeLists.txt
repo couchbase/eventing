@@ -52,6 +52,7 @@ GoModBuild(TARGET eventing-producer PACKAGE github.com/couchbase/eventing/cmd/pr
 
 GoModBuild(TARGET cbevent PACKAGE github.com/couchbase/eventing/cmd/cbevent
   INSTALL_PATH bin
+  DEPENDS sigar Curl::libcurl
   GOTAGS "${TAGS}"
   LDFLAGS "${LDFLAGS}"
   GOVERSION ${GOVERSION})

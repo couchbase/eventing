@@ -1,3 +1,4 @@
+//go:build all || n1ql
 // +build all n1ql
 
 package eventing
@@ -8,8 +9,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/couchbase/gocb/v2"
 )
 
 func testFlexReset(handler string, t *testing.T) {
@@ -247,11 +246,6 @@ func TestN1QLGraceLowTimeOut(t *testing.T) {
 	}
 
 	//Check Timeout error from n1ql
-	cluster, _ := gocb.Connect("couchbase://127.0.0.1:12000")
-	cluster.Authenticate(gocb.PasswordAuthenticator{
-		Username: rbacuser,
-		Password: rbacpass,
-	})
 	bucket, err := cluster.OpenBucket(dstBucket, "")
 	if err != nil {
 		fmt.Println("Bucket open, err: ", err)
@@ -280,6 +274,7 @@ func TestN1QLGraceSufficientTimeOut(t *testing.T) {
 	handler := "n1ql_notimeout_query"
 
 	flushFunctionAndBucket(functionName)
+	time.Sleep(5 * time.Second)
 	pumpBucketOpsSrc(opsType{count: 30000}, "default", &rateLimit{})
 	pumpBucketOpsSrc(opsType{count: 30000}, "hello-world", &rateLimit{})
 
@@ -300,7 +295,7 @@ func TestN1QLGraceSufficientTimeOut(t *testing.T) {
 	pumpBucketOpsSrc(opsType{count: 1}, "default", &rateLimit{})
 	eventCount := verifyBucketOps(30001, statsLookupRetryCounter*2)
 	if eventCount != 30001 {
-		failAndCollectLogs(t, "For", "TestN1QLGraceLowTimeOut",
+		failAndCollectLogs(t, "For", "TestN1QLGraceSufficientTimeOut",
 			"expected", 30001,
 			"got", eventCount,
 		)
@@ -308,18 +303,8 @@ func TestN1QLGraceSufficientTimeOut(t *testing.T) {
 	}
 
 	//Check onupdate success in result
-
-	cluster, err := gocb.Connect("couchbase://127.0.0.1:12000", gocb.ClusterOptions{
-		Username: rbacuser,
-		Password: rbacpass,
-	})
-	if err != nil {
-		fmt.Println("Error connecting to cluster, err: ", err)
-		failAndCollectLogs(t, "Connecting to cluster failed")
-		return
-	}
 	bucket := cluster.Bucket(dstBucket)
-	err = bucket.WaitUntilReady(5*time.Second, nil)
+	err := bucket.WaitUntilReady(5*time.Second, nil)
 	if err != nil {
 		fmt.Printf("Error connecting to bucket %s  err: %s \n", dstBucket, err)
 		failAndCollectLogs(t, "Error open result bucket")

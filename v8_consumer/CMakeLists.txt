@@ -42,7 +42,6 @@ SET(FEATURES_SRC
         ../features/src/insight.cc
         ../features/src/exceptioninsight.cc
         ../features/src/bucket_ops.cc
-        ../features/src/bucket_cache.cc
         ../third_party/crc64/crc64.cc
         ../third_party/crc32/crc32.cc)
 
@@ -76,10 +75,12 @@ ENDIF()
 
 
 SET(EVENTING_SOURCES
-    src/client.cc
-    src/commands.cc
-    src/v8worker.cc
-    src/parse_deployment.cc
+    src/settings.cc
+    src/stats.cc
+    src/v8worker2.cc
+    src/uds_client.cc
+    src/function_handler.cc
+    src/distributor.cc
     src/breakpad.cc
     src/timer.cc
     src/histogram.cc

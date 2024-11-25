@@ -3,16 +3,16 @@ package main
 import (
 	"bytes"
 	"compress/flate"
-	"crypto/tls"
+	// "crypto/tls"
 	"io/ioutil"
 	"log"
-	"net/http"
+	//"net/http"
 	"net/url"
 	"strings"
 	"time"
 
 	"github.com/couchbase/cbauth/metakv"
-	"github.com/couchbase/eventing/util"
+	// "github.com/couchbase/eventing/util"
 )
 
 const (
@@ -59,6 +59,7 @@ func list(full bool) {
 }
 
 func restart(nsurl *url.URL) {
+	/*
 	svc := "eventingSSL"
 	hostport := nsurl.Hostname() + ":" + nsurl.Port()
 	cinfo, err := util.FetchNewClusterInfoCache(hostport)
@@ -90,6 +91,7 @@ func restart(nsurl *url.URL) {
 			log.Printf("Ignoring error asking eventing on node %v to die: %v (%v)", node, response, err)
 		}
 	}
+	*/
 }
 
 func flush(nsaddr, username, password string) {

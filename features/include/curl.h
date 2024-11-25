@@ -19,6 +19,7 @@
 #include <list>
 #include <memory>
 #include <mutex>
+#include <nlohmann/json.hpp>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -33,69 +34,6 @@ struct CurlResponse;
 struct CurlBinding;
 struct CurlBindingInfo;
 struct HTTPPostResponse;
-
-class CurlStats {
-public:
-  CurlStats();
-  void UpdateCounters(const std::string &request_type);
-  void UpdateOpResultCounters(const CURLcode &curl_code);
-  inline void UpdateNon200Counter() { non_200_resp_counter_++; }
-  inline void UpdateCurlMaxRespSizeExceededCounter() {
-    curl_large_resp_counter_++;
-  }
-
-  inline std::int64_t GetCurlGetStat() const {
-    return curl_get_counter_.load();
-  }
-
-  inline std::int64_t GetCurlPostStat() const {
-    return curl_post_counter_.load();
-  }
-
-  inline std::int64_t GetCurlDeleteStat() const {
-    return curl_delete_counter_.load();
-  }
-
-  inline std::int64_t GetCurlHeadStat() const {
-    return curl_head_counter_.load();
-  }
-
-  inline std::int64_t GetCurlPutStat() const {
-    return curl_put_counter_.load();
-  }
-
-  inline std::int64_t GetCurlNon200Stat() const {
-    return non_200_resp_counter_.load();
-  }
-
-  inline std::int64_t GetCurlFailureStat() const {
-    return curl_failure_counter_.load();
-  }
-
-  inline std::int64_t GetCurlSuccessStat() const {
-    return curl_success_counter_.load();
-  }
-
-  inline std::int64_t GetCurlTimeoutStat() const {
-    return curl_timeout_counter_.load();
-  }
-
-  inline std::int64_t GetCurlMaxRespSizeExceededStat() const {
-    return curl_large_resp_counter_.load();
-  }
-
-private:
-  std::atomic<std::int64_t> curl_get_counter_;
-  std::atomic<std::int64_t> curl_post_counter_;
-  std::atomic<std::int64_t> curl_delete_counter_;
-  std::atomic<std::int64_t> curl_head_counter_;
-  std::atomic<std::int64_t> curl_put_counter_;
-  std::atomic<std::int64_t> non_200_resp_counter_;
-  std::atomic<std::int64_t> curl_success_counter_;
-  std::atomic<std::int64_t> curl_failure_counter_;
-  std::atomic<std::int64_t> curl_timeout_counter_;
-  std::atomic<std::int64_t> curl_large_resp_counter_;
-};
 
 class CurlClient {
 public:
@@ -112,7 +50,9 @@ public:
 
   Info AddTransferInfo(v8::Isolate *isolate,
                        const v8::Local<v8::Context> &context,
-                       v8::Local<v8::Object> &response_obj, CurlStats &stats);
+                       v8::Local<v8::Object> &response_obj);
+
+  inline void UpdateNon200Counter(v8::Isolate *isolate);
 
   static std::size_t BodyWriteCallback(void *contents_recv, std::size_t size,
                                        std::size_t nmemb, void *cookie);
@@ -148,7 +88,10 @@ public:
 
   Info CurlImpl(const v8::FunctionCallbackInfo<v8::Value> &args);
   static Info ValidateParams(const v8::FunctionCallbackInfo<v8::Value> &args);
-  inline static const CurlStats &GetStats() { return stats_; };
+
+  inline void UpdateCounters(const std::string &request_type);
+  inline void UpdateOpResultCounters(const CURLcode &curl_code);
+  inline void UpdateFailureCounter(const std::string curl_stat);
 
 private:
   std::string ConstructUrl(const CurlRequest &request) const;
@@ -165,7 +108,6 @@ private:
   v8::Isolate *isolate_;
   v8::Persistent<v8::Context> context_;
   std::string user_agent_;
-  static CurlStats stats_;
 };
 
 struct CurlCodex {
@@ -223,6 +165,7 @@ struct Curl;
 struct CurlBinding {
   CurlBinding() = default;
   explicit CurlBinding(const flatbuf::cfg::Curl *curl) noexcept;
+  explicit CurlBinding(const nlohmann::json curl) noexcept;
   static CurlBindingInfo FromObject(v8::Isolate *isolate,
                                     const v8::Local<v8::Context> &context,
                                     const v8::Local<v8::Object> &obj);
@@ -420,23 +363,29 @@ private:
   Info ExtractBody(const v8::Local<v8::Value> &body_val,
                    const BodyEncoding &encoding, Curl::Buffer &body_out);
   Info ExtractPath(const v8::Local<v8::Value> &path_val,
-                   const CurlBinding &binding, std::string &value_out, const std::string& curl_lang_compat, const std::string& app_lang_comp);
+                   const CurlBinding &binding, std::string &value_out,
+                   const std::string &curl_lang_compat,
+                   const std::string &app_lang_comp);
   Info ExtractParams(const v8::Local<v8::Value> &params_val,
-                     std::string &value_out,const std::string& curl_lang_compat, const std::string& app_lang_comp);
+                     std::string &value_out,
+                     const std::string &curl_lang_compat,
+                     const std::string &app_lang_comp);
   Info ExtractHeaders(const v8::Local<v8::Value> &headers_val,
                       Headers &value_out);
   Info ExtractRedirect(const v8::Local<v8::Value> &redirect_val,
                        bool &value_out);
   Info FillContentType(const v8::Local<v8::Value> &body_val,
                        CurlRequest &request, const BodyEncoding &encoding);
-  Info ExtractCurlLangCompat(const v8::Local<v8::Value> &encode, std::string &req_encode);
+  Info ExtractCurlLangCompat(const v8::Local<v8::Value> &encode,
+                             std::string &req_encode);
   bool IsCurlLangCompatValid(const std::string &encode);
 
   v8::Isolate *isolate_;
   v8::Persistent<v8::Context> context_;
   static const char AMP = '&';
   static const char QUESTION_MARK = '?';
-  inline static const std::string CURL_LANG_COMPAT[] = {"6.6.2", "7.1.0", "7.2.0"};
+  inline static const std::string CURL_LANG_COMPAT[] = {"6.6.2", "7.1.0",
+                                                        "7.2.0"};
 };
 
 // TODO : If and when we add green threads, we may need to have one CurlFactory
@@ -462,7 +411,7 @@ public:
   ~CurlResponseBuilder();
 
   Info NewResponse(CurlClient &curl_client, const CurlResponse &response,
-                   v8::Local<v8::Object> &resp_obj_out, CurlStats &stats);
+                   v8::Local<v8::Object> &resp_obj_out);
 
   unsigned long max_allowed_response_size{100 * 1024 * 1024};
 

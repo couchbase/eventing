@@ -22,6 +22,7 @@
 #include "query-iterable.h"
 #include "query-mgr.h"
 #include "utils.h"
+#include "v8worker2.h"
 #include <nlohmann/json.hpp>
 
 void Query::Manager::ClearQueries() {
@@ -39,7 +40,8 @@ Query::Manager::NewIterable(std::unique_ptr<QueryController> query_controller) {
   }
 
   query_controller->AddDetails(conn_info.connection, on_behalf_of_);
-  auto iterator = std::make_shared<Query::Iterator>(std::move(query_controller), isolate_);
+  auto iterator =
+      std::make_shared<Query::Iterator>(std::move(query_controller), isolate_);
   auto iterator_ptr = iterator.get();
   auto iterable = UnwrapData(isolate_)->query_iterable;
   auto info = iterable->NewObject(iterator_ptr);

@@ -18,7 +18,7 @@
 #include <v8.h>
 
 class Curl;
-class V8Worker;
+class V8Worker2;
 class JsException;
 class Utils;
 class Timer;
@@ -60,7 +60,7 @@ struct IsolateData {
   Query::IterableImpl *query_iterable_impl{nullptr};
   Query::IterableResult *query_iterable_result{nullptr};
   Query::Helper *query_helper{nullptr};
-  V8Worker *v8worker{nullptr};
+  V8Worker2 *v8worker2{nullptr};
   JsException *js_exception{nullptr};
   Communicator *comm{nullptr};
   Utils *utils{nullptr};
@@ -70,15 +70,15 @@ struct IsolateData {
   CurlFactory *curl_factory{nullptr};
   CurlRequestBuilder *req_builder{nullptr};
   CurlResponseBuilder *resp_builder{nullptr};
-  CodeInsight *code_insight{nullptr};
   LanguageCompatibility *lang_compat{nullptr};
+  std::string instance_id;
 
   BucketOps *bucket_ops{nullptr};
   std::mutex termination_lock_;
   bool is_executing_{false};
-  ExceptionInsight *exception_insight{nullptr};
 
   uint32_t feature_matrix{0};
+  uint32_t timer_context_size{0};
 };
 
 inline IsolateData *UnwrapData(v8::Isolate *isolate) {

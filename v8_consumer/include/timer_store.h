@@ -20,11 +20,10 @@
 #include <v8.h>
 
 #include "lcb_utils.h"
+#include "lcbinstance.h"
 #include "timer_defs.h"
 #include "timer_iterator.h"
 #include "utils.h"
-#include "v8worker.h"
-#include "lcbinstance.h"
 
 namespace timer {
 class TimerStore {
@@ -34,7 +33,7 @@ public:
                       const std::string &metadata_scope,
                       const std::string &metadata_collection,
                       int32_t num_vbuckets, int32_t timer_reduction_ratio,
-			std::string user, std::string domain);
+                      std::string user, std::string domain);
   ~TimerStore();
 
   lcb_STATUS SetTimer(TimerInfo &timer, int max_retry_count,
@@ -127,6 +126,7 @@ private:
   int32_t num_vbuckets_{1024};
   int32_t timer_reduction_ratio_{1};
   std::string on_behalf_of_;
+  bool meta_data_exist_{true};
 
   friend class Iterator;
 };

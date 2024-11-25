@@ -14,6 +14,7 @@
 #include "insight.h"
 #include "isolate_data.h"
 #include "utils.h"
+#include "v8worker2.h"
 
 const auto ConsoleLogMaxArity = 20;
 
@@ -25,6 +26,8 @@ void Log(const v8::FunctionCallbackInfo<v8::Value> &args) {
   }
 
   v8::Locker locker(isolate);
+  auto location = UnwrapData(isolate)->instance_id;
+  auto v8worker = UnwrapData(isolate)->v8worker2;
   v8::HandleScope handle_scope(isolate);
   auto context = isolate->GetCurrentContext();
   std::string log_msg;
@@ -57,8 +60,18 @@ void Log(const v8::FunctionCallbackInfo<v8::Value> &args) {
     log_msg += " ";
   }
 
-  APPLOG << log_msg << std::endl;
-  CodeInsight::Get(isolate).AccumulateLog(log_msg);
+  std::ostringstream ss;
+  auto locationSize = location.length();
+  auto msgSize = log_msg.length();
+
+  ss << static_cast<uint8_t>(locationSize >> 8)
+     << static_cast<uint8_t>(locationSize);
+  ss << static_cast<uint8_t>(msgSize >> 24)
+     << static_cast<uint8_t>(msgSize >> 16)
+     << static_cast<uint8_t>(msgSize >> 8) << static_cast<uint8_t>(msgSize);
+
+  APPLOG << ss.str() << location << log_msg << std::flush;
+  v8worker->AccumulateLog(log_msg);
 }
 
 // console.log for debugger - also logs to eventing.log
@@ -69,12 +82,16 @@ void ConsoleLog(const v8::FunctionCallbackInfo<v8::Value> &args) {
   auto context = isolate->GetCurrentContext();
 
   Log(args);
-  auto console_v8_str = v8::String::NewFromUtf8(isolate, "console").ToLocalChecked();
+  auto console_v8_str =
+      v8::String::NewFromUtf8(isolate, "console").ToLocalChecked();
   auto log_v8_str = v8::String::NewFromUtf8(isolate, "log").ToLocalChecked();
   auto console = context->Global()
-                     ->Get(context, console_v8_str).ToLocalChecked()
-                     ->ToObject(context).ToLocalChecked();
-  auto log_fn = v8::Local<v8::Function>::Cast(console->Get(context, log_v8_str).ToLocalChecked());
+                     ->Get(context, console_v8_str)
+                     .ToLocalChecked()
+                     ->ToObject(context)
+                     .ToLocalChecked();
+  auto log_fn = v8::Local<v8::Function>::Cast(
+      console->Get(context, log_v8_str).ToLocalChecked());
 
   v8::Handle<v8::Value> result;
   v8::Local<v8::Value> log_args[ConsoleLogMaxArity];
@@ -85,8 +102,12 @@ void ConsoleLog(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
   // Calling console.log with the args passed to log() function.
   if (i < ConsoleLogMaxArity) {
-    if(!TO_LOCAL(log_fn->Call(context, log_fn, args.Length(), log_args), &result)) return;
+    if (!TO_LOCAL(log_fn->Call(context, log_fn, args.Length(), log_args),
+                  &result))
+      return;
   } else {
-    if(!TO_LOCAL(log_fn->Call(context, log_fn, ConsoleLogMaxArity, log_args), &result)) return;
+    if (!TO_LOCAL(log_fn->Call(context, log_fn, ConsoleLogMaxArity, log_args),
+                  &result))
+      return;
   }
 }

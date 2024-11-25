@@ -73,7 +73,7 @@ CredsInfo Communicator::GetCreds(const std::string &endpoint) {
     return info;
   }
 
-  if (std::stoi(response.headers.data["Status"]) != 200) {
+  if (std::stoi(response.headers.data["Status"]) != 0) {
     LOG(logError) << "Unable to get creds: non 200 status in header: "
                   << response.msg << std::endl;
     return info;
@@ -114,6 +114,7 @@ KVNodesInfo Communicator::GetKVNodes() {
   for (const auto &node : nodes) {
     info.kv_nodes.emplace_back(node);
   }
+  info.encrypt_data = resp_json["encrypt_data"].get<bool>();
   info.is_valid = true;
   return info;
 }
@@ -127,8 +128,8 @@ void Communicator::WriteDebuggerURL(const std::string &url) {
   auto app_name_encoded = utils->UrlEncodeAsString(app_name_);
   auto response =
       curl_.HTTPPost({"Content-Type: text/plain"},
-                     write_debugger_url_ + "/" + app_name_encoded.encoded +
-                         "?bucket=" + bucket_encoded.encoded +
+                     write_debugger_url_ + "?name=" + app_name_encoded.encoded +
+                         "&bucket=" + bucket_encoded.encoded +
                          "&scope=" + scope_encoded.encoded,
                      url, lo_usr_, lo_key_);
   int status = std::stoi(response.headers.data["Status"]);

@@ -1,3 +1,4 @@
+//go:build all || handler
 // +build all handler
 
 package eventing
@@ -1040,11 +1041,14 @@ func TestDeleteBeforeUndeploy(t *testing.T) {
 		failAndCollectLogs(t, "Expected ERR_APP_NOT_UNDEPLOYED got", resp.Name)
 	}
 
-	setSettings(functionName, false, false, &commonSettings{})
-	resp, _ = deleteFunction(functionName)
-	if resp.httpResponseCode != 200 {
-		failAndCollectLogs(t, "Expected Delete successful ", resp.httpResponseCode, resp.Name)
-	}
+	/*
+		// This test case not valid since eventing won't allow delete before undeployment finishes
+		setSettings(functionName, false, false, &commonSettings{})
+		resp, _ = deleteFunction(functionName)
+		if resp.httpResponseCode != 200 {
+			failAndCollectLogs(t, "Expected Delete successful ", resp.httpResponseCode, resp.Name)
+		}
+	*/
 
 	flushFunctionAndBucket(functionName)
 }

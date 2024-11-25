@@ -865,7 +865,7 @@ func (c *ClusterInfoCache) FetchManifestInfo(bucketName string) error {
 
 func getConfig() (c common.Config) {
 
-	data, err := MetakvGet(common.MetakvConfigPath)
+	data, err := MetakvGet(common.EventingConfigPath)
 	if err != nil {
 		logging.Errorf("Failed to get config, err: %v", err)
 		return

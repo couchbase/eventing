@@ -1,11 +1,13 @@
-//go:build all || handler
-// +build all handler
+//go:build all
+// +build all
 
+// TODO: Add this back once ondeploy is implemented
 package eventing
 
 import (
-	"github.com/couchbase/eventing/common"
 	"testing"
+
+	"github.com/couchbase/eventing/common"
 )
 
 func TestOnDeployBucketOps(t *testing.T) {

@@ -16,10 +16,10 @@
 #include <v8.h>
 #include <vector>
 
-#include "js_exception.h"
 #include "query-helper.h"
 #include "query-info.h"
 #include "utils.h"
+#include "v8worker2.h"
 
 Query::Helper::Helper(v8::Isolate *isolate,
                       const v8::Local<v8::Context> &context)
@@ -120,7 +120,9 @@ void Query::Helper::AccountLCBError(int err_code) {
 
 std::string Query::Helper::RowErrorString(const Query::Row &row) {
   auto comm = UnwrapData(isolate_)->comm;
+  auto v8worker = UnwrapData(isolate_)->v8worker2;
 
+  v8worker->stats_->IncrementFailureStat("n1ql_op_exception_count");
   // TODO : Refresh for server auth error also
   if (row.is_client_auth_error) {
     comm->Refresh();
