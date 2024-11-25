@@ -325,21 +325,21 @@
                 <span class="icon fa-circle-thin fa-stack-2x"></span>
                 <span class="icon fa-info fa-stack-1x"></span>
               </span>
-              <input type="number" name="ondeploy_timeout"
-                     ng-model="appModel.settings.ondeploy_timeout"
-                     ng-init="appModel.settings.ondeploy_timeout = appModel.settings.ondeploy_timeout ? appModel.settings.ondeploy_timeout : 60"
+              <input type="number" name="on_deploy_timeout"
+                     ng-model="appModel.settings.on_deploy_timeout"
+                     ng-init="appModel.settings.on_deploy_timeout = appModel.settings.on_deploy_timeout ? appModel.settings.on_deploy_timeout : 60"
                      ng-disabled="(formCtrl.isAppDeployed && !formCtrl.isAppPaused)"
                      min="1">
               <div class="error field-error"
-                   ng-show="formCtrl.createAppForm.ondeploy_timeout.$error.min && formCtrl.createAppForm.ondeploy_timeout.$dirty">
+                   ng-show="formCtrl.createAppForm.on_deploy_timeout.$error.min && formCtrl.createAppForm.on_deploy_timeout.$dirty">
                 OnDeploy timeout must be a positive number.
               </div>
               <div class="error field-error"
-                   ng-show="formCtrl.createAppForm.ondeploy_timeout.$error.required && formCtrl.createAppForm.ondeploy_timeout.$dirty">
+                   ng-show="formCtrl.createAppForm.on_deploy_timeout.$error.required && formCtrl.createAppForm.on_deploy_timeout.$dirty">
                 OnDeploy timeout cannot be empty.
               </div>
               <div class="error field-error"
-                   ng-show="formCtrl.createAppForm.ondeploy_timeout > 60 && formCtrl.createAppForm.ondeploy_timeout.$dirty">
+                   ng-show="formCtrl.createAppForm.on_deploy_timeout > 60 && formCtrl.createAppForm.on_deploy_timeout.$dirty">
                 Warning: Configured OnDeploy timeout seems large. It can delay
                 deployment of the function.
               </div>

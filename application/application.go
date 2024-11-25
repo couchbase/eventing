@@ -471,6 +471,7 @@ const (
 
 const (
 	executionTimeoutJSON = "execution_timeout"
+	onDeployTimeoutJSON  = "on_deploy_timeout"
 	langCompatJSON       = "language_compatibility"
 	lcbInstCapacityJSON  = "lcb_inst_capacity"
 	lcbRetryCountJSON    = "lcb_retry_count"
@@ -486,6 +487,7 @@ const (
 
 type LanguageRuntimeSettings struct {
 	ExecutionTimeout uint64          `json:"execution_timeout"`
+	OnDeployTimeout  uint64          `json:"on_deploy_timeout"`
 	LanguageCompat   langCompat      `json:"language_compatibility"`
 	LcbInstCapacity  uint32          `json:"lcb_inst_capacity"`
 	LcbRetryCount    uint32          `json:"lcb_retry_count"`
@@ -613,6 +615,7 @@ func (hs HandlerSettings) Clone() HandlerSettings {
 	clonedHS.FlushTimer = hs.FlushTimer
 
 	clonedHS.ExecutionTimeout = hs.ExecutionTimeout
+	clonedHS.OnDeployTimeout = hs.OnDeployTimeout
 	clonedHS.LanguageCompat = hs.LanguageCompat
 	clonedHS.LcbInstCapacity = hs.LcbInstCapacity
 	clonedHS.LcbRetryCount = hs.LcbRetryCount
@@ -657,6 +660,7 @@ func DefaultSettings() HandlerSettings {
 
 	// runtime related settings
 	hSettings.ExecutionTimeout = 60
+	hSettings.OnDeployTimeout = 60
 	hSettings.LanguageCompat = lang720
 	hSettings.LcbInstCapacity = 10
 	hSettings.LcbRetryCount = 0

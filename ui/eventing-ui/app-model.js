@@ -187,7 +187,7 @@ ApplicationModel.prototype.getDefaultModel = function() {
       description: '',
       worker_count: 1,
       execution_timeout: 60,
-      ondeploy_timeout: 60,
+      on_deploy_timeout: 60,
       user_prefix: 'eventing',
       n1ql_consistency: 'none',
       language_compatibility: '6.5.0',
@@ -228,7 +228,7 @@ ApplicationModel.prototype.initializeDefaults = function() {
   this.settings = {};
   this.settings.worker_count = 1;
   this.settings.execution_timeout = 60;
-  this.settings.ondeploy_timeout = 60;
+  this.settings.on_deploy_timeout = 60;
   this.settings.user_prefix = 'eventing';
   this.settings.n1ql_consistency = 'none';
   this.settings.cursor_aware = false;

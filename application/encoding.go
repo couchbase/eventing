@@ -245,6 +245,7 @@ func encodeHandlerSettings(builder *flatbuffers.Builder, handlerSettings Handler
 	cfgv2.HandlerSettingAddFlushTimer(builder, handlerSettings.FlushTimer)
 
 	cfgv2.HandlerSettingAddExecutionTimeout(builder, handlerSettings.ExecutionTimeout)
+	cfgv2.HandlerSettingAddOnDeployTimeout(builder, handlerSettings.OnDeployTimeout)
 	cfgv2.HandlerSettingAddLanguageCompat(builder, langOffset)
 	cfgv2.HandlerSettingAddLcbInstCapacity(builder, handlerSettings.LcbInstCapacity)
 	cfgv2.HandlerSettingAddLcbRetryCount(builder, handlerSettings.LcbRetryCount)
@@ -279,6 +280,7 @@ func decodeHandlerSetting(config *cfgv2.Config) (hSettings HandlerSettings) {
 	hSettings.CheckpointInterval = setting.CheckpointInterval()
 
 	hSettings.ExecutionTimeout = setting.ExecutionTimeout()
+	hSettings.OnDeployTimeout = setting.OnDeployTimeout()
 	hSettings.LanguageCompat = langCompat(setting.LanguageCompat())
 	hSettings.LcbInstCapacity = setting.LcbInstCapacity()
 	hSettings.LcbRetryCount = setting.LcbRetryCount()

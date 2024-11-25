@@ -449,6 +449,7 @@ func (fHandler *funcHandler) createRuntimeSystem(event spawnType, funcDetails *a
 			appLocation: funcDetails.AppLocation,
 			fHandler:    fHandler,
 		}
+		funcDetails.Settings.ExecutionTimeout = funcDetails.Settings.OnDeployTimeout
 	}
 
 	runtimeEnvironment := fHandler.utilityWorker.CreateUtilityWorker(string(fHandler.instanceID), handler)

@@ -36,6 +36,12 @@
       "minimum": 1,
       "default": 60
     },
+    "on_deploy_timeout": {
+      "type": "integer",
+      "description": "maximum time the OnDeploy handler can run before it is terminated (in seconds)",
+      "minimum": 1,
+      "default": 60
+    },
     "language_compatibility": {
       "type": "string",
       "description": "eventing language version this handler assumes in terms of syntax and behavior",
