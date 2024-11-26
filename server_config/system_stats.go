@@ -23,7 +23,7 @@ type SystemConfig interface {
 	GetCgroupMemLimit() (float64, bool)
 	SystemTotalMem() (float64, error)
 	GetControlGroupInfo() *sigarControlGroupInfo
-	GetProcessRSS(pid int) (ProcMemStats, error)
+	GetProcessRSS() (ProcMemStats, error)
 
 	Close()
 }
@@ -105,12 +105,11 @@ type ProcMemStats struct {
 	ProcMemShared uint64
 }
 
-func (h *systemConfig) GetProcessRSS(pid int) (ProcMemStats, error) {
+func (h *systemConfig) GetProcessRSS() (ProcMemStats, error) {
 	var stats ProcMemStats
 	var v C.sigar_proc_mem_t
-	cPid := C.int(pid)
 
-	if err := C.sigar_proc_mem_get(h.handle, cPid, &v); err != C.SIGAR_OK {
+	if err := C.sigar_proc_mem_get(h.handle, h.pid, &v); err != C.SIGAR_OK {
 		return stats, fmt.Errorf("unable to fetch process memory. err: %v", err)
 	}
 
