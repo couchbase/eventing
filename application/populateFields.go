@@ -61,6 +61,12 @@ func (settings *HandlerSettings) verifyAndMergeSettings(allowedFields map[string
 				settings.ExecutionTimeout = eTimeout
 			}
 
+		case cursorCheckpointTimeoutJSON:
+			if cTimeout := uint64(settingValue.(float64)); cTimeout != settings.CursorCheckpointTimeout {
+				fieldChanged = true
+				settings.CursorCheckpointTimeout = cTimeout
+			}
+
 		case onDeployTimeoutJSON:
 			if oTimeout := uint64(settingValue.(float64)); oTimeout != settings.OnDeployTimeout {
 				fieldChanged = true
@@ -313,6 +319,7 @@ func (fd *FunctionDetails) settingsMap() map[string]interface{} {
 	settingsMap[deploymentStatusJSON] = appState.DeploymentState
 	settingsMap[descriptionJSON] = hSettings.Description
 	settingsMap[executionTimeoutJSON] = hSettings.ExecutionTimeout
+	settingsMap[cursorCheckpointTimeoutJSON] = hSettings.CursorCheckpointTimeout
 	settingsMap[onDeployTimeoutJSON] = hSettings.OnDeployTimeout
 	settingsMap[langCompatJSON] = hSettings.LanguageCompat
 	settingsMap[lcbInstCapacityJSON] = hSettings.LcbInstCapacity

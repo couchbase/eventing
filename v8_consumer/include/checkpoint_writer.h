@@ -14,16 +14,16 @@ class CheckpointWriter {
         bucket_.Connect();
     }
 
-    std::tuple<std::string, lcb_STATUS>
+    std::tuple<std::string, lcb_STATUS, std::unique_ptr<Result>>
     Write(const MetaData &meta, const uint64_t& rootcas, const std::vector<std::string>& cleanup_cursors) {
       auto [err, err_code, result] = bucket_.WriteCheckpoint(meta, rootcas, cleanup_cursors);
       if (err)
-        return {*err, LCB_ERR_GENERIC};
+        return {*err, LCB_ERR_GENERIC, nullptr};
       if (err_code && (*err_code != LCB_SUCCESS))
-        return {"", *err_code};
+        return {"", *err_code, nullptr};
       if (result->rc != LCB_SUCCESS)
-        return {"", result->rc};
-      return {"", LCB_SUCCESS};
+        return {"", result->rc, nullptr};
+      return {"", LCB_SUCCESS, std::move(result)};
     }
   private:
     std::string fiid_;

@@ -54,6 +54,7 @@ table HandlerSetting {
   MaxParallelVb:uint16;
 
   ExecutionTimeout:uint64;
+  CursorCheckpointTimeout:uint64;
   OnDeployTimeout:uint64;
   LanguageCompat:string;
   LcbInstCapacity:uint32;

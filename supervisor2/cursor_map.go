@@ -54,7 +54,7 @@ func (registry *cursorRegistry) Register(k application.Keyspace, funcId string) 
 }
 
 func (registry *cursorRegistry) IsRegisterPossible(k application.Keyspace, funcId string) bool {
-	registry.Lock()
+	registry.RLock()
 	defer registry.RUnlock()
 
 	return registry.root.checkOrUpdate(k, funcId, false)
@@ -63,12 +63,14 @@ func (registry *cursorRegistry) IsRegisterPossible(k application.Keyspace, funcI
 func (registry *cursorRegistry) Unregister(k application.Keyspace, funcId string) {
 	registry.Lock()
 	defer registry.Unlock()
+
 	registry.root.unregister(k, funcId)
 }
 
 func (registry *cursorRegistry) GetCursors(k application.Keyspace) (map[string]struct{}, bool) {
 	registry.RLock()
 	defer registry.RUnlock()
+
 	return registry.root.getCursors(k)
 }
 

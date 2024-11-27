@@ -25,24 +25,23 @@
 #include "lcb_utils.h"
 
 struct MetaData {
-  std::string scope;
-  std::string collection;
-  std::string key;
-  uint64_t cas;
-  uint32_t expiry;
+  std::string scope{""};
+  std::string collection{""};
+  std::string key{""};
+  uint64_t cas{0};
+  uint32_t expiry{0};
 
-  bool invalidate_cache_;
+  bool invalidate_cache_{false};
 
-  MetaData()
-      : scope(""), collection(""), key(""), cas(0), expiry(0),
-        invalidate_cache_(false) {}
+  MetaData() {}
   MetaData(bool invalidate)
-      : scope(""), collection(""), key(""), cas(0), expiry(0),
-        invalidate_cache_(invalidate) {}
+      : invalidate_cache_(invalidate) {}
   MetaData(const std::string &scope, const std::string &collection,
            const std::string &key, const uint64_t &cas)
-      : scope(scope), collection(collection), key(key), cas(cas), expiry(0),
-        invalidate_cache_(false) {}
+      : scope(scope), collection(collection), key(key), cas(cas) {}
+  MetaData(const std::string &scope, const std::string &collection,
+           const std::string &key, const uint64_t &cas, const uint32_t &expiry)
+      : scope(scope), collection(collection), key(key), cas(cas), expiry(expiry) {}
 };
 
 struct MutateInSpecs {

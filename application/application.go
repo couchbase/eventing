@@ -470,35 +470,37 @@ const (
 )
 
 const (
-	executionTimeoutJSON = "execution_timeout"
-	onDeployTimeoutJSON  = "on_deploy_timeout"
-	langCompatJSON       = "language_compatibility"
-	lcbInstCapacityJSON  = "lcb_inst_capacity"
-	lcbRetryCountJSON    = "lcb_retry_count"
-	lcbTimeoutJSON       = "lcb_timeout"
-	n1qlConsistencyJSON  = "n1ql_consistency"
-	n1qlPrepareJSON      = "n1ql_prepare_all"
-	handlerHeaderJSON    = "handler_headers"
-	handlerFooterJSON    = "handler_footers"
-	bucketCacheSizeJSON  = "bucket_cache_size"
-	bucketCacheAgeJSON   = "bucket_cache_age"
-	curlRespSizeJSON     = "curl_max_allowed_resp_size"
+	executionTimeoutJSON        = "execution_timeout"
+	cursorCheckpointTimeoutJSON = "cursor_checkpoint_timeout"
+	onDeployTimeoutJSON         = "on_deploy_timeout"
+	langCompatJSON              = "language_compatibility"
+	lcbInstCapacityJSON         = "lcb_inst_capacity"
+	lcbRetryCountJSON           = "lcb_retry_count"
+	lcbTimeoutJSON              = "lcb_timeout"
+	n1qlConsistencyJSON         = "n1ql_consistency"
+	n1qlPrepareJSON             = "n1ql_prepare_all"
+	handlerHeaderJSON           = "handler_headers"
+	handlerFooterJSON           = "handler_footers"
+	bucketCacheSizeJSON         = "bucket_cache_size"
+	bucketCacheAgeJSON          = "bucket_cache_age"
+	curlRespSizeJSON            = "curl_max_allowed_resp_size"
 )
 
 type LanguageRuntimeSettings struct {
-	ExecutionTimeout uint64          `json:"execution_timeout"`
-	OnDeployTimeout  uint64          `json:"on_deploy_timeout"`
-	LanguageCompat   langCompat      `json:"language_compatibility"`
-	LcbInstCapacity  uint32          `json:"lcb_inst_capacity"`
-	LcbRetryCount    uint32          `json:"lcb_retry_count"`
-	LcbTimeout       uint64          `json:"lcb_timeout"`
-	N1qlConsistency  n1qlConsistency `json:"n1ql_consistency"`
-	N1qlPrepare      bool            `json:"n1ql_prepare_all"`
-	HandlerHeader    []string        `json:"handler_headers"`
-	HandlerFooter    []string        `json:"handler_footers"`
-	BucketCacheSize  uint64          `json:"bucket_cache_size"`
-	BucketCacheAge   uint64          `json:"bucket_cache_age"`
-	CurlRespSize     uint64          `json:"curl_max_allowed_resp_size"`
+	ExecutionTimeout        uint64          `json:"execution_timeout"`
+	OnDeployTimeout         uint64          `json:"on_deploy_timeout"`
+	CursorCheckpointTimeout uint64          `json:"cursor_checkpoint_timeout"`
+	LanguageCompat          langCompat      `json:"language_compatibility"`
+	LcbInstCapacity         uint32          `json:"lcb_inst_capacity"`
+	LcbRetryCount           uint32          `json:"lcb_retry_count"`
+	LcbTimeout              uint64          `json:"lcb_timeout"`
+	N1qlConsistency         n1qlConsistency `json:"n1ql_consistency"`
+	N1qlPrepare             bool            `json:"n1ql_prepare_all"`
+	HandlerHeader           []string        `json:"handler_headers"`
+	HandlerFooter           []string        `json:"handler_footers"`
+	BucketCacheSize         uint64          `json:"bucket_cache_size"`
+	BucketCacheAge          uint64          `json:"bucket_cache_age"`
+	CurlRespSize            uint64          `json:"curl_max_allowed_resp_size"`
 }
 
 type streamBoundary string
@@ -615,6 +617,7 @@ func (hs HandlerSettings) Clone() HandlerSettings {
 	clonedHS.FlushTimer = hs.FlushTimer
 
 	clonedHS.ExecutionTimeout = hs.ExecutionTimeout
+	clonedHS.CursorCheckpointTimeout = hs.CursorCheckpointTimeout
 	clonedHS.OnDeployTimeout = hs.OnDeployTimeout
 	clonedHS.LanguageCompat = hs.LanguageCompat
 	clonedHS.LcbInstCapacity = hs.LcbInstCapacity
@@ -660,6 +663,7 @@ func DefaultSettings() HandlerSettings {
 
 	// runtime related settings
 	hSettings.ExecutionTimeout = 60
+	hSettings.CursorCheckpointTimeout = 60
 	hSettings.OnDeployTimeout = 60
 	hSettings.LanguageCompat = lang720
 	hSettings.LcbInstCapacity = 10
