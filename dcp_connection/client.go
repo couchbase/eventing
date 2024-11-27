@@ -520,8 +520,7 @@ func (c *client) handlePacket(res *memcachedCommand) (msg *DcpEvent, send bool) 
 		sendAck = true
 
 	case DCP_CLOSESTREAM:
-		msg, send = c.handleStreamEnd(res)
-		sendAck = true
+		// dcp will send streamend for this request so no need to send this message
 
 	case DCP_SYSTEM_EVENT:
 		sendAck = true
@@ -727,7 +726,7 @@ func (c *client) sendBufferAck(sendAck bool, bytes uint32, version uint32) {
 		c.unackedBytes = c.unackedBytes + bytes
 		if float64(c.unackedBytes)-(float64(connBufferSize)*unackedBytesLimit) > 0 {
 			if err := c.bufferAck(c.unackedBytes); err != nil {
-				c.unackedBytes = 0
+				return
 			}
 			c.unackedBytes = 0
 		}
@@ -892,11 +891,8 @@ func (c *client) handleAdvSeqNumber(res *memcachedCommand) (dcpMsg *DcpEvent) {
 
 func (c *client) handleStreamEnd(res *memcachedCommand) (dcpMsg *DcpEvent, send bool) {
 	dcpMsg = c.getDcpMsgFilled(res)
-	if res.resCommand == DCP_STREAM_END {
-		dcpMsg.Status = status(binary.BigEndian.Uint32(res.extras))
-	}
+	dcpMsg.Status = status(binary.BigEndian.Uint32(res.extras))
 	_, send = c.requestManager.doneRequest(dcpMsg)
-	dcpMsg.Opcode = DCP_STREAM_END
 	return
 }
 
