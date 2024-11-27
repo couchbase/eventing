@@ -1,11 +1,11 @@
-//go:build all
-// +build all
+//go:build all || handler
+// +build all handler
 
-// TODO: Add this back once ondeploy is implemented
 package eventing
 
 import (
 	"testing"
+	"time"
 
 	"github.com/couchbase/eventing/common"
 )
@@ -216,6 +216,11 @@ func TestOnDeployTouchOp(t *testing.T) {
 			createAndDeployFunction(tt.testName, tt.fileName, tt.settings)
 			waitForDeployToFinish(tt.testName)
 
+			// Add sleep of 15 seconds to ensure that we provide enough time for the test to
+			// expire the document, before refreshing the indexes via `waitForIndexes` inside `fireQuery`
+			// and fetching bucket item counts. Without this, we would have to manually refresh
+			// the bucket to get the correct item counts for allowing the test to proceed.
+			time.Sleep(15 * time.Second)
 			fireQuery("SELECT * FROM `" + tt.bucket + "`;")
 
 			eventCount := verifyBucketCount(tt.expectedCount, statsLookupRetryCounter, tt.bucket)
