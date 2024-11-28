@@ -268,9 +268,6 @@ func (fs *funcSet) spawnProcess(ctx context.Context) (<-chan *processManager.Res
 }
 
 func (fs *funcSet) spawnProcessLocked(ctx context.Context) (<-chan *processManager.ResponseMessage, error) {
-	fs.Lock()
-	defer fs.Unlock()
-
 	deployedList := make([]functionHandler.FunctionHandler, 0, len(fs.functionHandlerMap))
 	for _, fh := range fs.functionHandlerMap {
 		if fh.currentState == application.Deploy {
