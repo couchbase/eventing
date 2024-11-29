@@ -162,9 +162,9 @@ ApplicationModel.prototype.getDefaultModel = function() {
     '    log("Doc deleted/expired", meta.id);',
     '}',
     '',
-    'function OnDeploy(action) {',
-    '    log("OnDeploy function run", action);',
-    '}'
+    '// function OnDeploy(action) {',
+    '//     log("OnDeploy function run", action);',
+    '// }'
   ].join('\n');
   return {
     appname: 'Application name',
