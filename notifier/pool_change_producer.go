@@ -88,15 +88,16 @@ func newPoolObserver(settings *TLSClusterConfig, poolName, restPoint string, isI
 }
 
 func (p *poolObserver) populateCurrentState() {
-	p.clusterInternal = &clusterInternal{}
+	// Assign node version to some negative value so that it can be updated on first response
+	p.clusterInternal = &clusterInternal{nodeVersions: -2}
 
 	p.currentBuckets = make([]*bucketInfo, 0)
 	p.compatVersion = &Version{}
 
 	p.serviceToIEvent = map[string]InterestedEvent{
-		kvService:       InterestedEvent{Event: EventKVTopologyChanges},
-		queryService:    InterestedEvent{Event: EventQueryTopologyChanges},
-		eventingService: InterestedEvent{Event: EventEventingTopologyChanges},
+		kvService:       {Event: EventKVTopologyChanges},
+		queryService:    {Event: EventQueryTopologyChanges},
+		eventingService: {Event: EventEventingTopologyChanges},
 	}
 
 	p.currentNodes = make(map[string][]*Node)
@@ -241,7 +242,12 @@ func (p *poolObserver) nodeChanges(sResult *streamingResult) ([]*TransitionEvent
 	}
 
 	p.currentNodes = nodes
-	p.nodeVersions = v
+	// version not provided forcefully update for next call
+	if v == -1 {
+		p.nodeVersions = -2
+	} else {
+		p.nodeVersions = v
+	}
 	return events, nil
 }
 
