@@ -604,16 +604,17 @@ type OwnershipRoutine interface {
 	GetVbMap(namespace *application.KeyspaceInfo, numVb uint16) (string, []uint16, error)
 }
 
-type UndeployMsg struct {
+type LifecycleMsg struct {
 	InstanceID      string
 	Applocation     application.AppLocation
 	DeleteFunction  bool
+	PauseFunction   bool
 	UndeloyFunction bool
 	Description     string
 }
 
-func (u UndeployMsg) String() string {
-	return fmt.Sprintf("Delete function: %v undeployFunction: %v for %s: Reason: %s", u.DeleteFunction, u.UndeloyFunction, u.Applocation, u.Description)
+func (u LifecycleMsg) String() string {
+	return fmt.Sprintf("Delete function: %v undeployFunction: %v Pause function: %v for %s: Reason: %s", u.DeleteFunction, u.UndeloyFunction, u.PauseFunction, u.Applocation, u.Description)
 }
 
 const (
@@ -631,6 +632,11 @@ const (
 	EventingFunctionCredentialTemplate = MetakvEventingPath + "/credentials/%s"
 	EventingConfigPathTemplate         = EventingConfigPath + "%s"
 	EventingDebuggerPathTemplate       = EventingDebuggerPath + "%s"
+)
+
+const (
+	PauseFunctionTemplate    = "/api/v1/functions/%s/pause"
+	UndeployFunctionTemplate = "/api/v1/functions/%s/undeploy"
 )
 
 type ClusterSettings struct {
@@ -765,4 +771,25 @@ func DistributeAndWaitWork[T comparable](parallism int, batchSize int, initialis
 	}
 	close(workerChan)
 	waitGroup.Wait()
+}
+
+type OnDeployState int8
+
+const (
+	PENDING OnDeployState = iota + 1
+	FINISHED
+	FAILED
+)
+
+func (state OnDeployState) String() string {
+	switch state {
+	case PENDING:
+		return "Pending"
+	case FINISHED:
+		return "Finished"
+	case FAILED:
+		return "Failed"
+	default:
+		return fmt.Sprintf("Unknown OnDeployState: %d", state)
+	}
 }

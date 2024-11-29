@@ -1041,7 +1041,7 @@ angular
       };
 
       self.ondeployTimeoutCheck = function(appModel) {
-        return appModel.settings.ondeploy_timeout > 60;
+        return appModel.settings.on_deploy_timeout > 60;
       };
 
       self.getScopes = function(bucketName, bucketList, wildcard_allowed) {
@@ -2838,8 +2838,8 @@ angular
             form.worker_count.$error.max ||
             form.execution_timeout.$error.required ||
             form.execution_timeout.$error.min ||
-            form.ondeploy_timeout.$error.required ||
-            form.ondeploy_timeout.$error.min ||
+            form.on_deploy_timeout.$error.required ||
+            form.on_deploy_timeout.$error.min ||
             form.timer_context_size.$error.required ||
             form.timer_context_size.$error.min ||
             form.timer_context_size.$error.max ||

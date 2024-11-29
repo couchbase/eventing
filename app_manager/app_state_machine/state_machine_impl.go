@@ -47,17 +47,16 @@ func (sm *stateMachine) DoneStateChange(seq uint32, appLocation application.AppL
 	return app.doneStateChange(seq)
 }
 
-func (sm *stateMachine) FailStateChange(seq uint32, appLocation application.AppLocation) error {
+func (sm *stateMachine) FailStateChange(seq uint32, appLocation application.AppLocation) (application.State, error) {
 	sm.Lock()
 	defer sm.Unlock()
 
 	app, ok := sm.appState[appLocation]
 	if !ok {
-		return ErrNoApp
+		return application.NoState, ErrNoApp
 	}
 
-	app.failStateChange(seq)
-	return nil
+	return app.failStateChange(seq)
 }
 
 func (sm *stateMachine) GetAppState(appLocation application.AppLocation) (AppState, error) {

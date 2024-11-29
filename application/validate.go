@@ -236,6 +236,9 @@ func ValidateSettings(settings map[string]interface{}) (err error) {
 		case executionTimeoutJSON:
 			err = typecheck.ValidateInteger[float64](settingValue, lowVal.Set(1), missingOptional, nil)
 
+		case onDeployTimeoutJSON:
+			err = typecheck.ValidateInteger[float64](settingValue, lowVal.Set(1), missingOptional, nil)
+
 		case langCompatJSON:
 			err = typecheck.ValidateString(settingValue, langCompatibilityValues)
 

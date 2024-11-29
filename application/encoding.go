@@ -5,6 +5,7 @@ import (
 	"compress/flate"
 	"encoding/json"
 	"io/ioutil"
+	"time"
 
 	"github.com/couchbase/eventing/gen/flatbuf/cfgv2"
 	flatbuffers "github.com/google/flatbuffers/go"
@@ -244,6 +245,7 @@ func encodeHandlerSettings(builder *flatbuffers.Builder, handlerSettings Handler
 	cfgv2.HandlerSettingAddFlushTimer(builder, handlerSettings.FlushTimer)
 
 	cfgv2.HandlerSettingAddExecutionTimeout(builder, handlerSettings.ExecutionTimeout)
+	cfgv2.HandlerSettingAddOnDeployTimeout(builder, handlerSettings.OnDeployTimeout)
 	cfgv2.HandlerSettingAddLanguageCompat(builder, langOffset)
 	cfgv2.HandlerSettingAddLcbInstCapacity(builder, handlerSettings.LcbInstCapacity)
 	cfgv2.HandlerSettingAddLcbRetryCount(builder, handlerSettings.LcbRetryCount)
@@ -278,6 +280,7 @@ func decodeHandlerSetting(config *cfgv2.Config) (hSettings HandlerSettings) {
 	hSettings.CheckpointInterval = setting.CheckpointInterval()
 
 	hSettings.ExecutionTimeout = setting.ExecutionTimeout()
+	hSettings.OnDeployTimeout = setting.OnDeployTimeout()
 	hSettings.LanguageCompat = langCompat(setting.LanguageCompat())
 	hSettings.LcbInstCapacity = setting.LcbInstCapacity()
 	hSettings.LcbRetryCount = setting.LcbRetryCount()
@@ -420,6 +423,7 @@ func encodeMetaInfo(builder *flatbuffers.Builder, metaInfo MetaInfo) flatbuffers
 	if metaInfo.IsUsingTimer {
 		isUsingTimer = trueByte
 	}
+	lastPaused := builder.CreateString(metaInfo.LastPaused.Format(time.RFC3339))
 
 	cfgv2.KeyspaceInfoStart(builder)
 	cfgv2.KeyspaceInfoAddUID(builder, funcID)
@@ -451,6 +455,7 @@ func encodeMetaInfo(builder *flatbuffers.Builder, metaInfo MetaInfo) flatbuffers
 	cfgv2.MetaInfoAddMetaID(builder, metaOffset)
 	cfgv2.MetaInfoAddIsUsingTimer(builder, isUsingTimer)
 	cfgv2.MetaInfoAddSeq(builder, metaInfo.Seq)
+	cfgv2.MetaInfoAddLastPaused(builder, lastPaused)
 
 	cfgv2.MetaInfoAddSboundary(builder, boundaryOffset)
 	cfgv2.MetaInfoAddSourceID(builder, sourceOffset)
@@ -481,6 +486,7 @@ func decodeMetaInfo(config *cfgv2.Config) (metaInfo MetaInfo) {
 		metaInfo.IsUsingTimer = true
 	}
 	metaInfo.Seq = configMetaInfo.Seq()
+	metaInfo.LastPaused, _ = time.Parse(time.RFC3339, string(configMetaInfo.LastPaused()))
 
 	metaInfo.Sboundary = streamBoundary(configMetaInfo.Sboundary())
 	sourceID := configMetaInfo.SourceID(nil)

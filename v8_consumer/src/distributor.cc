@@ -64,7 +64,16 @@ void distributor::eventingDist::start() {
           continue;
         }
         worker->push_msg(std::move(wRequest));
-      }
+      } break;
+
+      case messages::eOnDeployHandler: {
+        auto handlerID = messages::getHandlerID(wRequest->identifier);
+        auto worker = worker_list_[handlerID];
+        if (worker == nullptr) {
+          continue;
+        }
+        worker->push_msg(std::move(wRequest));
+      } break;
       }
     } break;
 

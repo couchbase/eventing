@@ -61,6 +61,12 @@ func (settings *HandlerSettings) verifyAndMergeSettings(allowedFields map[string
 				settings.ExecutionTimeout = eTimeout
 			}
 
+		case onDeployTimeoutJSON:
+			if oTimeout := uint64(settingValue.(float64)); oTimeout != settings.OnDeployTimeout {
+				fieldChanged = true
+				settings.OnDeployTimeout = oTimeout
+			}
+
 		case langCompatJSON:
 			if lCompat := langCompat(settingValue.(string)); lCompat != settings.LanguageCompat {
 				fieldChanged = true
@@ -307,6 +313,7 @@ func (fd *FunctionDetails) settingsMap() map[string]interface{} {
 	settingsMap[deploymentStatusJSON] = appState.DeploymentState
 	settingsMap[descriptionJSON] = hSettings.Description
 	settingsMap[executionTimeoutJSON] = hSettings.ExecutionTimeout
+	settingsMap[onDeployTimeoutJSON] = hSettings.OnDeployTimeout
 	settingsMap[langCompatJSON] = hSettings.LanguageCompat
 	settingsMap[lcbInstCapacityJSON] = hSettings.LcbInstCapacity
 	settingsMap[lcbRetryCountJSON] = hSettings.LcbRetryCount

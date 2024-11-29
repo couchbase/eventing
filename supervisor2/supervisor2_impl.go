@@ -51,6 +51,7 @@ const (
 const (
 	undeployStage uint8 = iota
 	deleteStage
+	pauseStage
 )
 
 type tenantInfo struct {
@@ -58,9 +59,9 @@ type tenantInfo struct {
 	manager functionManager.FunctionManager
 }
 
-type undeployMsg struct {
-	stage       uint8
-	undeployMsg common.UndeployMsg
+type stopMsg struct {
+	stage        uint8
+	lifecycleMsg common.LifecycleMsg
 }
 
 type supervisor struct {
@@ -92,7 +93,7 @@ type supervisor struct {
 
 	undeployMapLock *sync.Mutex
 	undeploySignal  *common.Signal
-	undeployMap     map[string]undeployMsg
+	undeployMap     map[string]stopMsg
 
 	lifeCycleAllowed *atomic.Bool
 	stateRecovered   *atomic.Bool
@@ -112,7 +113,7 @@ func StartSupervisor(ctx context.Context, cs *common.ClusterSettings) (Superviso
 		keyspaceInfoToNamespaceCache: make(map[application.KeyspaceInfo]application.Namespace),
 
 		undeployMapLock: &sync.Mutex{},
-		undeployMap:     make(map[string]undeployMsg),
+		undeployMap:     make(map[string]stopMsg),
 		undeploySignal:  common.NewSignal(),
 
 		lifeCycleAllowed: &atomic.Bool{},
@@ -557,6 +558,27 @@ func (s *supervisor) populateMetaInfo(funcDetails *application.FunctionDetails, 
 	return
 }
 
+// DeleteOnDeployCheckpoint removes the OnDeploy checkpoint from metadata collection.
+// When forceDelete is set to false, it deletes the document only for previous OnDeploy runs
+func (s *supervisor) DeleteOnDeployCheckpoint(funcDetails *application.FunctionDetails, forceDelete bool) error {
+	metadataKeyspace := funcDetails.DeploymentConfig.MetaKeyspace
+	collectionHandler, err := s.GetCollectionObject(metadataKeyspace)
+	if err != nil {
+		return err
+	}
+
+	if forceDelete {
+		return checkpointManager.DeleteOnDeployCheckpoint(funcDetails.AppLocation, collectionHandler)
+	}
+
+	_, seq, _, _ := checkpointManager.ReadOnDeployCheckpoint(funcDetails.AppLocation, collectionHandler)
+	if seq > 0 && seq != funcDetails.MetaInfo.Seq {
+		err = checkpointManager.DeleteOnDeployCheckpoint(funcDetails.AppLocation, collectionHandler)
+	}
+
+	return err
+}
+
 func (s *supervisor) PopulateID(keyspace application.Keyspace) (keyID application.KeyspaceInfo, err error) {
 	keyID = application.NewKeyspaceInfo(application.GlobalValue, application.GlobalValue, application.GlobalValue, application.GlobalValue, 0)
 	if keyspace.BucketName == application.GlobalValue {
@@ -703,7 +725,34 @@ func (s *supervisor) StateChangeInterupt(seq uint32, appLocation application.App
 	s.appState.DoneStateChange(seq, appLocation)
 }
 
+func (s *supervisor) FailStateInterrupt(seq uint32, appLocation application.AppLocation, msg common.LifecycleMsg) {
+	logPrefix := fmt.Sprintf("supervisor::FailStateInterrupt[%s]", appLocation)
+
+	lastState, err := s.appState.FailStateChange(seq, appLocation)
+	if err != nil {
+		logging.Errorf("%s Fail state change got err: %v", logPrefix, err)
+		return
+	}
+
+	switch lastState {
+	case application.Undeployed:
+		msg.UndeloyFunction = true
+		s.undeployMapLock.Lock()
+		s.undeployMap[msg.InstanceID] = stopMsg{stage: undeployStage, lifecycleMsg: msg}
+		s.undeployMapLock.Unlock()
+		s.undeploySignal.Notify()
+
+	case application.Paused:
+		msg.PauseFunction = true
+		s.undeployMapLock.Lock()
+		s.undeployMap[msg.InstanceID] = stopMsg{stage: pauseStage, lifecycleMsg: msg}
+		s.undeployMapLock.Unlock()
+		s.undeploySignal.Notify()
+	}
+}
+
 const (
+	pauseTemplate    = "/api/v1/functions/%s/pause"
 	undeployTemplate = "/api/v1/functions/%s/undeploy"
 	deleteTemplate   = "/api/v1/functions/%s"
 )
@@ -765,7 +814,7 @@ func (s *supervisor) garbageCollectConfig() {
 	}
 }
 
-func (s *supervisor) StopCalledInterupt(seq uint32, msg common.UndeployMsg) {
+func (s *supervisor) StopCalledInterupt(seq uint32, msg common.LifecycleMsg) {
 	if msg.UndeloyFunction {
 		extraAttributes := map[string]interface{}{common.AppLocationsTag: msg.Applocation, common.ReasonTag: msg.Description}
 		common.LogSystemEvent(common.EVENTID_UNDEPLOY_FUNCTION, systemeventlog.SEInfo, extraAttributes)
@@ -776,7 +825,7 @@ func (s *supervisor) StopCalledInterupt(seq uint32, msg common.UndeployMsg) {
 	}
 
 	s.undeployMapLock.Lock()
-	s.undeployMap[msg.InstanceID] = undeployMsg{stage: undeployStage, undeployMsg: msg}
+	s.undeployMap[msg.InstanceID] = stopMsg{stage: undeployStage, lifecycleMsg: msg}
 	s.undeployMapLock.Unlock()
 	s.undeploySignal.Notify()
 }
@@ -791,7 +840,7 @@ func (s *supervisor) checkAndStopFunctions() {
 			logging.Errorf("%s Error in request stopping function %s err: %v", logPrefix, msg, err)
 			continue
 		}
-		if deleted || !msg.undeployMsg.DeleteFunction {
+		if deleted || !msg.lifecycleMsg.DeleteFunction {
 			delete(s.undeployMap, instanceID)
 			continue
 		}
@@ -802,9 +851,9 @@ func (s *supervisor) checkAndStopFunctions() {
 	s.undeployMapLock.Unlock()
 }
 
-func (s *supervisor) requestStopFunction(msg undeployMsg) (functionDeleted bool, err error) {
-	query := application.QueryMap(msg.undeployMsg.Applocation)
-	query["instanceID"] = []string{msg.undeployMsg.InstanceID}
+func (s *supervisor) requestStopFunction(msg stopMsg) (functionDeleted bool, err error) {
+	query := application.QueryMap(msg.lifecycleMsg.Applocation)
+	query["instanceID"] = []string{msg.lifecycleMsg.InstanceID}
 	req := &pc.Request{
 		Query:   query,
 		Timeout: common.HttpCallWaitTime,
@@ -812,12 +861,16 @@ func (s *supervisor) requestStopFunction(msg undeployMsg) (functionDeleted bool,
 
 	path := ""
 	switch msg.stage {
+	case pauseStage:
+		path = fmt.Sprintf(pauseTemplate, msg.lifecycleMsg.Applocation.Appname)
+		req.Method = http.MethodPost
+
 	case undeployStage:
-		path = fmt.Sprintf(undeployTemplate, msg.undeployMsg.Applocation.Appname)
+		path = fmt.Sprintf(undeployTemplate, msg.lifecycleMsg.Applocation.Appname)
 		req.Method = http.MethodPost
 
 	case deleteStage:
-		path = fmt.Sprintf(deleteTemplate, msg.undeployMsg.Applocation.Appname)
+		path = fmt.Sprintf(deleteTemplate, msg.lifecycleMsg.Applocation.Appname)
 		req.Method = http.MethodDelete
 		functionDeleted = true
 	}

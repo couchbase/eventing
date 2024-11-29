@@ -79,7 +79,7 @@ func getPermission(keyspace application.Keyspace, currState string) (perms []str
 	return
 }
 
-func getUndeployMessage(instanceID string, appLocation application.AppLocation, kType string) (undeployMsg common.UndeployMsg) {
+func getUndeployMessage(instanceID string, appLocation application.AppLocation, kType string) (undeployMsg common.LifecycleMsg) {
 	undeployMsg.Applocation = appLocation
 	undeployMsg.InstanceID = instanceID
 
@@ -101,7 +101,7 @@ func getUndeployMessage(instanceID string, appLocation application.AppLocation, 
 	return
 }
 
-func getUndeployMessageFromkeyspaceOwner(instanceID string, keyspace *keyspaceOwner) (uint32, common.UndeployMsg) {
+func getUndeployMessageFromkeyspaceOwner(instanceID string, keyspace *keyspaceOwner) (uint32, common.LifecycleMsg) {
 	undeployMsg := getUndeployMessage(instanceID, keyspace.appLocation, keyspace.keyspaceType)
 	undeployMsg.Description = "Owner lost privilage"
 	return keyspace.seq, undeployMsg

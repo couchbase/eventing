@@ -30,6 +30,7 @@ type Supervisor2 interface {
 	GetLeaderNode() string
 
 	GetCollectionObject(keyspace application.Keyspace) (*gocb.Collection, error)
+	DeleteOnDeployCheckpoint(funcDetails *application.FunctionDetails, forceDelete bool) error
 }
 
 type Config struct {

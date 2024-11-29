@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/couchbase/cbauth"
 	"github.com/couchbase/eventing/application"
@@ -532,12 +533,28 @@ func (m *serviceMgr) verifyAndAddMetaDetailsFunction(runtimeInfo *response.Runti
 	state := currAppState.State
 	m.checkAndUpdateSeq(funcDetails, nextState, state)
 
+	if nextState == application.Pause && state != application.Paused {
+		funcDetails.MetaInfo.LastPaused = time.Now()
+	}
+
 	if nextState == application.Deploy {
 		err := m.superSup.AssignOwnership(funcDetails)
 		if err != nil {
 			runtimeInfo.ErrCode = response.ErrInvalidRequest
 			runtimeInfo.Description = fmt.Sprintf("%v", err)
 			return
+		}
+	}
+
+	if nextState == application.Deploy && state != application.Deployed {
+		if parser.IsCodeUsingOnDeploy(funcDetails.AppCode) {
+			// Delete checkpoint only for previous OnDeploy runs to avoid race condition
+			err := m.superSup.DeleteOnDeployCheckpoint(funcDetails, false)
+			if err != nil {
+				logging.Errorf("%s Error in deleting OnDeploy checkpoint: %v", logPrefix, err)
+				runtimeInfo.ErrCode = response.ErrInternalServer
+				return
+			}
 		}
 	}
 
@@ -576,6 +593,8 @@ func (m *serviceMgr) verifyAndAddMetaDetailsFunction(runtimeInfo *response.Runti
 
 // delete the function from metakv
 func (m *serviceMgr) deleteFunction(appLocation application.AppLocation, handlerID uint32) (runtimeInfo *response.RuntimeInfo) {
+	const logPrefix string = "serviceMgr::deleteFunction"
+
 	runtimeInfo = &response.RuntimeInfo{}
 
 	// TODO: Redirect this request to leader node
@@ -613,6 +632,10 @@ func (m *serviceMgr) deleteFunction(appLocation application.AppLocation, handler
 		runtimeInfo.ErrCode = response.ErrAppNotUndeployed
 		runtimeInfo.Description = fmt.Sprintf("Function: %s skipping delete request as it hasn't been undeployed", appLocation)
 		return
+	}
+
+	if err := m.superSup.DeleteOnDeployCheckpoint(funcDetails, true); err != nil {
+		logging.Errorf("%s Error in deleting OnDeploy checkpoint for app: %s, err: %v", logPrefix, appLocation, err)
 	}
 
 	DeleteFromMetakv(runtimeInfo, appLocation)

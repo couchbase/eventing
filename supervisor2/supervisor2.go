@@ -20,7 +20,8 @@ type Supervisor2 interface {
 	GetOwnershipDetails() string
 
 	StateChangeInterupt(seq uint32, appLocation application.AppLocation)
-	StopCalledInterupt(seq uint32, undeployMsg common.UndeployMsg)
+	StopCalledInterupt(seq uint32, msg common.LifecycleMsg)
+	FailStateInterrupt(seq uint32, appLocation application.AppLocation, msg common.LifecycleMsg)
 
 	PopulateID(keyspace application.Keyspace) (keyID application.KeyspaceInfo, err error)
 

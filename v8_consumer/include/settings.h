@@ -23,6 +23,7 @@ enum RETURN_CODE {
   kFailedInitBucketHandle,
   kOnUpdateCallFail,
   kOnDeleteCallFail,
+  kOnDeployCallFail,
   kToLocalFailed,
   kJSONParseFailed
 };

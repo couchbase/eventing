@@ -1,8 +1,6 @@
 module github.com/couchbase/eventing
 
-go 1.21.8
-
-toolchain go1.23.2
+go 1.21.13
 
 replace golang.org/x/text => golang.org/x/text v0.4.0
 

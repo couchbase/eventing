@@ -37,10 +37,11 @@ type CursorCheckpointHandler interface {
 
 // Called when the function asked by caller is done
 // Like OwnershipChanges or Stop finished
-type InterruptHandler func(id uint16, seq uint32, appLocation application.AppLocation)
+type InterruptHandler func(id uint16, seq uint32, appLocation application.AppLocation, err error)
 
 type Config struct {
 	SpawnLogWriter bool
+	OnDeployLeader bool
 }
 
 // Sequence:
@@ -90,6 +91,10 @@ func (fhs funcHandlerState) String() string {
 	}
 
 	return ""
+}
+
+type runtimeArgs struct {
+	currState funcHandlerState
 }
 
 type TrapEventOp uint8

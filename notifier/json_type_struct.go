@@ -42,7 +42,7 @@ type streamingResult struct {
 }
 
 func (s *streamingResult) String() string {
-	var sb *strings.Builder
+	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("{ \"nodeVersion\": %d, \"bucketVersion\": %d, \"nodes\": {", s.getNodeVersions(), s.getBucketVersions()))
 	first := true
 	for _, node := range s.Nodes {
@@ -115,14 +115,14 @@ func (sResult *streamingResult) mergeAndCreateNodes(nServices *nodeServices, isI
 	nodes[eventingService] = make([]*Node, 0, 2)
 
 	servicesIndex := 0
-	for index, node := range sResult.Nodes {
+	for _, node := range sResult.Nodes {
 		if node.ClusterMembership == "active" && (node.Status == "healthy" || node.Status == "warmup") {
-			if index >= len(nServices.Services) {
+			if servicesIndex >= len(nServices.Services) {
 				logging.Errorf("%s possible sync error: %s nodeServices: %s", logPrefix, sResult, nServices)
 				return nodes
 			}
 
-			exportedNode := node.createNode(nServices.Services[index], isIpv4)
+			exportedNode := node.createNode(nServices.Services[servicesIndex], isIpv4)
 			for _, service := range node.Services {
 				if _, ok := nodes[service]; ok {
 					nodes[service] = append(nodes[service], exportedNode)
@@ -240,7 +240,7 @@ type terseBucketResponse struct {
 func (tbr *terseBucketResponse) String() string {
 	var sb strings.Builder
 
-	sb.WriteString(fmt.Sprintf("{ \"manifestUid\": %s, \"uuid\": %s, \"vbBucketMap\": %s, \"nodeExt\": {", tbr.ManifestUID, tbr.UUID, tbr.VbucketMap))
+	sb.WriteString(fmt.Sprintf("{ \"manifestUid\": %s, \"uuid\": %s, \"vbBucketMap\": %v, \"nodeExt\": {", tbr.ManifestUID, tbr.UUID, tbr.VbucketMap))
 	first := true
 	for _, node := range tbr.NodesExt {
 		if !first {

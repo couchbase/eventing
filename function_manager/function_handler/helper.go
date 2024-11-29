@@ -382,6 +382,7 @@ type spawnType int8
 
 const (
 	forDebugger spawnType = iota
+	forOnDeploy
 )
 
 type debuggerMessageReceiver struct {
@@ -403,13 +404,55 @@ func (d debuggerMessageReceiver) ReceiveMessage(msg *processManager.ResponseMess
 	}
 }
 
-func (fHandler *funcHandler) createRuntimeSystem(event spawnType, funcDetails *application.FunctionDetails) vbhandler.RuntimeSystem {
-	dHandler := debuggerMessageReceiver{
-		appLocation: funcDetails.AppLocation,
-		broadcaster: fHandler.boradcaster,
+type onDeployMessageReceiver struct {
+	appLocation application.AppLocation
+	fHandler    *funcHandler
+}
+
+func (o onDeployMessageReceiver) ApplicationLog(msg string) {
+	o.fHandler.ApplicationLog(msg)
+}
+
+func (o onDeployMessageReceiver) ReceiveMessage(msg *processManager.ResponseMessage) {
+	const logPrefix string = "onDeployMessageReceiver::ReceiveMessage"
+
+	switch msg.Event {
+	case processManager.InitEvent:
+		switch msg.Opcode {
+		case processManager.OnDeployHandler:
+			var ack processManager.OnDeployAckMsg
+			if err := json.Unmarshal(msg.Value, &ack); err != nil {
+				logging.Errorf("%s Failed to unmarshal OnDeploy ack err: %v", logPrefix, err)
+				o.fHandler.checkpointManager.PublishOnDeployStatus(common.FAILED.String())
+				return
+			}
+			if ack.Status != common.PENDING.String() {
+				logging.Infof("%s Received OnDeploy ack for %s with status %s", logPrefix, o.appLocation, ack.Status)
+				o.fHandler.checkpointManager.PublishOnDeployStatus(ack.Status)
+				return
+			}
+		}
+	}
+}
+
+func (fHandler *funcHandler) createRuntimeSystem(event spawnType, funcDetails *application.FunctionDetails, args *runtimeArgs) vbhandler.RuntimeSystem {
+	var handler processManager.MessageDeliver
+
+	switch event {
+	case forDebugger:
+		handler = debuggerMessageReceiver{
+			appLocation: funcDetails.AppLocation,
+			broadcaster: fHandler.broadcaster,
+		}
+	case forOnDeploy:
+		handler = onDeployMessageReceiver{
+			appLocation: funcDetails.AppLocation,
+			fHandler:    fHandler,
+		}
+		funcDetails.Settings.ExecutionTimeout = funcDetails.Settings.OnDeployTimeout
 	}
 
-	runtimeEnvironment := fHandler.utilityWorker.CreateUtilityWorker(string(fHandler.instanceID), dHandler)
+	runtimeEnvironment := fHandler.utilityWorker.CreateUtilityWorker(string(fHandler.instanceID), handler)
 	funcDetails.ModifyAppCode(true)
 	funcDetails.Settings.CppWorkerThread = 1
 	runtimeEnvironment.InitEvent(runtimeEnvironment.GetProcessVersion(), processManager.InitHandler, fHandler.instanceID, funcDetails)
@@ -442,8 +485,47 @@ func (fHandler *funcHandler) createRuntimeSystem(event spawnType, funcDetails *a
 		}
 
 		runtimeEnvironment.InitEvent(runtimeEnvironment.GetProcessVersion(), processManager.DebugHandlerStart, fHandler.instanceID, value)
+	case forOnDeploy:
+		param := fHandler.getOnDeployActionObject(args.currState)
+		runtimeEnvironment.InitEvent(runtimeEnvironment.GetProcessVersion(), processManager.OnDeployHandler, fHandler.instanceID, param)
 	}
 	return runtimeEnvironment
+}
+
+func (fHandler *funcHandler) validateStateForOnDeploy(nextState funcHandlerState) bool {
+	currState := fHandler.currState.getCurrState()
+	// OnDeploy should run only for "Deploy/Resume" operations
+	return (currState == Undeployed || currState == Paused) && nextState == Deployed
+}
+
+func (fHandler *funcHandler) getOnDeployStatus() string {
+	_, _, onDeployStatus := fHandler.checkpointManager.ReadOnDeployCheckpoint()
+	return onDeployStatus
+}
+
+func (fHandler *funcHandler) getOnDeployActionObject(prevState funcHandlerState) *processManager.OnDeployActionObject {
+	var onDeployReason string
+	var onDeployDelay int64
+
+	switch prevState {
+	case Paused:
+		onDeployReason = "Resume"
+		lastPausedTimestamp := fHandler.fd.MetaInfo.LastPaused
+		currentTimestamp := time.Now()
+		onDeployDelay = currentTimestamp.Sub(lastPausedTimestamp).Milliseconds()
+	case Undeployed:
+		onDeployReason = "Deploy"
+		onDeployDelay = 0
+	}
+
+	return &processManager.OnDeployActionObject{
+		Reason: onDeployReason,
+		Delay:  onDeployDelay,
+	}
+}
+
+func (fHandler *funcHandler) chooseNodeLeaderOnDeploy(seq uint32) bool {
+	return fHandler.checkpointManager.WriteOnDeployCheckpoint(fHandler.clusterSettings.UUID, seq, fHandler.fd.AppLocation)
 }
 
 type vbHandlerWrapper struct {

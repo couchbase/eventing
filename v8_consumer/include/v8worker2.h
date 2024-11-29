@@ -33,6 +33,7 @@ enum RETURN_CODE {
   kFailedInitBucketHandle,
   kOnUpdateCallFail,
   kOnDeleteCallFail,
+  kOnDeployCallFail,
   kToLocalFailed,
   kJSONParseFailed
 };
@@ -127,6 +128,8 @@ public:
   inline uint64_t processing_seq_num() { return f_map_->processing_seq_num(); }
   void AddLcbException(int err_code) {}
 
+  std::string GetOnDeployResult(int return_code);
+
   std::shared_ptr<RuntimeStats> stats_;
 
 private:
@@ -176,6 +179,7 @@ private:
   void HandleDeleteEvent(const std::unique_ptr<messages::worker_request> &msg);
   void
   HandleMutationEvent(const std::unique_ptr<messages::worker_request> &msg);
+  void HandleOnDeployEvent(const std::unique_ptr<messages::worker_request> &msg);
   void HandleCollectionDeleteEvent(
       const std::unique_ptr<messages::worker_request> &msg);
   void
@@ -185,6 +189,7 @@ private:
   int SendUpdate(const messages::payload payload, uint32_t expiry,
                  uint8_t datatype);
   int SendDelete(const messages::payload payload);
+  int SendDeploy(const std::string &action, const int64_t &delay);
   void SendTimer(std::string callback, std::string timer_ctx);
 
   void InstallCurlBindings(const std::vector<CurlBinding> &curl_bindings) const;
@@ -211,6 +216,7 @@ private:
   v8::Persistent<v8::Context> context_;
   v8::Persistent<v8::Function> on_update_;
   v8::Persistent<v8::Function> on_delete_;
+  v8::Persistent<v8::Function> on_deploy_;
 
   v8::Isolate *isolate_;
 

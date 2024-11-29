@@ -345,6 +345,12 @@ func (parsed *parsedStatements) UsingOnDeploy() bool {
 	return parsed.onDeployPresent
 }
 
+func IsCodeUsingOnDeploy(input string) bool {
+	parsedCode := GetStatements(input)
+	parsedCode.ValidateStructure()
+	return parsedCode.UsingOnDeploy()
+}
+
 func UsingTimer(input string) bool {
 	bare := stripAll(input)
 	return timer_use.MatchString(bare)
