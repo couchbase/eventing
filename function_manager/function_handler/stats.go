@@ -116,6 +116,8 @@ func (stats *statsHandler) handleStats(msg *processManager.ResponseMessage) {
 
 		stats.Lock()
 		stats.stats.ExecutionStats = eStats
+		stats.stats.EventProcessingStats["timer_responses_received"] = uint64(eStats["timer_create_counter"].(float64))
+		stats.stats.EventProcessingStats["timer_events"] = uint64(eStats["timer_msg_counter"].(float64))
 		stats.Unlock()
 
 	case processManager.Insight:
@@ -188,6 +190,8 @@ func (stats *statsHandler) handleStats(msg *processManager.ResponseMessage) {
 		stats.Lock()
 		stats.stats.FailureStats = failureStats
 		stats.stats.ExecutionStats = executionStats
+		stats.stats.EventProcessingStats["timer_responses_received"] = uint64(executionStats["timer_create_counter"].(float64))
+		stats.stats.EventProcessingStats["timer_events"] = uint64(executionStats["timer_msg_counter"].(float64))
 		stats.stats.LatencyHistogram.Update(latencyStats)
 		stats.stats.CurlLatency.Update(curlLatencyStats)
 		stats.Unlock()
