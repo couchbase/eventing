@@ -22,6 +22,7 @@ type Supervisor2 interface {
 	GetApplicationLog(appLocation application.AppLocation, size int64) ([]string, error)
 	GetInsights(appLocation application.AppLocation) *common.Insight
 	RebalanceProgress(vbMapVersion string, appLocation application.AppLocation) *common.AppRebalanceProgress
+	GetGlobalRebalanceProgress(changeId string) (float64, error)
 	GetOwnershipDetails() string
 
 	PopulateID(keyspace application.Keyspace) (keyID application.KeyspaceInfo, err error)

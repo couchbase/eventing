@@ -1362,7 +1362,7 @@ func (s *supervisor) getRebalanceProgress(req *pc.Request) (map[string]float64, 
 }
 
 func (s *supervisor) GetGlobalRebalanceProgress(changeID string) (float64, error) {
-	if s.topologyChangeID.Load().(string) != changeID {
+	if changeID != "" && s.topologyChangeID.Load().(string) != changeID {
 		return float64(0), nil
 	}
 
