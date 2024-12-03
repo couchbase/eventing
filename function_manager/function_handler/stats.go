@@ -10,7 +10,6 @@ import (
 
 	"github.com/couchbase/eventing/application"
 	"github.com/couchbase/eventing/common"
-	eventPool "github.com/couchbase/eventing/event_pool"
 	vbhandler "github.com/couchbase/eventing/function_manager/function_handler/vb_handler"
 	"github.com/couchbase/eventing/logging"
 	processManager "github.com/couchbase/eventing/process_manager"
@@ -69,8 +68,20 @@ func (sh *statsHandler) resetStats() {
 
 func (stats *statsHandler) IncrementProcessingStats(statName string) {
 	stats.Lock()
+	defer stats.Unlock()
+
+	stats.incrementProcessingStatsLocked(statName)
+}
+
+func (stats *statsHandler) AddExecutionStats(statName string, count interface{}) {
+	stats.Lock()
+	defer stats.Unlock()
+
+	stats.stats.ExecutionStats[statName] = count
+}
+
+func (stats *statsHandler) incrementProcessingStatsLocked(statName string) {
 	stats.stats.EventProcessingStats[statName]++
-	stats.Unlock()
 }
 
 func (stats *statsHandler) processedSeqEvents(msg *processManager.ResponseMessage) map[uint16][]uint64 {
@@ -105,6 +116,7 @@ func (stats *statsHandler) handleStats(msg *processManager.ResponseMessage) {
 
 		stats.Lock()
 		stats.stats.FailureStats = fStats
+		stats.incrementProcessingStatsLocked("failure_stats")
 		stats.Unlock()
 
 	case processManager.ExecutionStats:
@@ -118,6 +130,7 @@ func (stats *statsHandler) handleStats(msg *processManager.ResponseMessage) {
 		stats.stats.ExecutionStats = eStats
 		stats.stats.EventProcessingStats["timer_responses_received"] = uint64(eStats["timer_create_counter"].(float64))
 		stats.stats.EventProcessingStats["timer_events"] = uint64(eStats["timer_msg_counter"].(float64))
+		stats.incrementProcessingStatsLocked("execution_stats")
 		stats.Unlock()
 
 	case processManager.Insight:
@@ -133,6 +146,7 @@ func (stats *statsHandler) handleStats(msg *processManager.ResponseMessage) {
 
 		stats.Lock()
 		stats.stats.Insight = insight
+		stats.incrementProcessingStatsLocked("insight_stats")
 		stats.Unlock()
 
 	case processManager.LatencyStats:
@@ -144,6 +158,7 @@ func (stats *statsHandler) handleStats(msg *processManager.ResponseMessage) {
 
 		stats.Lock()
 		stats.stats.LatencyHistogram.Update(latency)
+		stats.incrementProcessingStatsLocked("latency_stats")
 		stats.Unlock()
 
 	case processManager.CurlLatencyStats:
@@ -155,6 +170,7 @@ func (stats *statsHandler) handleStats(msg *processManager.ResponseMessage) {
 
 		stats.Lock()
 		stats.stats.CurlLatency.Update(latency)
+		stats.incrementProcessingStatsLocked("curl_latency_stats")
 		stats.Unlock()
 
 	case processManager.AllStats:
@@ -187,13 +203,26 @@ func (stats *statsHandler) handleStats(msg *processManager.ResponseMessage) {
 		if err != nil {
 			return
 		}
+
+		lcbExceptionStats := make(map[string]uint64)
+		err = json.Unmarshal([]byte(aStats["lcb_exception_stats"].(string)), &lcbExceptionStats)
+		if err != nil {
+			return
+		}
+
 		stats.Lock()
 		stats.stats.FailureStats = failureStats
 		stats.stats.ExecutionStats = executionStats
 		stats.stats.EventProcessingStats["timer_responses_received"] = uint64(executionStats["timer_create_counter"].(float64))
 		stats.stats.EventProcessingStats["timer_events"] = uint64(executionStats["timer_msg_counter"].(float64))
+		stats.incrementProcessingStatsLocked("execution_stats")
+		stats.incrementProcessingStatsLocked("failure_stats")
+		stats.incrementProcessingStatsLocked("latency_stats")
+		stats.incrementProcessingStatsLocked("curl_latency_stats")
+		stats.incrementProcessingStatsLocked("lcb_exception_stats")
 		stats.stats.LatencyHistogram.Update(latencyStats)
 		stats.stats.CurlLatency.Update(curlLatencyStats)
+		stats.stats.LCBExceptionStats = lcbExceptionStats
 		stats.Unlock()
 	}
 }
@@ -202,7 +231,7 @@ const (
 	seqCheckTime = time.Duration(30) * time.Second
 )
 
-func (stats *statsHandler) start(ctx context.Context, version uint32, instanceID []byte, re RuntimeEnvironment, vbHandler vbhandler.VbHandler, pool eventPool.ManagerPool, statsDuration time.Duration) {
+func (stats *statsHandler) start(ctx context.Context, version uint32, instanceID []byte, re RuntimeEnvironment, vbHandler vbhandler.VbHandler, statsDuration time.Duration) {
 	logPrefix := fmt.Sprintf("statsHandler::statsHandler[%s]", stats.logPrefix)
 	stats.Lock()
 	stats.stats = common.NewStats(true, stats.location.Namespace, stats.location.Appname)

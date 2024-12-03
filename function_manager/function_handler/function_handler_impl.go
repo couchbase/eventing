@@ -6,10 +6,11 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
-	"github.com/couchbase/eventing/parser"
 	"regexp"
 	"sync/atomic"
 	"time"
+
+	"github.com/couchbase/eventing/parser"
 
 	"github.com/couchbase/eventing/application"
 	checkpointManager "github.com/couchbase/eventing/checkpoint_manager"
@@ -556,7 +557,7 @@ func (fHandler *funcHandler) spawnFunction(re RuntimeEnvironment) {
 	}
 	vbHandler := vbhandler.NewVbHandler(ctx, fHandler.logPrefix, fHandler.fd.DeploymentConfig.SourceKeyspace, config)
 	fHandler.vbHandler.Store(vbHandler)
-	go fHandler.statsHandler.start(ctx, fHandler.version, fHandler.instanceID, re, vbHandler, fHandler.pool, time.Duration(fHandler.fd.Settings.StatsDuration))
+	go fHandler.statsHandler.start(ctx, fHandler.version, fHandler.instanceID, re, vbHandler, time.Duration(fHandler.fd.Settings.StatsDuration))
 
 	fHandler.notifyOwnershipChange()
 	logging.Infof("%s successfully spawned function..", fHandler.logPrefix)
@@ -696,7 +697,9 @@ func (fHandler *funcHandler) ReceiveMessage(msg *processManager.ResponseMessage)
 
 		case processManager.StatsAckBytes:
 			vbHandler := fHandler.vbHandler.Load()
-			vbHandler.AckMessages(msg.Value)
+			unackedCount, unackedBytes := vbHandler.AckMessages(msg.Value)
+			fHandler.statsHandler.AddExecutionStats("agg_queue_memory", unackedBytes)
+			fHandler.statsHandler.AddExecutionStats("agg_queue_size", unackedCount)
 
 		default:
 			fHandler.statsHandler.handleStats(msg)

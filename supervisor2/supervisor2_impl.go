@@ -88,8 +88,9 @@ type supervisor struct {
 	bucketGraph  appGraph.AppGraph
 	serverConfig serverConfig.ServerConfig
 
-	systemConfig serverConfig.SystemConfig
-	gocbCluster  *gocb.Cluster
+	systemConfig       serverConfig.SystemConfig
+	globalStatsCounter *common.GlobalStatsCounter
+	gocbCluster        *gocb.Cluster
 
 	undeployMapLock *sync.Mutex
 	undeploySignal  *common.Signal
@@ -119,9 +120,10 @@ func StartSupervisor(ctx context.Context, cs *common.ClusterSettings) (Superviso
 		lifeCycleAllowed: &atomic.Bool{},
 		stateRecovered:   &atomic.Bool{},
 
-		appManager:  appManager.NewAppCache(),
-		appState:    stateMachine.NewStateMachine(),
-		bucketGraph: appGraph.NewBucketMultiDiGraph(),
+		appManager:         appManager.NewAppCache(),
+		appState:           stateMachine.NewStateMachine(),
+		bucketGraph:        appGraph.NewBucketMultiDiGraph(),
+		globalStatsCounter: common.NewGlobalStatsCounters(),
 	}
 
 	s.lifeCycleAllowed.Store(false)
@@ -176,6 +178,7 @@ func StartSupervisor(ctx context.Context, cs *common.ClusterSettings) (Superviso
 		s.cursorRegistry,
 		s.broadcaster,
 		s.serverConfig,
+		s.globalStatsCounter,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("unable to start service manager: %v", err)
@@ -257,7 +260,7 @@ func (s *supervisor) recover(ctx context.Context) error {
 	s.observer.WaitForConnect(ctx)
 	logging.Infof("%s successfully connected to observer pool", logPrefix)
 
-	cluster := checkpointManager.GetGocbClusterObject(s.clusterSetting, s.observer)
+	cluster := checkpointManager.GetGocbClusterObject(s.clusterSetting, s.observer, s.globalStatsCounter)
 	s.createGocbClusterObjectLocked(cluster)
 
 	// Recover functions only for leader node. Other node can lazily recover
@@ -356,7 +359,7 @@ func (s *supervisor) observeStateChanges(ctx context.Context) {
 		s.observer.DeregisterEvent(sub, compatVersion)
 	}
 
-	cluster := checkpointManager.GetGocbClusterObject(s.clusterSetting, s.observer)
+	cluster := checkpointManager.GetGocbClusterObject(s.clusterSetting, s.observer, s.globalStatsCounter)
 	s.createGocbClusterObjectLocked(cluster)
 
 	for {
@@ -369,7 +372,7 @@ func (s *supervisor) observeStateChanges(ctx context.Context) {
 			switch msg.Event.Event {
 			case notifier.EventTLSChanges:
 				logging.Infof("%s Tls settings changed. Refreshing gocb cluster object", logPrefix)
-				cluster := checkpointManager.GetGocbClusterObject(s.clusterSetting, s.observer)
+				cluster := checkpointManager.GetGocbClusterObject(s.clusterSetting, s.observer, s.globalStatsCounter)
 				s.createGocbClusterObjectLocked(cluster)
 
 			case notifier.EventClusterCompatibilityChanges:

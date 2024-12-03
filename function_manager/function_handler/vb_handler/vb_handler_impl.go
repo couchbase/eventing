@@ -95,6 +95,14 @@ func (handler *vbHandler) eventReceiver(ctx context.Context) {
 			}
 
 			if filterMsg {
+				switch msg.Opcode {
+				case dcpMessage.DCP_MUTATION:
+					handler.config.StatsHandler.IncrementProcessingStats("dcp_mutation_suppressed_counter")
+				case dcpMessage.DCP_DELETION:
+					handler.config.StatsHandler.IncrementProcessingStats("dcp_deletion_suppressed_counter")
+				case dcpMessage.DCP_EXPIRATION:
+					handler.config.StatsHandler.IncrementProcessingStats("dcp_expiration_suppressed_counter")
+				}
 				handler.commonDcpManager.DoneDcpEvent(msg)
 				continue
 			}
@@ -106,7 +114,7 @@ func (handler *vbHandler) eventReceiver(ctx context.Context) {
 					continue
 				}
 
-				handler.config.StatsHandler.IncrementProcessingStats("dcp_mutation")
+				handler.config.StatsHandler.IncrementProcessingStats("dcp_mutation_sent_to_worker")
 				handler.writeMessage(workerID, processManager.DcpMutation, msg, parsedDetails)
 
 			case dcpMessage.DCP_DELETION:
@@ -115,7 +123,7 @@ func (handler *vbHandler) eventReceiver(ctx context.Context) {
 					continue
 				}
 
-				handler.config.StatsHandler.IncrementProcessingStats("dcp_deletion")
+				handler.config.StatsHandler.IncrementProcessingStats("dcp_deletion_sent_to_worker")
 				handler.writeMessage(workerID, processManager.DcpDeletion, msg, parsedDetails)
 
 			case dcpMessage.DCP_EXPIRATION:
@@ -124,7 +132,7 @@ func (handler *vbHandler) eventReceiver(ctx context.Context) {
 					continue
 				}
 
-				handler.config.StatsHandler.IncrementProcessingStats("dcp_expiration")
+				handler.config.StatsHandler.IncrementProcessingStats("dcp_expiration_sent_to_worker")
 				handler.writeMessage(workerID, processManager.DcpDeletion, msg, parsedDetails)
 
 			case dcpMessage.DCP_STREAMREQ:
@@ -135,7 +143,7 @@ func (handler *vbHandler) eventReceiver(ctx context.Context) {
 					update = handler.allocator.vbReadyState(msg)
 
 				default:
-					streamendMsg := fmt.Sprintf("dcp_streamend:%d", msg.Status)
+					streamendMsg := fmt.Sprintf("dcp_streamend-%d", msg.Status)
 					handler.config.StatsHandler.IncrementProcessingStats(streamendMsg)
 					handler.allocator.DoneVb(msg.SrRequest)
 				}
@@ -247,14 +255,19 @@ func (handler *vbHandler) CloseVb(vb uint16) int {
 	return handler.allocator.CloseVb(vb)
 }
 
-func (handler *vbHandler) AckMessages(value []byte) {
+func (handler *vbHandler) AckMessages(value []byte) (int, int) {
+	totalUnAckedCount, totalUnackedSize := 0, 0
 	for index := int32(0); index < int32(handler.config.HandlerSettings.CppWorkerThread); index++ {
-		unackedBytes := binary.BigEndian.Uint32(value)
-		unackedCount := binary.BigEndian.Uint32(value[4:])
+		ackedBytes := binary.BigEndian.Uint32(value)
+		ackedCount := binary.BigEndian.Uint32(value[4:])
 		dcpEventsExecutedCount := binary.BigEndian.Uint64(value[8:])
 		value = value[16:]
-		handler.workers[index].unackedDetails.AckMessage(int32(unackedCount), int32(unackedBytes), uint64(dcpEventsExecutedCount))
+		unAckedCount, unAckedBytes := handler.workers[index].unackedDetails.AckMessage(int32(ackedCount), int32(ackedBytes), uint64(dcpEventsExecutedCount))
+		totalUnAckedCount += int(unAckedCount)
+		totalUnackedSize += int(unAckedBytes)
+
 	}
+	return totalUnAckedCount, totalUnackedSize
 }
 
 // Close all the vbs

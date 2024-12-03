@@ -14,7 +14,9 @@ import (
 	"github.com/couchbase/gocb/v2"
 )
 
-type dynamicAuth int8
+type dynamicAuth struct {
+	statsCounter *common.GlobalStatsCounter
+}
 
 const (
 	opsTimeout = time.Second * 10
@@ -32,7 +34,8 @@ func (dynamicAuth) Certificate(req gocb.AuthCertRequest) (*tls.Certificate, erro
 	return nil, nil
 }
 
-func (dynamicAuth) Credentials(req gocb.AuthCredsRequest) ([]gocb.UserPassPair, error) {
+func (da dynamicAuth) Credentials(req gocb.AuthCredsRequest) ([]gocb.UserPassPair, error) {
+	da.statsCounter.GocbCredsStats.Add(1)
 	username, password, err := authenticator.GetMemcachedServiceAuth(req.Endpoint)
 	if err != nil {
 		return []gocb.UserPassPair{{}}, err
@@ -44,7 +47,7 @@ func (dynamicAuth) Credentials(req gocb.AuthCredsRequest) ([]gocb.UserPassPair, 
 	}}, nil
 }
 
-func GetGocbClusterObject(clusterConfig *common.ClusterSettings, observer notifier.Observer) (cluster *gocb.Cluster) {
+func GetGocbClusterObject(clusterConfig *common.ClusterSettings, observer notifier.Observer, globalStatsCounter *common.GlobalStatsCounter) (cluster *gocb.Cluster) {
 	logPrefix := "checkpointManager::GetGocbClusterObject"
 	iE := notifier.InterestedEvent{
 		Event: notifier.EventKVTopologyChanges,
@@ -86,7 +89,9 @@ func GetGocbClusterObject(clusterConfig *common.ClusterSettings, observer notifi
 			connStr += fmt.Sprintf("%s:%d", node.HostName, node.Services[kvPort])
 		}
 
-		var authenticator dynamicAuth
+		authenticator := dynamicAuth{
+			statsCounter: globalStatsCounter,
+		}
 		clusterOptions := gocb.ClusterOptions{Authenticator: authenticator}
 		if tlsConfig.EncryptData {
 			clusterOptions.SecurityConfig = gocb.SecurityConfig{TLSRootCAs: tlsConfig.Config.RootCAs}

@@ -1,9 +1,11 @@
 #include "uds_client.h"
 #include "breakpad.h"
 #include "messages.h"
+#include "stats.h"
 #include <iostream>
 #include <v8.h>
 
+std::atomic<int64_t> uv_try_write_failure_counter = {0};
 // UDSClient implementation
 UDSClient *client_;
 
@@ -265,6 +267,7 @@ void UDSClient::flushToConn() {
       continue;
     }
     if (rc < 0) {
+      uv_try_write_failure_counter++;
       break;
     }
 

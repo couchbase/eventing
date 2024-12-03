@@ -332,7 +332,7 @@ func (m *serviceMgr) getCreds(w http.ResponseWriter, r *http.Request) {
 		res.LogAndSend(runtimeInfo)
 	}()
 
-	m.globalStatsCounter.lcbCredsStats.Add(1)
+	m.globalStatsCounter.LcbCredsStats.Add(1)
 	if ok := m.validateLocalAuth(r); !ok {
 		runtimeInfo.ErrCode = response.ErrUnauthenticated
 		return

@@ -126,7 +126,9 @@ public:
   }
 
   inline uint64_t processing_seq_num() { return f_map_->processing_seq_num(); }
-  void AddLcbException(int err_code) {}
+  void AddLcbException(int err_code) {
+    stats_->AddLcbException(err_code);
+  }
 
   std::string GetOnDeployResult(int return_code);
 

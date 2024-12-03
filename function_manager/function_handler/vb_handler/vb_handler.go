@@ -73,7 +73,7 @@ type VbHandler interface {
 	CloseVb(vb uint16) int
 
 	// AckMessages notes how many msgs and there bytes are processed by RuntimeSystem
-	AckMessages(value []byte)
+	AckMessages(value []byte) (int, int)
 
 	// Close closes all the vbs and returns how many ownership is closed
 	Close() []uint16
@@ -98,7 +98,6 @@ func (_ dummy) NotifyOwnershipChange() (vbMapVersion string, newVbs []uint16, cl
 }
 
 func (_ dummy) VbHandlerSnapshot(appProgress *common.AppRebalanceProgress) {
-	return
 }
 
 func (_ dummy) AddVb(vb uint16, vbBlob *checkpointManager.VbBlob) int {
@@ -109,8 +108,8 @@ func (_ dummy) CloseVb(vb uint16) int {
 	return 0
 }
 
-func (_ dummy) AckMessages(value []byte) {
-	return
+func (_ dummy) AckMessages(value []byte) (int, int) {
+	return 0, 0
 }
 
 func (_ dummy) Close() []uint16 {
