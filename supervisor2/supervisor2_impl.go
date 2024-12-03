@@ -1400,7 +1400,7 @@ func (s *supervisor) SyncPhaseDone() bool {
 	}
 
 	if len(statusResponseBytes) == 0 {
-		logging.Errorf("%s Unexpected response for status request: %v", logPrefix, err)
+		logging.Errorf("%s No eventing node in cluster cache", logPrefix)
 		return false
 	}
 

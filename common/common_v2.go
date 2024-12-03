@@ -422,6 +422,10 @@ func (s *Stats) Copy(allStats bool) *Stats {
 	newStats.FailureStats["curl_failure_count"] = s.FailureStats["curl_failure_count"]
 	newStats.FailureStats["curl_max_resp_size_exceeded"] = s.FailureStats["curl_max_resp_size_exceeded"]
 
+	for k, v := range s.EventProcessingStats {
+		newStats.EventProcessingStats[k] = v
+	}
+
 	if allStats {
 		// EventRemaining stats
 		newStats.EventRemaining["dcp_backlog"] = s.EventRemaining["dcp_backlog"]
@@ -492,6 +496,14 @@ func (s2 *Stats) Sub(s1 *Stats, copyNonSubtracted bool) *Stats {
 	newStats.FailureStats["curl_failure_count"] = s2.FailureStats["curl_failure_count"].(float64) - s1.FailureStats["curl_failure_count"].(float64)
 	newStats.FailureStats["curl_max_resp_size_exceeded"] = s2.FailureStats["curl_max_resp_size_exceeded"].(float64) - s1.FailureStats["curl_max_resp_size_exceeded"].(float64)
 
+	for k, v := range s2.EventProcessingStats {
+		if val, ok := s1.EventProcessingStats[k]; ok {
+			newStats.EventProcessingStats[k] = v - val
+		} else {
+			newStats.EventProcessingStats[k] = v
+		}
+	}
+
 	if copyNonSubtracted {
 
 		// These stats are not subtracted
@@ -559,6 +571,14 @@ func (s2 *Stats) Add(s1 *Stats) {
 	s2.FailureStats["curl_timeout_count"] = s2.FailureStats["curl_timeout_count"].(float64) + s1.FailureStats["curl_timeout_count"].(float64)
 	s2.FailureStats["curl_failure_count"] = s2.FailureStats["curl_failure_count"].(float64) + s1.FailureStats["curl_failure_count"].(float64)
 	s2.FailureStats["curl_max_resp_size_exceeded"] = s2.FailureStats["curl_max_resp_size_exceeded"].(float64) + s1.FailureStats["curl_max_resp_size_exceeded"].(float64)
+
+	for k, v := range s1.EventProcessingStats {
+		if val, ok := s2.EventProcessingStats[k]; ok {
+			s2.EventProcessingStats[k] = val + v
+		} else {
+			s2.EventProcessingStats[k] = v
+		}
+	}
 
 	s2.EventRemaining["dcp_backlog"] = s2.EventRemaining["dcp_backlog"] + s1.EventRemaining["dcp_backlog"]
 

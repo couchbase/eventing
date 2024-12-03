@@ -186,7 +186,7 @@ private:
   HandleDeleteVbFilter(const std::unique_ptr<messages::worker_request> &msg);
   void HandleNoOpEvent(const std::unique_ptr<messages::worker_request> &msg);
 
-  int SendUpdate(const messages::payload payload, uint32_t expiry,
+  int SendUpdate(const messages::payload payload, uint64_t cas, uint32_t expiry,
                  uint8_t datatype);
   int SendDelete(const messages::payload payload);
   int SendDeploy(const std::string &action, const int64_t &delay);

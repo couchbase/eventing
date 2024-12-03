@@ -89,7 +89,8 @@ parse_app_details(const std::vector<uint8_t> &payload) {
 
   app_setting *settings = new app_setting();
   settings->timeout = metadata["settings"]["execution_timeout"].get<uint64_t>();
-
+  settings->cursor_checkpoint_timeout = metadata["settings"]["cursor_checkpoint_timeout"]
+                                           .get<uint64_t>();
   settings->cpp_thread_count =
       metadata["settings"]["cpp_worker_thread_count"].get<uint32_t>();
 

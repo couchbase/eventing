@@ -250,18 +250,18 @@ func isRecursiveMutation(msg *dcpMessage.DcpEvent, instanceID string, rootCas ui
 		return false
 	}
 
-	if seqNum, err := strconv.ParseUint(xattr.SeqNo, 0, 64); err != nil || seqNum != msg.Seqno {
+	if xattr.CAS != "" {
+		xCas := common.HexLittleEndianToUint64([]byte(xattr.CAS))
+		return xCas == rootCas
+	}
+
+	// Old style recursive mutation detection
+	seqNum, err := strconv.ParseUint(xattr.SeqNo, 0, 64)
+	if err != nil {
 		return false
 	}
 
-	if xattr.CAS != "" {
-		xCas := common.HexLittleEndianToUint64([]byte(xattr.CAS))
-		if xCas == rootCas {
-			return true
-		}
-	}
-
-	return true
+	return seqNum == msg.Seqno
 }
 
 type xattrMou struct {
@@ -280,7 +280,7 @@ type xattrChkpt struct {
 // Hence, attempt to parse _checkpoints regardless of whether this handler
 // is cursor aware or not
 func processCheckpointMutation(parsedDetails *checkpointManager.ParsedInternalDetails, msg *dcpMessage.DcpEvent, instanceID string) bool {
-	xattrMouBody, xattrMouFound := msg.SystemXattr[syncgatewayXattr]
+	xattrMouBody, xattrMouFound := msg.SystemXattr[mouXattr]
 	xattrChkptBody, xattrChkptFound := msg.SystemXattr[checkpointXattr]
 	// Note: Assuming this app's cursor doesn't exist, hence thisAppRootCas == 0 by default
 	// Assuming this mutation itself is the root mutation, hence thisMutationRootCas == cas by default
@@ -327,12 +327,14 @@ func processCheckpointMutation(parsedDetails *checkpointManager.ParsedInternalDe
 			}
 		}
 	}
-
 	parsedDetails.RootCas = thisMutationRootCas
 	return thisMutationRootCas == thisAppRootCas
 }
 
 func (fHandler *funcHandler) CheckAndGetEventsInternalDetails(msg *dcpMessage.DcpEvent) (*checkpointManager.ParsedInternalDetails, bool) {
+	if msg.Opcode != dcpMessage.DCP_MUTATION && msg.Opcode != dcpMessage.DCP_DELETION && msg.Opcode != dcpMessage.DCP_EXPIRATION {
+		return nil, false
+	}
 	if bytes.HasPrefix(msg.Key, common.TransactionMutationPrefix) {
 		return nil, true
 	}
@@ -374,7 +376,7 @@ func (fHandler *funcHandler) CheckAndGetEventsInternalDetails(msg *dcpMessage.Dc
 	}
 	// populate the stale cursors
 	parsedDetails.Scope = keyspace.ScopeName
-	parsedDetails.Collection = keyspace.BucketName
+	parsedDetails.Collection = keyspace.CollectionName
 	return parsedDetails, false
 }
 

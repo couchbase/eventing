@@ -33,6 +33,7 @@ namespace settings {
 
 struct app_setting {
   uint64_t timeout;                         // execution_timeout
+  uint64_t cursor_checkpoint_timeout;       // cursor_checkpoint_timeout
   int cpp_thread_count;                     // cpp_thread_count
   std::string lang_compatibility;           // language_compatibility
   uint32_t lcb_inst_capacity;               // lcb_inst_capacity

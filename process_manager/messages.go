@@ -308,7 +308,7 @@ func (mb *flatbufMessageBuilder) DcpMessage(opcode uint8, workerID uint8, handle
 	if extraV.cursorDetailsPresent {
 		extras = binary.BigEndian.AppendUint64(extras, extraV.rootCas)
 		extras = binary.BigEndian.AppendUint64(extras, extraV.cas)
-		extras = binary.BigEndian.AppendUint32(extras, uint32(len(extraV.key)))
+		extras = binary.BigEndian.AppendUint16(extras, uint16(len(extraV.key)))
 		extras = append(extras, extraV.key...)
 		staleIdString := strings.Join(extraV.staleIds, ",")
 		extras = binary.BigEndian.AppendUint32(extras, uint32(len(staleIdString)))

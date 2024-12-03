@@ -79,6 +79,10 @@ std::string RuntimeStats::GetExecutionStats() {
       execution_stats_["filtered_dcp_mutation_counter"].load();
   estats["num_processed_events"] =
       execution_stats_["num_processed_events"].load();
+  estats["dcp_mutation_checkpoint_cas_mismatch"] =
+      execution_stats_["dcp_mutation_checkpoint_cas_mismatch"].load();
+  estats["dcp_mutation_checkpoint_failure"] =
+      execution_stats_["dcp_mutation_checkpoint_failure"].load();
 
   estats["curl"]["get"] = execution_stats_["curl.get"].load();
   estats["curl"]["post"] = execution_stats_["curl.post"].load();

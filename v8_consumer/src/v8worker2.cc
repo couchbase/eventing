@@ -567,6 +567,7 @@ void V8Worker2::InitializeIsolateData() {
   data_.op_timeout = app_details_->settings->timeout < 5
                          ? app_details_->settings->timeout
                          : app_details_->settings->timeout - 2;
+  data_.cursor_checkpoint_timeout = ConvertSecondsToMicroSeconds(app_details_->settings->cursor_checkpoint_timeout);
   data_.n1ql_consistency = Query::Helper::GetN1qlConsistency(
       app_details_->settings->n1ql_consistency);
   data_.n1ql_prepare_all = app_details_->settings->n1ql_prepare_all;
@@ -604,7 +605,6 @@ void V8Worker2::InstallBucketBindings(
     auto is_source_bucket = (bucket_name == cb_source_bucket_);
     bucket_bindings_.emplace_back(
         isolate_, bucket_factory_, bucket_name, scope_name, collection_name,
-        // TODO: Fix user_ and domain_
         bucket_alias, bucket_access == "r", is_source_bucket, user_, domain_);
   }
 }
@@ -1097,10 +1097,11 @@ void V8Worker2::HandleMutationEvent(
     return;
   }
 
+  uint64_t cas = 0;
   if (tracker_enabled_) {
-    auto [client_err, err_code] = checkpoint_writer_->Write(
+    auto [client_err, err_code, result] = checkpoint_writer_->Write(
         MetaData(meta_info.scope_name, meta_info.collection_name, meta_info.key,
-                 meta_info.cas),
+                 meta_info.cas, meta_info.expiry),
         meta_info.root_cas, meta_info.stale_cursors);
     if (err_code) {
       if (err_code == LCB_ERR_CAS_MISMATCH) {
@@ -1118,11 +1119,12 @@ void V8Worker2::HandleMutationEvent(
                << "/" << meta_info.key << " rootcas: " << meta_info.root_cas
                << " error: " << err_cstr << std::endl;
       }
+      return;
     }
-    return;
+    cas = result->cas;
   }
   stats_->IncrementExecutionStat("messages_parsed");
-  SendUpdate(payload, meta_info.expiry, meta_info.datatype);
+  SendUpdate(payload, cas, meta_info.expiry, meta_info.datatype);
   add_dcp_mutation_done();
   f_map_->reset_current_vb();
 
@@ -1163,7 +1165,7 @@ void V8Worker2::HandleDeleteVbFilter(
   f_map_->RemoveFilterEvent(vb);
 }
 
-int V8Worker2::SendUpdate(const messages::payload payload, uint32_t expiry,
+int V8Worker2::SendUpdate(const messages::payload payload, uint64_t newCas, uint32_t expiry,
                           uint8_t datatype) {
   v8::Locker locker(isolate_);
   v8::Isolate::Scope isolate_scope(isolate_);
@@ -1213,16 +1215,27 @@ int V8Worker2::SendUpdate(const messages::payload payload, uint32_t expiry,
     return kToLocalFailed;
   }
 
-  if (expiry != 0) {
-    uint64_t expiryInMiliseconds = uint64_t(expiry) * 1000;
+  if (expiry != 0 || newCas != 0) {
     auto js_meta = args[1].As<v8::Object>();
-    auto js_expiry =
-        v8::Date::New(context, expiryInMiliseconds).ToLocalChecked();
-    auto r = js_meta->Set(context, v8Str(isolate_, "expiry_date"), js_expiry);
-    if (!r.FromMaybe(true)) {
-      LOG(logWarning) << log_prefix_
-                      << "Error Creating expiry_date failed in OnUpdate"
-                      << std::endl;
+    if (expiry != 0) {
+      uint64_t expiryInMiliseconds = uint64_t(expiry) * 1000;
+      auto js_expiry =
+          v8::Date::New(context, expiryInMiliseconds).ToLocalChecked();
+      auto r = js_meta->Set(context, v8Str(isolate_, "expiry_date"), js_expiry);
+      if (!r.FromMaybe(true)) {
+        LOG(logWarning) << log_prefix_
+                        << "Error Creating expiry_date failed in SendUpdate"
+                        << std::endl;
+      }
+    }
+    if (newCas != 0) {
+      auto r = js_meta->Set(context, v8Str(isolate_, "cas"),
+                            v8Str(isolate_, std::to_string(newCas)));
+      if (!r.FromMaybe(true)) {
+        LOG(logWarning) << log_prefix_
+                        << "Error Creating cas failed in SendUpdate"
+                        << std::endl;
+      }
     }
   }
 

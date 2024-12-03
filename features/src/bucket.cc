@@ -291,8 +291,7 @@ void Bucket::InvalidateCache(const MetaData &meta) {
 std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
 Bucket::WriteCheckpoint(const MetaData &meta, const uint64_t &rootcas,
                         const std::vector<std::string> &cleanup_checkpoints) {
-  const auto lcb_cursor_checkpoint_timeout =
-      UnwrapData(isolate_)->lcb_cursor_checkpoint_timeout;
+
   const auto cursor_checkpoint_timeout =
       UnwrapData(isolate_)->cursor_checkpoint_timeout;
   const auto max_retry = UnwrapData(isolate_)->lcb_retry_count;
@@ -349,7 +348,7 @@ Bucket::WriteCheckpoint(const MetaData &meta, const uint64_t &rootcas,
   lcb_cmdsubdoc_collection(cmd, meta.scope.c_str(), meta.scope.size(),
                            meta.collection.c_str(), meta.collection.size());
   lcb_cmdsubdoc_key(cmd, meta.key.c_str(), meta.key.length());
-  lcb_cmdsubdoc_timeout(cmd, lcb_cursor_checkpoint_timeout);
+  lcb_cmdsubdoc_timeout(cmd, cursor_checkpoint_timeout);
 
   // Run command
   auto [err, err_code, result] = TryLcbCmdWithRefreshConnIfNecessary(

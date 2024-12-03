@@ -185,34 +185,34 @@ inline meta_info get_extras_dcp(const std::vector<uint8_t> &identifier,
     extras_size = extras_size + 4;
 
     // Check for cursor related data
-    if (extras_size > 5) {
+    if (extras.size() > 5) {
       // get the root cas
       minfo.cursor_present = true;
       minfo.root_cas =
-          (uint64_t) static_cast<unsigned char>(extras[extras_size]) |
-          (uint64_t) static_cast<unsigned char>(extras[extras_size + 1]) << 8 |
-          (uint64_t) static_cast<unsigned char>(extras[extras_size + 2]) << 16 |
-          (uint64_t) static_cast<unsigned char>(extras[extras_size + 3]) << 24 |
-          (uint64_t) static_cast<unsigned char>(extras[extras_size + 4]) << 32 |
-          (uint64_t) static_cast<unsigned char>(extras[extras_size + 5]) << 40 |
-          (uint64_t) static_cast<unsigned char>(extras[extras_size + 6]) << 48 |
-          (uint64_t) static_cast<unsigned char>(extras[extras_size + 7]) << 56;
+          (uint64_t) static_cast<unsigned char>(extras[extras_size]) << 56|
+          (uint64_t) static_cast<unsigned char>(extras[extras_size + 1]) << 48 |
+          (uint64_t) static_cast<unsigned char>(extras[extras_size + 2]) << 40 |
+          (uint64_t) static_cast<unsigned char>(extras[extras_size + 3]) << 32 |
+          (uint64_t) static_cast<unsigned char>(extras[extras_size + 4]) << 24 |
+          (uint64_t) static_cast<unsigned char>(extras[extras_size + 5]) << 16 |
+          (uint64_t) static_cast<unsigned char>(extras[extras_size + 6]) << 8 |
+          (uint64_t) static_cast<unsigned char>(extras[extras_size + 7]);
       extras_size = extras_size + 8;
 
       minfo.cas =
-          (uint64_t) static_cast<unsigned char>(extras[extras_size]) |
-          (uint64_t) static_cast<unsigned char>(extras[extras_size + 1]) << 8 |
-          (uint64_t) static_cast<unsigned char>(extras[extras_size + 2]) << 16 |
-          (uint64_t) static_cast<unsigned char>(extras[extras_size + 3]) << 24 |
-          (uint64_t) static_cast<unsigned char>(extras[extras_size + 4]) << 32 |
-          (uint64_t) static_cast<unsigned char>(extras[extras_size + 5]) << 40 |
-          (uint64_t) static_cast<unsigned char>(extras[extras_size + 6]) << 48 |
-          (uint64_t) static_cast<unsigned char>(extras[extras_size + 7]) << 56;
+          (uint64_t) static_cast<unsigned char>(extras[extras_size]) << 56|
+          (uint64_t) static_cast<unsigned char>(extras[extras_size + 1]) << 48 |
+          (uint64_t) static_cast<unsigned char>(extras[extras_size + 2]) << 40 |
+          (uint64_t) static_cast<unsigned char>(extras[extras_size + 3]) << 32 |
+          (uint64_t) static_cast<unsigned char>(extras[extras_size + 4]) << 24 |
+          (uint64_t) static_cast<unsigned char>(extras[extras_size + 5]) << 16 |
+          (uint64_t) static_cast<unsigned char>(extras[extras_size + 6]) << 8 |
+          (uint64_t) static_cast<unsigned char>(extras[extras_size + 7]);
       extras_size = extras_size + 8;
 
       uint16_t key_len =
-          (uint16_t) static_cast<unsigned char>(extras[extras_size]) |
-          (uint16_t) static_cast<unsigned char>(extras[extras_size + 1]) << 8;
+          (uint16_t) static_cast<unsigned char>(extras[extras_size]) << 8|
+          (uint16_t) static_cast<unsigned char>(extras[extras_size + 1]);
       extras_size = extras_size + 2;
       minfo.key = extras.substr(extras_size, key_len);
       extras_size = extras_size + key_len;
@@ -232,15 +232,15 @@ inline meta_info get_extras_dcp(const std::vector<uint8_t> &identifier,
       }
 
       uint16_t scope_len =
-          (uint16_t) static_cast<unsigned char>(extras[extras_size]) |
-          (uint16_t) static_cast<unsigned char>(extras[extras_size + 1]) << 8;
+          (uint16_t) static_cast<unsigned char>(extras[extras_size]) << 8|
+          (uint16_t) static_cast<unsigned char>(extras[extras_size + 1]);
       extras_size = extras_size + 2;
       minfo.scope_name = extras.substr(extras_size, scope_len);
       extras_size = extras_size + scope_len;
 
       uint16_t collection_len =
-          (uint16_t) static_cast<unsigned char>(extras[extras_size]) |
-          (uint16_t) static_cast<unsigned char>(extras[extras_size + 1]) << 8;
+          (uint16_t) static_cast<unsigned char>(extras[extras_size]) << 8 |
+          (uint16_t) static_cast<unsigned char>(extras[extras_size + 1]);
       extras_size = extras_size + 2;
       minfo.collection_name = extras.substr(extras_size, collection_len);
       extras_size = extras_size + collection_len;

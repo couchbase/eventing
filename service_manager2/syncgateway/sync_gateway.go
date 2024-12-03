@@ -130,7 +130,7 @@ func CheckSyncgatewayDeployment(runtimeInfo *response.RuntimeInfo, collectionHan
 	}
 
 	// Found _sync:registry : If >= 3.2 allow deployment
-	if !registry.SGVersion.Compare(RegistryAwareMouSGW) {
+	if RegistryAwareMouSGW.Compare(registry.SGVersion) {
 		return
 	}
 
@@ -152,7 +152,7 @@ func CheckSyncgatewayDeployment(runtimeInfo *response.RuntimeInfo, collectionHan
 					// This scope already satisfies "*" and hence
 					// will collide with eventing deployment
 					runtimeInfo.ErrCode = response.ErrUnsupportedSGW
-					runtimeInfo.Description = fmt.Sprintf("%s enabled on collection: %s. Deployment of source keyspace mutating handler will cause Intra Bucket Recursion", preMouSGWVersionStr, keySpace)
+					runtimeInfo.Description = fmt.Sprintf("%s enabled on collection: %s version: %s. Deployment of source keyspace mutating handler will cause Intra Bucket Recursion", preMouSGWVersionStr, registry.SGVersion, keySpace)
 					return
 				}
 				if keySpace.ScopeName != scopeName || scopeVal.Collections == nil {
@@ -162,8 +162,9 @@ func CheckSyncgatewayDeployment(runtimeInfo *response.RuntimeInfo, collectionHan
 					if keySpace.CollectionName == "*" || collection == keySpace.CollectionName {
 						runtimeInfo.ErrCode = response.ErrUnsupportedSGW
 						runtimeInfo.Description = fmt.Sprintf(
-							"%s enabled on collection: %s. Deployment of source keyspace mutating handler will cause Intra Bucket Recursion",
+							"%s enabled on collection: %s version: %s. Deployment of source keyspace mutating handler will cause Intra Bucket Recursion",
 							preMouSGWVersionStr,
+							registry.SGVersion,
 							keySpace,
 						)
 						return
