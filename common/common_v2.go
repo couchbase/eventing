@@ -1,12 +1,14 @@
 package common
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"hash/crc32"
+	"net/http"
 	"sort"
 	"strconv"
 	"strings"
@@ -791,6 +793,16 @@ func DistributeAndWaitWork[T comparable](parallism int, batchSize int, initialis
 	}
 	close(workerChan)
 	waitGroup.Wait()
+}
+
+// StopServer shutdowns the given server
+func StopServer(server *http.Server) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+	if err := server.Shutdown(ctx); err != nil && err != http.ErrServerClosed {
+		return err
+	}
+	return nil
 }
 
 type OnDeployState int8

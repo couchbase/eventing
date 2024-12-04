@@ -232,11 +232,13 @@ func (s *ConnSettings) getConnFromSetting() (*http.Client, error) {
 
 // getTlsConfig returns tls.config from the connection settings
 func (s *ConnSettings) getTlsConfig() (config *tls.Config, err error) {
+	config = &tls.Config{}
+
 	if s.TlsConfig != nil {
-		return s.TlsConfig.Clone(), nil
+		config.RootCAs = s.TlsConfig.RootCAs.Clone()
+		return config, nil
 	}
 
-	config = &tls.Config{}
 	config.RootCAs, config.InsecureSkipVerify, err = s.getRootCAs()
 	if err != nil {
 		return
