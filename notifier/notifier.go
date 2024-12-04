@@ -5,10 +5,9 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"github.com/couchbase/eventing/common/utils"
 	"strconv"
 	"strings"
-
-	"github.com/couchbase/eventing/common/utils"
 )
 
 type eventType uint8
@@ -292,14 +291,22 @@ type TlsConfig struct {
 	Config             *tls.Config
 	EncryptData        bool
 	DisableNonSSLPorts bool
+	ClientTlsConfig
+}
+
+type ClientTlsConfig struct {
+	// IsClientAuthMandatory tells if n2n encryption is enabled and client auth type is mandatory
+	// TODO: We can extend this to multiple client auth type states {disabled, enabled, mandatory}
+	IsClientAuthMandatory bool
+	ClientCertificate     *tls.Certificate
 }
 
 func (t *TlsConfig) String() string {
 	if t == nil {
-		return "encryptData: false, disableNonSSLPort: false"
+		return "encryptData: false, disableNonSSLPort: false, isClientAuthMandatory: false"
 	}
 
-	return fmt.Sprintf("encryptData: %v, disableNonSSLPort: %v", t.EncryptData, t.DisableNonSSLPorts)
+	return fmt.Sprintf("encryptData: %v, disableNonSSLPort: %v, isClientAuthMandatory: %v", t.EncryptData, t.DisableNonSSLPorts, t.IsClientAuthMandatory)
 }
 
 type Observer interface {
