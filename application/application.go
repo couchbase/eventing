@@ -511,13 +511,15 @@ const (
 	FromPrior = streamBoundary("from_prior")
 )
 
-type logLevel string
+type LogLevel string
 
-const (
-	LogInfo  = logLevel("INFO")
-	LogError = logLevel("ERROR")
-	LogDebug = logLevel("DEBUG")
-	LogTrace = logLevel("TRACE")
+var (
+	logLevels = []LogLevel{
+		LogLevel("INFO"),
+		LogLevel("ERROR"),
+		LogLevel("DEBUG"),
+		LogLevel("TRACE"),
+	}
 )
 
 const (
@@ -548,7 +550,7 @@ type InitSettings struct {
 	CppWorkerThread          uint32         `json:"cpp_worker_thread_count"`
 	DcpStreamBoundary        streamBoundary `json:"dcp_stream_boundary"`
 	Description              string         `json:"description"`
-	LogLevel                 logLevel       `json:"log_level"`
+	LogLevel                 LogLevel       `json:"log_level"`
 	NumTimerPartition        uint16         `json:"num_timer_partitions"`
 	StatsDuration            uint64         `json:"tick_duration"`
 	TimerContextSize         uint32         `json:"timer_context_size"`
@@ -642,7 +644,7 @@ func DefaultSettings() HandlerSettings {
 	hSettings := HandlerSettings{}
 	hSettings.CppWorkerThread = 2
 	hSettings.DcpStreamBoundary = Everyting
-	hSettings.LogLevel = LogInfo
+	hSettings.LogLevel = logLevels[0]
 	hSettings.NumTimerPartition = 256
 	hSettings.StatsDuration = 1000
 	hSettings.TimerContextSize = 1024

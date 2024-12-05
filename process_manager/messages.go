@@ -190,7 +190,7 @@ func (mb *flatbufMessageBuilder) DynamicSettingMessage(opcode uint8, handlerID [
 
 	switch opcode {
 	case LogLevelChange:
-		logLevel := value.(string)
+		logLevel := value.(application.LogLevel)
 		val = []byte(logLevel)
 
 	case TimeContextSize:

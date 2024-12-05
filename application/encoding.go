@@ -268,7 +268,7 @@ func decodeHandlerSetting(config *cfgv2.Config) (hSettings HandlerSettings) {
 	hSettings.CppWorkerThread = setting.CppWorkerThread()
 	hSettings.DcpStreamBoundary = streamBoundary(setting.DcpStreamBoundary())
 	hSettings.Description = string(setting.Description())
-	hSettings.LogLevel = logLevel(setting.LogLevel())
+	hSettings.LogLevel = LogLevel(setting.LogLevel())
 	hSettings.NumTimerPartition = setting.NumTimerPartition()
 	hSettings.StatsDuration = setting.StatsDuration()
 	hSettings.TimerContextSize = setting.TimerContextSize()

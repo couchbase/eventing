@@ -98,7 +98,7 @@ func (settings *HandlerSettings) verifyAndMergeSettings(allowedFields map[string
 			}
 
 		case logLevelJSON:
-			if lLevel := logLevel(settingValue.(string)); lLevel != settings.LogLevel {
+			if lLevel := LogLevel(settingValue.(string)); lLevel != settings.LogLevel {
 				fieldChanged = true
 				settings.LogLevel = lLevel
 			}
