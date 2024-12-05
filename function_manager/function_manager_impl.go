@@ -285,13 +285,13 @@ func (fm *functionManager) CloseFunctionManager() {
 }
 
 func (fm *functionManager) lifeCycleOp(fd *application.FunctionDetails, nextState application.LifeCycleOp) {
-	logPrefix := fmt.Sprintf("functionManager::lifeCycleOp[%s]", fm.id)
+	logPrefix := fmt.Sprintf("functionManager::lifeCycleOp[%s]", fd.AppLocation)
 	fm.Lock()
 	defer fm.Unlock()
 
 	// Create the function first if not present it will be associated with function set 0
 	oldInstanceID, instanceID, ok := fm.funcCache.AddToFuncCache(fd, nextState)
-	logging.Infof("%s lifecycle change called. %s -> %s is function present: %v", logPrefix, oldInstanceID, nextState, ok)
+	logging.Infof("%s lifecycle change called -> %s, OldInstanceID: %s NewInstanceID: %s. Is function present? %v", logPrefix, nextState, oldInstanceID, instanceID, ok)
 	if !ok {
 		fm.incrementalFuncHandlerCount++
 		config := functionHandler.Config{
