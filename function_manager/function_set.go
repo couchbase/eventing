@@ -65,6 +65,8 @@ func NewFunctionSet(id string, funcSetConfig config, clusterSettings *common.Clu
 		EventingSSLPort: clusterSettings.AdminSSLPort,
 		ExecPath:        clusterSettings.ExecutablePath,
 		CertPath:        clusterSettings.SslCAFile,
+		ClientCertPath:  clusterSettings.ClientCertFile,
+		ClientKeyPath:   clusterSettings.ClientKeyFile,
 		ID:              id,
 		AppLogCallback:  appCallback,
 		NsServerPort:    clusterSettings.RestPort,

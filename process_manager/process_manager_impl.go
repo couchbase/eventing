@@ -418,7 +418,9 @@ func (pm *processManager) spawnProcess() error {
 		pm.processConfig.NsServerPort,
 		pm.processConfig.EventingPort,
 		pm.processConfig.DebuggerPort,
-		pm.processConfig.CertPath)
+		pm.processConfig.CertPath,
+		pm.processConfig.ClientCertPath,
+		pm.processConfig.ClientKeyPath)
 
 	pm.cmd.Env = append(os.Environ(),
 		fmt.Sprintf("CBEVT_CALLBACK_USR=%s", pm.processConfig.Username),

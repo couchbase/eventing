@@ -50,6 +50,8 @@ func NewUtilityWorker(clusterSettings *common.ClusterSettings, processName strin
 		EventingSSLPort: clusterSettings.AdminSSLPort,
 		ExecPath:        clusterSettings.ExecutablePath,
 		CertPath:        clusterSettings.SslCAFile,
+		ClientCertPath:  clusterSettings.ClientCertFile,
+		ClientKeyPath:   clusterSettings.ClientKeyFile,
 		ID:              id,
 		AppLogCallback:  uw.appCallback,
 		NsServerPort:    clusterSettings.RestPort,
