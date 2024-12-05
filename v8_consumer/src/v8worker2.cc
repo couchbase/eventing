@@ -530,7 +530,10 @@ void V8Worker2::InitializeIsolateData() {
   data_.instance_id = app_details_->app_instance_id;
 
   auto key = GetLocalKey();
-  data_.utils = new Utils(isolate_, context, cluster_details_->cert_file_);
+  data_.utils = new Utils(
+      isolate_, context, cluster_details_->cert_file_,
+      cluster_details_->client_cert_file_,
+      cluster_details_->client_key_file_);
   data_.comm = new Communicator(
       cluster_details_->local_address_, cluster_details_->eventing_port_,
       key.first, key.second, false, app_details_->location->app_name,
