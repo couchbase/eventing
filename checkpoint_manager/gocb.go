@@ -14,28 +14,32 @@ import (
 	"github.com/couchbase/gocb/v2"
 )
 
-type dynamicAuth struct {
-	statsCounter *common.GlobalStatsCounter
+type dynamicAuthenticator struct {
+	statsCounter      *common.GlobalStatsCounter
+	clientCertificate *tls.Certificate
 }
 
 const (
 	opsTimeout = time.Second * 10
 )
 
-func (dynamicAuth) SupportsTLS() bool {
+func (dynamicAuthenticator) SupportsTLS() bool {
 	return true
 }
 
-func (dynamicAuth) SupportsNonTLS() bool {
+func (dynamicAuthenticator) SupportsNonTLS() bool {
 	return true
 }
 
-func (dynamicAuth) Certificate(req gocb.AuthCertRequest) (*tls.Certificate, error) {
+func (dynAuth dynamicAuthenticator) Certificate(req gocb.AuthCertRequest) (*tls.Certificate, error) {
+	if dynAuth.clientCertificate != nil {
+		return dynAuth.clientCertificate, nil
+	}
 	return nil, nil
 }
 
-func (da dynamicAuth) Credentials(req gocb.AuthCredsRequest) ([]gocb.UserPassPair, error) {
-	da.statsCounter.GocbCredsStats.Add(1)
+func (dynAuth dynamicAuthenticator) Credentials(req gocb.AuthCredsRequest) ([]gocb.UserPassPair, error) {
+	dynAuth.statsCounter.GocbCredsStats.Add(1)
 	username, password, err := authenticator.GetMemcachedServiceAuth(req.Endpoint)
 	if err != nil {
 		return []gocb.UserPassPair{{}}, err
@@ -89,13 +93,19 @@ func GetGocbClusterObject(clusterConfig *common.ClusterSettings, observer notifi
 			connStr += fmt.Sprintf("%s:%d", node.HostName, node.Services[kvPort])
 		}
 
-		authenticator := dynamicAuth{
+		authenticator := &dynamicAuthenticator{
 			statsCounter: globalStatsCounter,
 		}
-		clusterOptions := gocb.ClusterOptions{Authenticator: authenticator}
+		clusterOptions := gocb.ClusterOptions{}
+
 		if tlsConfig.EncryptData {
 			clusterOptions.SecurityConfig = gocb.SecurityConfig{TLSRootCAs: tlsConfig.Config.RootCAs}
+			// Use client certificate authentication when n2n encryption is enabled and client auth type is mandatory
+			if tlsConfig.IsClientAuthMandatory {
+				authenticator.clientCertificate = tlsConfig.ClientCertificate
+			}
 		}
+		clusterOptions.Authenticator = authenticator
 
 		connStr += "?network=default"
 		if clusterConfig.IpMode == "ipv6" {
