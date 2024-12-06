@@ -490,19 +490,16 @@ func (m *serviceMgr) verifyAndCreateFunction(cred cbauth.Creds, fDetails *applic
 
 		currState := application.StringToAppState(currAppStatus.CompositeStatus)
 		switch currState {
-		case application.Paused:
+		case application.Paused, application.Undeployed, application.Deployed:
 			fDetails.AppID = oldApp.AppID
 			fDetails.AppInstanceID = oldApp.AppInstanceID
 			fDetails.MetaInfo = oldApp.MetaInfo.Clone()
 			fDetails.Owner = oldApp.Owner.Clone()
 
-		case application.Undeployed:
-			fDetails.MetaInfo = oldApp.MetaInfo.Clone()
-			fDetails.Owner = oldApp.Owner.Clone()
-
 		default:
 			runtimeInfo.ErrCode = response.ErrInvalidRequest
-			runtimeInfo.Description = fmt.Sprintf("Function %s is in deployed state", fDetails.AppLocation)
+			logging.Errorf("%s Function %s is in invalid state %s", logPrefix, fDetails.AppLocation, currState)
+			runtimeInfo.Description = fmt.Sprintf("Function %s is in invalid state", fDetails.AppLocation)
 			return
 		}
 	}
@@ -559,7 +556,7 @@ func (m *serviceMgr) verifyAndAddMetaDetailsFunction(runtimeInfo *response.Runti
 	}
 
 	// Fresh deployment. Persist important fields for deployment
-	if nextState == application.Deploy && state != application.Paused {
+	if nextState == application.Deploy && (state == application.Undeployed || state == application.NoState) {
 		instanceID, err := getFunctionInstanceID()
 		if err != nil {
 			logging.Errorf("%s Unable to create instance id for: %s. err: %v", logPrefix, funcDetails.AppLocation, err)

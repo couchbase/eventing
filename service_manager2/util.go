@@ -95,7 +95,7 @@ func filterQueryMap(filterString string, include bool) (map[string]bool, error) 
 
 	filterMap := make(map[string]bool)
 	for _, keyspace := range keyspaceSlice {
-		keyspaceString := fmt.Sprintf("%s", keyspace)
+		keyspaceString := keyspace.String()
 		filterMap[keyspaceString] = include
 	}
 	return filterMap, nil
@@ -143,11 +143,7 @@ func applyFilter(app *application.FunctionDetails, filterMap map[string]bool, fi
 		}
 	}
 
-	if filterType == "include" {
-		return false
-	}
-
-	return true
+	return filterType != "include"
 }
 
 func getRestoreMap(r *http.Request) (map[string]application.Keyspace, error) {
@@ -179,7 +175,7 @@ func getRestoreMap(r *http.Request) (map[string]application.Keyspace, error) {
 		}
 
 		if len(tgt) > 0 && len(src) > 0 {
-			keyspaceString := fmt.Sprintf("%s", src[0])
+			keyspaceString := src[0].String()
 			remap[keyspaceString] = tgt[0]
 		}
 	}
@@ -273,8 +269,6 @@ func WriteToMetakv(runtimeInfo *response.RuntimeInfo, serverConfig *serverConfig
 		runtimeInfo.ErrCode = response.ErrInternalServer
 		return
 	}
-
-	return
 }
 
 func DeleteFromMetakv(runtimeInfo *response.RuntimeInfo, appLocation application.AppLocation) {
@@ -284,19 +278,18 @@ func DeleteFromMetakv(runtimeInfo *response.RuntimeInfo, appLocation application
 	sensitivePath := fmt.Sprintf(common.EventingFunctionCredentialTemplate, applocationString)
 	settingsPath := fmt.Sprintf(common.EventingFunctionPathTemplate, applocationString, 0)
 
-	if err := metakv.Delete(sensitivePath, nil); err != nil {
-		logging.Errorf("%s Unable to delete sensitive fields for function %s. err: %v", logPrefix, appLocation, err)
-		runtimeInfo.ErrCode = response.ErrInternalServer
-		return
-	}
-
 	if err := metakv.Delete(settingsPath, nil); err != nil {
 		logging.Errorf("%s Unable to delete details for function %s. err: %v", logPrefix, appLocation, err)
 		runtimeInfo.ErrCode = response.ErrInternalServer
 		return
 	}
 
-	return
+	// return success if not able to delete sensitive fields. This won't cause any issue
+	// Recreating function will overwrite the sensitive fields
+	if err := metakv.Delete(sensitivePath, nil); err != nil {
+		logging.Errorf("%s Unable to delete sensitive fields for function %s. err: %v", logPrefix, appLocation, err)
+		return
+	}
 }
 
 func getAuthErrorInfo(runtimeInfo *response.RuntimeInfo, notAllowed []string, all bool, err error) {
@@ -343,10 +336,6 @@ func generateRandomNameSuffix() string {
 	}
 
 	return id
-}
-
-func stripScheme(endpoint string) string {
-	return strings.TrimPrefix(strings.TrimPrefix(endpoint, "http://"), "https://")
 }
 
 func cleanupEventingMetaKvPath() {

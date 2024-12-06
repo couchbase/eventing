@@ -32,7 +32,6 @@ func (m *serviceMgr) getServerMux() *http.ServeMux {
 		           mux.HandleFunc("/deleteApplication/", m.deletePrimaryStoreHandler)
 		           mux.HandleFunc("/deleteAppTempStore/", m.deleteTempStoreHandler)
 		           mux.HandleFunc("/getAggEventProcessingStats", m.getAggEventProcessingStats)
-		           mux.HandleFunc("/getAggRebalanceProgress", m.getAggRebalanceProgress)
 		           mux.HandleFunc("/getAggRebalanceStatus", m.getAggRebalanceStatus)
 		           mux.HandleFunc("/getConsumerPids", m.getEventingConsumerPids)
 		           mux.HandleFunc("/getDcpEventsRemaining", m.getDcpEventsRemaining)
@@ -59,6 +58,7 @@ func (m *serviceMgr) getServerMux() *http.ServeMux {
 	mux.HandleFunc("/getAggBootstrapStatus", m.getAggBootstrapStatusHandler)
 	mux.HandleFunc("/getAggBootstrapAppStatus", m.getAggBootstrapAppStatusHandler)
 	mux.HandleFunc("/getAggRebalanceProgress", m.getAggRebalanceProgress)
+	mux.HandleFunc("/getAggRebalanceStatus", m.getAggRebalanceStatus)
 	mux.HandleFunc("/getRunningApps", m.getRunningApps)
 
 	mux.HandleFunc("/getAnnotations", m.getAnnotations)

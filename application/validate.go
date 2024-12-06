@@ -256,6 +256,18 @@ func ValidateSettings(settings map[string]interface{}) (err error) {
 
 		case logLevelJSON:
 			err = typecheck.ValidateString(settingValue, logLevelValues)
+			found := false
+			if err == nil {
+				for _, logLevel := range logLevels {
+					if logLevel == LogLevel(settingValue.(string)) {
+						found = true
+						break
+					}
+				}
+				if !found {
+					err = fmt.Errorf("Invalid log level")
+				}
+			}
 
 		case n1qlConsistencyJSON:
 			err = typecheck.ValidateString(settingValue, n1qlConsistencyValues)

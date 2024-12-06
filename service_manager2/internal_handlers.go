@@ -223,13 +223,37 @@ func (m *serviceMgr) getAggRebalanceProgress(w http.ResponseWriter, r *http.Requ
 	for _, resp := range resBytes {
 		resMap := make(map[string]float64)
 		json.Unmarshal(resp, &resMap)
-		for appLocation, _ := range resMap {
+		for appLocation := range resMap {
 			// Maybe add progress instead of just count
 			progressMap[appLocation]++
 		}
 	}
 
 	runtimeInfo.Description = progressMap
+	runtimeInfo.OnlyDescription = true
+}
+
+func (m *serviceMgr) getAggRebalanceStatus(w http.ResponseWriter, r *http.Request) {
+	res := response.NewResponseWriter(w, r, response.EventGetRebalanceProgress)
+	runtimeInfo := &response.RuntimeInfo{}
+
+	defer func() {
+		res.LogAndSend(runtimeInfo)
+	}()
+
+	if notAllowed, err := rbac.IsAllowed(r, rbac.EventingPermissionManage, false); err != nil {
+		getAuthErrorInfo(runtimeInfo, notAllowed, false, err)
+		return
+	}
+
+	progress, err := m.superSup.GetGlobalRebalanceProgress("")
+	if err != nil {
+		runtimeInfo.ErrCode = response.ErrInternalServer
+		return
+	}
+
+	runtimeInfo.SendRawDescription = true
+	runtimeInfo.Description = strconv.FormatBool(progress == float64(0))
 	runtimeInfo.OnlyDescription = true
 }
 

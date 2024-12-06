@@ -1,7 +1,6 @@
 package servicemanager2
 
 import (
-	"context"
 	"crypto/tls"
 	"net"
 	"net/http"
@@ -47,7 +46,7 @@ type serviceMgr struct {
 	broadcaster     common.Broadcaster
 	serverConfigMux *sync.RWMutex
 	tlsConfig       *notifier.TlsConfig
-	configChange    chan struct{}
+	configChange    *common.Signal
 
 	lifeCycleOpSeq *sync.Mutex
 }
@@ -71,7 +70,7 @@ func NewServiceManager(config *common.ClusterSettings, observer notifier.Observe
 		broadcaster:     broadcaster,
 		serverConfigMux: &sync.RWMutex{},
 		tlsConfig:       &notifier.TlsConfig{},
-		configChange:    make(chan struct{}, 2),
+		configChange:    common.NewSignal(),
 
 		lifeCycleOpSeq: &sync.Mutex{},
 	}
@@ -90,13 +89,11 @@ func (s *serviceMgr) initServiceManager() error {
 
 	mux := s.getServerMux()
 	signal := common.NewSignal()
-	go s.startListner(mux, signal, true, true)
+	go s.startListener(mux, signal, false, nil, nil)
 
 	// Wait till service spawned
-	select {
-	case <-signal.Wait():
-		logging.Infof("%s rest handler successfully started", logPrefix)
-	}
+	<-signal.Wait()
+	logging.Infof("%s rest handler successfully started", logPrefix)
 	return nil
 }
 
@@ -127,7 +124,7 @@ func (s *serviceMgr) startSubscriberObject() {
 	s.tlsConfig = tlsState.Copy()
 	s.serverConfigMux.Unlock()
 
-	s.configChange <- struct{}{}
+	s.configChange.Notify()
 
 	for {
 		select {
@@ -144,109 +141,135 @@ func (s *serviceMgr) startSubscriberObject() {
 				s.serverConfigMux.Lock()
 				s.tlsConfig = tlsState.Copy()
 				s.serverConfigMux.Unlock()
-				s.configChange <- struct{}{}
+				s.configChange.Notify()
 
 			}
 		}
 	}
 }
 
-func (s *serviceMgr) startListner(mux *http.ServeMux, signal *common.Signal, startNonSSL, startSSL bool) {
-	logPrefix := "serviceMgr::startListner"
+func (s *serviceMgr) startListener(mux *http.ServeMux, signal *common.Signal, disableNonSSLPorts bool, httpServer, httpSSLServer *http.Server) {
+	logPrefix := "serviceMgr::startListener"
 
 	defer func() {
 		time.Sleep(time.Second)
-		go s.startListner(mux, signal, startNonSSL, startSSL)
-		// configChange already initialised
-		s.configChange <- struct{}{}
+		go s.startListener(mux, signal, disableNonSSLPorts, httpServer, httpSSLServer)
+		// configChange already initialised Ready for new config
+		s.configChange.Ready()
+		s.configChange.Notify()
 	}()
 
-	httpServer := &http.Server{
-		ReadTimeout:  httpReadTimeOut,
-		WriteTimeout: httpWriteTimeOut,
-		Handler:      mux,
+	// Wait until either TLS change happens or defer notifies the configChange
+	<-s.configChange.Wait()
+	s.configChange.Ready()
+
+	// Get the latest TLS config
+	s.serverConfigMux.RLock()
+	tlsConfig := s.tlsConfig.Copy()
+	s.serverConfigMux.RUnlock()
+
+	// If the server is already running and disableNonSSLPorts has changed, stop the server
+	// to use appropriate host (localhost when enabled, otherwise "")
+	if httpServer != nil && disableNonSSLPorts != tlsConfig.DisableNonSSLPorts {
+		logging.Infof("%s Restarting HTTP server after shutdown...", logPrefix)
+		err := common.StopServer(httpServer)
+		if err != nil {
+			logging.Errorf("%s Error shutting down HTTP server: %v", logPrefix, err)
+		}
+		httpServer = nil
 	}
-	httpSSLServer := &http.Server{
-		ReadTimeout:  httpReadTimeOut,
-		WriteTimeout: httpWriteTimeOut,
-		TLSNextProto: make(map[string]func(*http.Server, *tls.Conn, http.Handler), 0),
-		Handler:      mux,
+
+	startNonSSL := false
+	if httpServer == nil {
+		startNonSSL = true
+		httpServer = &http.Server{
+			ReadTimeout:  httpReadTimeOut,
+			WriteTimeout: httpWriteTimeOut,
+			Handler:      mux,
+		}
 	}
-	disableNonSSLPorts := false
-	<-s.configChange
+
+	startSSL := false
+	if httpSSLServer == nil {
+		startSSL = true
+		httpSSLServer = &http.Server{
+			ReadTimeout:  httpReadTimeOut,
+			WriteTimeout: httpWriteTimeOut,
+			TLSNextProto: make(map[string]func(*http.Server, *tls.Conn, http.Handler), 0),
+			Handler:      mux,
+		}
+	}
+
+	wg := sync.WaitGroup{}
 
 	if startNonSSL {
-		startNonSSL = false
+		wg.Add(1)
 		go func() {
-			s.serverConfigMux.RLock()
-			tlsConfig := s.tlsConfig.Copy()
-			s.serverConfigMux.RUnlock()
-
 			addr := net.JoinHostPort("", s.config.AdminHTTPPort)
-			disableNonSSLPorts = tlsConfig.DisableNonSSLPorts
 			if tlsConfig.DisableNonSSLPorts {
 				addr = net.JoinHostPort(s.config.LocalAddress, s.config.AdminHTTPPort)
 			}
+			disableNonSSLPorts = tlsConfig.DisableNonSSLPorts
 			httpServer.Addr = addr
-			logging.Infof("%s Start listening to http port: disbale non ssl ports: %v encryptData: %v address: %s", logPrefix, tlsConfig.DisableNonSSLPorts, tlsConfig.EncryptData, addr)
-			listner, err := net.Listen(s.config.ProtocolVer(), addr)
+			logging.Infof("%s Start listening to HTTP port address: %s disableNonSSLPorts: %v encryptData: %v", logPrefix, addr, tlsConfig.DisableNonSSLPorts, tlsConfig.EncryptData)
+			listener, err := net.Listen(s.config.ProtocolVer(), addr)
 			if err != nil {
-				logging.Errorf("%s Error listening to non ssl port: %v", logPrefix, err)
+				logging.Errorf("%s Error listening to HTTP port: %v", logPrefix, err)
 				time.Sleep(time.Second)
 				os.Exit(1)
 				return
 			}
 
 			signal.Notify()
-			serveErr := httpServer.Serve(listner)
+			wg.Done()
+			serveErr := httpServer.Serve(listener)
 			if serveErr == http.ErrServerClosed {
 				return
 			}
-			logging.Errorf("%s Error serving non ssl port: %v. Restarting process...", logPrefix, err)
+			logging.Errorf("%s Error serving HTTP port: %v. Restarting process...", logPrefix, err)
 			time.Sleep(time.Second)
 			os.Exit(1)
 		}()
 	}
 
-	if startSSL {
-		if s.config.AdminSSLPort != "" {
-			startSSL = false
-			go func() {
-				sslAddr := net.JoinHostPort("", s.config.AdminSSLPort)
-				s.serverConfigMux.RLock()
-				tlsConfig := s.tlsConfig.Copy()
-				s.serverConfigMux.RUnlock()
-
-				logging.Infof("%s Start listening to ssl port address: %s", logPrefix, sslAddr)
-				listner, err := net.Listen(s.config.ProtocolVer(), sslAddr)
-				if err != nil {
-					logging.Errorf("%s Error listening to ssl port: %v", logPrefix, err)
-					time.Sleep(time.Second)
-					os.Exit(1)
-					return
-				}
-
-				tls_ln := tls.NewListener(listner, tlsConfig.Config)
-				tlsServeErr := httpSSLServer.Serve(tls_ln)
-				if tlsServeErr == http.ErrServerClosed {
-					time.Sleep(1 * time.Second)
-					return
-				}
-				logging.Errorf("%s Error serving ssl port: %v. Restarting process...", logPrefix, err)
+	if startSSL && s.config.AdminSSLPort != "" {
+		wg.Add(1)
+		go func() {
+			sslAddr := net.JoinHostPort("", s.config.AdminSSLPort)
+			logging.Infof("%s Start listening to SSL port address: %s", logPrefix, sslAddr)
+			listener, err := net.Listen(s.config.ProtocolVer(), sslAddr)
+			if err != nil {
+				logging.Errorf("%s Error listening to SSL port: %v", logPrefix, err)
 				time.Sleep(time.Second)
 				os.Exit(1)
-			}()
-		}
+				return
+			}
+
+			tls_ln := tls.NewListener(listener, tlsConfig.Config)
+			wg.Done()
+			tlsServeErr := httpSSLServer.Serve(tls_ln)
+			if tlsServeErr == http.ErrServerClosed {
+				return
+			}
+			logging.Errorf("%s Error serving SSL port: %v. Restarting process...", logPrefix, err)
+			time.Sleep(time.Second)
+			os.Exit(1)
+		}()
+
 	}
 
-	<-s.configChange
-	if disableNonSSLPorts != s.tlsConfig.DisableNonSSLPorts {
-		startNonSSL = true
-		httpServer.Shutdown(context.TODO())
+	<-s.configChange.Wait()
+	wg.Wait()
+
+	// We need to necessarily restart SSL server on TLS change
+	if httpSSLServer != nil {
+		logging.Infof("%s Restarting SSL server after shutdown...", logPrefix)
+		err := common.StopServer(httpSSLServer)
+		if err != nil {
+			logging.Errorf("%s Error shutting down SSL server: %v", logPrefix, err)
+		}
+		httpSSLServer = nil
 	}
-	logging.Infof("%s Config change signal. Restarting ssl server. Is non ssl port needs restart? %v", logPrefix, startNonSSL)
-	startSSL = true
-	httpSSLServer.Shutdown(context.TODO())
 }
 
 // Broadcast request to other eventing node
