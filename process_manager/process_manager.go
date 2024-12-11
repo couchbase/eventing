@@ -28,6 +28,8 @@ type ProcessConfig struct {
 	EventingSSLPort string
 	ExecPath        string
 	CertPath        string
+	ClientCertPath  string
+	ClientKeyPath   string
 
 	// Id used to create tcp socket
 	ID string

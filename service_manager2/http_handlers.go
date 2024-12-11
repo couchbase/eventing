@@ -226,7 +226,9 @@ func (m *serviceMgr) populateStats(appLocations []application.AppLocation) []*co
 		if stat == nil || err != nil {
 			continue
 		}
-		stat.LcbCredsRequestCounter = m.globalStatsCounter.lcbCredsStats.Load()
+		stat.LcbCredsRequestCounter = m.globalStatsCounter.LcbCredsStats.Load()
+		stat.GoCbCredsRequestCounter = m.globalStatsCounter.GocbCredsStats.Load()
+
 		statsList = append(statsList, stat)
 	}
 	return statsList

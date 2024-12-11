@@ -55,6 +55,10 @@ type ConnSettings struct {
 	// ClientCertificatePath specifies from where can we find the certificate path
 	ClientCertificatePath string
 
+	// ClientCertificate is the certificate which can be used by the http client
+	// when client certificate authentication is mandatory
+	ClientCertificate *tls.Certificate
+
 	// TlsConfig will give the config that client wants to use
 	// If provided other tls realted config will be ignored
 	TlsConfig *tls.Config

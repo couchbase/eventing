@@ -25,6 +25,8 @@
 typedef std::chrono::high_resolution_clock Time;
 typedef std::chrono::nanoseconds nsecs;
 
+extern std::atomic<int64_t> uv_try_write_failure_counter;
+
 class RuntimeStats {
 public:
   explicit RuntimeStats(const std::string &instance_id,
@@ -34,6 +36,10 @@ public:
   }
 
   ~RuntimeStats() {}
+
+  inline void IncrementExecutionStat(const std::string &key, int64_t value) {
+    execution_stats_[key].fetch_add(value);
+  }
 
   inline void IncrementExecutionStat(const std::string &key) {
     execution_stats_[key]++;
@@ -50,6 +56,8 @@ public:
   inline int64_t GetFailureStat(const std::string &key) {
     return failure_stats_[key].load();
   }
+
+  inline void AddLcbException(int err_code) { lcb_exception_stats[err_code]++; }
 
   inline void AddException(v8::Isolate *isolate_, v8::TryCatch &try_catch) {
     code_insight_.AccumulateException(isolate_, try_catch);
@@ -77,6 +85,7 @@ public:
   std::string GetCodeInsight();
   std::string GetLatencyStats();
   std::string GetCurlLatencyStats();
+  std::string GetLcbExceptionStats();
 
 private:
   RuntimeStats(RuntimeStats const &) = delete;
@@ -88,6 +97,7 @@ private:
   ExceptionInsight exception_insight_;
   Histogram latency_stats_;
   Histogram curl_latency_stats_;
+  std::map<int, std::atomic<int64_t>> lcb_exception_stats;
 };
 
 #endif

@@ -14,25 +14,32 @@ import (
 	"github.com/couchbase/gocb/v2"
 )
 
-type dynamicAuth int8
+type dynamicAuthenticator struct {
+	statsCounter      *common.GlobalStatsCounter
+	clientCertificate *tls.Certificate
+}
 
 const (
 	opsTimeout = time.Second * 10
 )
 
-func (dynamicAuth) SupportsTLS() bool {
+func (dynamicAuthenticator) SupportsTLS() bool {
 	return true
 }
 
-func (dynamicAuth) SupportsNonTLS() bool {
+func (dynamicAuthenticator) SupportsNonTLS() bool {
 	return true
 }
 
-func (dynamicAuth) Certificate(req gocb.AuthCertRequest) (*tls.Certificate, error) {
+func (dynAuth dynamicAuthenticator) Certificate(req gocb.AuthCertRequest) (*tls.Certificate, error) {
+	if dynAuth.clientCertificate != nil {
+		return dynAuth.clientCertificate, nil
+	}
 	return nil, nil
 }
 
-func (dynamicAuth) Credentials(req gocb.AuthCredsRequest) ([]gocb.UserPassPair, error) {
+func (dynAuth dynamicAuthenticator) Credentials(req gocb.AuthCredsRequest) ([]gocb.UserPassPair, error) {
+	dynAuth.statsCounter.GocbCredsStats.Add(1)
 	username, password, err := authenticator.GetMemcachedServiceAuth(req.Endpoint)
 	if err != nil {
 		return []gocb.UserPassPair{{}}, err
@@ -44,7 +51,7 @@ func (dynamicAuth) Credentials(req gocb.AuthCredsRequest) ([]gocb.UserPassPair, 
 	}}, nil
 }
 
-func GetGocbClusterObject(clusterConfig *common.ClusterSettings, observer notifier.Observer) (cluster *gocb.Cluster) {
+func GetGocbClusterObject(clusterConfig *common.ClusterSettings, observer notifier.Observer, globalStatsCounter *common.GlobalStatsCounter) (cluster *gocb.Cluster) {
 	logPrefix := "checkpointManager::GetGocbClusterObject"
 	iE := notifier.InterestedEvent{
 		Event: notifier.EventKVTopologyChanges,
@@ -86,11 +93,19 @@ func GetGocbClusterObject(clusterConfig *common.ClusterSettings, observer notifi
 			connStr += fmt.Sprintf("%s:%d", node.HostName, node.Services[kvPort])
 		}
 
-		var authenticator dynamicAuth
-		clusterOptions := gocb.ClusterOptions{Authenticator: authenticator}
+		authenticator := &dynamicAuthenticator{
+			statsCounter: globalStatsCounter,
+		}
+		clusterOptions := gocb.ClusterOptions{}
+
 		if tlsConfig.EncryptData {
 			clusterOptions.SecurityConfig = gocb.SecurityConfig{TLSRootCAs: tlsConfig.Config.RootCAs}
+			// Use client certificate authentication when n2n encryption is enabled and client auth type is mandatory
+			if tlsConfig.IsClientAuthMandatory {
+				authenticator.clientCertificate = tlsConfig.ClientCertificate
+			}
 		}
+		clusterOptions.Authenticator = authenticator
 
 		connStr += "?network=default"
 		if clusterConfig.IpMode == "ipv6" {

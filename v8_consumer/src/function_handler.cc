@@ -39,7 +39,8 @@ void function_worker::init_event(
     workers_[0]->push_msg(std::move(msg), true);
     break;
   case messages::eOnDeployHandler:
-    // We choose the first v8 worker of this function handler to perform OnDeploy
+    // We choose the first v8 worker of this function handler to perform
+    // OnDeploy
     workers_[0]->push_msg(std::move(msg));
     break;
   }
@@ -128,9 +129,12 @@ void function_worker::vb_setting(
         workers_[index]->AddFilterEvent(vb, std::move(msg->payload));
 
     if (executing) {
-      LOG(logInfo) << "function_woker:vbFilter[" << app_details_->location->bucket_name
-               << "/" << app_details_->location->scope_name << "/"
-               << app_details_->location->app_name << ":" << index << "]" << " vb: " << vb << "still executing" << " adding callback function" << std::endl;
+      LOG(logInfo) << "function_woker:vbFilter["
+                   << app_details_->location->bucket_name << "/"
+                   << app_details_->location->scope_name << "/"
+                   << app_details_->location->app_name << ":" << index << "]"
+                   << " vb: " << vb << "still executing"
+                   << " adding callback function" << std::endl;
       msg->payload.resize(18);
       msg->payload[0] = static_cast<uint8_t>(vb >> 8);
       msg->payload[1] = static_cast<uint8_t>(vb);
@@ -221,6 +225,16 @@ void function_worker::dcp_message(
 
   auto worker = workers_[index->second];
   switch (msg->opcode) {
+  case messages::eDcpMutation: {
+    stats_->IncrementExecutionStat("enqueued_dcp_mutation_msg_counter");
+    break;
+  }
+  case messages::eDcpDeletion: {
+    stats_->IncrementExecutionStat("enqueued_dcp_delete_msg_counter");
+    break;
+  }
+  }
+  switch (msg->opcode) {
   case messages::eDcpMutation:
   case messages::eDcpNoOp:
   case messages::eDcpDeletion: {
@@ -234,7 +248,6 @@ void function_worker::dcp_message(
     worker->push_msg(std::move(msg));
   } break;
   }
-
   if (unacked_count < max_unacked_count && unacked_mem < max_unacked_mem) {
     return;
   }
@@ -619,4 +632,4 @@ const std::string function_worker::get_curl_latency_stats() {
   return stats_->GetCurlLatencyStats();
 }
 
-const std::string function_worker::get_lcb_exception_stats() { return ""; }
+const std::string function_worker::get_lcb_exception_stats() { return stats_->GetLcbExceptionStats(); }

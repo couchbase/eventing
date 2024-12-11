@@ -367,8 +367,11 @@ bool IsExecutionTerminating(v8::Isolate *isolate) {
 }
 
 Utils::Utils(v8::Isolate *isolate, const v8::Local<v8::Context> &context,
-             std::string certFile)
-    : certFile_(certFile), isolate_(isolate), curl_handle_(curl_easy_init()) {
+             std::string certFile, std::string clientCertFile,
+             std::string clientKeyFile)
+    : certFile_(certFile), client_cert_file_(clientCertFile),
+      client_key_file_(clientKeyFile), isolate_(isolate),
+      curl_handle_(curl_easy_init()) {
   v8::HandleScope handle_scope(isolate_);
 
   context_.Reset(isolate_, context);
@@ -528,7 +531,7 @@ ConnStrInfo Utils::GetConnectionString(const std::string &bucket) const {
     return conn_info;
   }
   conn_info.is_valid = true;
-  conn_info.conn_str = GetConnectionStr(nodes_info, bucket, certFile_);
+  conn_info.conn_str = GetConnectionStr(nodes_info, bucket, certFile_, client_cert_file_, client_key_file_);
   return conn_info;
 }
 
@@ -1228,7 +1231,9 @@ void Base64Float32DecodeFunction(
 
 std::string GetConnectionStr(const KVNodesInfo &nodes_info,
                              const std::string &bucket_name,
-                             const std::string certFile) {
+                             const std::string certFile,
+                             const std::string client_cert_file,
+                             const std::string client_key_file) {
   std::string nodes_list;
   for (std::vector<std::string>::const_iterator nodes_iter =
            nodes_info.kv_nodes.begin();
@@ -1240,10 +1245,16 @@ std::string GetConnectionStr(const KVNodesInfo &nodes_info,
   }
 
   std::stringstream conn_str;
-  if (nodes_info.encrypt_data)
+  if (nodes_info.encrypt_data) {
     conn_str << "couchbases://" << nodes_list << '/' << bucket_name
              << "?select_bucket=true&detailed_errcodes=1&truststorepath="
              << certFile;
+    if (nodes_info.is_client_auth_mandatory) {
+      conn_str << "&certpath=" << client_cert_file
+               << "&keypath=" << client_key_file
+               << "&use_credentials_with_client_certificate=true";
+    }
+  }
   else
     conn_str << "couchbase://" << nodes_list << '/' << bucket_name
              << "?select_bucket=true&detailed_errcodes=1";

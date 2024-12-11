@@ -288,18 +288,29 @@ func (hs *HistogramStats) PercentileN(p int) int {
 	return 0
 }
 
+type GlobalStatsCounter struct {
+	LcbCredsStats  atomic.Uint64
+	GocbCredsStats atomic.Uint64
+}
+
+func NewGlobalStatsCounters() *GlobalStatsCounter {
+	return &GlobalStatsCounter{}
+}
+
 type Stats struct {
-	ExecutionStats         map[string]interface{} `json:"execution_stats"`
-	FailureStats           map[string]interface{} `json:"failure_stats"`
-	EventProcessingStats   map[string]uint64      `json:"event_processing_stats"`
-	FunctionScope          application.Namespace  `json:"function_scope"`
-	FunctionName           string                 `json:"function_name"`
-	FunctionID             uint32                 `json:"function_id"`
-	LatencyPercentileStats map[string]int         `json:"latency_percentile_stats"`
-	CurlLatency            *HistogramStats        `json:"curl_latency_percentile_stats"`
-	DcpFeedBoundary        string                 `json:"dcp_feed_boundary"`
-	EventRemaining         map[string]uint64      `json:"events_remaining"`
-	LcbCredsRequestCounter uint64                 `json:"lcb_creds_request_counter,omitempty"`
+	ExecutionStats          map[string]interface{} `json:"execution_stats"`
+	FailureStats            map[string]interface{} `json:"failure_stats"`
+	EventProcessingStats    map[string]uint64      `json:"event_processing_stats"`
+	LCBExceptionStats       map[string]uint64      `json:"lcb_exception_stats"`
+	FunctionScope           application.Namespace  `json:"function_scope"`
+	FunctionName            string                 `json:"function_name"`
+	FunctionID              uint32                 `json:"function_id"`
+	LatencyPercentileStats  map[string]int         `json:"latency_percentile_stats"`
+	CurlLatency             *HistogramStats        `json:"curl_latency_percentile_stats"`
+	DcpFeedBoundary         string                 `json:"dcp_feed_boundary"`
+	EventRemaining          map[string]uint64      `json:"events_remaining"`
+	LcbCredsRequestCounter  uint64                 `json:"lcb_creds_request_counter,omitempty"`
+	GoCbCredsRequestCounter uint64                 `json:"gocb_creds_request_counter,omitempty"`
 
 	Insight          *Insight          `json:"-"`
 	LatencyHistogram *HistogramStats   `json:"-"`
@@ -316,6 +327,7 @@ func NewStats(statsInit bool, functionScope application.Namespace, appName strin
 		EventProcessingStats: make(map[string]uint64),
 		EventRemaining:       make(map[string]uint64),
 		ProcessedSeq:         make(map[uint16]uint64),
+		LCBExceptionStats:    make(map[string]uint64),
 
 		CurlLatency:      NewHistogramStats(),
 		LatencyHistogram: NewHistogramStats(),
@@ -326,6 +338,11 @@ func NewStats(statsInit bool, functionScope application.Namespace, appName strin
 	if statsInit {
 		init := float64(0)
 		// Execution stats
+		// TODO: Implement these stats
+		newStats.ExecutionStats["processed_events_size"] = init
+
+		newStats.ExecutionStats["agg_queue_memory"] = init
+		newStats.ExecutionStats["agg_queue_size"] = init
 		newStats.ExecutionStats["on_update_success"] = init
 		newStats.ExecutionStats["on_update_failure"] = init
 		newStats.ExecutionStats["on_delete_success"] = init
@@ -345,6 +362,10 @@ func NewStats(statsInit bool, functionScope application.Namespace, appName strin
 		newStats.ExecutionStats["filtered_dcp_mutation_counter"] = init
 		newStats.ExecutionStats["num_processed_events"] = init
 		newStats.ExecutionStats["curl_success_count"] = init
+		newStats.ExecutionStats["dcp_mutation_checkpoint_cas_mismatch"] = init
+		newStats.ExecutionStats["enqueued_dcp_mutation_msg_counter"] = init
+		newStats.ExecutionStats["enqueued_dcp_delete_msg_counter"] = init
+		newStats.ExecutionStats["uv_try_write_failure_counter"] = init
 
 		curlExecutionStats := make(map[string]interface{})
 		curlExecutionStats["get"] = init
@@ -360,6 +381,7 @@ func NewStats(statsInit bool, functionScope application.Namespace, appName strin
 		newStats.FailureStats["bucket_cache_overflow_count"] = init
 		newStats.FailureStats["bkt_ops_cas_mismatch_count"] = init
 		newStats.FailureStats["n1ql_op_exception_count"] = init
+		newStats.FailureStats["analytics_op_exception_count"] = init
 		newStats.FailureStats["timeout_count"] = init
 		newStats.FailureStats["debugger_events_lost"] = init
 		newStats.FailureStats["timer_context_size_exceeded_counter"] = init
@@ -368,64 +390,78 @@ func NewStats(statsInit bool, functionScope application.Namespace, appName strin
 		newStats.FailureStats["curl_timeout_count"] = init
 		newStats.FailureStats["curl_failure_count"] = init
 		newStats.FailureStats["curl_max_resp_size_exceeded"] = init
+		newStats.FailureStats["dcp_mutation_checkpoint_failure"] = init
 
 		// EventRemaining stats
 		newStats.EventRemaining["dcp_backlog"] = uint64(0)
 	}
 
+	newStats.addDeprecatedStats()
 	return newStats
+}
+
+func (s *Stats) addDeprecatedStats() {
+	// Execution stats
+	init := float64(0)
+
+	s.ExecutionStats["dcp_delete_checkpoint_cas_mismatch"] = init
+	s.ExecutionStats["dcp_delete_parse_failure"] = init
+	s.ExecutionStats["dcp_mutation_parse_failure"] = init
+	s.ExecutionStats["enqueued_timer_msg_counter"] = init
+	s.ExecutionStats["feedback_queue_size"] = init
+	s.ExecutionStats["timer_responses_sent"] = init
+	s.ExecutionStats["uv_msg_parse_failure"] = init
+
+	// failure stats
+	s.FailureStats["app_worker_setting_events_lost"] = init
+	s.FailureStats["checkpoint_failure_count"] = init
+	s.FailureStats["dcp_delete_checkpoint_failure"] = init
+	s.FailureStats["dcp_events_lost"] = init
+	s.FailureStats["delete_events_lost"] = init
+	s.FailureStats["mutation_events_lost"] = init
+	s.FailureStats["timer_events_lost"] = init
+	s.FailureStats["v8worker_events_lost"] = init
+}
+
+func getLatencyPercentile(histogram *HistogramStats) map[string]int {
+	ls := make(map[string]int)
+	ls["50"] = histogram.PercentileN(50)
+	ls["80"] = histogram.PercentileN(80)
+	ls["90"] = histogram.PercentileN(90)
+	ls["95"] = histogram.PercentileN(95)
+	ls["99"] = histogram.PercentileN(99)
+	ls["100"] = histogram.PercentileN(100)
+	return ls
 }
 
 func (s *Stats) Copy(allStats bool) *Stats {
 	newStats := NewStats(false, s.FunctionScope, s.FunctionName)
 
-	newStats.ExecutionStats["on_update_success"] = s.ExecutionStats["on_update_success"]
-	newStats.ExecutionStats["on_update_failure"] = s.ExecutionStats["on_update_failure"]
-	newStats.ExecutionStats["on_delete_success"] = s.ExecutionStats["on_delete_success"]
-	newStats.ExecutionStats["on_delete_failure"] = s.ExecutionStats["on_delete_failure"]
-	newStats.ExecutionStats["no_op_counter"] = s.ExecutionStats["no_op_counter"]
-	newStats.ExecutionStats["timer_callback_success"] = s.ExecutionStats["timer_callback_success"]
-	newStats.ExecutionStats["timer_callback_failure"] = s.ExecutionStats["timer_callback_failure"]
-	newStats.ExecutionStats["timer_create_failure"] = s.ExecutionStats["timer_create_failure"]
-	newStats.ExecutionStats["messages_parsed"] = s.ExecutionStats["messages_parsed"]
-	newStats.ExecutionStats["dcp_delete_msg_counter"] = s.ExecutionStats["dcp_delete_msg_counter"]
-	newStats.ExecutionStats["dcp_mutation_msg_counter"] = s.ExecutionStats["dcp_mutation_msg_counter"]
-	newStats.ExecutionStats["timer_msg_counter"] = s.ExecutionStats["timer_msg_counter"]
-	newStats.ExecutionStats["timer_create_counter"] = s.ExecutionStats["timer_create_counter"]
-	newStats.ExecutionStats["timer_cancel_counter"] = s.ExecutionStats["timer_cancel_counter"]
-	newStats.ExecutionStats["lcb_retry_failure"] = s.ExecutionStats["lcb_retry_failure"]
-	newStats.ExecutionStats["filtered_dcp_delete_counter"] = s.ExecutionStats["filtered_dcp_delete_counter"]
-	newStats.ExecutionStats["filtered_dcp_mutation_counter"] = s.ExecutionStats["filtered_dcp_mutation_counter"]
-	newStats.ExecutionStats["num_processed_events"] = s.ExecutionStats["num_processed_events"]
-	newStats.ExecutionStats["curl_success_count"] = s.ExecutionStats["curl_success_count"]
+	for k, v := range s.ExecutionStats {
+		if k == "curl" {
+			continue
+		}
+		newStats.ExecutionStats[k] = v
+	}
 
 	curlExecutionStats := make(map[string]interface{})
 	curlStats := s.ExecutionStats["curl"].(map[string]interface{})
-
-	curlExecutionStats["get"] = curlStats["get"]
-	curlExecutionStats["post"] = curlStats["post"]
-	curlExecutionStats["delete"] = curlStats["delete"]
-	curlExecutionStats["head"] = curlStats["head"]
-	curlExecutionStats["put"] = curlStats["put"]
+	for k, v := range curlStats {
+		curlExecutionStats[k] = v
+	}
 	newStats.ExecutionStats["curl"] = curlExecutionStats
 
 	// Failure Stats
-	newStats.FailureStats["bucket_op_exception_count"] = s.FailureStats["bucket_op_exception_count"]
-	newStats.FailureStats["bucket_op_cache_miss_count"] = s.FailureStats["bucket_op_cache_miss_count"]
-	newStats.FailureStats["bucket_cache_overflow_count"] = s.FailureStats["bucket_cache_overflow_count"]
-	newStats.FailureStats["bkt_ops_cas_mismatch_count"] = s.FailureStats["bkt_ops_cas_mismatch_count"]
-	newStats.FailureStats["n1ql_op_exception_count"] = s.FailureStats["n1ql_op_exception_count"]
-	newStats.FailureStats["timeout_count"] = s.FailureStats["timeout_count"]
-	newStats.FailureStats["debugger_events_lost"] = s.FailureStats["debugger_events_lost"]
-	newStats.FailureStats["timer_context_size_exceeded_counter"] = s.FailureStats["timer_context_size_exceeded_counter"]
-	newStats.FailureStats["timer_callback_missing_counter"] = s.FailureStats["timer_callback_missing_counter"]
-	newStats.FailureStats["curl_non_200_response"] = s.FailureStats["curl_non_200_response"]
-	newStats.FailureStats["curl_timeout_count"] = s.FailureStats["curl_timeout_count"]
-	newStats.FailureStats["curl_failure_count"] = s.FailureStats["curl_failure_count"]
-	newStats.FailureStats["curl_max_resp_size_exceeded"] = s.FailureStats["curl_max_resp_size_exceeded"]
+	for k, v := range s.FailureStats {
+		newStats.FailureStats[k] = v
+	}
 
 	for k, v := range s.EventProcessingStats {
 		newStats.EventProcessingStats[k] = v
+	}
+
+	for k, v := range s.LCBExceptionStats {
+		newStats.LCBExceptionStats[k] = v
 	}
 
 	if allStats {
@@ -434,15 +470,7 @@ func (s *Stats) Copy(allStats bool) *Stats {
 
 		newStats.LatencyHistogram = s.LatencyHistogram.Copy()
 		newStats.CurlLatency = s.CurlLatency.Copy()
-
-		ls := make(map[string]int)
-		ls["50"] = s.LatencyHistogram.PercentileN(50)
-		ls["80"] = s.LatencyHistogram.PercentileN(80)
-		ls["90"] = s.LatencyHistogram.PercentileN(90)
-		ls["95"] = s.LatencyHistogram.PercentileN(95)
-		ls["99"] = s.LatencyHistogram.PercentileN(99)
-		ls["100"] = s.LatencyHistogram.PercentileN(100)
-		newStats.LatencyPercentileStats = ls
+		newStats.LatencyPercentileStats = getLatencyPercentile(s.LatencyHistogram)
 	}
 
 	return newStats
@@ -452,57 +480,49 @@ func (s *Stats) Copy(allStats bool) *Stats {
 func (s2 *Stats) Sub(s1 *Stats, copyNonSubtracted bool) *Stats {
 	newStats := NewStats(false, s2.FunctionScope, s2.FunctionName)
 
-	newStats.ExecutionStats["on_update_success"] = s2.ExecutionStats["on_update_success"].(float64) - s1.ExecutionStats["on_update_success"].(float64)
-	newStats.ExecutionStats["on_update_failure"] = s2.ExecutionStats["on_update_failure"].(float64) - s1.ExecutionStats["on_update_failure"].(float64)
-	newStats.ExecutionStats["on_delete_success"] = s2.ExecutionStats["on_delete_success"].(float64) - s1.ExecutionStats["on_delete_success"].(float64)
-	newStats.ExecutionStats["on_delete_failure"] = s2.ExecutionStats["on_delete_failure"].(float64) - s1.ExecutionStats["on_delete_failure"].(float64)
-	newStats.ExecutionStats["no_op_counter"] = s2.ExecutionStats["no_op_counter"].(float64) - s1.ExecutionStats["no_op_counter"].(float64)
-	newStats.ExecutionStats["timer_callback_success"] = s2.ExecutionStats["timer_callback_success"].(float64) - s1.ExecutionStats["timer_callback_success"].(float64)
-	newStats.ExecutionStats["timer_callback_failure"] = s2.ExecutionStats["timer_callback_failure"].(float64) - s1.ExecutionStats["timer_callback_failure"].(float64)
-	newStats.ExecutionStats["timer_create_failure"] = s2.ExecutionStats["timer_create_failure"].(float64) - s1.ExecutionStats["timer_create_failure"].(float64)
-	newStats.ExecutionStats["messages_parsed"] = s2.ExecutionStats["messages_parsed"].(float64) - s1.ExecutionStats["messages_parsed"].(float64)
-	newStats.ExecutionStats["dcp_delete_msg_counter"] = s2.ExecutionStats["dcp_delete_msg_counter"].(float64) - s1.ExecutionStats["dcp_delete_msg_counter"].(float64)
-	newStats.ExecutionStats["dcp_mutation_msg_counter"] = s2.ExecutionStats["dcp_mutation_msg_counter"].(float64) - s1.ExecutionStats["dcp_mutation_msg_counter"].(float64)
-	newStats.ExecutionStats["timer_msg_counter"] = s2.ExecutionStats["timer_msg_counter"].(float64) - s1.ExecutionStats["timer_msg_counter"].(float64)
-	newStats.ExecutionStats["timer_create_counter"] = s2.ExecutionStats["timer_create_counter"].(float64) - s1.ExecutionStats["timer_create_counter"].(float64)
-	newStats.ExecutionStats["timer_cancel_counter"] = s2.ExecutionStats["timer_cancel_counter"].(float64) - s1.ExecutionStats["timer_cancel_counter"].(float64)
-	newStats.ExecutionStats["lcb_retry_failure"] = s2.ExecutionStats["lcb_retry_failure"].(float64) - s1.ExecutionStats["lcb_retry_failure"].(float64)
-	newStats.ExecutionStats["filtered_dcp_delete_counter"] = s2.ExecutionStats["filtered_dcp_delete_counter"].(float64) - s1.ExecutionStats["filtered_dcp_delete_counter"].(float64)
-	newStats.ExecutionStats["filtered_dcp_mutation_counter"] = s2.ExecutionStats["filtered_dcp_mutation_counter"].(float64) - s1.ExecutionStats["filtered_dcp_mutation_counter"].(float64)
-	newStats.ExecutionStats["num_processed_events"] = s2.ExecutionStats["num_processed_events"].(float64) - s1.ExecutionStats["num_processed_events"].(float64)
-	newStats.ExecutionStats["curl_success_count"] = s2.ExecutionStats["curl_success_count"].(float64) - s1.ExecutionStats["curl_success_count"].(float64)
+	for k, v := range s2.ExecutionStats {
+		fValue, ok := v.(float64)
+		if !ok {
+			continue
+		}
+		if val, ok := s1.ExecutionStats[k]; ok {
+			newStats.ExecutionStats[k] = fValue - val.(float64)
+		} else {
+			newStats.ExecutionStats[k] = fValue
+		}
+	}
 
 	curlExecutionStats := make(map[string]interface{})
 	s2CurlStats := s2.ExecutionStats["curl"].(map[string]interface{})
 	s1CurlStats := s1.ExecutionStats["curl"].(map[string]interface{})
 
-	curlExecutionStats["get"] = s2CurlStats["get"].(float64) - s1CurlStats["get"].(float64)
-	curlExecutionStats["post"] = s2CurlStats["post"].(float64) - s1CurlStats["post"].(float64)
-	curlExecutionStats["delete"] = s2CurlStats["delete"].(float64) - s1CurlStats["delete"].(float64)
-	curlExecutionStats["head"] = s2CurlStats["head"].(float64) - s1CurlStats["head"].(float64)
-	curlExecutionStats["put"] = s2CurlStats["put"].(float64) - s1CurlStats["put"].(float64)
+	for k, v := range s2CurlStats {
+		curlExecutionStats[k] = v.(float64) - s1CurlStats[k].(float64)
+	}
 
 	newStats.ExecutionStats["curl"] = curlExecutionStats
 
-	newStats.FailureStats["bucket_op_exception_count"] = s2.FailureStats["bucket_op_exception_count"].(float64) - s1.FailureStats["bucket_op_exception_count"].(float64)
-	newStats.FailureStats["bucket_op_cache_miss_count"] = s2.FailureStats["bucket_op_cache_miss_count"].(float64) - s1.FailureStats["bucket_op_cache_miss_count"].(float64)
-	newStats.FailureStats["bucket_cache_overflow_count"] = s2.FailureStats["bucket_cache_overflow_count"].(float64) - s1.FailureStats["bucket_cache_overflow_count"].(float64)
-	newStats.FailureStats["bkt_ops_cas_mismatch_count"] = s2.FailureStats["bkt_ops_cas_mismatch_count"].(float64) - s1.FailureStats["bkt_ops_cas_mismatch_count"].(float64)
-	newStats.FailureStats["n1ql_op_exception_count"] = s2.FailureStats["n1ql_op_exception_count"].(float64) - s1.FailureStats["n1ql_op_exception_count"].(float64)
-	newStats.FailureStats["timeout_count"] = s2.FailureStats["timeout_count"].(float64) - s1.FailureStats["timeout_count"].(float64)
-	newStats.FailureStats["debugger_events_lost"] = s2.FailureStats["debugger_events_lost"].(float64) - s1.FailureStats["debugger_events_lost"].(float64)
-	newStats.FailureStats["timer_context_size_exceeded_counter"] = s2.FailureStats["timer_context_size_exceeded_counter"].(float64) - s1.FailureStats["timer_context_size_exceeded_counter"].(float64)
-	newStats.FailureStats["timer_callback_missing_counter"] = s2.FailureStats["timer_callback_missing_counter"].(float64) - s1.FailureStats["timer_callback_missing_counter"].(float64)
-	newStats.FailureStats["curl_non_200_response"] = s2.FailureStats["curl_non_200_response"].(float64) - s1.FailureStats["curl_non_200_response"].(float64)
-	newStats.FailureStats["curl_timeout_count"] = s2.FailureStats["curl_timeout_count"].(float64) - s1.FailureStats["curl_timeout_count"].(float64)
-	newStats.FailureStats["curl_failure_count"] = s2.FailureStats["curl_failure_count"].(float64) - s1.FailureStats["curl_failure_count"].(float64)
-	newStats.FailureStats["curl_max_resp_size_exceeded"] = s2.FailureStats["curl_max_resp_size_exceeded"].(float64) - s1.FailureStats["curl_max_resp_size_exceeded"].(float64)
+	for k, v := range s2.FailureStats {
+		if val, ok := s1.FailureStats[k]; ok {
+			newStats.FailureStats[k] = v.(float64) - val.(float64)
+		} else {
+			newStats.FailureStats[k] = v
+		}
+	}
 
 	for k, v := range s2.EventProcessingStats {
 		if val, ok := s1.EventProcessingStats[k]; ok {
 			newStats.EventProcessingStats[k] = v - val
 		} else {
 			newStats.EventProcessingStats[k] = v
+		}
+	}
+
+	for k, v := range s2.LCBExceptionStats {
+		if val, ok := s1.LCBExceptionStats[k]; ok {
+			newStats.LCBExceptionStats[k] = v - val
+		} else {
+			newStats.LCBExceptionStats[k] = v
 		}
 	}
 
@@ -513,15 +533,7 @@ func (s2 *Stats) Sub(s1 *Stats, copyNonSubtracted bool) *Stats {
 
 		newStats.LatencyHistogram = s2.LatencyHistogram.Copy()
 		newStats.CurlLatency = s2.CurlLatency.Copy()
-
-		ls := make(map[string]int)
-		ls["50"] = s2.LatencyHistogram.PercentileN(50)
-		ls["80"] = s2.LatencyHistogram.PercentileN(80)
-		ls["90"] = s2.LatencyHistogram.PercentileN(90)
-		ls["95"] = s2.LatencyHistogram.PercentileN(95)
-		ls["99"] = s2.LatencyHistogram.PercentileN(99)
-		ls["100"] = s2.LatencyHistogram.PercentileN(100)
-		newStats.LatencyPercentileStats = ls
+		newStats.LatencyPercentileStats = getLatencyPercentile(s2.LatencyHistogram)
 	}
 
 	return newStats
@@ -529,50 +541,34 @@ func (s2 *Stats) Sub(s1 *Stats, copyNonSubtracted bool) *Stats {
 
 // s2 = s2 + s1
 func (s2 *Stats) Add(s1 *Stats) {
-	s2.ExecutionStats["on_update_success"] = s2.ExecutionStats["on_update_success"].(float64) + s1.ExecutionStats["on_update_success"].(float64)
-	s2.ExecutionStats["on_update_failure"] = s2.ExecutionStats["on_update_failure"].(float64) + s1.ExecutionStats["on_update_failure"].(float64)
-	s2.ExecutionStats["on_delete_success"] = s2.ExecutionStats["on_delete_success"].(float64) + s1.ExecutionStats["on_delete_success"].(float64)
-	s2.ExecutionStats["on_delete_failure"] = s2.ExecutionStats["on_delete_failure"].(float64) + s1.ExecutionStats["on_delete_failure"].(float64)
-	s2.ExecutionStats["no_op_counter"] = s2.ExecutionStats["no_op_counter"].(float64) + s1.ExecutionStats["no_op_counter"].(float64)
-	s2.ExecutionStats["timer_callback_success"] = s2.ExecutionStats["timer_callback_success"].(float64) + s1.ExecutionStats["timer_callback_success"].(float64)
-	s2.ExecutionStats["timer_callback_failure"] = s2.ExecutionStats["timer_callback_failure"].(float64) + s1.ExecutionStats["timer_callback_failure"].(float64)
-	s2.ExecutionStats["timer_create_failure"] = s2.ExecutionStats["timer_create_failure"].(float64) + s1.ExecutionStats["timer_create_failure"].(float64)
-	s2.ExecutionStats["messages_parsed"] = s2.ExecutionStats["messages_parsed"].(float64) + s1.ExecutionStats["messages_parsed"].(float64)
-	s2.ExecutionStats["dcp_delete_msg_counter"] = s2.ExecutionStats["dcp_delete_msg_counter"].(float64) + s1.ExecutionStats["dcp_delete_msg_counter"].(float64)
-	s2.ExecutionStats["dcp_mutation_msg_counter"] = s2.ExecutionStats["dcp_mutation_msg_counter"].(float64) + s1.ExecutionStats["dcp_mutation_msg_counter"].(float64)
-	s2.ExecutionStats["timer_msg_counter"] = s2.ExecutionStats["timer_msg_counter"].(float64) + s1.ExecutionStats["timer_msg_counter"].(float64)
-	s2.ExecutionStats["timer_create_counter"] = s2.ExecutionStats["timer_create_counter"].(float64) + s1.ExecutionStats["timer_create_counter"].(float64)
-	s2.ExecutionStats["timer_cancel_counter"] = s2.ExecutionStats["timer_cancel_counter"].(float64) + s1.ExecutionStats["timer_cancel_counter"].(float64)
-	s2.ExecutionStats["lcb_retry_failure"] = s2.ExecutionStats["lcb_retry_failure"].(float64) + s1.ExecutionStats["lcb_retry_failure"].(float64)
-	s2.ExecutionStats["filtered_dcp_delete_counter"] = s2.ExecutionStats["filtered_dcp_delete_counter"].(float64) + s1.ExecutionStats["filtered_dcp_delete_counter"].(float64)
-	s2.ExecutionStats["filtered_dcp_mutation_counter"] = s2.ExecutionStats["filtered_dcp_mutation_counter"].(float64) + s1.ExecutionStats["filtered_dcp_mutation_counter"].(float64)
-	s2.ExecutionStats["num_processed_events"] = s2.ExecutionStats["num_processed_events"].(float64) + s1.ExecutionStats["num_processed_events"].(float64)
-	s2.ExecutionStats["curl_success_count"] = s2.ExecutionStats["curl_success_count"].(float64) + s1.ExecutionStats["curl_success_count"].(float64)
+	for k, v := range s1.ExecutionStats {
+		fValue, ok := v.(float64)
+		if !ok {
+			continue
+		}
+		if val, ok := s2.ExecutionStats[k]; ok {
+			s2.ExecutionStats[k] = fValue + val.(float64)
+		} else {
+			s2.ExecutionStats[k] = fValue
+		}
+	}
 
 	curlExecutionStats := make(map[string]interface{})
 	s2CurlStats := s2.ExecutionStats["curl"].(map[string]interface{})
 	s1CurlStats := s1.ExecutionStats["curl"].(map[string]interface{})
 
-	curlExecutionStats["get"] = s2CurlStats["get"].(float64) + s1CurlStats["get"].(float64)
-	curlExecutionStats["post"] = s2CurlStats["post"].(float64) + s1CurlStats["post"].(float64)
-	curlExecutionStats["delete"] = s2CurlStats["delete"].(float64) + s1CurlStats["delete"].(float64)
-	curlExecutionStats["head"] = s2CurlStats["head"].(float64) + s1CurlStats["head"].(float64)
-	curlExecutionStats["put"] = s2CurlStats["put"].(float64) + s1CurlStats["put"].(float64)
+	for method, value := range s2CurlStats {
+		curlExecutionStats[method] = value.(float64) + s1CurlStats[method].(float64)
+	}
 	s2.ExecutionStats["curl"] = curlExecutionStats
 
-	s2.FailureStats["bucket_op_exception_count"] = s2.FailureStats["bucket_op_exception_count"].(float64) + s1.FailureStats["bucket_op_exception_count"].(float64)
-	s2.FailureStats["bucket_op_cache_miss_count"] = s2.FailureStats["bucket_op_cache_miss_count"].(float64) + s1.FailureStats["bucket_op_cache_miss_count"].(float64)
-	s2.FailureStats["bucket_cache_overflow_count"] = s2.FailureStats["bucket_cache_overflow_count"].(float64) + s1.FailureStats["bucket_cache_overflow_count"].(float64)
-	s2.FailureStats["bkt_ops_cas_mismatch_count"] = s2.FailureStats["bkt_ops_cas_mismatch_count"].(float64) + s1.FailureStats["bkt_ops_cas_mismatch_count"].(float64)
-	s2.FailureStats["n1ql_op_exception_count"] = s2.FailureStats["n1ql_op_exception_count"].(float64) + s1.FailureStats["n1ql_op_exception_count"].(float64)
-	s2.FailureStats["timeout_count"] = s2.FailureStats["timeout_count"].(float64) + s1.FailureStats["timeout_count"].(float64)
-	s2.FailureStats["debugger_events_lost"] = s2.FailureStats["debugger_events_lost"].(float64) + s1.FailureStats["debugger_events_lost"].(float64)
-	s2.FailureStats["timer_context_size_exceeded_counter"] = s2.FailureStats["timer_context_size_exceeded_counter"].(float64) + s1.FailureStats["timer_context_size_exceeded_counter"].(float64)
-	s2.FailureStats["timer_callback_missing_counter"] = s2.FailureStats["timer_callback_missing_counter"].(float64) + s1.FailureStats["timer_callback_missing_counter"].(float64)
-	s2.FailureStats["curl_non_200_response"] = s2.FailureStats["curl_non_200_response"].(float64) + s1.FailureStats["curl_non_200_response"].(float64)
-	s2.FailureStats["curl_timeout_count"] = s2.FailureStats["curl_timeout_count"].(float64) + s1.FailureStats["curl_timeout_count"].(float64)
-	s2.FailureStats["curl_failure_count"] = s2.FailureStats["curl_failure_count"].(float64) + s1.FailureStats["curl_failure_count"].(float64)
-	s2.FailureStats["curl_max_resp_size_exceeded"] = s2.FailureStats["curl_max_resp_size_exceeded"].(float64) + s1.FailureStats["curl_max_resp_size_exceeded"].(float64)
+	for k, v := range s1.FailureStats {
+		if val, ok := s2.FailureStats[k]; ok {
+			s2.FailureStats[k] = val.(float64) + v.(float64)
+		} else {
+			s2.FailureStats[k] = v
+		}
+	}
 
 	for k, v := range s1.EventProcessingStats {
 		if val, ok := s2.EventProcessingStats[k]; ok {
@@ -582,12 +578,19 @@ func (s2 *Stats) Add(s1 *Stats) {
 		}
 	}
 
+	for k, v := range s1.LCBExceptionStats {
+		if val, ok := s2.LCBExceptionStats[k]; ok {
+			s2.LCBExceptionStats[k] = val + v
+		} else {
+			s2.LCBExceptionStats[k] = v
+		}
+	}
+
 	s2.EventRemaining["dcp_backlog"] = s2.EventRemaining["dcp_backlog"] + s1.EventRemaining["dcp_backlog"]
 
 	s2.LatencyHistogram.UpdateWithHistogram(s1.LatencyHistogram)
 	s2.CurlLatency.UpdateWithHistogram(s1.CurlLatency)
-
-	// TODO: Add LatencyHistogram
+	s2.LatencyPercentileStats = getLatencyPercentile(s2.LatencyHistogram)
 }
 
 func (s *Stats) String() string {

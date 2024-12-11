@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"os"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	appManager "github.com/couchbase/eventing/app_manager"
@@ -25,10 +24,6 @@ const (
 	httpWriteTimeOut = time.Duration(60) * time.Second
 )
 
-type globalStatsCounter struct {
-	lcbCredsStats atomic.Uint64
-}
-
 type serviceMgr struct {
 	superSup Supervisor2 // kill all the process
 
@@ -38,7 +33,7 @@ type serviceMgr struct {
 	appState           stateMachine.StateMachine
 	bucketGraph        appGraph.AppGraph
 	cursorRegistry     CursorRegister
-	globalStatsCounter globalStatsCounter
+	globalStatsCounter *common.GlobalStatsCounter
 
 	config       *common.ClusterSettings
 	serverConfig serverConfig.ServerConfig
@@ -54,7 +49,7 @@ type serviceMgr struct {
 func NewServiceManager(config *common.ClusterSettings, observer notifier.Observer,
 	appManager appManager.AppManager, superSup Supervisor2,
 	appState stateMachine.StateMachine, bucketGraph appGraph.AppGraph, cursorRegistry CursorRegister, broadcaster common.Broadcaster,
-	serverConfig serverConfig.ServerConfig) (ServiceManager, error) {
+	serverConfig serverConfig.ServerConfig, globalStatsCounter *common.GlobalStatsCounter) (ServiceManager, error) {
 
 	s := &serviceMgr{
 		config:         config,
@@ -64,8 +59,9 @@ func NewServiceManager(config *common.ClusterSettings, observer notifier.Observe
 		appState:       appState,
 		cursorRegistry: cursorRegistry,
 
-		bucketGraph:  bucketGraph,
-		serverConfig: serverConfig,
+		bucketGraph:        bucketGraph,
+		serverConfig:       serverConfig,
+		globalStatsCounter: globalStatsCounter,
 
 		broadcaster:     broadcaster,
 		serverConfigMux: &sync.RWMutex{},

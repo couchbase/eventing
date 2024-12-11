@@ -115,6 +115,7 @@ KVNodesInfo Communicator::GetKVNodes() {
     info.kv_nodes.emplace_back(node);
   }
   info.encrypt_data = resp_json["encrypt_data"].get<bool>();
+  info.is_client_auth_mandatory = resp_json["is_client_auth_mandatory"].get<bool>();
   info.is_valid = true;
   return info;
 }

@@ -437,7 +437,7 @@ func (al *allocator) checkAndMakeRequest() {
 			worker.runningMap[vb] = status
 			totalParallelRequest := worker.runningCount.Add(1)
 
-			al.config.StatsHandler.IncrementProcessingStats("make_request_for")
+			al.config.StatsHandler.IncrementProcessingStats("dcp_stream_req_counter")
 			if !isStreaming && al.workerParallelRequest <= totalParallelRequest {
 				break
 			}

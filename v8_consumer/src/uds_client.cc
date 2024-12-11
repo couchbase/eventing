@@ -1,9 +1,11 @@
 #include "uds_client.h"
 #include "breakpad.h"
 #include "messages.h"
+#include "stats.h"
 #include <iostream>
 #include <v8.h>
 
+std::atomic<int64_t> uv_try_write_failure_counter = {0};
 // UDSClient implementation
 UDSClient *client_;
 
@@ -265,6 +267,7 @@ void UDSClient::flushToConn() {
       continue;
     }
     if (rc < 0) {
+      uv_try_write_failure_counter++;
       break;
     }
 
@@ -277,11 +280,12 @@ void UDSClient::flushToConn() {
 
 int main(int argc, char **argv) {
 
-  if (argc != 12) {
+  if (argc != 14) {
     LOG(logError)
-        << "Need at least 9 arguments: ip_mode, ipc_type, port_to_connect, "
-           "diag_dir, eventing_dir, breakpad_on, ns_server_port, "
-           "eventing_port, debugger_port, certFile"
+        << "Need at least 14 arguments: executable_loc, ipc_type, ip_mode, "
+           "port, feedback_sock_path, diag_dir, eventing_dir, breakpad_on, "
+           "ns_server_port, eventing_port, debugger_port, cert_file, "
+           "client_cert_file, client_key_file"
         << std::endl;
     return 2;
   }
@@ -298,6 +302,8 @@ int main(int argc, char **argv) {
   std::string eventing_port(argv[9]);
   std::string debugger_port(argv[10]);
   std::string cert_file(argv[11]);
+  std::string client_cert_file(argv[12]);
+  std::string client_key_file(argv[13]);
 
   v8::V8::InitializeICUDefaultLocation(executable_loc.c_str(), nullptr);
   if (breakpad_on == "true")
@@ -306,7 +312,7 @@ int main(int argc, char **argv) {
   std::string host_addr_ = Localhost(ip_mode);
   auto cluster = std::make_shared<settings::cluster>(
       host_addr_, eventing_dir, ns_server_port, eventing_port, debugger_port,
-      cert_file);
+      cert_file, client_cert_file, client_key_file);
   client_ = new UDSClient(ipc_type, ip_mode, port, feedback_sock_path,
                           std::move(cluster));
   client_->Start();

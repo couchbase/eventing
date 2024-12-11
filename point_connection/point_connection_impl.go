@@ -221,6 +221,11 @@ func (s *ConnSettings) getConnFromSetting() (*http.Client, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	if s.ClientCertificate != nil {
+		tlsConfig.Certificates = []tls.Certificate{*s.ClientCertificate}
+	}
+
 	transport.TLSClientConfig = tlsConfig
 
 	client := &http.Client{

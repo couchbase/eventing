@@ -35,6 +35,8 @@ std::string RuntimeStats::GetFailureStats() {
       failure_stats_["timer_context_size_exceeded_counter"].load();
   fstats["timer_callback_missing_counter"] =
       failure_stats_["timer_callback_missing_counter"].load();
+  fstats["dcp_mutation_checkpoint_failure"] =
+      failure_stats_["dcp_mutation_checkpoint_failure"].load();
 
   fstats["curl_non_200_response"] =
       failure_stats_["curl_non_200_response"].load();
@@ -75,14 +77,19 @@ std::string RuntimeStats::GetExecutionStats() {
   estats["lcb_retry_failure"] = execution_stats_["lcb_retry_failure"].load();
   estats["filtered_dcp_delete_counter"] =
       execution_stats_["filtered_dcp_delete_counter"].load();
-  estats["filtered_dcp_mutation_counter"] =
-      execution_stats_["filtered_dcp_mutation_counter"].load();
   estats["num_processed_events"] =
       execution_stats_["num_processed_events"].load();
+  estats["processed_events_size"] =
+      execution_stats_["processed_events_size"].load();
+  estats["filtered_dcp_mutation_counter"] =
+      execution_stats_["filtered_dcp_mutation_counter"].load();
   estats["dcp_mutation_checkpoint_cas_mismatch"] =
       execution_stats_["dcp_mutation_checkpoint_cas_mismatch"].load();
-  estats["dcp_mutation_checkpoint_failure"] =
-      execution_stats_["dcp_mutation_checkpoint_failure"].load();
+  estats["enqueued_dcp_mutation_msg_counter"] =
+      execution_stats_["enqueued_dcp_mutation_msg_counter"].load();
+  estats["enqueued_dcp_delete_msg_counter"] =
+      execution_stats_["enqueued_dcp_delete_msg_counter"].load();
+  estats["uv_try_write_failure_counter"] = uv_try_write_failure_counter.load();
 
   estats["curl"]["get"] = execution_stats_["curl.get"].load();
   estats["curl"]["post"] = execution_stats_["curl.post"].load();
@@ -107,4 +114,12 @@ std::string RuntimeStats::GetLatencyStats() {
 
 std::string RuntimeStats::GetCurlLatencyStats() {
   return curl_latency_stats_.ToString();
+}
+
+std::string RuntimeStats::GetLcbExceptionStats() {
+  nlohmann::json lcb_stats;
+  for (const auto &it : lcb_exception_stats) {
+    lcb_stats[std::to_string(it.first)] = it.second.load();
+  }
+  return lcb_stats.dump();
 }

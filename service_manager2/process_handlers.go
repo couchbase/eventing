@@ -303,8 +303,10 @@ func (m *serviceMgr) getKVNodesAddressesHandler(w http.ResponseWriter, r *http.R
 	}
 
 	kvNodes := nodesInterface.([]*notifier.Node)
+
 	m.serverConfigMux.RLock()
 	encryptData := m.tlsConfig.EncryptData
+	isClientAuthMandatory := m.tlsConfig.IsClientAuthMandatory
 	m.serverConfigMux.RUnlock()
 
 	port := notifier.DataService
@@ -319,6 +321,7 @@ func (m *serviceMgr) getKVNodesAddressesHandler(w http.ResponseWriter, r *http.R
 	responseMap["is_error"] = false
 	responseMap["kv_nodes"] = kvNodeHost
 	responseMap["encrypt_data"] = encryptData
+	responseMap["is_client_auth_mandatory"] = isClientAuthMandatory
 
 	runtimeInfo.OnlyDescription = true
 	runtimeInfo.Description = responseMap
@@ -332,7 +335,7 @@ func (m *serviceMgr) getCreds(w http.ResponseWriter, r *http.Request) {
 		res.LogAndSend(runtimeInfo)
 	}()
 
-	m.globalStatsCounter.lcbCredsStats.Add(1)
+	m.globalStatsCounter.LcbCredsStats.Add(1)
 	if ok := m.validateLocalAuth(r); !ok {
 		runtimeInfo.ErrCode = response.ErrUnauthenticated
 		return

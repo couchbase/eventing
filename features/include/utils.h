@@ -142,7 +142,8 @@ struct V8ExceptionInfo {
 class Utils {
 public:
   Utils(v8::Isolate *isolate, const v8::Local<v8::Context> &context,
-        std::string certFile);
+        std::string certFile, std::string clientCertFile,
+        std::string clientKeyFile);
 
   virtual ~Utils();
 
@@ -173,6 +174,8 @@ public:
   bool ValidateXattrKeyLength(const std::string &key);
   ConnStrInfo GetConnectionString(const std::string &bucket) const;
   std::string certFile_;
+  std::string client_cert_file_;
+  std::string client_key_file_;
   UrlEncode UrlEncodePath(const std::string &path,
                           const std::string &curl_lang_compat,
                           const std::string &app_lang_comp);
@@ -302,7 +305,9 @@ void Base64Float32DecodeFunction(
 
 std::string GetConnectionStr(const KVNodesInfo &node_info,
                              const std::string &bucket_name,
-                             const std::string certFile);
+                             const std::string certFile,
+                             const std::string client_cert_file,
+                             const std::string client_key_file);
 
 std::string BuildUrl(const std::string &host, const std::string &path);
 

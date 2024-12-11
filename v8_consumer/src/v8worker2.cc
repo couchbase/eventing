@@ -530,7 +530,10 @@ void V8Worker2::InitializeIsolateData() {
   data_.instance_id = app_details_->app_instance_id;
 
   auto key = GetLocalKey();
-  data_.utils = new Utils(isolate_, context, cluster_details_->cert_file_);
+  data_.utils = new Utils(
+      isolate_, context, cluster_details_->cert_file_,
+      cluster_details_->client_cert_file_,
+      cluster_details_->client_key_file_);
   data_.comm = new Communicator(
       cluster_details_->local_address_, cluster_details_->eventing_port_,
       key.first, key.second, false, app_details_->location->app_name,
@@ -567,7 +570,8 @@ void V8Worker2::InitializeIsolateData() {
   data_.op_timeout = app_details_->settings->timeout < 5
                          ? app_details_->settings->timeout
                          : app_details_->settings->timeout - 2;
-  data_.cursor_checkpoint_timeout = ConvertSecondsToMicroSeconds(app_details_->settings->cursor_checkpoint_timeout);
+  data_.cursor_checkpoint_timeout = ConvertSecondsToMicroSeconds(
+      app_details_->settings->cursor_checkpoint_timeout);
   data_.n1ql_consistency = Query::Helper::GetN1qlConsistency(
       app_details_->settings->n1ql_consistency);
   data_.n1ql_prepare_all = app_details_->settings->n1ql_prepare_all;
@@ -768,7 +772,8 @@ int V8Worker2::Start() {
     return kToLocalFailed;
   }
 
-  if (!on_update_def->IsFunction() && !on_delete_def->IsFunction() && !on_deploy_def->IsFunction()) {
+  if (!on_update_def->IsFunction() && !on_delete_def->IsFunction() &&
+      !on_deploy_def->IsFunction()) {
     return kNoHandlersDefined;
   }
 
@@ -866,6 +871,7 @@ void V8Worker2::RouteMessage() {
         HandleCollectionDeleteEvent(msg);
         break;
       }
+      stats_->IncrementExecutionStat("processed_events_size", size);
       stats_->IncrementExecutionStat("num_processed_events");
     } break;
 
@@ -945,7 +951,9 @@ void V8Worker2::RouteMessage() {
         std::string sMsg((const char *)builder.GetBufferPointer(), size);
 
         uint64_t meta = messages::getMetadata(msg, size);
-        LOG(logInfo) << log_prefix_ << " done execution. Sending ack message for vb " << std::endl;
+        LOG(logInfo) << log_prefix_
+                     << " done execution. Sending ack message for vb "
+                     << std::endl;
         comm_->send_message(meta, msg->identifier, sMsg.c_str(), size);
       } break;
 
@@ -1107,7 +1115,7 @@ void V8Worker2::HandleMutationEvent(
       if (err_code == LCB_ERR_CAS_MISMATCH) {
         stats_->IncrementExecutionStat("dcp_mutation_checkpoint_cas_mismatch");
       } else {
-        stats_->IncrementExecutionStat("dcp_mutation_checkpoint_failure");
+        stats_->IncrementFailureStat("dcp_mutation_checkpoint_failure");
         auto err_cstr = lcb_strerror_short(err_code);
         if (client_err.length() > 0) {
           err_cstr = client_err.c_str();
@@ -1165,8 +1173,8 @@ void V8Worker2::HandleDeleteVbFilter(
   f_map_->RemoveFilterEvent(vb);
 }
 
-int V8Worker2::SendUpdate(const messages::payload payload, uint64_t newCas, uint32_t expiry,
-                          uint8_t datatype) {
+int V8Worker2::SendUpdate(const messages::payload payload, uint64_t newCas,
+                          uint32_t expiry, uint8_t datatype) {
   v8::Locker locker(isolate_);
   v8::Isolate::Scope isolate_scope(isolate_);
   v8::HandleScope handle_scope(isolate_);
@@ -1352,65 +1360,73 @@ int V8Worker2::SendDelete(const messages::payload payload) {
 }
 
 int V8Worker2::SendDeploy(const std::string &reason, const int64_t &delay) {
-    v8::Locker locker(isolate_);
-    v8::Isolate::Scope isolate_scope(isolate_);
-    v8::HandleScope handle_scope(isolate_);
+  v8::Locker locker(isolate_);
+  v8::Isolate::Scope isolate_scope(isolate_);
+  v8::HandleScope handle_scope(isolate_);
 
-    auto context = context_.Get(isolate_);
-    v8::Context::Scope context_scope(context);
-    v8::TryCatch try_catch(isolate_);
+  auto context = context_.Get(isolate_);
+  v8::Context::Scope context_scope(context);
+  v8::TryCatch try_catch(isolate_);
 
-    if (on_deploy_.IsEmpty()) {
-        LOG(logError) << "OnDeploy handler is not defined" << std::endl;
-        return kOnDeployCallFail;
-    }
+  if (on_deploy_.IsEmpty()) {
+    LOG(logError) << "OnDeploy handler is not defined" << std::endl;
+    return kOnDeployCallFail;
+  }
 
-    v8::Local<v8::Value> args[1];
+  v8::Local<v8::Value> args[1];
 
-    v8::Local<v8::Object> action_object = v8::Object::New(isolate_);
-    v8::Local<v8::String> reason_v8str_value = v8Str(isolate_, reason.c_str());
-    v8::Local<v8::Number> delay_v8_value = v8::Number::New(isolate_, static_cast<double>(delay));
+  v8::Local<v8::Object> action_object = v8::Object::New(isolate_);
+  v8::Local<v8::String> reason_v8str_value = v8Str(isolate_, reason.c_str());
+  v8::Local<v8::Number> delay_v8_value =
+      v8::Number::New(isolate_, static_cast<double>(delay));
 
-    bool success = false;
-    if(!TO(action_object->Set(context, v8Str(isolate_, "reason"), reason_v8str_value), &success) || !success) {
-        LOG(logError) << "Failed to add reason field in action object for OnDeploy" << std::endl;
-        return kToLocalFailed;
-    }
+  bool success = false;
+  if (!TO(action_object->Set(context, v8Str(isolate_, "reason"),
+                             reason_v8str_value),
+          &success) ||
+      !success) {
+    LOG(logError) << "Failed to add reason field in action object for OnDeploy"
+                  << std::endl;
+    return kToLocalFailed;
+  }
 
-    if(!TO(action_object->Set(context, v8Str(isolate_, "delay"), delay_v8_value), &success) || !success) {
-        LOG(logError) << "Failed to add delay field in action object for OnDeploy" << std::endl;
-        return kToLocalFailed;
-    }
+  if (!TO(action_object->Set(context, v8Str(isolate_, "delay"), delay_v8_value),
+          &success) ||
+      !success) {
+    LOG(logError) << "Failed to add delay field in action object for OnDeploy"
+                  << std::endl;
+    return kToLocalFailed;
+  }
 
-    args[0] = action_object;
+  args[0] = action_object;
 
-    UnwrapData(isolate_)->termination_lock_.lock();
-    UnwrapData(isolate_)->is_executing_ = true;
-    execute_start_time_ = Time::now();
-    UnwrapData(isolate_)->termination_lock_.unlock();
+  UnwrapData(isolate_)->termination_lock_.lock();
+  UnwrapData(isolate_)->is_executing_ = true;
+  execute_start_time_ = Time::now();
+  UnwrapData(isolate_)->termination_lock_.unlock();
 
-    v8::Handle<v8::Value> result;
-    auto on_deploy_fun = on_deploy_.Get(isolate_);
-    if (!TO_LOCAL(on_deploy_fun->Call(context, context->Global(), 1, args),
-                  &result)) {
-        LOG(logError) << "Error executing OnDeploy" << std::endl;
-    }
+  v8::Handle<v8::Value> result;
+  auto on_deploy_fun = on_deploy_.Get(isolate_);
+  if (!TO_LOCAL(on_deploy_fun->Call(context, context->Global(), 1, args),
+                &result)) {
+    LOG(logError) << "Error executing OnDeploy" << std::endl;
+  }
 
-    UnwrapData(isolate_)->termination_lock_.lock();
-    stats_->UpdateHistogram(execute_start_time_);
-    execute_start_time_ = DefaultTime;
-    UnwrapData(isolate_)->is_executing_ = false;
-    UnwrapData(isolate_)->termination_lock_.unlock();
+  UnwrapData(isolate_)->termination_lock_.lock();
+  stats_->UpdateHistogram(execute_start_time_);
+  execute_start_time_ = DefaultTime;
+  UnwrapData(isolate_)->is_executing_ = false;
+  UnwrapData(isolate_)->termination_lock_.unlock();
 
-    auto query_mgr = UnwrapData(isolate_)->query_mgr;
-    query_mgr->ClearQueries();
+  auto query_mgr = UnwrapData(isolate_)->query_mgr;
+  query_mgr->ClearQueries();
 
-    if (try_catch.HasCaught()) {
-        stats_->AddException(isolate_, try_catch);
-        return kOnDeployCallFail;
-    }
+  if (try_catch.HasCaught()) {
+    stats_->AddException(isolate_, try_catch);
+    return kOnDeployCallFail;
+  }
 
-    return kSuccess;
+  return kSuccess;
 }
 
 void V8Worker2::SendTimer(std::string callback, std::string timer_ctx) {
@@ -1770,10 +1786,11 @@ void AddLcbException(const IsolateData *isolate_data, const int code) {
 std::string V8Worker2::GetOnDeployResult(int return_code) {
   nlohmann::json result;
   std::string on_deploy_status = "Finished";
-  if(return_code != kSuccess) {
+  if (return_code != kSuccess) {
     on_deploy_status = "Failed";
   }
-  std::cerr << "v8Worker::GetOnDeployResult The status for OnDeploy: " << on_deploy_status << std::endl;
+  std::cerr << "v8Worker::GetOnDeployResult The status for OnDeploy: "
+            << on_deploy_status << std::endl;
   result["on_deploy_status"] = on_deploy_status;
   return result.dump();
 }

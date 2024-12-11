@@ -139,6 +139,11 @@ func (b *broadcaster) initPointConnection() error {
 		setting.TlsConfig = b.tlsConfig.Config
 	}
 
+	// Use client certificate authentication for http client in point conn, when client auth type is set to mandatory
+	if b.tlsConfig.IsClientAuthMandatory {
+		setting.ClientCertificate = b.tlsConfig.ClientCertificate
+	}
+
 	conn, err := pc.NewPointConnection(setting)
 	if err != nil {
 		return err
@@ -206,7 +211,8 @@ func (b *broadcaster) startSubscriberObject() {
 				logging.Infof("%s detected changes in eventing topology. Changes applied", logPrefix)
 
 			case notifier.EventTLSChanges:
-				b.tlsConfig = msg.CurrentState.(*notifier.TlsConfig)
+				tlsState = msg.CurrentState.(*notifier.TlsConfig)
+				b.tlsConfig = tlsState.Copy()
 				err = b.initPointConnection()
 				if err != nil {
 					logging.Errorf("%s error in initialisation of connection: %v", logPrefix, err)
