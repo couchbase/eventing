@@ -645,7 +645,6 @@ var (
 
 		EventGetUserInfo: &event{
 			description: "Get user info",
-			log:         AuditLog,
 			auditLogVal: auditevent.GetUserInfo,
 		},
 
