@@ -483,6 +483,7 @@ func (s2 *Stats) Sub(s1 *Stats, copyNonSubtracted bool) *Stats {
 	for k, v := range s2.ExecutionStats {
 		fValue, ok := v.(float64)
 		if !ok {
+			newStats.ExecutionStats[k] = v
 			continue
 		}
 		if val, ok := s1.ExecutionStats[k]; ok {
@@ -503,8 +504,13 @@ func (s2 *Stats) Sub(s1 *Stats, copyNonSubtracted bool) *Stats {
 	newStats.ExecutionStats["curl"] = curlExecutionStats
 
 	for k, v := range s2.FailureStats {
+		fValue, ok := v.(float64)
+		if !ok {
+			newStats.FailureStats[k] = v
+			continue
+		}
 		if val, ok := s1.FailureStats[k]; ok {
-			newStats.FailureStats[k] = v.(float64) - val.(float64)
+			newStats.FailureStats[k] = fValue - val.(float64)
 		} else {
 			newStats.FailureStats[k] = v
 		}
@@ -544,6 +550,7 @@ func (s2 *Stats) Add(s1 *Stats) {
 	for k, v := range s1.ExecutionStats {
 		fValue, ok := v.(float64)
 		if !ok {
+			s2.ExecutionStats[k] = v
 			continue
 		}
 		if val, ok := s2.ExecutionStats[k]; ok {
@@ -563,8 +570,13 @@ func (s2 *Stats) Add(s1 *Stats) {
 	s2.ExecutionStats["curl"] = curlExecutionStats
 
 	for k, v := range s1.FailureStats {
+		fValue, ok := v.(float64)
+		if !ok {
+			s2.FailureStats[k] = v
+			continue
+		}
 		if val, ok := s2.FailureStats[k]; ok {
-			s2.FailureStats[k] = val.(float64) + v.(float64)
+			s2.FailureStats[k] = fValue + val.(float64)
 		} else {
 			s2.FailureStats[k] = v
 		}

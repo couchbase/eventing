@@ -1472,7 +1472,7 @@ func (fd *FunctionDetails) IsSourceMutationPossible() bool {
 
 	bindings := fd.Bindings
 	for _, binding := range bindings {
-		if binding.BindingType != Bucket {
+		if binding.BindingType != Bucket || binding.BucketBinding.AccessType != readWrite {
 			continue
 		}
 
