@@ -723,7 +723,7 @@ func (m *serviceMgr) getCPUCount(w http.ResponseWriter, r *http.Request) {
 		res.LogAndSend(runtimeInfo)
 	}()
 
-	if notAllowed, err := rbac.IsAllowed(r, rbac.EventingReadPermissions, false); err != nil {
+	if notAllowed, err := rbac.IsAllowed(r, rbac.EventingAnyManageReadPermissions, false); err != nil {
 		getAuthErrorInfo(runtimeInfo, notAllowed, false, err)
 		return
 	}
@@ -739,8 +739,8 @@ func (m *serviceMgr) getErrCodes(w http.ResponseWriter, r *http.Request) {
 		res.LogAndSend(runtimeInfo)
 	}()
 
-	if notAllowed, err := rbac.IsAllowed(r, rbac.EventingReadPermissions, false); err != nil {
-		getAuthErrorInfo(runtimeInfo, notAllowed, false, err)
+	if _, err := rbac.AuthWebCreds(r); err != nil {
+		getAuthErrorInfo(runtimeInfo, nil, false, err)
 		return
 	}
 
@@ -800,13 +800,13 @@ func (m *serviceMgr) getWorkerCount(w http.ResponseWriter, r *http.Request) {
 		res.LogAndSend(runtimeInfo)
 	}()
 
-	if notAllowed, err := rbac.IsAllowed(r, rbac.EventingPermissionManage, false); err != nil {
+	if notAllowed, err := rbac.IsAllowed(r, rbac.EventingAnyManageReadPermissions, false); err != nil {
 		getAuthErrorInfo(runtimeInfo, notAllowed, false, err)
 		return
 	}
 
 	// TODO: Add alternate way to detect any sizing issue and worker counts
-	runtimeInfo.Description = fmt.Sprintf("0\n")
+	runtimeInfo.Description = "0\n"
 	runtimeInfo.OnlyDescription = true
 }
 
