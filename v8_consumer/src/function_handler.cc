@@ -49,8 +49,14 @@ void function_worker::init_event(
 void function_worker::dynamic_setting(
     std::unique_ptr<messages::worker_request> msg) {
   switch (msg->opcode) {
-  case messages::eLogLevelChange:
+  case messages::eLogLevelChange: {
+    auto logLevel = messages::get_value(msg->payload);
+    for (int index = 0; index < app_details_->settings->cpp_thread_count;
+         index++) {
+      workers_[index]->changeLogLevel(logLevel);
+    }
     break;
+  }
 
   case messages::eTimeContextSize:
     auto value = messages::get_value(msg->payload);
@@ -632,4 +638,6 @@ const std::string function_worker::get_curl_latency_stats() {
   return stats_->GetCurlLatencyStats();
 }
 
-const std::string function_worker::get_lcb_exception_stats() { return stats_->GetLcbExceptionStats(); }
+const std::string function_worker::get_lcb_exception_stats() {
+  return stats_->GetLcbExceptionStats();
+}

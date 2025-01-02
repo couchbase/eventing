@@ -132,14 +132,17 @@ RetryLcbCommand(lcb_INSTANCE *instance, CmdType &cmd, int max_retry_count,
 }
 
 struct Logger {
-  Logger() : base(NULL) {}
+  Logger() : base(nullptr) {}
+  Logger(std::string log_prefix) : log_prefix_(log_prefix), base(nullptr) {}
+
+  void setLogLevel(LogLevel logLevel) { allowed_level_ = logLevel; }
+  std::string log_prefix_{""};
+  LogLevel allowed_level_{logInfo};
   lcb_LOGGER *base;
 };
 
 void evt_log_handler(const lcb_LOGGER *procs, uint64_t iid, const char *subsys,
                      lcb_LOG_SEVERITY severity, const char *srcfile,
                      int srcline, const char *fmt, va_list ap);
-
-extern Logger evt_logger;
 
 #endif // COUCHBASE_LCB_UTILS_H

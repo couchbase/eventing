@@ -65,8 +65,13 @@ func redirectRequestToLeader[T any](cred cbauth.Creds, broadcaster common.Broadc
 	return successResponse
 }
 
-func (m *serviceMgr) verifyAndGetNextState(runtimeInfo *response.RuntimeInfo, funcDetails *application.FunctionDetails) (nextState application.LifeCycleOp) {
+func (m *serviceMgr) verifyAndGetNextState(runtimeInfo *response.RuntimeInfo, currState application.State, funcDetails *application.FunctionDetails) (nextState application.LifeCycleOp) {
 	nextState = funcDetails.AppState.GetLifeCycle()
+	// Dynamic settings being changed. Already deployed so no need to verify again
+	if currState.IsDeployed() {
+		return nextState
+	}
+
 	if checkKeyspacePermissions(runtimeInfo, nextState, funcDetails); runtimeInfo.ErrCode != response.Ok {
 		return
 	}

@@ -597,9 +597,6 @@ V8Worker::V8Worker(
 
   v8::Context::Scope context_scope(context);
 
-  lcb_logger_create(&evt_logger.base, &evt_logger);
-  lcb_logger_callback(evt_logger.base, evt_log_handler);
-
   InitializeIsolateData(server_settings, h_config);
   InstallCurlBindings(config->curl_bindings);
   InstallConstantBindings(config->constant_bindings);

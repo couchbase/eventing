@@ -28,12 +28,13 @@ Connection::Info Connection::Pool::CreateConnection() const {
     return {true, conn_str_info.msg};
   }
 
+  auto logger = UnwrapData(isolate_)->logger;
   std::stringstream error;
   lcb_CREATEOPTS *options;
   lcb_createopts_create(&options, LCB_TYPE_BUCKET);
   lcb_createopts_connstr(options, conn_str_info.conn_str.c_str(),
                          strlen(conn_str_info.conn_str.c_str()));
-  lcb_createopts_logger(options, evt_logger.base);
+  lcb_createopts_logger(options, logger->base);
 
   lcb_INSTANCE *connection;
   auto result = lcb_create(&connection, options);
