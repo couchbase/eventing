@@ -531,12 +531,12 @@ LogLevel evt_log_map_level(int severity) {
   }
 }
 
-bool evt_should_log(int severity, const char *subsys) {
+bool evt_should_log(LogLevel allowed_level_, int severity, const char *subsys) {
   if (strcmp(subsys, "negotiation") == 0) {
     return false;
   }
 
-  if (evt_log_map_level(severity) <= SystemLog::level_) {
+  if (evt_log_map_level(severity) <= allowed_level_) {
     return true;
   }
 
@@ -546,11 +546,14 @@ bool evt_should_log(int severity, const char *subsys) {
 void evt_log_handler(const lcb_LOGGER *procs, uint64_t iid, const char *subsys,
                      lcb_LOG_SEVERITY severity, const char *srcfile,
                      int srcline, const char *fmt, va_list ap) {
-  if (evt_should_log(severity, subsys)) {
+  Logger *logger = nullptr;
+  lcb_logger_cookie(procs, (void **)&logger);
+  if (evt_should_log(logger->allowed_level_, severity, subsys)) {
     char buf[EVT_LOG_MSG_SIZE] = {};
     evt_log_formatter(buf, EVT_LOG_MSG_SIZE, subsys, srcline, iid, fmt, ap);
-    LOG(evt_log_map_level(severity)) << buf << std::endl;
+    // This message is sent to eventing producer which will log eventing consumer message
+    // in info level only. eventing consumer itself will check the log levels and appropriately
+    // send the message to eventing producer.
+    LOG(logInfo) << logger->log_prefix_ << buf << std::endl;
   }
 }
-
-struct Logger evt_logger;

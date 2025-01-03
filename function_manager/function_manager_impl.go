@@ -104,6 +104,7 @@ type functionManager struct {
 	cursorCheckpointHandler functionHandler.CursorCheckpointHandler
 	utilityWorker           functionHandler.UtilityWorker
 	broadcaster             common.Broadcaster
+	systemResourceDetails   SystemResourceDetails
 
 	pool eventPool.ManagerPool
 
@@ -122,6 +123,7 @@ type functionManager struct {
 
 func NewFunctionManager(id string, cluster *gocb.Cluster, clusterSettings *common.ClusterSettings,
 	observer notifier.Observer, interrupt InterruptHandler,
+	systemResourceDetails SystemResourceDetails,
 	ownershipRoutine common.OwnershipRoutine,
 	serverConfig serverConfig.ServerConfig,
 	systemConfig serverConfig.SystemConfig,
@@ -138,6 +140,7 @@ func NewFunctionManager(id string, cluster *gocb.Cluster, clusterSettings *commo
 		systemConfig:            systemConfig,
 		cursorCheckpointHandler: cursorCheckpointHandler,
 		broadcaster:             broadcaster,
+		systemResourceDetails:   systemResourceDetails,
 	}
 
 	ctx, close := context.WithCancel(context.Background())
@@ -299,7 +302,7 @@ func (fm *functionManager) lifeCycleOp(fd *application.FunctionDetails, nextStat
 			OnDeployLeader: true,
 		}
 		fHandler := functionHandler.NewFunctionHandler(fm.incrementalFuncHandlerCount, config, fd.AppLocation, fm.clusterSettings,
-			fm.interruptForStateChange, fm.observer, fm, fm.pool, fm.serverConfig, fm.cursorCheckpointHandler, fm.utilityWorker, fm.broadcaster)
+			fm.interruptForStateChange, fm.systemResourceDetails, fm.observer, fm, fm.pool, fm.serverConfig, fm.cursorCheckpointHandler, fm.utilityWorker, fm.broadcaster)
 		fHandler.AddFunctionDetails(fd)
 
 		fdetails := NewFuncDetails(fm.incrementalFuncHandlerCount)
@@ -362,7 +365,7 @@ func (fm *functionManager) deployFunctionLocked(fd *application.FunctionDetails,
 					OnDeployLeader: false,
 				}
 				fHandler = functionHandler.NewFunctionHandler(fm.incrementalFuncHandlerCount, config, fd.AppLocation, fm.clusterSettings,
-					fm.interruptForStateChange, fm.observer, fm, fm.pool, fm.serverConfig, fm.cursorCheckpointHandler, fm.utilityWorker, fm.broadcaster)
+					fm.interruptForStateChange, fm.systemResourceDetails, fm.observer, fm, fm.pool, fm.serverConfig, fm.cursorCheckpointHandler, fm.utilityWorker, fm.broadcaster)
 				funcID = fm.incrementalFuncHandlerCount
 			}
 

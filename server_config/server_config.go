@@ -38,7 +38,7 @@ func (f FeatureList) GetFeatureMatrix() uint32 {
 }
 
 func (f FeatureList) String() string {
-	return fmt.Sprintf("Enable curl: %v", f.EnableCurl)
+	return fmt.Sprintf("{ \"enable_curl\": %v }", f.EnableCurl)
 }
 
 const (
@@ -73,7 +73,7 @@ type Config struct {
 	HttpRequestTimeout        time.Duration  `json:"http_request_timeout"`
 	EnableLifeCycleOps        bool           `json:"enable_lifecycle_ops_during_rebalance"`
 	ForceCompress             bool           `json:"force_compress"`
-	AllowInterbucketRecursion bool           `json:"allow_interbucket_recursion"`
+	AllowInterbucketRecursion bool           `json:"allow_interbucket_recursion"` // This should be only available for "*" not for the individul functions
 	DeploymentMode            DeploymentMode `json:"deployment_mode"`
 	CursorLimit               float64        `json:"cursor_limit"` // This should be only available for "*" not for the individul functions
 	NumNodeRunning            int            `json:"num_nodes_running"`
@@ -96,6 +96,11 @@ func (c *Config) Clone() *Config {
 	cloned.NumNodeRunning = c.NumNodeRunning
 
 	return cloned
+}
+
+func (c Config) String() string {
+	data, _ := json.Marshal(c)
+	return fmt.Sprintf("%s", data)
 }
 
 func DefaultConfig() (c *Config) {

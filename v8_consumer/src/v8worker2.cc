@@ -530,10 +530,9 @@ void V8Worker2::InitializeIsolateData() {
   data_.instance_id = app_details_->app_instance_id;
 
   auto key = GetLocalKey();
-  data_.utils = new Utils(
-      isolate_, context, cluster_details_->cert_file_,
-      cluster_details_->client_cert_file_,
-      cluster_details_->client_key_file_);
+  data_.utils = new Utils(isolate_, context, cluster_details_->cert_file_,
+                          cluster_details_->client_cert_file_,
+                          cluster_details_->client_key_file_);
   data_.comm = new Communicator(
       cluster_details_->local_address_, cluster_details_->eventing_port_,
       key.first, key.second, false, app_details_->location->app_name,
@@ -589,6 +588,7 @@ void V8Worker2::InitializeIsolateData() {
   data_.bucket_ops = new BucketOps(isolate_, context);
   data_.feature_matrix = global_settings_->feature_matrix_.load();
   data_.timer_context_size = app_details_->settings->timer_context_size;
+  data_.logger = logger_;
 }
 
 void V8Worker2::InstallBucketBindings(
@@ -650,6 +650,11 @@ V8Worker2::V8Worker2(int index, std::shared_ptr<RuntimeStats> stats,
                      app_details_->location->scope_name + "/" +
                      app_details_->location->app_name + ":" +
                      std::to_string(index) + "]");
+  logger_ = new Logger(log_prefix_);
+  logger_->setLogLevel(LevelFromString(app_details_->settings->log_level));
+  lcb_logger_create(&logger_->base, logger_);
+  lcb_logger_callback(logger_->base, evt_log_handler);
+
   user_ = app_details_->app_owner->user_;
   domain_ = app_details_->app_owner->domain_;
   num_vbuckets_ = app_details_->num_vbuckets;
@@ -679,9 +684,6 @@ V8Worker2::V8Worker2(int index, std::shared_ptr<RuntimeStats> stats,
   auto global = NewGlobalObj();
   auto context = v8::Context::New(isolate_, nullptr, global);
   context_.Reset(isolate_, context);
-
-  lcb_logger_create(&evt_logger.base, &evt_logger);
-  lcb_logger_callback(evt_logger.base, evt_log_handler);
 
   v8::Context::Scope context_scope(context);
 

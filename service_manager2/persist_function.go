@@ -387,7 +387,7 @@ func (m *serviceMgr) storeFunctionSettings(cred cbauth.Creds, appLocation applic
 		return
 	}
 
-	m.verifyAndAddMetaDetailsFunction(runtimeInfo, funcDetails)
+	m.verifyAndAddMetaDetailsFunction(runtimeInfo, application.StringToAppState(currAppStatus.CompositeStatus), funcDetails)
 	if runtimeInfo.ErrCode != response.Ok {
 		return
 	}
@@ -425,6 +425,7 @@ func (m *serviceMgr) verifyAndCreateFunction(cred cbauth.Creds, fDetails *applic
 	runtimeInfo = &response.RuntimeInfo{}
 	changed = true
 
+	currState := application.Undeployed
 	// If function doesn't exist then its created for the first time
 	oldApp, ok := m.appManager.GetApplication(fDetails.AppLocation, false)
 	if !ok {
@@ -488,7 +489,7 @@ func (m *serviceMgr) verifyAndCreateFunction(cred cbauth.Creds, fDetails *applic
 			return
 		}
 
-		currState := application.StringToAppState(currAppStatus.CompositeStatus)
+		currState = application.StringToAppState(currAppStatus.CompositeStatus)
 		switch currState {
 		case application.Paused, application.Undeployed, application.Deployed:
 			fDetails.AppID = oldApp.AppID
@@ -509,7 +510,7 @@ func (m *serviceMgr) verifyAndCreateFunction(cred cbauth.Creds, fDetails *applic
 		return
 	}
 
-	m.verifyAndAddMetaDetailsFunction(runtimeInfo, fDetails)
+	m.verifyAndAddMetaDetailsFunction(runtimeInfo, currState, fDetails)
 	if runtimeInfo.ErrCode != response.Ok {
 		return
 	}
@@ -517,10 +518,10 @@ func (m *serviceMgr) verifyAndCreateFunction(cred cbauth.Creds, fDetails *applic
 	return
 }
 
-func (m *serviceMgr) verifyAndAddMetaDetailsFunction(runtimeInfo *response.RuntimeInfo, funcDetails *application.FunctionDetails) {
+func (m *serviceMgr) verifyAndAddMetaDetailsFunction(runtimeInfo *response.RuntimeInfo, currStatus application.State, funcDetails *application.FunctionDetails) {
 	logPrefix := "serviceMgr::verifyAndAddMetaDetailsFunction"
 
-	nextState := m.verifyAndGetNextState(runtimeInfo, funcDetails)
+	nextState := m.verifyAndGetNextState(runtimeInfo, currStatus, funcDetails)
 	if runtimeInfo.ErrCode != response.Ok {
 		return
 	}

@@ -11,12 +11,12 @@ type serverConfig struct {
 	sync.RWMutex
 
 	systemMemlimit  float64
-	funcScopeConfig map[application.KeyspaceInfo]*Config
+	funcScopeConfig map[string]*Config
 }
 
 func NewServerConfig() (ServerConfig, error) {
 	sConfig := &serverConfig{
-		funcScopeConfig: make(map[application.KeyspaceInfo]*Config),
+		funcScopeConfig: make(map[string]*Config),
 	}
 
 	mem, err := getMemLimit()
@@ -62,7 +62,7 @@ func (s *serverConfig) DeleteSettings(keyspaceInfo application.KeyspaceInfo) {
 	s.Lock()
 	defer s.Unlock()
 
-	delete(s.funcScopeConfig, keyspaceInfo)
+	delete(s.funcScopeConfig, getKey(keyspaceInfo))
 }
 
 func (s *serverConfig) GetServerConfig(keyspaceInfo application.KeyspaceInfo) (application.KeyspaceInfo, *Config) {
@@ -80,9 +80,9 @@ func (s *serverConfig) WillItChange(addingKeyspaceInfo application.KeyspaceInfo,
 
 	// Else this namespace doesn't exist.
 	// so add it temporarily and delete it after checking
-	s.funcScopeConfig[addingKeyspaceInfo] = DefaultConfig()
+	s.funcScopeConfig[getKey(addingKeyspaceInfo)] = DefaultConfig()
 	newNamespace, _ := s.getConfigLocked(keyspaceInfo)
-	delete(s.funcScopeConfig, addingKeyspaceInfo)
+	delete(s.funcScopeConfig, getKey(addingKeyspaceInfo))
 	if usingNamespace.Match(newNamespace) {
 		return false
 	}
@@ -114,8 +114,8 @@ func (s *serverConfig) GetAllConfigList() []application.KeyspaceInfo {
 	defer s.RUnlock()
 
 	var keyspaceList []application.KeyspaceInfo
-	for keyspaceInfo := range s.funcScopeConfig {
-		keyspaceList = append(keyspaceList, keyspaceInfo)
+	for keyspaceInfoString := range s.funcScopeConfig {
+		keyspaceList = append(keyspaceList, getKeyspaceInfo(keyspaceInfoString))
 	}
 
 	return keyspaceList
@@ -147,7 +147,7 @@ func (s *serverConfig) addToConfigMap(keyspaceInfo application.KeyspaceInfo, con
 	s.Lock()
 	defer s.Unlock()
 
-	s.funcScopeConfig[keyspaceInfo] = config
+	s.funcScopeConfig[getKey(keyspaceInfo)] = config
 }
 
 func (s *serverConfig) getConfig(keyspaceInfo application.KeyspaceInfo) (application.KeyspaceInfo, *Config) {
@@ -158,21 +158,29 @@ func (s *serverConfig) getConfig(keyspaceInfo application.KeyspaceInfo) (applica
 }
 
 func (s *serverConfig) getConfigLocked(keyspaceInfo application.KeyspaceInfo) (application.KeyspaceInfo, *Config) {
-	if config, ok := s.funcScopeConfig[keyspaceInfo]; ok {
+	if config, ok := s.funcScopeConfig[getKey(keyspaceInfo)]; ok {
 		return keyspaceInfo, config.Clone()
 	}
 
 	keyspaceInfo.ScopeID = application.GlobalValue
-	if config, ok := s.funcScopeConfig[keyspaceInfo]; ok {
+	if config, ok := s.funcScopeConfig[getKey(keyspaceInfo)]; ok {
 		return keyspaceInfo, config.Clone()
 	}
 
 	keyspaceInfo.BucketID = application.GlobalValue
-	if config, ok := s.funcScopeConfig[keyspaceInfo]; ok {
+	if config, ok := s.funcScopeConfig[getKey(keyspaceInfo)]; ok {
 		return keyspaceInfo, config.Clone()
 	}
 
 	config := DefaultConfig()
 	config.RamQuota = s.systemMemlimit
 	return keyspaceInfo, config.Clone()
+}
+
+func getKey(keyspaceInfo application.KeyspaceInfo) string {
+	return keyspaceInfo.String()
+}
+
+func getKeyspaceInfo(key string) application.KeyspaceInfo {
+	return application.GetKeyspaceFromString(key)
 }

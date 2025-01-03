@@ -115,9 +115,7 @@ public:
     unacked_count_++;
   }
 
-  inline void add_dcp_mutation_done() {
-    dcp_message_done_++;
-  }
+  inline void add_dcp_mutation_done() { dcp_message_done_++; }
 
   inline std::tuple<int32_t, int32_t, uint64_t> ack_bytes() {
     auto unacked_bytes = unacked_bytes_.exchange(0);
@@ -126,11 +124,13 @@ public:
   }
 
   inline uint64_t processing_seq_num() { return f_map_->processing_seq_num(); }
-  void AddLcbException(int err_code) {
-    stats_->AddLcbException(err_code);
-  }
+  void AddLcbException(int err_code) { stats_->AddLcbException(err_code); }
 
   std::string GetOnDeployResult(int return_code);
+
+  inline void changeLogLevel(const std::string &logLevel) {
+    logger_->setLogLevel(LevelFromString(logLevel));
+  }
 
   std::shared_ptr<RuntimeStats> stats_;
 
@@ -181,7 +181,8 @@ private:
   void HandleDeleteEvent(const std::unique_ptr<messages::worker_request> &msg);
   void
   HandleMutationEvent(const std::unique_ptr<messages::worker_request> &msg);
-  void HandleOnDeployEvent(const std::unique_ptr<messages::worker_request> &msg);
+  void
+  HandleOnDeployEvent(const std::unique_ptr<messages::worker_request> &msg);
   void HandleCollectionDeleteEvent(
       const std::unique_ptr<messages::worker_request> &msg);
   void
@@ -253,6 +254,7 @@ private:
   std::unique_ptr<CheckpointWriter> checkpoint_writer_{nullptr};
   bool tracker_enabled_{false};
 
+  Logger *logger_{nullptr};
   std::string log_prefix_{""};
   inspector::Agent *agent_;
   bool debugger_started_{false};

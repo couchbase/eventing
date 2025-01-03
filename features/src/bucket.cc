@@ -90,6 +90,7 @@ std::tuple<Error, std::unique_ptr<lcb_STATUS>> Bucket::Connect() {
   }
 
   auto utils = UnwrapData(isolate_)->utils;
+  auto logger = UnwrapData(isolate_)->logger;
 
   auto conn_str_info = utils->GetConnectionString(bucket_name_);
   if (!conn_str_info.is_valid) {
@@ -104,7 +105,7 @@ std::tuple<Error, std::unique_ptr<lcb_STATUS>> Bucket::Connect() {
   lcb_createopts_create(&options, LCB_TYPE_BUCKET);
   lcb_createopts_connstr(options, conn_str_info.conn_str.c_str(),
                          strlen(conn_str_info.conn_str.c_str()));
-  lcb_createopts_logger(options, evt_logger.base);
+  lcb_createopts_logger(options, logger->base);
 
   auto result = lcb_create(&connection_, options);
   if (result != LCB_SUCCESS) {

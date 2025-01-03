@@ -98,6 +98,9 @@ type supervisor struct {
 
 	lifeCycleAllowed *atomic.Bool
 	stateRecovered   *atomic.Bool
+
+	runningAppInstanceIds map[string]int32
+	numWorkersRunning     *atomic.Int32
 }
 
 func StartSupervisor(ctx context.Context, cs *common.ClusterSettings) (Supervisor2, error) {
@@ -119,6 +122,9 @@ func StartSupervisor(ctx context.Context, cs *common.ClusterSettings) (Superviso
 
 		lifeCycleAllowed: &atomic.Bool{},
 		stateRecovered:   &atomic.Bool{},
+
+		runningAppInstanceIds: make(map[string]int32),
+		numWorkersRunning:     &atomic.Int32{},
 
 		appManager:         appManager.NewAppCache(),
 		appState:           stateMachine.NewStateMachine(),
@@ -695,6 +701,13 @@ func (s *supervisor) FunctionChangeCallback(kve metakv.KVEntry) error {
 			}
 			s.pauseFunction(function)
 		}
+
+		s.tenantLock.RLock()
+		defer s.tenantLock.RUnlock()
+
+		for _, tInfo := range s.tenents {
+			tInfo.manager.NotifyGlobalConfigChange()
+		}
 	} else {
 		// Function is deleted
 		appLocation := getAppLocationFromPath(common.EventingFunctionPath, kve.Path)
@@ -968,6 +981,13 @@ func (s *supervisor) deployFunction(function *application.FunctionDetails) {
 
 	s.bucketGraph.InsertEdges(function.AppLocation.ToLocationString(), src, dst)
 	s.cursorRegistry.Register(function.DeploymentConfig.SourceKeyspace, function.AppInstanceID)
+	if ok, _ := s.distributor.IsFunctionOwnedByThisNode(&function.MetaInfo.FunctionScopeID); ok {
+		if _, ok := s.runningAppInstanceIds[function.AppInstanceID]; !ok {
+			workerCount := int32(function.Settings.WorkerCount * function.Settings.CppWorkerThread)
+			s.runningAppInstanceIds[function.AppInstanceID] = workerCount
+			s.numWorkersRunning.Add(workerCount)
+		}
+	}
 
 	s.tenantLock.Lock()
 	tInfo, ok := s.tenents[function.AppLocation.Namespace.BucketName]
@@ -987,6 +1007,12 @@ func (s *supervisor) stopFunction(function *application.FunctionDetails, pause b
 	// TODO: Instead of string allow bucket graph to accept AppLocation
 	s.bucketGraph.RemoveEdges(function.AppLocation.ToLocationString())
 	s.cursorRegistry.Unregister(function.DeploymentConfig.SourceKeyspace, function.AppInstanceID)
+	if ok, _ := s.distributor.IsFunctionOwnedByThisNode(&function.MetaInfo.FunctionScopeID); ok {
+		if workers, ok := s.runningAppInstanceIds[function.AppInstanceID]; ok {
+			delete(s.runningAppInstanceIds, function.AppInstanceID)
+			s.numWorkersRunning.Add(int32(workers * -1))
+		}
+	}
 
 	s.tenantLock.Lock()
 	tInfo, ok := s.tenents[function.AppLocation.Namespace.BucketName]
@@ -1020,6 +1046,7 @@ func (s *supervisor) spawnTenantManagerLocked(functionDetails *application.Funct
 		s.gocbCluster,
 		s.clusterSetting,
 		s.observer,
+		s,
 		s,
 		s.distributor,
 		s.serverConfig,
@@ -1473,8 +1500,8 @@ func (s *supervisor) GetGarbagedFunction(namespaces map[application.KeyspaceInfo
 	}
 
 	garbageNamespace := make([]*application.KeyspaceInfo, 0, len(namespaces))
-	statusBytes, res, err := s.broadcaster.Request(true, "/api/v1/status", req)
-	if err != nil || !res.Success || len(statusBytes) == 0 {
+	statusBytes, _, err := s.broadcaster.Request(true, "/api/v1/status", req)
+	if err != nil {
 		logging.Errorf("%s Error broadcasting status request: %v", logPrefix, err)
 		return garbageNamespace
 	}
@@ -1504,6 +1531,13 @@ func (s *supervisor) GetGarbagedFunction(namespaces map[application.KeyspaceInfo
 		}
 	}
 	return garbageNamespace
+}
+
+func (s *supervisor) MemRequiredPerThread(application.KeyspaceInfo) float64 {
+	// TODO: Determine memrequired after testing all functions instead of equally dividing it
+	_, config := s.serverConfig.GetServerConfig(application.NewKeyspaceInfo("", "", "", "", 0))
+	quota := config.RamQuota / max(float64(s.numWorkersRunning.Load()), 1)
+	return quota
 }
 
 func (s *supervisor) GetNamespaceDistribution(keyinfo *application.KeyspaceInfo) int {

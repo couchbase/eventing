@@ -32,6 +32,7 @@ class ExceptionInsight;
 struct CurlCodex;
 struct LanguageCompatibility;
 class BucketOps;
+struct Logger;
 
 namespace Query {
 class Manager;
@@ -73,6 +74,7 @@ struct IsolateData {
   LanguageCompatibility *lang_compat{nullptr};
   std::string instance_id;
 
+  Logger *logger;
   BucketOps *bucket_ops{nullptr};
   std::mutex termination_lock_;
   bool is_executing_{false};

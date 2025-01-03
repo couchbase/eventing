@@ -321,7 +321,7 @@ func ValidateSettings(settings map[string]interface{}) (err error) {
 			err = typecheck.ValidateInteger[float64](settingValue, lowVal.Set(5), missingOptional, nil)
 
 		case maxUnackedBytesJSON:
-			err = typecheck.ValidateInteger[float64](settingValue, lowVal.Set(10), missingOptional, nil)
+			err = typecheck.ValidateInteger[float64](settingValue, lowVal.Set(0), missingOptional, nil)
 
 		case maxUnackedCountJSON:
 			err = typecheck.ValidateInteger[float64](settingValue, lowVal.Set(100), missingOptional, nil)

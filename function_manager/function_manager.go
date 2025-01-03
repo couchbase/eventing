@@ -7,6 +7,10 @@ import (
 	"github.com/couchbase/gocb/v2"
 )
 
+type SystemResourceDetails interface {
+	MemRequiredPerThread(application.KeyspaceInfo) float64
+}
+
 type InterruptHandler interface {
 	// Interrupt called when state changed request done
 	StateChangeInterupt(seq uint32, appLocation application.AppLocation)

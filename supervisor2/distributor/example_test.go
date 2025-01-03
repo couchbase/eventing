@@ -1,4 +1,4 @@
-package main
+package distributor_test
 
 import (
 	"fmt"
@@ -7,33 +7,37 @@ import (
 	"github.com/couchbase/eventing/supervisor2/distributor"
 )
 
-type x struct {
+type distributionHelperTest struct {
+	numnodes int
 	garbaged []*application.KeyspaceInfo
 }
 
-func (x *x) GetGarbagedFunction(namespaces map[application.KeyspaceInfo]struct{}) []*application.KeyspaceInfo {
+func (x *distributionHelperTest) GetGarbagedFunction(namespaces map[application.KeyspaceInfo]struct{}) []*application.KeyspaceInfo {
 	return x.garbaged
 }
 
-func (_ *x) GetNamespaceDistribution(namespace *application.KeyspaceInfo) int {
+func (x *distributionHelperTest) GetNamespaceDistribution(namespace *application.KeyspaceInfo) int {
+	return x.numnodes
+}
+
+func (_ *distributionHelperTest) Score(*application.KeyspaceInfo) int {
 	return 1
 }
 
-func (_ *x) Score(*application.KeyspaceInfo) int {
-	return 1
-}
-
-func main() {
+func ExampleDistributor() {
 	k1 := &application.KeyspaceInfo{BucketID: "bucket1", ScopeID: "s1"}
-	helper := &x{}
+	helper := &distributionHelperTest{numnodes: 3}
 	fmt.Println("Running main")
-	fs1 := distributor.NewFunctionScopeDistributor("n1", helper)
-	fs1.ReDistribute("abc", []string{"n2", "n1"})
-	encodedBytes, _ := fs1.Distribute(k1, 3)
+	fs1 := distributor.NewFunctionScopeDistributor("n0", helper)
+	fs1.ReDistribute("abc", []string{"n3", "n2", "n1", "n0"})
+	fs1.Distribute(k1, 3)
+	k10 := &application.KeyspaceInfo{BucketID: "bucket3", ScopeID: "s1"}
+	helper.numnodes = 2
+	fs1.Distribute(k10, 2)
 	fmt.Println(fs1.GetVbMap(k1, 128))
+	fmt.Println(fs1.GetVbMap(k10, 128))
 
 	fs2 := distributor.NewFunctionScopeDistributor("n2", helper)
-	fs2.AddDistribution("bucket1", encodedBytes)
 	fmt.Println(fs2.GetVbMap(k1, 128))
 
 	redisBytes, _ := fs1.ReDistribute("abc2", []string{"n2", "n1", "n3"})
