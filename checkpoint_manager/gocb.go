@@ -218,6 +218,7 @@ func (vbi *vbBlobInternal) syncFromServerAndOwnTheKeyLocked(forced bool) (string
 		return "", fmt.Errorf("error updating node_uuid: %v", err)
 	}
 
+	vbi.ownedTime = time.Now()
 	return vbi.checkpointConfig.OwnerNodeUUID, nil
 }
 

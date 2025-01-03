@@ -167,6 +167,10 @@ func CheckKeyspaceExist(observer notifier.Observer, keyspace application.Keyspac
 	return ok
 }
 
+type StatsInterface interface {
+	json.Marshaler
+}
+
 type AppStatusResponse struct {
 	Apps             []*AppStatus `json:"apps"`
 	NumEventingNodes int          `json:"num_eventing_nodes"`
@@ -300,6 +304,7 @@ const (
 	PrometheusStats StatsType = iota
 	PartialStats
 	FullStats
+	FullDebugStats
 )
 
 type Stats struct {
@@ -321,8 +326,14 @@ type Stats struct {
 	LatencyPercentileStats      map[string]int    `json:"latency_percentile_stats"`
 	CurlLatency                 *HistogramStats   `json:"curl_latency_stats,omitempty"`
 
+	LatencyHistogram *HistogramStats `json:"latency_stats,omitempty"`
+
+	// Full debug stats
+	ProcessStats    map[string]interface{} `json:"function_process_stats,omitempty"`
+	CheckPointStats map[string]interface{} `json:"function_checkpoint_stats,omitempty"`
+	VbStats         map[string]interface{} `json:"vb_stats,omitempty"`
+
 	Insight              *Insight          `json:"-"`
-	LatencyHistogram     *HistogramStats   `json:"latency_stats,omitempty"`
 	TempLatencyHistogram *HistogramStats   `json:"-"`
 	ProcessedSeq         map[uint16]uint64 `json:"-"`
 }
@@ -336,6 +347,12 @@ func NewStats(statsInit bool, functionScope application.Namespace, appName strin
 	}
 
 	switch statsType {
+	case FullDebugStats:
+		newStats.ProcessStats = make(map[string]interface{})
+		newStats.CheckPointStats = make(map[string]interface{})
+		newStats.VbStats = make(map[string]interface{})
+		fallthrough
+
 	case FullStats:
 		newStats.LatencyHistogram = NewHistogramStats()
 		newStats.CurlLatency = NewHistogramStats()
@@ -359,7 +376,7 @@ func NewStats(statsInit bool, functionScope application.Namespace, appName strin
 	if statsInit {
 		init := float64(0)
 		switch statsType {
-		case PartialStats, FullStats:
+		case PartialStats, FullStats, FullDebugStats:
 			// Execution stats
 			newStats.ExecutionStats["processed_events_size"] = init
 			newStats.ExecutionStats["no_op_counter"] = init
@@ -487,6 +504,12 @@ func (s *Stats) Copy(statType StatsType) *Stats {
 	newStats := NewStats(false, s.FunctionScope, s.FunctionName, statType)
 
 	switch statType {
+	case FullDebugStats:
+		maps.Copy(newStats.ProcessStats, s.ProcessStats)
+		maps.Copy(newStats.CheckPointStats, s.CheckPointStats)
+		maps.Copy(newStats.VbStats, s.VbStats)
+		fallthrough
+
 	case FullStats:
 		newStats.LatencyHistogram = s.TempLatencyHistogram.Copy()
 		newStats.CurlLatency = s.CurlLatency.Copy()
@@ -528,6 +551,12 @@ func (s2 *Stats) Sub(s1 *Stats, statType StatsType) *Stats {
 	newStats := NewStats(false, s2.FunctionScope, s2.FunctionName, statType)
 
 	switch statType {
+	case FullDebugStats:
+		maps.Copy(newStats.ProcessStats, s2.ProcessStats)
+		maps.Copy(newStats.CheckPointStats, s2.CheckPointStats)
+		maps.Copy(newStats.VbStats, s2.VbStats)
+		fallthrough
+
 	case FullStats:
 		newStats.LatencyHistogram = s2.TempLatencyHistogram.Copy()
 		newStats.CurlLatency = s2.CurlLatency.Copy()
@@ -603,6 +632,12 @@ func (s2 *Stats) Sub(s1 *Stats, statType StatsType) *Stats {
 // s2 should be more than or equals to statType provided
 func (s2 *Stats) Add(s1 *Stats, statType StatsType) {
 	switch statType {
+	case FullDebugStats:
+		maps.Copy(s2.ProcessStats, s1.ProcessStats)
+		maps.Copy(s2.CheckPointStats, s1.CheckPointStats)
+		maps.Copy(s2.VbStats, s1.VbStats)
+		fallthrough
+
 	case FullStats:
 		s2.LatencyHistogram.UpdateWithHistogram(s1.TempLatencyHistogram)
 		s2.CurlLatency.UpdateWithHistogram(s1.CurlLatency)

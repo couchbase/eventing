@@ -2,26 +2,9 @@ package dcpConn
 
 import (
 	"sync"
-)
+	"time"
 
-type reqState uint8
-
-const (
-	// caller made the request. Not yet made with the server
-	req_init reqState = iota // send the request
-
-	// start stream message is sent waiting for reply
-	requesting
-
-	// request is successfully accepted by kv node
-	requested
-
-	// paused allow all the request in the socket
-	// and close the request
-	paused
-
-	// request is closed due to successly completing or some error
-	closed
+	"github.com/couchbase/eventing/common/utils"
 )
 
 type dcpCommand int8
@@ -37,6 +20,12 @@ type command struct {
 	id      uint16
 	vbno    uint16
 	opaque  uint32
+}
+
+type reqManagerStats struct {
+	RunningMap map[uint32]*StreamReq `json:"running_map"`
+	ReadyMap   map[uint32]*StreamReq `json:"ready_map"`
+	ReqMap     map[uint32]*StreamReq `json:"req_map"`
 }
 
 // Lock hierarcy reqLock, readyLock, runningLock
@@ -72,6 +61,23 @@ func newRequestManager(requestChannel chan<- command) *reqManager {
 	return manager
 }
 
+func (manager *reqManager) GetRuntimeStats() *reqManagerStats {
+	reqStats := &reqManagerStats{}
+	manager.reqLock.RLock()
+	reqStats.ReqMap = utils.CopyMap(manager.reqMap)
+	manager.reqLock.RUnlock()
+
+	manager.readyLock.RLock()
+	reqStats.ReadyMap = utils.CopyMap(manager.readyMap)
+	manager.readyLock.RUnlock()
+
+	manager.runningLock.RLock()
+	reqStats.RunningMap = utils.CopyMap(manager.runningMap)
+	manager.runningLock.RUnlock()
+
+	return reqStats
+}
+
 func (manager *reqManager) initRequest(req *StreamReq) bool {
 	manager.reqLock.Lock()
 	if !manager.acceptRequest {
@@ -103,6 +109,7 @@ func (manager *reqManager) readyRequest(opaque uint32) *StreamReq {
 	}
 	delete(manager.reqMap, opaque)
 	manager.readyMap[opaque] = req
+	req.LastStreamRequestedTime = time.Now()
 	return req
 }
 
@@ -141,6 +148,7 @@ func (manager *reqManager) runningReq(dcpMsg *DcpEvent) bool {
 	dcpMsg.Version = req.Version
 	req.FailoverLog = dcpMsg.FailoverLog
 	req.Vbuuid, req.failoverLogIndex = GetVbUUID(req.StartSeq, dcpMsg.FailoverLog)
+	req.LastStreamSuccessTime = time.Now()
 	return true
 }
 

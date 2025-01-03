@@ -3,6 +3,7 @@ package communicator
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 
@@ -16,14 +17,18 @@ var (
 
 // ConnSettings contains all the details of the connection
 type ConnSettings struct {
-	ServerPort string
-	ID         string
-	IPMode     common.IpMode
+	ServerPort string        `json:"server_port"`
+	ID         string        `json:"id"`
+	IPMode     common.IpMode `json:"ip_mode"`
 
 	// Socket details
-	IpcType            string
-	SockIdentifier     string
-	FeedbackIdentifier string
+	IpcType            string `json:"ipc_type"`
+	SockIdentifier     string `json:"sock_id"`
+	FeedbackIdentifier string `json:"feedback_id"`
+}
+
+func (c *ConnSettings) String() string {
+	return fmt.Sprintf("{\"server_port\": %s, \"id\": %s, \"ip_mode\": %s, \"ipc_type\": %s, \"sock_id\": %s, \"feedback_id\": %s}", c.ID, c.ServerPort, c.IPMode, c.IpcType, c.SockIdentifier, c.FeedbackIdentifier)
 }
 
 // ConnFunction is the function that is used to create listner interface
@@ -45,6 +50,9 @@ func (c *CommMessage) Reset() {
 type Comm interface {
 	// Start the connection with given ConnSettings.ID
 	Start() error
+
+	// GetRuntimeStats returns important stats of this module
+	GetRuntimeStats() common.StatsInterface
 
 	// Wait for connection to establish
 	Wait() error
@@ -68,7 +76,7 @@ type Comm interface {
 	SetStdOutErrBuffer(readerOut, readerErr io.Reader)
 
 	// Write message to buffer
-	Write(msg *CommMessage) error
+	Write(msg *CommMessage) (uint64, error)
 
 	// Write the buffer message
 	WriteToBuffer(buffer *bytes.Buffer, msg *CommMessage) error

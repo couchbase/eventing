@@ -8,7 +8,10 @@ import (
 	"io"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
+
+	"github.com/couchbase/eventing/common"
 )
 
 type connType uint8
@@ -16,6 +19,20 @@ type connType uint8
 const (
 	SOCKET connType = iota
 )
+
+type stats struct {
+	Settings    ConnSettings `json:"conn_settings"`           // Connection settings
+	MsgInBuffer uint64       `json:"msg_remaining_in_buffer"` // Number of messages remaining in the buffer
+	NumFlushed  uint64       `json:"num_flushed"`             // Number of times flush message was called
+}
+
+func (s *stats) Copy() *stats {
+	return &stats{
+		Settings:    s.Settings,
+		MsgInBuffer: atomic.LoadUint64(&s.MsgInBuffer),
+		NumFlushed:  atomic.LoadUint64(&s.NumFlushed),
+	}
+}
 
 type communicator struct {
 	sync.Mutex
@@ -38,6 +55,8 @@ type communicator struct {
 	acceptCh         chan []interface{}
 
 	connFunction ConnFunction
+
+	stat *stats
 }
 
 func NewCommunicator(conn connType, settings ConnSettings) *communicator {
@@ -68,9 +87,19 @@ func NewCommunicatorWithConnFunc(connFunction ConnFunction, settings ConnSetting
 		sockFeedbackReader: dummyConn(0),
 
 		connFunction: connFunction,
+
+		stat: &stats{Settings: settings},
 	}
 
 	return c
+}
+
+func (c *communicator) GetRuntimeStats() common.StatsInterface {
+	return common.NewMarshalledData(c.stat.Copy())
+}
+
+func (c *communicator) GetBufferStats() uint64 {
+	return atomic.LoadUint64(&c.stat.MsgInBuffer)
 }
 
 func waitForConnAccept(listener net.Listener, acceptCh chan<- []interface{}) {
@@ -85,6 +114,9 @@ func (c *communicator) SetStdOutErrBuffer(bufOut, bufErr io.Reader) {
 
 func (c *communicator) Start() error {
 	listener, feedbackListner, err := c.connFunction(&c.settings)
+	c.stat.Settings = c.settings
+	c.stat.MsgInBuffer = 0
+	c.stat.NumFlushed = 0
 	if err != nil {
 		return err
 	}
@@ -215,11 +247,17 @@ func (c *communicator) receiveMessage(buf io.Reader, readBuffer []byte, size uin
 }
 
 // Write message to buffer
-func (c *communicator) Write(msg *CommMessage) error {
+func (c *communicator) Write(msg *CommMessage) (uint64, error) {
 	c.Lock()
 	defer c.Unlock()
 
-	return c.write(c.msgBuffer, msg)
+	err := c.write(c.msgBuffer, msg)
+	if err != nil {
+		return 0, err
+	}
+
+	remaining := atomic.AddUint64(&c.stat.MsgInBuffer, 1)
+	return remaining, nil
 }
 
 func (c *communicator) WriteToBuffer(buffer *bytes.Buffer, msg *CommMessage) error {
@@ -261,7 +299,12 @@ func (c *communicator) FlushMessage() error {
 	c.Lock()
 	defer c.Unlock()
 
-	return c.flushMessageWithLock(c.msgBuffer)
+	err := c.flushMessageWithLock(c.msgBuffer)
+	if err != nil {
+		return err
+	}
+	atomic.StoreUint64(&c.stat.MsgInBuffer, 0)
+	return nil
 }
 
 // Write the message to local buffer
@@ -286,5 +329,6 @@ func (c *communicator) flushMessageWithLock(msgBuffer *bytes.Buffer) error {
 	for ; err == io.ErrShortWrite; _, err = msgBuffer.WriteTo(c.conn) {
 	}
 
+	atomic.AddUint64(&c.stat.NumFlushed, 1)
 	return err
 }

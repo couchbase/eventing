@@ -36,6 +36,7 @@ type managerPool struct {
 	gocbCluster        *gocb.Cluster
 
 	broadcaster common.Broadcaster
+	stats       *stats
 	close       func()
 }
 
@@ -54,6 +55,7 @@ func NewManagerPool(ctx context.Context, poolID string, clusterSettings *common.
 		broadcaster:         broadcaster,
 		dcpSeqNumberManager: make(map[string]dcpManager.DcpManager),
 		gocbCluster:         gocbCluster,
+		stats:               &stats{},
 	}
 
 	cancelCtx, close := context.WithCancel(ctx)
@@ -106,6 +108,28 @@ func (pool *managerPool) observe(ctx context.Context) {
 			return
 		}
 	}
+}
+
+type stats struct {
+	numDedicatedConn uint64
+}
+
+func (s *stats) Copy() *stats {
+	return &stats{
+		numDedicatedConn: s.numDedicatedConn,
+	}
+}
+
+func (s *stats) String() string {
+	return fmt.Sprintf("{ \"num_dedicated_conn\": %d }", s.numDedicatedConn)
+}
+
+func (s *stats) MarshalJSON() ([]byte, error) {
+	return []byte(s.String()), nil
+}
+
+func (pool *managerPool) GetRuntimeStats() common.StatsInterface {
+	return pool.stats.Copy()
 }
 
 func (pool *managerPool) TlsSettingsChanged(gocbCluster *gocb.Cluster) {

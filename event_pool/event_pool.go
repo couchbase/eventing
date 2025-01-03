@@ -3,6 +3,7 @@ package eventPool
 import (
 	"github.com/couchbase/eventing/application"
 	checkpointManager "github.com/couchbase/eventing/checkpoint_manager"
+	"github.com/couchbase/eventing/common"
 	dcpConn "github.com/couchbase/eventing/dcp_connection"
 	dcpManager "github.com/couchbase/eventing/dcp_manager"
 	"github.com/couchbase/gocb/v2"
@@ -20,6 +21,7 @@ type SeqNumerInterface interface {
 	GetSeqNumber(vbs []uint16, collectionID string) (map[uint16]uint64, error)
 	GetFailoverLog(vbs []uint16) (map[uint16]dcpConn.FailoverLog, error)
 	DeregisterID(id uint16)
+	GetRuntimeStats() common.StatsInterface
 
 	CloseManager()
 	CloseConditional() bool
@@ -31,6 +33,9 @@ type ManagerPool interface {
 	GetCheckpointManager(appId uint32, interruptCallback checkpointManager.InterruptFunction, appLocation application.AppLocation, keyspace application.Keyspace) checkpointManager.Checkpoint
 
 	TlsSettingsChanged(gocbCluster *gocb.Cluster)
+
+	GetRuntimeStats() common.StatsInterface
+
 	CloseConditional()
 	ClosePool()
 }

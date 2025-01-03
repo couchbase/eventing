@@ -73,26 +73,33 @@ func (vs status) String() string {
 }
 
 type vbStatus struct {
-	vbno        uint16
-	version     uint32
-	streamReq   *dcpMessage.StreamReq
-	status      status
-	lastSentSeq uint64
-	isStreaming bool
+	Vbno            uint16                `json:"vb"`
+	Version         uint32                `json:"version"`
+	StreamReq       *dcpMessage.StreamReq `json:"stream_req,omitempty"`
+	Status          status                `json:"status"`
+	LastSentSeq     uint64                `json:"last_sent_seq"`
+	IsStreaming     bool                  `json:"is_streaming"`
+	LastDoneRequest time.Time             `json:"last_done_request"`
+}
 
-	lastDoneRequest time.Time
+func (vs vbStatus) Copy() vbStatus {
+	copyVb := vs
+	if vs.StreamReq != nil {
+		copyVb.StreamReq = vs.StreamReq.Copy()
+	}
+	return copyVb
 }
 
 func (vs vbStatus) isRunning() bool {
-	return vs.status.isRunning()
+	return vs.Status.isRunning()
 }
 
 func (vs vbStatus) isRequested() (bool, bool) {
-	return vs.status.isRequested(), vs.isStreaming
+	return vs.Status.isRequested(), vs.IsStreaming
 }
 
 func (vs vbStatus) isOwned() bool {
-	return vs.status.isOwned()
+	return vs.Status.isOwned()
 }
 
 type workerDetails struct {
@@ -105,6 +112,20 @@ type workerDetails struct {
 	runningMap map[uint16]*vbStatus
 	allVbList  []*vbStatus
 	index      int
+}
+
+func (w *workerDetails) GetRuntimeStats() map[string]interface{} {
+	stats := make(map[string]interface{})
+	stats["running_count"] = w.runningCount.Load()
+	count, size := w.unackedDetails.UnackedMessageCount()
+	stats["unacked_count"] = count
+	stats["unacked_size"] = size
+	vbList := make([]vbStatus, 0, len(w.allVbList))
+	for _, vb := range w.allVbList {
+		vbList = append(vbList, vb.Copy())
+	}
+	stats["vb_list"] = vbList
+	return stats
 }
 
 // Concurency should be controlled by caller
@@ -121,11 +142,11 @@ func InitWorkerDetails() *workerDetails {
 
 func (wd *workerDetails) InitVb(vb uint16) {
 	status := &vbStatus{
-		vbno:            vb,
-		status:          initStatus,
-		version:         wd.version,
-		lastDoneRequest: time.Now(),
-		isStreaming:     true,
+		Vbno:            vb,
+		Status:          initStatus,
+		Version:         wd.version,
+		LastDoneRequest: time.Now(),
+		IsStreaming:     true,
 	}
 
 	wd.version++
@@ -137,18 +158,18 @@ func (wd *workerDetails) AddVb(vb uint16, sr *dcpMessage.StreamReq, isStreaminMo
 	sendStatus := true
 	for index := 0; index < len(wd.allVbList); index++ {
 		vbStatus := wd.allVbList[index]
-		if vbStatus.vbno == vb {
-			if vbStatus.status != initStatus {
+		if vbStatus.Vbno == vb {
+			if vbStatus.Status != initStatus {
 				sendStatus = false
 				break
 			}
 
-			sr.Version = vbStatus.version
-			vbStatus.lastDoneRequest = time.Now()
-			vbStatus.status = waiting
-			vbStatus.lastSentSeq = sr.StartSeq
-			vbStatus.streamReq = sr
-			vbStatus.isStreaming = isStreaminMode
+			sr.Version = vbStatus.Version
+			vbStatus.LastDoneRequest = time.Now()
+			vbStatus.Status = waiting
+			vbStatus.LastSentSeq = sr.StartSeq
+			vbStatus.StreamReq = sr
+			vbStatus.IsStreaming = isStreaminMode
 			break
 		}
 	}
@@ -159,10 +180,10 @@ func (wd *workerDetails) AddVb(vb uint16, sr *dcpMessage.StreamReq, isStreaminMo
 func (wd *workerDetails) updateModeTo(vbno uint16, isStreamingMode bool) int {
 	count := 0
 	for _, status := range wd.allVbList {
-		if status.vbno == vbno {
-			status.isStreaming = isStreamingMode
+		if status.Vbno == vbno {
+			status.IsStreaming = isStreamingMode
 		}
-		if status.isStreaming != isStreamingMode {
+		if status.IsStreaming != isStreamingMode {
 			count++
 		}
 	}
@@ -181,7 +202,7 @@ func (wd *workerDetails) CloseVb(vb uint16) (*vbStatus, bool) {
 	index := 0
 	for ; index < len(wd.allVbList); index++ {
 		vbDetails := wd.allVbList[index]
-		if vbDetails.vbno == vb {
+		if vbDetails.Vbno == vb {
 			wd.allVbList[index] = wd.allVbList[len(wd.allVbList)-1]
 			wd.allVbList = wd.allVbList[:len(wd.allVbList)-1]
 			if wd.index >= len(wd.allVbList) {
@@ -204,8 +225,8 @@ func (wd *workerDetails) isRunningVb(vb uint16) (*vbStatus, bool) {
 
 func (wd *workerDetails) StillClaimedVbs(toOwn []uint16) []uint16 {
 	for _, vbDetails := range wd.allVbList {
-		if vbDetails.status == initStatus {
-			toOwn = append(toOwn, vbDetails.vbno)
+		if vbDetails.Status == initStatus {
+			toOwn = append(toOwn, vbDetails.Vbno)
 		}
 	}
 
@@ -214,7 +235,7 @@ func (wd *workerDetails) StillClaimedVbs(toOwn []uint16) []uint16 {
 
 func (wd *workerDetails) GetVbOwned(vbMap map[uint16]struct{}) {
 	for _, vbDetails := range wd.allVbList {
-		vbMap[vbDetails.vbno] = struct{}{}
+		vbMap[vbDetails.Vbno] = struct{}{}
 	}
 	return
 }
@@ -223,14 +244,14 @@ func (wd *workerDetails) getVbsWithStatus(vbState status) (count int) {
 	switch vbState {
 	case ready, running, paused, forcedClosed:
 		for _, vbDetails := range wd.runningMap {
-			if vbDetails.status == vbState {
+			if vbDetails.Status == vbState {
 				count++
 			}
 		}
 
 	default:
 		for _, vbDetails := range wd.allVbList {
-			if vbDetails.status == vbState {
+			if vbDetails.Status == vbState {
 				count++
 			}
 		}

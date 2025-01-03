@@ -221,6 +221,10 @@ func (handler *vbHandler) GetHighSeqNum() map[uint16]uint64 {
 	return handler.allocator.GetHighSeqNum()
 }
 
+func (handler *vbHandler) GetRuntimeStats() common.StatsInterface {
+	return handler.allocator.GetRuntimeStats()
+}
+
 // Notify that vb map is changed. Returns new vb map, added vbs and closed vbs
 func (handler *vbHandler) NotifyOwnershipChange() (string, []uint16, []uint16, []uint16, error) {
 	distributedVbsBytes, vbMapVersion, toOwn, toClose, notFullyOwned, err := handler.allocator.VbDistribution()

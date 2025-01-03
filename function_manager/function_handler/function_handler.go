@@ -23,6 +23,7 @@ type RuntimeEnvironment interface {
 	VbSettings(version uint32, opcode uint8, handlerID []byte, key interface{}, value interface{})
 
 	GetProcessDetails() processManager.ProcessDetails
+	GetRuntimeStats() common.StatsInterface
 }
 
 type UtilityWorker interface {

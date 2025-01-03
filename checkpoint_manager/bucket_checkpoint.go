@@ -1,12 +1,13 @@
 package checkpointManager
 
 import (
+	"sync"
+	"sync/atomic"
+
 	"github.com/couchbase/eventing/application"
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/notifier"
 	"github.com/couchbase/gocb/v2"
-	"sync"
-	"sync/atomic"
 )
 
 type bucketCheckpoint struct {
@@ -132,6 +133,10 @@ func (cw *checkpointWrapper) GetKeyPrefix() string {
 
 func (cw *checkpointWrapper) GetTimerCheckpoints(appId uint32) (*gocb.ScanResult, error) {
 	return cw.checkpoint.GetTimerCheckpoints(appId)
+}
+
+func (cw *checkpointWrapper) GetRuntimeStats() common.StatsInterface {
+	return cw.checkpoint.GetRuntimeStats()
 }
 
 func (cw *checkpointWrapper) DeleteKeys(deleteKeys []string) {

@@ -5,9 +5,10 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
-	"github.com/couchbase/eventing/common/utils"
 	"strconv"
 	"strings"
+
+	"github.com/couchbase/eventing/common/utils"
 )
 
 type eventType uint8

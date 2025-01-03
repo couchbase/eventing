@@ -52,8 +52,8 @@ type ResponseMessage struct {
 }
 
 type ProcessDetails struct {
-	Version uint32
-	PID     int
+	Version uint32 `json:"version"`
+	PID     int    `json:"pid"`
 }
 
 // ProcessManager will spawn c++ process
@@ -83,6 +83,8 @@ type ProcessManager interface {
 	FlushMessage(version uint32, buffer *bytes.Buffer)
 
 	GetProcessDetails() ProcessDetails
+
+	GetRuntimeStats() common.StatsInterface
 
 	StopProcess()
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"sync"
 	"time"
 
@@ -18,6 +19,55 @@ import (
 const (
 	printStatsInterval = time.Minute
 )
+
+type javascriptStats struct {
+	ProcessesSeq      map[uint16][]uint64    `json:"processed_seq"`
+	ExecutionStats    map[string]interface{} `json:"execution_stats"`
+	FailureStats      map[string]interface{} `json:"failure_stats"`
+	LatencyStats      map[string]uint64      `json:"latency_stats"`
+	CurlLatency       *common.HistogramStats `json:"curl_latency_stats"`
+	LCBExceptionStats map[string]uint64      `json:"lcb_exception_stats"`
+	EventsRemaining   map[string]uint64      `json:"events_remaining"`
+	Insight           *common.Insight        `json:"-"`
+}
+
+func newJavascriptStats() *javascriptStats {
+	return &javascriptStats{
+		ProcessesSeq:      make(map[uint16][]uint64),
+		ExecutionStats:    make(map[string]interface{}),
+		FailureStats:      make(map[string]interface{}),
+		LatencyStats:      make(map[string]uint64),
+		CurlLatency:       common.NewHistogramStats(),
+		LCBExceptionStats: make(map[string]uint64),
+		EventsRemaining:   make(map[string]uint64),
+		Insight:           common.NewInsight(),
+	}
+}
+
+func (js *javascriptStats) String() string {
+	val, _ := json.Marshal(js)
+	return string(val)
+}
+
+func (js *javascriptStats) Copy() *javascriptStats {
+	copy := &javascriptStats{}
+	copy.ExecutionStats = make(map[string]interface{})
+	copy.FailureStats = make(map[string]interface{})
+	copy.LatencyStats = make(map[string]uint64)
+	copy.CurlLatency = common.NewHistogramStats()
+	copy.LCBExceptionStats = make(map[string]uint64)
+	copy.EventsRemaining = make(map[string]uint64)
+
+	maps.Copy(copy.ProcessesSeq, js.ProcessesSeq)
+	maps.Copy(copy.ExecutionStats, js.ExecutionStats)
+	maps.Copy(copy.FailureStats, js.FailureStats)
+	maps.Copy(copy.LatencyStats, js.LatencyStats)
+	copy.CurlLatency = js.CurlLatency.Copy()
+	maps.Copy(copy.LCBExceptionStats, js.LCBExceptionStats)
+	maps.Copy(copy.EventsRemaining, js.EventsRemaining)
+	copy.Insight = js.Insight
+	return copy
+}
 
 type statsHandler struct {
 	sync.RWMutex

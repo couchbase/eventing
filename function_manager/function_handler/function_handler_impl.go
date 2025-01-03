@@ -21,7 +21,6 @@ import (
 	"github.com/couchbase/eventing/parser"
 	processManager "github.com/couchbase/eventing/process_manager"
 	serverConfig "github.com/couchbase/eventing/server_config"
-	"github.com/couchbase/eventing/util"
 )
 
 const (
@@ -202,13 +201,19 @@ func (fHandler *funcHandler) GetApplicationLog(size int64) ([]string, error) {
 func (fHandler *funcHandler) Stats(statType common.StatsType) *common.Stats {
 	stat := fHandler.statsHandler.getStats(statType)
 	switch statType {
+	case common.FullDebugStats:
+		stat.CheckPointStats[fHandler.logPrefix] = fHandler.checkpointManager.GetRuntimeStats()
+		stat.ProcessStats[fHandler.logPrefix] = fHandler.re.GetRuntimeStats()
+		stat.VbStats[fHandler.logPrefix] = fHandler.vbHandler.Load().GetRuntimeStats()
+		fallthrough
+
 	case common.FullStats:
 		fallthrough
 
 	case common.PartialStats:
 		appProgress := &common.AppRebalanceProgress{}
 		fHandler.checkpointManager.OwnershipSnapshot(appProgress)
-		stat.InternalVbDistributionStats[fHandler.logPrefix] = util.Condense(appProgress.OwnedVbs)
+		stat.InternalVbDistributionStats[fHandler.logPrefix] = utils.Condense(appProgress.OwnedVbs)
 		stat.WorkerPids[fHandler.logPrefix] = fHandler.re.GetProcessDetails().PID
 	}
 	return stat

@@ -1317,46 +1317,6 @@ func VbucketDistribution(vbs []uint16, numWorkers int) map[int][]uint16 {
 	return vbWorkerAssignMap
 }
 
-func Condense(vbs []uint16) string {
-	if len(vbs) == 0 {
-		return "[]"
-	}
-
-	sort.Slice(vbs, func(i, j int) bool { return vbs[i] < vbs[j] })
-	startVb := vbs[0]
-	res := fmt.Sprintf("[%d", startVb)
-	prevVb := startVb
-
-	for i := 1; i < len(vbs); {
-		if vbs[i] == startVb+1 {
-			startVb++
-		} else {
-
-			if prevVb != startVb {
-				res = fmt.Sprintf("%s-%d, %d", res, startVb, vbs[i])
-			} else {
-				res = fmt.Sprintf("%s, %d", res, vbs[i])
-			}
-			startVb = vbs[i]
-			prevVb = startVb
-		}
-
-		if i == len(vbs)-1 {
-			if prevVb == vbs[i] {
-				res = fmt.Sprintf("%s]", res)
-				return res
-			}
-
-			res = fmt.Sprintf("%s-%d]", res, vbs[i])
-			return res
-		}
-
-		i++
-	}
-
-	return res
-}
-
 // VbucketByKey returns doc_id to vbucket mapping
 func VbucketByKey(key []byte, numVbuckets int) uint16 {
 	return uint16((crc32.ChecksumIEEE(key) >> 16) % uint32(numVbuckets))
