@@ -29,8 +29,8 @@ type statsHandler struct {
 }
 
 func newStatsHandler(logPrefix string, appLocation application.AppLocation) *statsHandler {
-	stats := common.NewStats(true, appLocation.Namespace, appLocation.Appname)
-	discardedStats := common.NewStats(true, appLocation.Namespace, appLocation.Appname)
+	stats := common.NewStats(true, appLocation.Namespace, appLocation.Appname, common.FullStats)
+	discardedStats := common.NewStats(true, appLocation.Namespace, appLocation.Appname, common.PartialStats)
 	return &statsHandler{
 		logPrefix:      logPrefix,
 		location:       appLocation,
@@ -49,11 +49,11 @@ func (sh *statsHandler) getInsight() *common.Insight {
 	return copyInsight
 }
 
-func (sh *statsHandler) getStats() *common.Stats {
+func (sh *statsHandler) getStats(statType common.StatsType) *common.Stats {
 	sh.RLock()
 	defer sh.RUnlock()
 
-	stats := sh.stats.Sub(sh.discardedStats, true)
+	stats := sh.stats.Sub(sh.discardedStats, statType)
 	return stats
 }
 
@@ -62,15 +62,15 @@ func (sh *statsHandler) resetStats() {
 	sh.Lock()
 	defer sh.Unlock()
 
-	sh.discardedStats = sh.stats.Copy(false)
+	sh.discardedStats = sh.stats.Copy(common.PartialStats)
 	logging.Infof("%s successfully reset the stats: %s", logPrefix, sh.discardedStats)
 }
 
-func (stats *statsHandler) IncrementProcessingStats(statName string) {
+func (stats *statsHandler) IncrementCountProcessingStats(statName string, count uint64) {
 	stats.Lock()
 	defer stats.Unlock()
 
-	stats.incrementProcessingStatsLocked(statName)
+	stats.incrementCountProcessingStatsLocked(statName, count)
 }
 
 func (stats *statsHandler) AddExecutionStats(statName string, count interface{}) {
@@ -80,8 +80,8 @@ func (stats *statsHandler) AddExecutionStats(statName string, count interface{})
 	stats.stats.ExecutionStats[statName] = count
 }
 
-func (stats *statsHandler) incrementProcessingStatsLocked(statName string) {
-	stats.stats.EventProcessingStats[statName]++
+func (stats *statsHandler) incrementCountProcessingStatsLocked(statName string, count uint64) {
+	stats.stats.EventProcessingStats[statName] += count
 }
 
 func (stats *statsHandler) processedSeqEvents(msg *processManager.ResponseMessage) map[uint16][]uint64 {
@@ -116,7 +116,7 @@ func (stats *statsHandler) handleStats(msg *processManager.ResponseMessage) {
 
 		stats.Lock()
 		stats.stats.FailureStats = fStats
-		stats.incrementProcessingStatsLocked("failure_stats")
+		stats.incrementCountProcessingStatsLocked("failure_stats", 1)
 		stats.Unlock()
 
 	case processManager.ExecutionStats:
@@ -130,7 +130,7 @@ func (stats *statsHandler) handleStats(msg *processManager.ResponseMessage) {
 		stats.stats.ExecutionStats = eStats
 		stats.stats.EventProcessingStats["timer_responses_received"] = uint64(eStats["timer_create_counter"].(float64))
 		stats.stats.EventProcessingStats["timer_events"] = uint64(eStats["timer_msg_counter"].(float64))
-		stats.incrementProcessingStatsLocked("execution_stats")
+		stats.incrementCountProcessingStatsLocked("execution_stats", 1)
 		stats.Unlock()
 
 	case processManager.Insight:
@@ -146,7 +146,7 @@ func (stats *statsHandler) handleStats(msg *processManager.ResponseMessage) {
 
 		stats.Lock()
 		stats.stats.Insight = insight
-		stats.incrementProcessingStatsLocked("insight_stats")
+		stats.incrementCountProcessingStatsLocked("insight_stats", 1)
 		stats.Unlock()
 
 	case processManager.LatencyStats:
@@ -158,7 +158,7 @@ func (stats *statsHandler) handleStats(msg *processManager.ResponseMessage) {
 
 		stats.Lock()
 		stats.stats.LatencyHistogram.Update(latency)
-		stats.incrementProcessingStatsLocked("latency_stats")
+		stats.incrementCountProcessingStatsLocked("latency_stats", 1)
 		stats.Unlock()
 
 	case processManager.CurlLatencyStats:
@@ -170,7 +170,7 @@ func (stats *statsHandler) handleStats(msg *processManager.ResponseMessage) {
 
 		stats.Lock()
 		stats.stats.CurlLatency.Update(latency)
-		stats.incrementProcessingStatsLocked("curl_latency_stats")
+		stats.incrementCountProcessingStatsLocked("curl_latency_stats", 1)
 		stats.Unlock()
 
 	case processManager.AllStats:
@@ -215,11 +215,11 @@ func (stats *statsHandler) handleStats(msg *processManager.ResponseMessage) {
 		stats.stats.ExecutionStats = executionStats
 		stats.stats.EventProcessingStats["timer_responses_received"] = uint64(executionStats["timer_create_counter"].(float64))
 		stats.stats.EventProcessingStats["timer_events"] = uint64(executionStats["timer_msg_counter"].(float64))
-		stats.incrementProcessingStatsLocked("execution_stats")
-		stats.incrementProcessingStatsLocked("failure_stats")
-		stats.incrementProcessingStatsLocked("latency_stats")
-		stats.incrementProcessingStatsLocked("curl_latency_stats")
-		stats.incrementProcessingStatsLocked("lcb_exception_stats")
+		stats.incrementCountProcessingStatsLocked("execution_stats", 1)
+		stats.incrementCountProcessingStatsLocked("failure_stats", 1)
+		stats.incrementCountProcessingStatsLocked("latency_stats", 1)
+		stats.incrementCountProcessingStatsLocked("curl_latency_stats", 1)
+		stats.incrementCountProcessingStatsLocked("lcb_exception_stats", 1)
 		stats.stats.LatencyHistogram.Update(latencyStats)
 		stats.stats.CurlLatency.Update(curlLatencyStats)
 		stats.stats.LCBExceptionStats = lcbExceptionStats
@@ -234,8 +234,8 @@ const (
 func (stats *statsHandler) start(ctx context.Context, version uint32, instanceID []byte, re RuntimeEnvironment, vbHandler vbhandler.VbHandler, statsDuration time.Duration) {
 	logPrefix := fmt.Sprintf("statsHandler::statsHandler[%s]", stats.logPrefix)
 	stats.Lock()
-	stats.stats = common.NewStats(true, stats.location.Namespace, stats.location.Appname)
-	stats.discardedStats = common.NewStats(true, stats.location.Namespace, stats.location.Appname)
+	stats.stats = common.NewStats(true, stats.location.Namespace, stats.location.Appname, common.FullStats)
+	stats.discardedStats = common.NewStats(true, stats.location.Namespace, stats.location.Appname, common.PartialStats)
 	stats.Unlock()
 
 	tick := time.NewTicker(statsDuration * time.Millisecond)
@@ -256,6 +256,9 @@ func (stats *statsHandler) start(ctx context.Context, version uint32, instanceID
 			re.GetStats(version, processManager.ProcessedEvents, instanceID)
 			re.GetStats(version, processManager.Insight, instanceID)
 			re.GetStats(version, processManager.AllStats, instanceID)
+			stats.Lock()
+			stats.incrementCountProcessingStatsLocked("agg_messages_sent_to_worker", 4)
+			stats.Unlock()
 
 		case <-seqTick.C:
 			vbToSeq := vbHandler.GetHighSeqNum()

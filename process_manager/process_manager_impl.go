@@ -109,8 +109,15 @@ func (pm *processManager) Start() (<-chan *ResponseMessage, error) {
 	return pm.StartWithContext(context.Background())
 }
 
-func (pm *processManager) GetProcessVersion() uint32 {
-	return pm.version.Load()
+func (pm *processManager) GetProcessDetails() ProcessDetails {
+	pid := 0
+	if atomic.LoadUint32(&pm.status) == spawned {
+		pid = pm.cmd.Process.Pid
+	}
+	return ProcessDetails{
+		Version: pm.version.Load(),
+		PID:     pid,
+	}
 }
 
 // All message should be start after Start completes

@@ -4,6 +4,7 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
+	"maps"
 	"net"
 	"os"
 	"strings"
@@ -41,6 +42,7 @@ var MetakvMaxRetries int64 = 60
 type ChangeType string
 type StatsData map[string]uint64
 
+// InsightLine represents a single line of insight
 type InsightLine struct {
 	CallCount      int64   `json:"call_count"`
 	CallTime       float64 `json:"call_time"`
@@ -144,6 +146,13 @@ type KeyspaceName struct {
 type Insight struct {
 	Script string              `json:"script"`
 	Lines  map[int]InsightLine `json:"lines"`
+}
+
+func (i *Insight) Copy() *Insight {
+	copyInsight := NewInsight()
+	copyInsight.Script = i.Script
+	maps.Copy(copyInsight.Lines, i.Lines)
+	return copyInsight
 }
 
 type StorageEngine string

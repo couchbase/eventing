@@ -31,7 +31,7 @@ func planToBytes(vbsLength int, distributedVbs [][]uint16) ([]byte, map[string][
 }
 
 func (handler *vbHandler) initAndSendTrappedEvent(runtimeSystem RuntimeSystem, messageType uint8, msg *dcpMessage.DcpEvent, parsedDetails *checkpointManager.ParsedInternalDetails) {
-	version := runtimeSystem.GetProcessVersion()
+	version := runtimeSystem.GetProcessDetails().Version
 	msgBuffer := NewMsgBuffer(version, handler.config.InstanceID, runtimeSystem)
 	dummyPlan := [][]uint16{
 		{msg.Vbno},
@@ -39,6 +39,7 @@ func (handler *vbHandler) initAndSendTrappedEvent(runtimeSystem RuntimeSystem, m
 	dummyPlanBytes, _ := planToBytes(1, dummyPlan)
 	runtimeSystem.VbSettings(version, processManager.VbMap, handler.config.InstanceID, nil, dummyPlanBytes)
 	runtimeSystem.VbSettings(version, processManager.VbAddChanges, handler.config.InstanceID, msg.Vbno, []uint64{msg.Seqno, msg.Vbuuid})
+	handler.config.StatsHandler.IncrementCountProcessingStats("agg_messages_sent_to_worker", 2)
 	msgBuffer.Write(0, messageType, msg, parsedDetails)
 	msgBuffer.Send()
 }

@@ -211,13 +211,14 @@ func (fm *functionManager) RebalanceProgress(version string, appLocation applica
 	}
 }
 
-func (fm *functionManager) GetStats(appLocation application.AppLocation) *common.Stats {
+func (fm *functionManager) GetStats(appLocation application.AppLocation, statType common.StatsType) *common.Stats {
 	fhList := fm.getFunctionHandlerListFromLocation(appLocation)
-	stats := common.NewStats(true, appLocation.Namespace, appLocation.Appname)
+	stats := common.NewStats(true, appLocation.Namespace, appLocation.Appname, statType)
 	for _, fh := range fhList {
-		functionStats := fh.Stats()
-		stats.Add(functionStats)
+		functionStats := fh.Stats(statType)
+		stats.Add(functionStats, statType)
 	}
+
 	return stats
 }
 

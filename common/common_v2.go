@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"hash/crc32"
+	"maps"
 	"net/http"
 	"sort"
 	"strconv"
@@ -163,11 +164,7 @@ func CheckKeyspaceExist(observer notifier.Observer, keyspace application.Keyspac
 	}
 
 	_, ok = cList.Collections[collectionName]
-	if !ok {
-		return false
-	}
-
-	return true
+	return ok
 }
 
 type AppStatusResponse struct {
@@ -297,6 +294,14 @@ func NewGlobalStatsCounters() *GlobalStatsCounter {
 	return &GlobalStatsCounter{}
 }
 
+type StatsType uint8
+
+const (
+	PrometheusStats StatsType = iota
+	PartialStats
+	FullStats
+)
+
 type Stats struct {
 	ExecutionStats          map[string]interface{} `json:"execution_stats"`
 	FailureStats            map[string]interface{} `json:"failure_stats"`
@@ -305,98 +310,139 @@ type Stats struct {
 	FunctionScope           application.Namespace  `json:"function_scope"`
 	FunctionName            string                 `json:"function_name"`
 	FunctionID              uint32                 `json:"function_id"`
-	LatencyPercentileStats  map[string]int         `json:"latency_percentile_stats"`
-	CurlLatency             *HistogramStats        `json:"curl_latency_percentile_stats"`
 	DcpFeedBoundary         string                 `json:"dcp_feed_boundary"`
 	EventRemaining          map[string]uint64      `json:"events_remaining"`
 	LcbCredsRequestCounter  uint64                 `json:"lcb_creds_request_counter,omitempty"`
 	GoCbCredsRequestCounter uint64                 `json:"gocb_creds_request_counter,omitempty"`
 
+	// full stats
+	InternalVbDistributionStats map[string]string `json:"internal_vb_distribution_stats,omitempty"`
+	WorkerPids                  map[string]int    `json:"worker_pids,omitempty"`
+	LatencyPercentileStats      map[string]int    `json:"latency_percentile_stats"`
+	CurlLatency                 *HistogramStats   `json:"curl_latency_stats,omitempty"`
+
 	Insight          *Insight          `json:"-"`
-	LatencyHistogram *HistogramStats   `json:"-"`
+	LatencyHistogram *HistogramStats   `json:"latency_stats,omitempty"`
 	ProcessedSeq     map[uint16]uint64 `json:"-"`
 }
 
-func NewStats(statsInit bool, functionScope application.Namespace, appName string) *Stats {
+func NewStats(statsInit bool, functionScope application.Namespace, appName string, statsType StatsType) *Stats {
 	newStats := &Stats{
-		FunctionScope:  functionScope,
-		FunctionName:   appName,
-		ExecutionStats: make(map[string]interface{}),
-		FailureStats:   make(map[string]interface{}),
-
+		ExecutionStats:       make(map[string]interface{}),
+		FailureStats:         make(map[string]interface{}),
 		EventProcessingStats: make(map[string]uint64),
 		EventRemaining:       make(map[string]uint64),
-		ProcessedSeq:         make(map[uint16]uint64),
-		LCBExceptionStats:    make(map[string]uint64),
+	}
 
-		CurlLatency:      NewHistogramStats(),
-		LatencyHistogram: NewHistogramStats(),
+	switch statsType {
+	case FullStats:
+		newStats.CurlLatency = NewHistogramStats()
+		newStats.LatencyHistogram = NewHistogramStats()
+		newStats.ProcessedSeq = make(map[uint16]uint64)
+		newStats.Insight = NewInsight()
+		fallthrough
 
-		Insight: NewInsight(),
+	case PartialStats:
+		newStats.FunctionName = appName
+		newStats.FunctionScope = functionScope
+		newStats.LCBExceptionStats = make(map[string]uint64)
+		newStats.LatencyPercentileStats = make(map[string]int)
+		newStats.WorkerPids = make(map[string]int)
+		newStats.InternalVbDistributionStats = make(map[string]string)
+		fallthrough
+
+	case PrometheusStats:
 	}
 
 	if statsInit {
 		init := float64(0)
-		// Execution stats
-		// TODO: Implement these stats
-		newStats.ExecutionStats["processed_events_size"] = init
+		switch statsType {
+		case PartialStats, FullStats:
+			// Execution stats
+			newStats.ExecutionStats["processed_events_size"] = init
+			newStats.ExecutionStats["no_op_counter"] = init
+			newStats.ExecutionStats["messages_parsed"] = init
+			newStats.ExecutionStats["timer_msg_counter"] = init
+			newStats.ExecutionStats["lcb_retry_failure"] = init
+			newStats.ExecutionStats["filtered_dcp_delete_counter"] = init
+			newStats.ExecutionStats["filtered_dcp_mutation_counter"] = init
+			newStats.ExecutionStats["num_processed_events"] = init
+			newStats.ExecutionStats["curl_success_count"] = init
+			newStats.ExecutionStats["dcp_mutation_checkpoint_cas_mismatch"] = init
+			newStats.ExecutionStats["enqueued_dcp_mutation_msg_counter"] = init
+			newStats.ExecutionStats["enqueued_dcp_delete_msg_counter"] = init
+			newStats.ExecutionStats["uv_try_write_failure_counter"] = init
 
-		newStats.ExecutionStats["agg_queue_memory"] = init
-		newStats.ExecutionStats["agg_queue_size"] = init
-		newStats.ExecutionStats["on_update_success"] = init
-		newStats.ExecutionStats["on_update_failure"] = init
-		newStats.ExecutionStats["on_delete_success"] = init
-		newStats.ExecutionStats["on_delete_failure"] = init
-		newStats.ExecutionStats["no_op_counter"] = init
-		newStats.ExecutionStats["timer_callback_success"] = init
-		newStats.ExecutionStats["timer_callback_failure"] = init
-		newStats.ExecutionStats["timer_create_failure"] = init
-		newStats.ExecutionStats["messages_parsed"] = init
-		newStats.ExecutionStats["dcp_delete_msg_counter"] = init
-		newStats.ExecutionStats["dcp_mutation_msg_counter"] = init
-		newStats.ExecutionStats["timer_msg_counter"] = init
-		newStats.ExecutionStats["timer_create_counter"] = init
-		newStats.ExecutionStats["timer_cancel_counter"] = init
-		newStats.ExecutionStats["lcb_retry_failure"] = init
-		newStats.ExecutionStats["filtered_dcp_delete_counter"] = init
-		newStats.ExecutionStats["filtered_dcp_mutation_counter"] = init
-		newStats.ExecutionStats["num_processed_events"] = init
-		newStats.ExecutionStats["curl_success_count"] = init
-		newStats.ExecutionStats["dcp_mutation_checkpoint_cas_mismatch"] = init
-		newStats.ExecutionStats["enqueued_dcp_mutation_msg_counter"] = init
-		newStats.ExecutionStats["enqueued_dcp_delete_msg_counter"] = init
-		newStats.ExecutionStats["uv_try_write_failure_counter"] = init
+			curlExecutionStats := make(map[string]interface{})
+			curlExecutionStats["get"] = init
+			curlExecutionStats["post"] = init
+			curlExecutionStats["delete"] = init
+			curlExecutionStats["head"] = init
+			curlExecutionStats["put"] = init
+			newStats.ExecutionStats["curl"] = curlExecutionStats
 
-		curlExecutionStats := make(map[string]interface{})
-		curlExecutionStats["get"] = init
-		curlExecutionStats["post"] = init
-		curlExecutionStats["delete"] = init
-		curlExecutionStats["head"] = init
-		curlExecutionStats["put"] = init
-		newStats.ExecutionStats["curl"] = curlExecutionStats
+			// Failure Stats
+			newStats.FailureStats["bucket_cache_overflow_count"] = init
+			newStats.FailureStats["bucket_op_cache_miss_count"] = init
+			newStats.FailureStats["debugger_events_lost"] = init
+			newStats.FailureStats["curl_non_200_response"] = init
+			newStats.FailureStats["curl_timeout_count"] = init
+			newStats.FailureStats["curl_failure_count"] = init
+			newStats.FailureStats["curl_max_resp_size_exceeded"] = init
 
-		// Failure Stats
-		newStats.FailureStats["bucket_op_exception_count"] = init
-		newStats.FailureStats["bucket_op_cache_miss_count"] = init
-		newStats.FailureStats["bucket_cache_overflow_count"] = init
-		newStats.FailureStats["bkt_ops_cas_mismatch_count"] = init
-		newStats.FailureStats["n1ql_op_exception_count"] = init
-		newStats.FailureStats["analytics_op_exception_count"] = init
-		newStats.FailureStats["timeout_count"] = init
-		newStats.FailureStats["debugger_events_lost"] = init
-		newStats.FailureStats["timer_context_size_exceeded_counter"] = init
-		newStats.FailureStats["timer_callback_missing_counter"] = init
-		newStats.FailureStats["curl_non_200_response"] = init
-		newStats.FailureStats["curl_timeout_count"] = init
-		newStats.FailureStats["curl_failure_count"] = init
-		newStats.FailureStats["curl_max_resp_size_exceeded"] = init
-		newStats.FailureStats["dcp_mutation_checkpoint_failure"] = init
+			// For backward compatibility
+			newStats.EventProcessingStats["adhoc_timer_response_received"] = 0
+			newStats.EventProcessingStats["agg_timer_feedback_queue_cap"] = 0
+			newStats.EventProcessingStats["thr_count"] = 0
+			newStats.EventProcessingStats["log_level"] = 0
+			newStats.EventProcessingStats["thr_map"] = 0
+			newStats.EventProcessingStats["v8_load"] = 0
+			newStats.EventProcessingStats["v8_init"] = 0
+			newStats.addDeprecatedStats()
+			fallthrough
 
-		// EventRemaining stats
-		newStats.EventRemaining["dcp_backlog"] = uint64(0)
+		case PrometheusStats:
+			// EventRemaining stats
+			newStats.EventRemaining["dcp_backlog"] = 0
+
+			// Execution stats
+			newStats.ExecutionStats["agg_queue_memory"] = init
+			newStats.ExecutionStats["agg_queue_size"] = init
+			newStats.ExecutionStats["on_update_success"] = init
+			newStats.ExecutionStats["on_update_failure"] = init
+			newStats.ExecutionStats["on_delete_success"] = init
+			newStats.ExecutionStats["on_delete_failure"] = init
+			newStats.ExecutionStats["dcp_delete_msg_counter"] = init
+			newStats.ExecutionStats["dcp_mutation_msg_counter"] = init
+			newStats.ExecutionStats["timer_create_counter"] = init
+			newStats.ExecutionStats["timer_create_failure"] = init
+			newStats.ExecutionStats["timer_cancel_counter"] = init
+			newStats.ExecutionStats["timer_callback_success"] = init
+			newStats.ExecutionStats["timer_callback_failure"] = init
+			newStats.ExecutionStats["timer_msg_counter"] = init
+
+			// Failure stats
+			newStats.FailureStats["bucket_op_exception_count"] = init
+			newStats.FailureStats["bkt_ops_cas_mismatch_count"] = init
+			newStats.FailureStats["timeout_count"] = init
+			newStats.FailureStats["timer_callback_missing_counter"] = init
+			newStats.FailureStats["timer_context_size_exception_counter"] = init
+			newStats.FailureStats["checkpoint_failure_count"] = init
+			newStats.FailureStats["n1ql_op_exception_count"] = init
+			newStats.FailureStats["analytics_op_exception_count"] = init
+			newStats.FailureStats["dcp_delete_checkpoint_failure"] = init
+			newStats.FailureStats["dcp_mutation_checkpoint_failure"] = init
+
+			// EventProcessing stats
+			newStats.EventProcessingStats["dcp_mutation_sent_to_worker"] = 0
+			newStats.EventProcessingStats["dcp_deletion_sent_to_worker"] = 0
+			newStats.EventProcessingStats["dcp_mutation_suppressed_counter"] = 0
+			newStats.EventProcessingStats["dcp_deletion_suppressed_counter"] = 0
+			newStats.EventProcessingStats["dcp_expiry_sent_to_worker"] = 0
+			newStats.EventProcessingStats["worker_spawn_counter"] = 0
+		}
 	}
 
-	newStats.addDeprecatedStats()
 	return newStats
 }
 
@@ -434,175 +480,196 @@ func getLatencyPercentile(histogram *HistogramStats) map[string]int {
 	return ls
 }
 
-func (s *Stats) Copy(allStats bool) *Stats {
-	newStats := NewStats(false, s.FunctionScope, s.FunctionName)
+// s should be more than or equals to statType provided
+func (s *Stats) Copy(statType StatsType) *Stats {
+	newStats := NewStats(false, s.FunctionScope, s.FunctionName, statType)
 
-	for k, v := range s.ExecutionStats {
-		if k == "curl" {
-			continue
-		}
-		newStats.ExecutionStats[k] = v
-	}
-
-	curlExecutionStats := make(map[string]interface{})
-	curlStats := s.ExecutionStats["curl"].(map[string]interface{})
-	for k, v := range curlStats {
-		curlExecutionStats[k] = v
-	}
-	newStats.ExecutionStats["curl"] = curlExecutionStats
-
-	// Failure Stats
-	for k, v := range s.FailureStats {
-		newStats.FailureStats[k] = v
-	}
-
-	for k, v := range s.EventProcessingStats {
-		newStats.EventProcessingStats[k] = v
-	}
-
-	for k, v := range s.LCBExceptionStats {
-		newStats.LCBExceptionStats[k] = v
-	}
-
-	if allStats {
-		// EventRemaining stats
-		newStats.EventRemaining["dcp_backlog"] = s.EventRemaining["dcp_backlog"]
-
+	switch statType {
+	case FullStats:
 		newStats.LatencyHistogram = s.LatencyHistogram.Copy()
 		newStats.CurlLatency = s.CurlLatency.Copy()
 		newStats.LatencyPercentileStats = getLatencyPercentile(s.LatencyHistogram)
+		maps.Copy(newStats.ProcessedSeq, s.ProcessedSeq)
+		newStats.Insight = s.Insight.Copy()
+		newStats.LatencyHistogram = s.LatencyHistogram.Copy()
+		fallthrough
+
+	case PartialStats:
+		curlExecutionStats := make(map[string]interface{})
+		curlStats := s.ExecutionStats["curl"].(map[string]interface{})
+		maps.Copy(curlExecutionStats, curlStats)
+		newStats.ExecutionStats["curl"] = curlExecutionStats
+		maps.Copy(newStats.LCBExceptionStats, s.LCBExceptionStats)
+		maps.Copy(newStats.InternalVbDistributionStats, s.InternalVbDistributionStats)
+		maps.Copy(newStats.WorkerPids, s.WorkerPids)
+		fallthrough
+
+	case PrometheusStats:
+		for k, v := range s.ExecutionStats {
+			if k == "curl" {
+				continue
+			}
+			newStats.ExecutionStats[k] = v
+		}
+		// Failure Stats
+		maps.Copy(newStats.FailureStats, s.FailureStats)
+		maps.Copy(newStats.EventProcessingStats, s.EventProcessingStats)
+		maps.Copy(newStats.EventRemaining, s.EventRemaining)
 	}
 
 	return newStats
 }
 
 // s2-s1
-func (s2 *Stats) Sub(s1 *Stats, copyNonSubtracted bool) *Stats {
-	newStats := NewStats(false, s2.FunctionScope, s2.FunctionName)
+// s2 should be more than or equals to statType provided
+func (s2 *Stats) Sub(s1 *Stats, statType StatsType) *Stats {
+	newStats := NewStats(false, s2.FunctionScope, s2.FunctionName, statType)
 
-	for k, v := range s2.ExecutionStats {
-		fValue, ok := v.(float64)
-		if !ok {
-			newStats.ExecutionStats[k] = v
-			continue
-		}
-		if val, ok := s1.ExecutionStats[k]; ok {
-			newStats.ExecutionStats[k] = fValue - val.(float64)
-		} else {
-			newStats.ExecutionStats[k] = fValue
-		}
-	}
-
-	curlExecutionStats := make(map[string]interface{})
-	s2CurlStats := s2.ExecutionStats["curl"].(map[string]interface{})
-	s1CurlStats := s1.ExecutionStats["curl"].(map[string]interface{})
-
-	for k, v := range s2CurlStats {
-		curlExecutionStats[k] = v.(float64) - s1CurlStats[k].(float64)
-	}
-
-	newStats.ExecutionStats["curl"] = curlExecutionStats
-
-	for k, v := range s2.FailureStats {
-		fValue, ok := v.(float64)
-		if !ok {
-			newStats.FailureStats[k] = v
-			continue
-		}
-		if val, ok := s1.FailureStats[k]; ok {
-			newStats.FailureStats[k] = fValue - val.(float64)
-		} else {
-			newStats.FailureStats[k] = v
-		}
-	}
-
-	for k, v := range s2.EventProcessingStats {
-		if val, ok := s1.EventProcessingStats[k]; ok {
-			newStats.EventProcessingStats[k] = v - val
-		} else {
-			newStats.EventProcessingStats[k] = v
-		}
-	}
-
-	for k, v := range s2.LCBExceptionStats {
-		if val, ok := s1.LCBExceptionStats[k]; ok {
-			newStats.LCBExceptionStats[k] = v - val
-		} else {
-			newStats.LCBExceptionStats[k] = v
-		}
-	}
-
-	if copyNonSubtracted {
-
-		// These stats are not subtracted
-		newStats.EventRemaining["dcp_backlog"] = s2.EventRemaining["dcp_backlog"]
-
+	switch statType {
+	case FullStats:
 		newStats.LatencyHistogram = s2.LatencyHistogram.Copy()
 		newStats.CurlLatency = s2.CurlLatency.Copy()
 		newStats.LatencyPercentileStats = getLatencyPercentile(s2.LatencyHistogram)
+		maps.Copy(newStats.ProcessedSeq, s2.ProcessedSeq)
+		newStats.Insight = s2.Insight.Copy()
+		newStats.LatencyHistogram = s2.LatencyHistogram.Copy()
+		fallthrough
+
+	case PartialStats:
+		curlExecutionStats := make(map[string]interface{})
+		s2CurlStats := s2.ExecutionStats["curl"].(map[string]interface{})
+		s1CurlStats := s1.ExecutionStats["curl"].(map[string]interface{})
+		for method, value := range s2CurlStats {
+			curlExecutionStats[method] = value.(float64) - s1CurlStats[method].(float64)
+		}
+		newStats.ExecutionStats["curl"] = curlExecutionStats
+
+		for k, v := range s2.LCBExceptionStats {
+			if val, ok := s1.LCBExceptionStats[k]; ok {
+				newStats.LCBExceptionStats[k] = v - val
+			} else {
+				newStats.LCBExceptionStats[k] = v
+			}
+		}
+
+		maps.Copy(newStats.InternalVbDistributionStats, s1.InternalVbDistributionStats)
+		maps.Copy(newStats.WorkerPids, s1.WorkerPids)
+		fallthrough
+
+	case PrometheusStats:
+		for k, v := range s2.ExecutionStats {
+			fValue, ok := v.(float64)
+			if !ok {
+				newStats.ExecutionStats[k] = v
+				continue
+			}
+			if val, ok := s1.ExecutionStats[k]; ok {
+				newStats.ExecutionStats[k] = fValue - val.(float64)
+			} else {
+				newStats.ExecutionStats[k] = fValue
+			}
+		}
+
+		for k, v := range s2.FailureStats {
+			fValue, ok := v.(float64)
+			if !ok {
+				newStats.FailureStats[k] = v
+				continue
+			}
+			if val, ok := s1.FailureStats[k]; ok {
+				newStats.FailureStats[k] = fValue - val.(float64)
+			} else {
+				newStats.FailureStats[k] = v
+			}
+		}
+
+		for k, v := range s2.EventProcessingStats {
+			if val, ok := s1.EventProcessingStats[k]; ok {
+				newStats.EventProcessingStats[k] = v - val
+			} else {
+				newStats.EventProcessingStats[k] = v
+			}
+		}
+
+		maps.Copy(newStats.EventRemaining, s2.EventRemaining)
 	}
 
 	return newStats
 }
 
 // s2 = s2 + s1
-func (s2 *Stats) Add(s1 *Stats) {
-	for k, v := range s1.ExecutionStats {
-		fValue, ok := v.(float64)
-		if !ok {
-			s2.ExecutionStats[k] = v
-			continue
+// s2 should be more than or equals to statType provided
+func (s2 *Stats) Add(s1 *Stats, statType StatsType) {
+	switch statType {
+	case FullStats:
+		s2.LatencyHistogram.UpdateWithHistogram(s1.LatencyHistogram)
+		s2.CurlLatency.UpdateWithHistogram(s1.CurlLatency)
+		s2.LatencyPercentileStats = getLatencyPercentile(s2.LatencyHistogram)
+		s2.ProcessedSeq = make(map[uint16]uint64)
+		maps.Copy(s2.ProcessedSeq, s1.ProcessedSeq)
+		s2.Insight = s2.Insight.Copy()
+		s2.LatencyHistogram = s2.LatencyHistogram.Copy()
+		fallthrough
+
+	case PartialStats:
+		curlExecutionStats := make(map[string]interface{})
+		s2CurlStats := s2.ExecutionStats["curl"].(map[string]interface{})
+		s1CurlStats := s1.ExecutionStats["curl"].(map[string]interface{})
+
+		for method, value := range s2CurlStats {
+			curlExecutionStats[method] = value.(float64) + s1CurlStats[method].(float64)
 		}
-		if val, ok := s2.ExecutionStats[k]; ok {
-			s2.ExecutionStats[k] = fValue + val.(float64)
-		} else {
-			s2.ExecutionStats[k] = fValue
+		s2.ExecutionStats["curl"] = curlExecutionStats
+
+		for k, v := range s1.LCBExceptionStats {
+			if val, ok := s2.LCBExceptionStats[k]; ok {
+				s2.LCBExceptionStats[k] = val + v
+			} else {
+				s2.LCBExceptionStats[k] = v
+			}
 		}
+
+		maps.Copy(s2.InternalVbDistributionStats, s1.InternalVbDistributionStats)
+		maps.Copy(s2.WorkerPids, s1.WorkerPids)
+		fallthrough
+
+	case PrometheusStats:
+		for k, v := range s1.ExecutionStats {
+			fValue, ok := v.(float64)
+			if !ok {
+				s2.ExecutionStats[k] = v
+				continue
+			}
+			if val, ok := s2.ExecutionStats[k]; ok {
+				s2.ExecutionStats[k] = fValue + val.(float64)
+			} else {
+				s2.ExecutionStats[k] = fValue
+			}
+		}
+
+		for k, v := range s1.FailureStats {
+			fValue, ok := v.(float64)
+			if !ok {
+				s2.FailureStats[k] = v
+				continue
+			}
+			if val, ok := s2.FailureStats[k]; ok {
+				s2.FailureStats[k] = fValue + val.(float64)
+			} else {
+				s2.FailureStats[k] = v
+			}
+		}
+
+		for k, v := range s1.EventProcessingStats {
+			if val, ok := s2.EventProcessingStats[k]; ok {
+				s2.EventProcessingStats[k] = val + v
+			} else {
+				s2.EventProcessingStats[k] = v
+			}
+		}
+
+		s2.EventRemaining["dcp_backlog"] += s1.EventRemaining["dcp_backlog"]
 	}
-
-	curlExecutionStats := make(map[string]interface{})
-	s2CurlStats := s2.ExecutionStats["curl"].(map[string]interface{})
-	s1CurlStats := s1.ExecutionStats["curl"].(map[string]interface{})
-
-	for method, value := range s2CurlStats {
-		curlExecutionStats[method] = value.(float64) + s1CurlStats[method].(float64)
-	}
-	s2.ExecutionStats["curl"] = curlExecutionStats
-
-	for k, v := range s1.FailureStats {
-		fValue, ok := v.(float64)
-		if !ok {
-			s2.FailureStats[k] = v
-			continue
-		}
-		if val, ok := s2.FailureStats[k]; ok {
-			s2.FailureStats[k] = fValue + val.(float64)
-		} else {
-			s2.FailureStats[k] = v
-		}
-	}
-
-	for k, v := range s1.EventProcessingStats {
-		if val, ok := s2.EventProcessingStats[k]; ok {
-			s2.EventProcessingStats[k] = val + v
-		} else {
-			s2.EventProcessingStats[k] = v
-		}
-	}
-
-	for k, v := range s1.LCBExceptionStats {
-		if val, ok := s2.LCBExceptionStats[k]; ok {
-			s2.LCBExceptionStats[k] = val + v
-		} else {
-			s2.LCBExceptionStats[k] = v
-		}
-	}
-
-	s2.EventRemaining["dcp_backlog"] = s2.EventRemaining["dcp_backlog"] + s1.EventRemaining["dcp_backlog"]
-
-	s2.LatencyHistogram.UpdateWithHistogram(s1.LatencyHistogram)
-	s2.CurlLatency.UpdateWithHistogram(s1.CurlLatency)
-	s2.LatencyPercentileStats = getLatencyPercentile(s2.LatencyHistogram)
 }
 
 func (s *Stats) String() string {
@@ -632,7 +699,8 @@ func (s *Stats) String() string {
 		stringBuilder.WriteString(fmt.Sprintf("%v", fStatValue))
 		first = false
 	}
-	stringBuilder.WriteRune('}')
+
+	stringBuilder.WriteString("} }")
 
 	return stringBuilder.String()
 }

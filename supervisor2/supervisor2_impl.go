@@ -1065,7 +1065,7 @@ func (s *supervisor) spawnTenantManagerLocked(functionDetails *application.Funct
 }
 
 // Exported functions
-func (s *supervisor) GetStats(location application.AppLocation) (*common.Stats, error) {
+func (s *supervisor) GetStats(location application.AppLocation, statType common.StatsType) (*common.Stats, error) {
 	s.tenantLock.RLock()
 	defer s.tenantLock.RUnlock()
 
@@ -1074,7 +1074,7 @@ func (s *supervisor) GetStats(location application.AppLocation) (*common.Stats, 
 		return nil, fmt.Errorf("app doesn't exist")
 	}
 
-	return tenant.manager.GetStats(location), nil
+	return tenant.manager.GetStats(location, statType), nil
 }
 
 func (s *supervisor) ClearStats(location application.AppLocation) error {
@@ -1217,7 +1217,7 @@ func (s *supervisor) CompileHandler(funcDetails *application.FunctionDetails) (c
 	defer process.StopProcess()
 
 	appCode = funcDetails.ModifyAppCode(false)
-	process.InitEvent(process.GetProcessVersion(), processManager.CompileHandler, []byte(funcDetails.AppLocation.Appname), appCode)
+	process.InitEvent(process.GetProcessDetails().Version, processManager.CompileHandler, []byte(funcDetails.AppLocation.Appname), appCode)
 	t := time.NewTicker(5 * time.Second)
 
 	select {

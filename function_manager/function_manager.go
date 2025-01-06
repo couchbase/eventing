@@ -24,7 +24,7 @@ type InterruptHandler interface {
 
 type FunctionManager interface {
 	// Stats operation
-	GetStats(appLocation application.AppLocation) *common.Stats
+	GetStats(appLocation application.AppLocation, statsType common.StatsType) *common.Stats
 	GetInsight(appLocation application.AppLocation) *common.Insight
 	GetApplicationLog(appLocation application.AppLocation, size int64) ([]string, error)
 	RebalanceProgress(version string, appLocation application.AppLocation, rebalanceProgress *common.AppRebalanceProgress)

@@ -167,12 +167,12 @@ func (al *allocator) FilterEvent(msg *dcpMessage.DcpEvent) (*checkpointManager.P
 			sr := &dcpMessage.StreamReq{Vbno: vb}
 			sr, _ = al.dcpManager.commonDcpManager.CloseRequest(sr)
 			if sr == nil {
-				al.config.StatsHandler.IncrementProcessingStats("already_sent_streamend")
+				al.config.StatsHandler.IncrementCountProcessingStats("already_sent_streamend", 1)
 				status.status = forcedClosed
 				return parsedDetails, workerID, true, false
 			}
 
-			al.config.StatsHandler.IncrementProcessingStats("closed_request")
+			al.config.StatsHandler.IncrementCountProcessingStats("closed_request", 1)
 			sr.StartSeq = status.lastSentSeq
 			status.streamReq = sr
 			status.status = waiting
@@ -186,7 +186,7 @@ func (al *allocator) FilterEvent(msg *dcpMessage.DcpEvent) (*checkpointManager.P
 			totalMsg > pauseMark*al.maxUnackedCount {
 			if status.status != paused {
 				sr := &dcpMessage.StreamReq{Vbno: msg.Vbno}
-				al.config.StatsHandler.IncrementProcessingStats("pause_request")
+				al.config.StatsHandler.IncrementCountProcessingStats("pause_request", 1)
 				al.dcpManager.commonDcpManager.PauseStreamReq(sr)
 				status.status = paused
 			}
@@ -266,6 +266,7 @@ func (al *allocator) AddVb(vb uint16, vbBlob *checkpointManager.VbBlob) (int, bo
 	count, send := worker.AddVb(vb, sr, al.isStreamMode.Load())
 	if send {
 		al.config.RuntimeSystem.VbSettings(al.config.Version, processManager.VbAddChanges, al.config.InstanceID, vb, []uint64{vbBlob.ProcessedSeqNum, vbBlob.Vbuuid})
+		al.config.StatsHandler.IncrementCountProcessingStats("agg_messages_sent_to_worker", 1)
 	}
 	return count, send
 }
@@ -439,7 +440,7 @@ func (al *allocator) checkAndMakeRequest() {
 			worker.runningMap[vb] = status
 			totalParallelRequest := worker.runningCount.Add(1)
 
-			al.config.StatsHandler.IncrementProcessingStats("dcp_stream_req_counter")
+			al.config.StatsHandler.IncrementCountProcessingStats("dcp_stream_req_counter", 1)
 			if !isStreaming && al.workerParallelRequest <= totalParallelRequest {
 				break
 			}

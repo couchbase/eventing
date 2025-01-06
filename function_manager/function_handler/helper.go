@@ -457,11 +457,12 @@ func (fHandler *funcHandler) createRuntimeSystem(event spawnType, funcDetails *a
 	runtimeEnvironment := fHandler.utilityWorker.CreateUtilityWorker(string(fHandler.instanceID), handler)
 	funcDetails.ModifyAppCode(true)
 	funcDetails.Settings.CppWorkerThread = 1
-	runtimeEnvironment.InitEvent(runtimeEnvironment.GetProcessVersion(), processManager.InitHandler, fHandler.instanceID, funcDetails)
+	processDetails := runtimeEnvironment.GetProcessDetails()
+	runtimeEnvironment.InitEvent(processDetails.Version, processManager.InitHandler, fHandler.instanceID, funcDetails)
 	_, config := fHandler.serverConfig.GetServerConfig(funcDetails.MetaInfo.FunctionScopeID)
 	featureMatrix := config.FeatureList.GetFeatureMatrix()
 	runtimeEnvironment.SendControlMessage(
-		runtimeEnvironment.GetProcessVersion(),
+		processDetails.Version,
 		processManager.GlobalConfigChange,
 		processManager.FeatureMatrix,
 		fHandler.instanceID,
@@ -486,10 +487,10 @@ func (fHandler *funcHandler) createRuntimeSystem(event spawnType, funcDetails *a
 			"dir":       dirName,
 		}
 
-		runtimeEnvironment.InitEvent(runtimeEnvironment.GetProcessVersion(), processManager.DebugHandlerStart, fHandler.instanceID, value)
+		runtimeEnvironment.InitEvent(processDetails.Version, processManager.DebugHandlerStart, fHandler.instanceID, value)
 	case forOnDeploy:
 		param := fHandler.getOnDeployActionObject(args.currState)
-		runtimeEnvironment.InitEvent(runtimeEnvironment.GetProcessVersion(), processManager.OnDeployHandler, fHandler.instanceID, param)
+		runtimeEnvironment.InitEvent(processDetails.Version, processManager.OnDeployHandler, fHandler.instanceID, param)
 	}
 	return runtimeEnvironment
 }

@@ -21,6 +21,7 @@ import (
 	"github.com/couchbase/eventing/parser"
 	processManager "github.com/couchbase/eventing/process_manager"
 	serverConfig "github.com/couchbase/eventing/server_config"
+	"github.com/couchbase/eventing/util"
 )
 
 const (
@@ -198,8 +199,19 @@ func (fHandler *funcHandler) GetApplicationLog(size int64) ([]string, error) {
 	return lines, nil
 }
 
-func (fHandler *funcHandler) Stats() *common.Stats {
-	return fHandler.statsHandler.getStats()
+func (fHandler *funcHandler) Stats(statType common.StatsType) *common.Stats {
+	stat := fHandler.statsHandler.getStats(statType)
+	switch statType {
+	case common.FullStats:
+		fallthrough
+
+	case common.PartialStats:
+		appProgress := &common.AppRebalanceProgress{}
+		fHandler.checkpointManager.OwnershipSnapshot(appProgress)
+		stat.InternalVbDistributionStats[fHandler.logPrefix] = util.Condense(appProgress.OwnedVbs)
+		stat.WorkerPids[fHandler.logPrefix] = fHandler.re.GetProcessDetails().PID
+	}
+	return stat
 }
 
 func (fHandler *funcHandler) ResetStats() {
@@ -234,10 +246,12 @@ func (fHandler *funcHandler) AddFunctionDetails(funcDetails *application.Functio
 		if fHandler.fd.Settings.LogLevel != funcDetails.Settings.LogLevel {
 			fHandler.re.SendControlMessage(fHandler.version, processManager.HandlerDynamicSettings, processManager.LogLevelChange, fHandler.instanceID, nil, funcDetails.Settings.LogLevel)
 			// take action here also
+			fHandler.statsHandler.incrementCountProcessingStatsLocked("agg_messages_sent_to_worker", 1)
 		}
 
 		if fHandler.fd.Settings.TimerContextSize != funcDetails.Settings.TimerContextSize {
 			fHandler.re.SendControlMessage(fHandler.version, processManager.HandlerDynamicSettings, processManager.TimeContextSize, fHandler.instanceID, nil, funcDetails.Settings.TimerContextSize)
+			fHandler.statsHandler.incrementCountProcessingStatsLocked("agg_messages_sent_to_worker", 1)
 		}
 
 		fHandler.fd = funcDetails.Clone(false)
@@ -264,9 +278,13 @@ func (fHandler *funcHandler) changeState(seq uint32, re RuntimeEnvironment, next
 	currState := fHandler.currState.getCurrState()
 	reVersion := -1
 	if re != nil {
-		reVersion = int(re.GetProcessVersion())
+		reVersion = int(re.GetProcessDetails().Version)
 	}
 	logging.Infof("%s change of state requested: %s -> %s with runtimeEnvironment version: %d", logPrefix, currState, nextState, reVersion)
+	if nextState == TempPause {
+		fHandler.statsHandler.IncrementCountProcessingStats("v8_init", 1)
+		fHandler.statsHandler.IncrementCountProcessingStats("worker_spawn_counter", 1)
+	}
 
 	switch currState {
 	case Deployed:
@@ -378,7 +396,9 @@ func (fHandler *funcHandler) handleRunningState(seq uint32, newState funcHandler
 		for _, vb := range ownedVbs {
 			fHandler.re.VbSettings(fHandler.version, processManager.FilterVb, fHandler.instanceID, vb, uint64(0))
 		}
+		fHandler.statsHandler.IncrementCountProcessingStats("agg_messages_sent_to_worker", 4)
 		fHandler.re.LifeCycleOp(fHandler.version, processManager.Stop, fHandler.instanceID)
+		fHandler.statsHandler.incrementCountProcessingStatsLocked("agg_messages_sent_to_worker", 1)
 
 		if len(ownedVbs) == 0 {
 			fHandler.notifyInterrupt()
@@ -400,6 +420,7 @@ func (fHandler *funcHandler) handleRunningState(seq uint32, newState funcHandler
 			fHandler.re.VbSettings(fHandler.version, processManager.FilterVb, fHandler.instanceID, vb, uint64(0))
 		}
 		fHandler.re.LifeCycleOp(fHandler.version, processManager.Stop, fHandler.instanceID)
+		fHandler.statsHandler.incrementCountProcessingStatsLocked("agg_messages_sent_to_worker", 1)
 		if len(ownedVbs) == 0 {
 			fHandler.notifyInterrupt()
 		}
@@ -514,13 +535,14 @@ func (fHandler *funcHandler) spawnFunction(re RuntimeEnvironment) {
 	logPrefix := fmt.Sprintf("funcHandler::spawnFunction[%s]", fHandler.logPrefix)
 
 	fHandler.re = re
-	fHandler.version = re.GetProcessVersion()
+	fHandler.version = re.GetProcessDetails().Version
 	ctx, close := context.WithCancel(context.Background())
 	fHandler.close = close
 
 	fHandler.instanceID = []byte(fHandler.fd.AppInstanceID)
 	fHandler.fd.ModifyAppCode(true)
 	re.InitEvent(fHandler.version, processManager.InitHandler, fHandler.instanceID, fHandler.fd)
+	fHandler.statsHandler.incrementCountProcessingStatsLocked("agg_messages_sent_to_worker", 1)
 	fHandler.config = nil
 	fHandler.notifyGlobalConfigChange()
 
@@ -589,7 +611,7 @@ func (fHandler *funcHandler) TrapEvent(trapEvent TrapEventOp, value interface{})
 				}
 				re := fHandler.utilityWorker.GetUtilityWorker()
 				if re != nil {
-					re.InitEvent(re.GetProcessVersion(), processManager.DebugHandlerStop, fHandler.instanceID, nil)
+					re.InitEvent(re.GetProcessDetails().Version, processManager.DebugHandlerStop, fHandler.instanceID, nil)
 					fHandler.utilityWorker.DoneUtilityWorker(string(fHandler.instanceID))
 				}
 
@@ -673,12 +695,14 @@ func (fHandler *funcHandler) notifyGlobalConfigChange() {
 	newFeatureMatrix := config.FeatureList.GetFeatureMatrix()
 	if fHandler.config == nil {
 		fHandler.re.SendControlMessage(fHandler.version, processManager.GlobalConfigChange, processManager.FeatureMatrix, fHandler.instanceID, nil, newFeatureMatrix)
+		fHandler.statsHandler.incrementCountProcessingStatsLocked("agg_messages_sent_to_worker", 1)
 		return
 	}
 
 	oldFeatureMatrix := fHandler.config.GetFeatureMatrix()
 	if newFeatureMatrix != oldFeatureMatrix {
 		fHandler.re.SendControlMessage(fHandler.version, processManager.GlobalConfigChange, processManager.FeatureMatrix, fHandler.instanceID, nil, newFeatureMatrix)
+		fHandler.statsHandler.incrementCountProcessingStatsLocked("agg_messages_sent_to_worker", 1)
 	}
 }
 
