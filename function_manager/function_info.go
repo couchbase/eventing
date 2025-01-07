@@ -167,7 +167,7 @@ func (f *keyspaceObserver) AddToObserverList(funcDetails *application.FunctionDe
 			"%s-%s %s added: funcScope: %s(%s). removed: src: %s(%s), checkpoint: %s(%s). currState: %s",
 			logPrefix,
 			instanceID,
-			logging.TagUD(funcDetails.Owner),
+			logging.TagUD(funcDetails.Owner.String()),
 			funcDetails.AppLocation,
 			funcDetails.MetaInfo.FunctionScopeID,
 			srcKeyspace,

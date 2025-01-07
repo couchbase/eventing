@@ -577,7 +577,7 @@ func (al *allocator) spawnObserver(ctx context.Context) {
 			for index, worker := range al.workers {
 				parallelCount := worker.runningCount.Load()
 				unackedMsg, unackedBytes := worker.unackedDetails.UnackedMessageCount()
-				logging.Infof("%s->%d parallelRequest: %d unackedMsg: %v unackedBytes: %v vbs: %v", logPrefix, index, parallelCount, unackedMsg, unackedBytes, worker.runningMap)
+				logging.Infof("%s->%d parallelRequest: %d unackedMsg: %v unackedBytes: %v", logPrefix, index, parallelCount, unackedMsg, unackedBytes)
 			}
 
 		case <-ctx.Done():

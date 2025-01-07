@@ -343,7 +343,7 @@ func (fm *functionManager) deployFunctionLocked(fd *application.FunctionDetails,
 	logPrefix := fmt.Sprintf("functionManager::deployFunctionLocked[%s]", fm.id)
 	_, namespaceConfig := fm.serverConfig.GetServerConfig(fd.MetaInfo.FunctionScopeID)
 
-	logging.Infof("%s deploying function %s in %s mode", logPrefix, fd.AppLocation, namespaceConfig.DeploymentMode)
+	logging.Infof("%s deploying function %s in %s mode function: %s", logPrefix, fd.AppLocation, namespaceConfig.DeploymentMode, logging.TagUD(fd.String()))
 	switch namespaceConfig.DeploymentMode {
 	case serverConfig.FunctionGroup:
 		// function is in correct functionSet so no need to do anything

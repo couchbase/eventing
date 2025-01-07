@@ -64,6 +64,10 @@ type stopMsg struct {
 	lifecycleMsg common.LifecycleMsg
 }
 
+func (s stopMsg) String() string {
+	return fmt.Sprintf("stage: %d, lifecycleMsg: %v", s.stage, s.lifecycleMsg)
+}
+
 type supervisor struct {
 	topologyChangeID *atomic.Value
 	clusterSetting   *common.ClusterSettings
