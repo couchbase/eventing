@@ -1247,7 +1247,7 @@ func (m *serviceMgr) prometheusLow(w http.ResponseWriter, r *http.Request) {
 	out = append(out, []byte(fmt.Sprintf("eventing_worker_restart_count %v\n", 0))...)
 
 	runtimeInfo.SendRawDescription = true
-	runtimeInfo.Description = out
+	runtimeInfo.Description = string(out)
 	runtimeInfo.OnlyDescription = true
 }
 
@@ -1307,7 +1307,7 @@ func (m *serviceMgr) prometheusHigh(w http.ResponseWriter, r *http.Request) {
 	}
 
 	runtimeInfo.SendRawDescription = true
-	runtimeInfo.Description = stats
+	runtimeInfo.Description = string(stats)
 	runtimeInfo.OnlyDescription = true
 }
 
