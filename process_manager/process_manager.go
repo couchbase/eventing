@@ -51,6 +51,11 @@ type ResponseMessage struct {
 	Value  []byte
 }
 
+type ProcessDetails struct {
+	Version uint32
+	PID     int
+}
+
 // ProcessManager will spawn c++ process
 // This will also take care of sending messages to c++ side
 // Response for the process is sent in the response channel
@@ -77,7 +82,7 @@ type ProcessManager interface {
 
 	FlushMessage(version uint32, buffer *bytes.Buffer)
 
-	GetProcessVersion() uint32
+	GetProcessDetails() ProcessDetails
 
 	StopProcess()
 }

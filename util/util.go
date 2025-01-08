@@ -1322,6 +1322,7 @@ func Condense(vbs []uint16) string {
 		return "[]"
 	}
 
+	sort.Slice(vbs, func(i, j int) bool { return vbs[i] < vbs[j] })
 	startVb := vbs[0]
 	res := fmt.Sprintf("[%d", startVb)
 	prevVb := startVb

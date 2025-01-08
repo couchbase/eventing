@@ -97,11 +97,11 @@ func (handler *vbHandler) eventReceiver(ctx context.Context) {
 			if filterMsg {
 				switch msg.Opcode {
 				case dcpMessage.DCP_MUTATION:
-					handler.config.StatsHandler.IncrementProcessingStats("dcp_mutation_suppressed_counter")
+					handler.config.StatsHandler.IncrementCountProcessingStats("dcp_mutation_suppressed_counter", 1)
 				case dcpMessage.DCP_DELETION:
-					handler.config.StatsHandler.IncrementProcessingStats("dcp_deletion_suppressed_counter")
+					handler.config.StatsHandler.IncrementCountProcessingStats("dcp_deletion_suppressed_counter", 1)
 				case dcpMessage.DCP_EXPIRATION:
-					handler.config.StatsHandler.IncrementProcessingStats("dcp_expiration_suppressed_counter")
+					handler.config.StatsHandler.IncrementCountProcessingStats("dcp_expiration_suppressed_counter", 1)
 				}
 				handler.commonDcpManager.DoneDcpEvent(msg)
 				continue
@@ -109,42 +109,45 @@ func (handler *vbHandler) eventReceiver(ctx context.Context) {
 
 			switch msg.Opcode {
 			case dcpMessage.DCP_MUTATION:
+				handler.config.StatsHandler.IncrementCountProcessingStats("dcp_mutation", 1)
 				if runtimeInfo, ok := handler.config.Filter.IsTrapEvent(); ok {
 					handler.initAndSendTrappedEvent(runtimeInfo, processManager.DcpMutation, msg, parsedDetails)
 					continue
 				}
 
-				handler.config.StatsHandler.IncrementProcessingStats("dcp_mutation_sent_to_worker")
+				handler.config.StatsHandler.IncrementCountProcessingStats("dcp_mutation_sent_to_worker", 1)
 				handler.writeMessage(workerID, processManager.DcpMutation, msg, parsedDetails)
 
 			case dcpMessage.DCP_DELETION:
+				handler.config.StatsHandler.IncrementCountProcessingStats("dcp_deletion", 1)
 				if runtimeInfo, ok := handler.config.Filter.IsTrapEvent(); ok {
 					handler.initAndSendTrappedEvent(runtimeInfo, processManager.DcpDeletion, msg, parsedDetails)
 					continue
 				}
 
-				handler.config.StatsHandler.IncrementProcessingStats("dcp_deletion_sent_to_worker")
+				handler.config.StatsHandler.IncrementCountProcessingStats("dcp_deletion_sent_to_worker", 1)
 				handler.writeMessage(workerID, processManager.DcpDeletion, msg, parsedDetails)
 
 			case dcpMessage.DCP_EXPIRATION:
+				handler.config.StatsHandler.IncrementCountProcessingStats("dcp_expiration", 1)
 				if runtimeInfo, ok := handler.config.Filter.IsTrapEvent(); ok {
 					handler.initAndSendTrappedEvent(runtimeInfo, processManager.DcpDeletion, msg, parsedDetails)
 					continue
 				}
 
-				handler.config.StatsHandler.IncrementProcessingStats("dcp_expiration_sent_to_worker")
+				handler.config.StatsHandler.IncrementCountProcessingStats("dcp_expiration_sent_to_worker", 1)
 				handler.writeMessage(workerID, processManager.DcpDeletion, msg, parsedDetails)
 
 			case dcpMessage.DCP_STREAMREQ:
 				update := false
 				switch msg.Status {
 				case dcpMessage.SUCCESS:
-					handler.config.StatsHandler.IncrementProcessingStats("dcp_streamreq")
+					handler.config.StatsHandler.IncrementCountProcessingStats("dcp_streamreq", 1)
 					update = handler.allocator.vbReadyState(msg)
 
 				default:
 					streamendMsg := fmt.Sprintf("dcp_streamend-%d", msg.Status)
-					handler.config.StatsHandler.IncrementProcessingStats(streamendMsg)
+					handler.config.StatsHandler.IncrementCountProcessingStats(streamendMsg, 1)
 					handler.allocator.DoneVb(msg.SrRequest)
 				}
 				if update {
@@ -152,28 +155,28 @@ func (handler *vbHandler) eventReceiver(ctx context.Context) {
 				}
 
 			case dcpMessage.DCP_SYSTEM_EVENT:
-				handler.config.StatsHandler.IncrementProcessingStats("dcp_system_event")
+				handler.config.StatsHandler.IncrementCountProcessingStats("dcp_system_event", 1)
 				if msg.EventType == dcpMessage.COLLECTION_DROP || msg.EventType == dcpMessage.COLLECTION_FLUSH {
 					handler.writeMessage(workerID, processManager.DcpCollectionDelete, msg, parsedDetails)
 					handler.flushNotifier.Notify()
 				}
 
 			case dcpMessage.DCP_ADV_SEQNUM:
-				handler.config.StatsHandler.IncrementProcessingStats("dcp_adv_seqno")
+				handler.config.StatsHandler.IncrementCountProcessingStats("dcp_adv_seqno", 1)
 				handler.writeMessage(workerID, processManager.DcpNoOp, msg, parsedDetails)
 
 			case dcpMessage.DCP_STREAM_END:
 				if msg.Status == dcpMessage.ROLLBACK {
-					handler.config.StatsHandler.IncrementProcessingStats("rollback")
+					handler.config.StatsHandler.IncrementCountProcessingStats("rollback", 1)
 					logging.Warnf("%s Got rollback message for vb: %d", logPrefix, msg.Vbno)
 				}
-				handler.config.StatsHandler.IncrementProcessingStats("dcp_streamend")
+				handler.config.StatsHandler.IncrementCountProcessingStats("dcp_streamend", 1)
 				sendNoOp := handler.allocator.DoneVb(msg.SrRequest)
 				if sendNoOp {
 					workerID = handler.allocator.GetWorkerId(msg)
 					handler.writeMessage(workerID, processManager.DcpNoOp, msg, parsedDetails)
 				} else {
-					handler.config.StatsHandler.IncrementProcessingStats("forced_closed")
+					handler.config.StatsHandler.IncrementCountProcessingStats("forced_closed", 1)
 				}
 			}
 			handler.commonDcpManager.DoneDcpEvent(msg)
@@ -231,9 +234,11 @@ func (handler *vbHandler) NotifyOwnershipChange() (string, []uint16, []uint16, [
 
 	for _, vb := range toClose {
 		handler.config.RuntimeSystem.VbSettings(handler.config.Version, processManager.FilterVb, handler.config.InstanceID, vb, nil)
+		handler.config.StatsHandler.IncrementCountProcessingStats("agg_messages_sent_to_worker", 1)
 	}
 
 	handler.config.RuntimeSystem.VbSettings(handler.config.Version, processManager.VbMap, handler.config.InstanceID, nil, distributedVbsBytes)
+	handler.config.StatsHandler.IncrementCountProcessingStats("agg_messages_sent_to_worker", 1)
 	if len(toClose) != 0 {
 		handler.flushNotifier.Resume()
 	}

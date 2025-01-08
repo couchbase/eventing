@@ -31,6 +31,7 @@ func curlSetup() {
 	http.HandleFunc("/curlURLEncodeInlineQueryParams72X/", curlURLEncodeInlineQueryParams7_2_XHandler)
 	http.HandleFunc("/curlURLEncodeQueryParamsAttrString72X/", curlURLEncodeQueryParamsAttrString7_2_XHandler)
 	http.HandleFunc("/curlURLEncodeQueryParamsAttrObject72X/", curlURLEncodeQueryParamsAttrObject7_2_XHandler)
+	http.HandleFunc("/curlTimeout/", curlTimeout_Handler)
 	go func() {
 		err := server.ListenAndServe()
 		if err != nil {

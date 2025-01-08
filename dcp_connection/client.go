@@ -373,7 +373,7 @@ func (c *client) requestRoutine(ctx context.Context) {
 		case cmd := <-c.requestChannel:
 			req, err := c.handleDcpRequest(cmd)
 			if err != nil {
-				logging.Errorf("%s handler dcp request error: %v, err: %v for vb: %d. request: %v", logPrefix, cmd, err, cmd.vbno, req)
+				logging.Errorf("%s handler dcp request error: %v, err: %v for vb: %d", logPrefix, cmd, err, cmd.vbno)
 				time.Sleep(1 * time.Second)
 			}
 			if err != nil && req != nil {

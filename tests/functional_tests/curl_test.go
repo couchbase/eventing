@@ -1,3 +1,4 @@
+//go:build all || curl
 // +build all curl
 
 package eventing
@@ -1161,10 +1162,19 @@ func TestCurlURLEncodeInlineQueryParams72X(t *testing.T) {
 }
 
 func TestCurlURLEncodeQueryParamsAttrString72X(t *testing.T) {
-    curl := curlTester{
-        handler:    "curl_url_encode_query_params_attr_string",
-        testName:   "TestCurlURLEncodeQueryParamsAttrString72X",
-        testHandle: t,
-    }
-    curl.testCurlURLEncodeQueryParamsAttrString72X()
+	curl := curlTester{
+		handler:    "curl_url_encode_query_params_attr_string",
+		testName:   "TestCurlURLEncodeQueryParamsAttrString72X",
+		testHandle: t,
+	}
+	curl.testCurlURLEncodeQueryParamsAttrString72X()
+}
+
+func TestCurlTimeout(t *testing.T) {
+	curl := curlTester{
+		handler:    "curl_timeout",
+		testName:   "TestCurlTimeout",
+		testHandle: t,
+	}
+	curl.testCurlTimeout()
 }

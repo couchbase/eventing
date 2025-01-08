@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"time"
 )
 
 func setCookiesIfAllowed(w http.ResponseWriter, r *http.Request) {
@@ -474,6 +475,16 @@ func curlURLEncodeQueryParamsAttrObject7_2_XHandler(w http.ResponseWriter, r *ht
 		w.Write([]byte(actualURL))
 		return
 	}
+	w.Header().Set("Content-Type", " application/json;charset=UTF-8\r\n")
+	w.WriteHeader(http.StatusOK)
+}
+
+func curlTimeout_Handler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	time.Sleep(80 * time.Second)
 	w.Header().Set("Content-Type", " application/json;charset=UTF-8\r\n")
 	w.WriteHeader(http.StatusOK)
 }

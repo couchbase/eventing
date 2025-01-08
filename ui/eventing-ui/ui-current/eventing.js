@@ -72,8 +72,7 @@ angular
         "@eventing-.@items.eventing_processed_count",
         "@eventing-.@items.eventing_failed_count",
         "@eventing-.@items.eventing_timeout_count",
-        "@eventing-.@items.eventing_dcp_backlog",
-        "@eventing-.@items.eventing_on_deploy_failure"
+        "@eventing-.@items.eventing_dcp_backlog"
       ];
       let getStatSamples = isAtLeast70 ? getStatSamples70 :
         getStatSamplesPre70;

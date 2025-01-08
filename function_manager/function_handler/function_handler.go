@@ -22,7 +22,7 @@ type RuntimeEnvironment interface {
 	FlushMessage(version uint32, buffer *bytes.Buffer)
 	VbSettings(version uint32, opcode uint8, handlerID []byte, key interface{}, value interface{})
 
-	GetProcessVersion() uint32
+	GetProcessDetails() processManager.ProcessDetails
 }
 
 type UtilityWorker interface {
@@ -122,7 +122,7 @@ type FunctionHandler interface {
 	ReceiveMessage(msg *processManager.ResponseMessage)
 
 	// Stats gives the stats back for the app
-	Stats() *common.Stats
+	Stats(statsType common.StatsType) *common.Stats
 	GetInsight() *common.Insight
 
 	GetApplicationLog(size int64) ([]string, error)

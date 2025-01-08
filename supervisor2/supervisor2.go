@@ -7,7 +7,7 @@ import (
 )
 
 type Supervisor2 interface {
-	GetStats(application.AppLocation) (*common.Stats, error)
+	GetStats(application.AppLocation, common.StatsType) (*common.Stats, error)
 	ClearStats(application.AppLocation) error
 
 	CreateInitCheckpoint(*application.FunctionDetails) (bool, error)

@@ -8,11 +8,12 @@ import (
 	"github.com/couchbase/eventing/common"
 	dcpMessage "github.com/couchbase/eventing/dcp_connection"
 	eventPool "github.com/couchbase/eventing/event_pool"
+	processManager "github.com/couchbase/eventing/process_manager"
 	serverConfig "github.com/couchbase/eventing/server_config"
 )
 
 type StatsHandler interface {
-	IncrementProcessingStats(key string)
+	IncrementCountProcessingStats(key string, count uint64)
 }
 
 type Ownership interface {
@@ -29,7 +30,7 @@ type FilterInterface interface {
 }
 
 type RuntimeSystem interface {
-	GetProcessVersion() uint32
+	GetProcessDetails() processManager.ProcessDetails
 	WriteDcpMessage(version uint32, buffer *bytes.Buffer, opcode uint8, workerID uint8,
 		instanceID []byte, msg *dcpMessage.DcpEvent, internalInfo *checkpointManager.ParsedInternalDetails) int32
 

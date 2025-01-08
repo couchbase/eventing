@@ -884,7 +884,8 @@ void V8Worker2::RouteMessage() {
         timer::TimerEvent evt;
 
         timer_execution_.store(true);
-        while (!stop_timer_scan_.load() && iter.GetNext(evt)) {
+        while (!relax_timer_execution_.load() && !stop_timer_scan_.load() &&
+               iter.GetNext(evt)) {
           stats_->IncrementExecutionStat("timer_msg_counter");
           this->SendTimer(evt.callback, evt.context);
           timer_store_->DeleteTimer(evt);
@@ -895,6 +896,7 @@ void V8Worker2::RouteMessage() {
         }
 
         timer_execution_.store(false);
+        relax_timer_execution_.store(false);
         scan_timer_.store(false);
         break;
       }
@@ -1558,6 +1560,15 @@ V8Worker2::AddFilterEvent(uint16_t vb, std::vector<uint8_t> payload) {
   filter_msg->payload = std::move(payload);
   push_msg(std::move(filter_msg));
 
+  if (timer_execution_.load()) {
+    // Relax the timer scanning a bit and exit from time scanning.
+    // This is to avoid the timer execution blocking sending the ack which will
+    // block rebalance There might be a race condition which will skip next run
+    // as well but eventually timer execution will continue. This might only
+    // happen during rebalance and lifecycle operation
+    relax_timer_execution_.store(true);
+    return {seq, vbuuid, true};
+  }
   return {seq, vbuuid, (executing || timer_execution_.load())};
 }
 

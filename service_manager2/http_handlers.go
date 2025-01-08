@@ -197,6 +197,14 @@ func (m *serviceMgr) statsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	query := r.URL.Query()
+	statType := common.PartialStats
+	if val, ok := query["full"]; ok {
+		if len(val) > 0 && val[0] == "true" {
+			statType = common.FullStats
+		}
+	}
+
 	cred, err := rbac.AuthWebCreds(r)
 	if err != nil {
 		getAuthErrorInfo(runtimeInfo, nil, false, err)
@@ -213,16 +221,16 @@ func (m *serviceMgr) statsHandler(w http.ResponseWriter, r *http.Request) {
 		appLocationList = append(appLocationList, appLocation)
 	}
 
-	statsList := m.populateStats(appLocationList)
+	statsList := m.populateStats(appLocationList, statType)
 	runtimeInfo.Description = statsList
 	runtimeInfo.OnlyDescription = true
 }
 
-func (m *serviceMgr) populateStats(appLocations []application.AppLocation) []*common.Stats {
+func (m *serviceMgr) populateStats(appLocations []application.AppLocation, statsType common.StatsType) []*common.Stats {
 	statsList := make([]*common.Stats, 0, len(appLocations))
 
 	for _, location := range appLocations {
-		stat, err := m.superSup.GetStats(location)
+		stat, err := m.superSup.GetStats(location, statsType)
 		if stat == nil || err != nil {
 			continue
 		}
@@ -1239,7 +1247,7 @@ func (m *serviceMgr) prometheusLow(w http.ResponseWriter, r *http.Request) {
 	out = append(out, []byte(fmt.Sprintf("eventing_worker_restart_count %v\n", 0))...)
 
 	runtimeInfo.SendRawDescription = true
-	runtimeInfo.Description = out
+	runtimeInfo.Description = string(out)
 	runtimeInfo.OnlyDescription = true
 }
 
@@ -1259,7 +1267,7 @@ func (m *serviceMgr) prometheusHigh(w http.ResponseWriter, r *http.Request) {
 	appLocations := m.appManager.ListApplication()
 	stats := make([]byte, 0, APPROX_METRIC_COUNT*APPROX_METRIC_SIZE*len(appLocations))
 	for _, location := range appLocations {
-		stat, err := m.superSup.GetStats(location)
+		stat, err := m.superSup.GetStats(location, common.PrometheusStats)
 		if stat == nil || err != nil {
 			continue
 		}
@@ -1299,7 +1307,7 @@ func (m *serviceMgr) prometheusHigh(w http.ResponseWriter, r *http.Request) {
 	}
 
 	runtimeInfo.SendRawDescription = true
-	runtimeInfo.Description = stats
+	runtimeInfo.Description = string(stats)
 	runtimeInfo.OnlyDescription = true
 }
 

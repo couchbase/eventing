@@ -237,6 +237,7 @@ private:
   std::atomic<bool> timer_execution_{false};
   std::atomic<bool> stop_timer_scan_{false};
   std::atomic<bool> shutdown_terminator_{false};
+  std::atomic<bool> relax_timer_execution_{false};
 
   std::string function_instance_id_;
   const std::vector<std::string> exception_type_names_;
