@@ -11,6 +11,7 @@ type curlTester struct {
 	testName   string
 	settings   *commonSettings
 	testHandle *testing.T
+	count      int
 }
 
 func (c *curlTester) test() {
@@ -20,7 +21,12 @@ func (c *curlTester) test() {
 		return
 	}
 
-	ops := opsType{count: 100}
+	count := 100
+	if c.count != 0 {
+		count = c.count
+	}
+
+	ops := opsType{count: count}
 	pumpBucketOps(ops, &rateLimit{})
 	waitForDeployToFinish(c.handler)
 
@@ -595,6 +601,22 @@ func (c *curlTester) testCurlURLEncodeQueryParamsAttrObject72X() {
 		AllowCookies:           true,
 	}
 
+	c.settings = &commonSettings{curlBindings: []common.Curl{loBinding},
+		constantBindings: []common.Constant{common.Constant{Value: "url_encoding_val", Literal: "\"7.2.0\""}},
+		executionTimeout: 60}
+	c.test()
+}
+
+func (c *curlTester) testCurlTimeout() {
+	loBinding := common.Curl{
+		Hostname:               "http://localhost:9090/curlTimeout/",
+		Value:                  "localhost",
+		ValidateSSLCertificate: false,
+		AuthType:               "no-auth",
+		AllowCookies:           true,
+	}
+
+	c.count = 5
 	c.settings = &commonSettings{curlBindings: []common.Curl{loBinding},
 		constantBindings: []common.Constant{common.Constant{Value: "url_encoding_val", Literal: "\"7.2.0\""}},
 		executionTimeout: 60}

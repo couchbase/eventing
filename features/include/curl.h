@@ -284,6 +284,7 @@ struct CurlRequest : public Info {
   std::string path;
   std::string params_urlencoded;
   std::string curl_lang_compat;
+  long timeout{0};
   Curl::Headers headers;
   Curl::Buffer body;
 };
@@ -415,6 +416,8 @@ public:
 private:
   Info ExtractEncoding(const v8::Local<v8::Value> &encoding_val,
                        BodyEncoding &encoding_out);
+  Info ExtractTimeout(const v8::Local<v8::Value> &timeout_val,
+                      long &timeout_out, long default_timeout);
   Info ExtractMethod(const v8::Local<v8::Value> &method_val,
                      std::string &value_out);
   Info ExtractBody(const v8::Local<v8::Value> &body_val,
