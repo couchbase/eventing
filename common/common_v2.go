@@ -321,9 +321,10 @@ type Stats struct {
 	LatencyPercentileStats      map[string]int    `json:"latency_percentile_stats"`
 	CurlLatency                 *HistogramStats   `json:"curl_latency_stats,omitempty"`
 
-	Insight          *Insight          `json:"-"`
-	LatencyHistogram *HistogramStats   `json:"latency_stats,omitempty"`
-	ProcessedSeq     map[uint16]uint64 `json:"-"`
+	Insight              *Insight          `json:"-"`
+	LatencyHistogram     *HistogramStats   `json:"latency_stats,omitempty"`
+	TempLatencyHistogram *HistogramStats   `json:"-"`
+	ProcessedSeq         map[uint16]uint64 `json:"-"`
 }
 
 func NewStats(statsInit bool, functionScope application.Namespace, appName string, statsType StatsType) *Stats {
@@ -336,8 +337,8 @@ func NewStats(statsInit bool, functionScope application.Namespace, appName strin
 
 	switch statsType {
 	case FullStats:
-		newStats.CurlLatency = NewHistogramStats()
 		newStats.LatencyHistogram = NewHistogramStats()
+		newStats.CurlLatency = NewHistogramStats()
 		newStats.ProcessedSeq = make(map[uint16]uint64)
 		newStats.Insight = NewInsight()
 		fallthrough
@@ -346,6 +347,7 @@ func NewStats(statsInit bool, functionScope application.Namespace, appName strin
 		newStats.FunctionName = appName
 		newStats.FunctionScope = functionScope
 		newStats.LCBExceptionStats = make(map[string]uint64)
+		newStats.TempLatencyHistogram = NewHistogramStats()
 		newStats.LatencyPercentileStats = make(map[string]int)
 		newStats.WorkerPids = make(map[string]int)
 		newStats.InternalVbDistributionStats = make(map[string]string)
@@ -486,12 +488,10 @@ func (s *Stats) Copy(statType StatsType) *Stats {
 
 	switch statType {
 	case FullStats:
-		newStats.LatencyHistogram = s.LatencyHistogram.Copy()
+		newStats.LatencyHistogram = s.TempLatencyHistogram.Copy()
 		newStats.CurlLatency = s.CurlLatency.Copy()
-		newStats.LatencyPercentileStats = getLatencyPercentile(s.LatencyHistogram)
 		maps.Copy(newStats.ProcessedSeq, s.ProcessedSeq)
 		newStats.Insight = s.Insight.Copy()
-		newStats.LatencyHistogram = s.LatencyHistogram.Copy()
 		fallthrough
 
 	case PartialStats:
@@ -500,6 +500,8 @@ func (s *Stats) Copy(statType StatsType) *Stats {
 		maps.Copy(curlExecutionStats, curlStats)
 		newStats.ExecutionStats["curl"] = curlExecutionStats
 		maps.Copy(newStats.LCBExceptionStats, s.LCBExceptionStats)
+		newStats.TempLatencyHistogram = s.TempLatencyHistogram.Copy()
+		newStats.LatencyPercentileStats = getLatencyPercentile(s.TempLatencyHistogram)
 		maps.Copy(newStats.InternalVbDistributionStats, s.InternalVbDistributionStats)
 		maps.Copy(newStats.WorkerPids, s.WorkerPids)
 		fallthrough
@@ -527,12 +529,10 @@ func (s2 *Stats) Sub(s1 *Stats, statType StatsType) *Stats {
 
 	switch statType {
 	case FullStats:
-		newStats.LatencyHistogram = s2.LatencyHistogram.Copy()
+		newStats.LatencyHistogram = s2.TempLatencyHistogram.Copy()
 		newStats.CurlLatency = s2.CurlLatency.Copy()
-		newStats.LatencyPercentileStats = getLatencyPercentile(s2.LatencyHistogram)
 		maps.Copy(newStats.ProcessedSeq, s2.ProcessedSeq)
 		newStats.Insight = s2.Insight.Copy()
-		newStats.LatencyHistogram = s2.LatencyHistogram.Copy()
 		fallthrough
 
 	case PartialStats:
@@ -552,6 +552,8 @@ func (s2 *Stats) Sub(s1 *Stats, statType StatsType) *Stats {
 			}
 		}
 
+		newStats.TempLatencyHistogram = s2.TempLatencyHistogram.Copy()
+		newStats.LatencyPercentileStats = getLatencyPercentile(s2.TempLatencyHistogram)
 		maps.Copy(newStats.InternalVbDistributionStats, s1.InternalVbDistributionStats)
 		maps.Copy(newStats.WorkerPids, s1.WorkerPids)
 		fallthrough
@@ -602,13 +604,11 @@ func (s2 *Stats) Sub(s1 *Stats, statType StatsType) *Stats {
 func (s2 *Stats) Add(s1 *Stats, statType StatsType) {
 	switch statType {
 	case FullStats:
-		s2.LatencyHistogram.UpdateWithHistogram(s1.LatencyHistogram)
+		s2.LatencyHistogram.UpdateWithHistogram(s1.TempLatencyHistogram)
 		s2.CurlLatency.UpdateWithHistogram(s1.CurlLatency)
-		s2.LatencyPercentileStats = getLatencyPercentile(s2.LatencyHistogram)
 		s2.ProcessedSeq = make(map[uint16]uint64)
 		maps.Copy(s2.ProcessedSeq, s1.ProcessedSeq)
 		s2.Insight = s2.Insight.Copy()
-		s2.LatencyHistogram = s2.LatencyHistogram.Copy()
 		fallthrough
 
 	case PartialStats:
@@ -629,6 +629,8 @@ func (s2 *Stats) Add(s1 *Stats, statType StatsType) {
 			}
 		}
 
+		s2.TempLatencyHistogram.UpdateWithHistogram(s1.TempLatencyHistogram)
+		s2.LatencyPercentileStats = getLatencyPercentile(s2.TempLatencyHistogram)
 		maps.Copy(s2.InternalVbDistributionStats, s1.InternalVbDistributionStats)
 		maps.Copy(s2.WorkerPids, s1.WorkerPids)
 		fallthrough
