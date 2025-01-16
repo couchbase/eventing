@@ -157,7 +157,7 @@ func (stats *statsHandler) handleStats(msg *processManager.ResponseMessage) {
 		}
 
 		stats.Lock()
-		stats.stats.LatencyHistogram.Update(latency)
+		stats.stats.TempLatencyHistogram.Update(latency)
 		stats.incrementCountProcessingStatsLocked("latency_stats", 1)
 		stats.Unlock()
 
@@ -220,7 +220,7 @@ func (stats *statsHandler) handleStats(msg *processManager.ResponseMessage) {
 		stats.incrementCountProcessingStatsLocked("latency_stats", 1)
 		stats.incrementCountProcessingStatsLocked("curl_latency_stats", 1)
 		stats.incrementCountProcessingStatsLocked("lcb_exception_stats", 1)
-		stats.stats.LatencyHistogram.Update(latencyStats)
+		stats.stats.TempLatencyHistogram.Update(latencyStats)
 		stats.stats.CurlLatency.Update(curlLatencyStats)
 		stats.stats.LCBExceptionStats = lcbExceptionStats
 		stats.Unlock()

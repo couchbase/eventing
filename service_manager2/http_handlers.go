@@ -199,9 +199,12 @@ func (m *serviceMgr) statsHandler(w http.ResponseWriter, r *http.Request) {
 
 	query := r.URL.Query()
 	statType := common.PartialStats
-	if val, ok := query["full"]; ok {
-		if len(val) > 0 && val[0] == "true" {
-			statType = common.FullStats
+	if val, ok := query["type"]; ok {
+		if len(val) > 0 {
+			switch val[0] {
+			case "full":
+				statType = common.FullStats
+			}
 		}
 	}
 
