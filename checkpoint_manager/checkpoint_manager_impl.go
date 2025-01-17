@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -20,8 +21,10 @@ import (
 )
 
 const (
-	failoverCheck  = 1 * time.Minute
-	updateInterval = 10 * time.Second
+	ownershipCheckInterval = 1 * time.Second
+	onDeployStatusCheck    = 1 * time.Second
+	failoverCheck          = 1 * time.Minute
+	updateInterval         = 20 * time.Second
 )
 
 const (
@@ -31,20 +34,18 @@ const (
 	timerEndKeyCheckpointTemplate   = timerKeyCheckpointTemplate + "z"
 )
 
-type GocbLogger struct{}
-
-func (r *GocbLogger) Log(level gocb.LogLevel, offset int, format string, v ...interface{}) error {
-	// log.Printf(format, v...)
-	return nil
-}
-
 var (
 	errKeyspaceNotFound = errors.New("keyspace not found")
 	errOwnerNotGivenUp  = errors.New("some other node owns this")
 )
 
+var (
+	upsertOptions = &gocb.UpsertSpecOptions{CreatePath: true}
+)
+
 type collectionHandle interface {
 	GetCollectionHandle() *gocb.Collection
+	GetGocbMutateIn() []gocb.MutateInSpec
 }
 
 // This will persist the checkpoint blob
@@ -52,15 +53,16 @@ type collectionHandle interface {
 type vbBlobInternal struct {
 	sync.RWMutex
 
-	key       string
-	vbBlob    *VbBlob
-	ownedTime time.Time
-
-	dirty      bool
-	dirtyField []interface{}
-
+	key               string
 	collectionHandler collectionHandle
 	checkpointConfig  *CheckpointConfig
+	observer          notifier.Observer
+
+	// These have single writer single reader
+	vbBlob     *VbBlob
+	dirty      bool
+	dirtyField []interface{}
+	ownedTime  time.Time
 }
 
 func (vbi *vbBlobInternal) MarshalJSON() ([]byte, error) {
@@ -76,20 +78,22 @@ func (vbi *vbBlobInternal) Copy() *vbBlobInternal {
 		ownedTime:         vbi.ownedTime,
 		collectionHandler: vbi.collectionHandler,
 		checkpointConfig:  vbi.checkpointConfig,
+		observer:          vbi.observer,
 	}
 }
 
 // Get the ownership of the blob
-func NewVbBlobInternal(key string, checkpointConfig *CheckpointConfig, collectionHandler collectionHandle, forced bool) (*vbBlobInternal, string, error) {
+func NewVbBlobInternal(key string, observer notifier.Observer, checkpointConfig *CheckpointConfig, collectionHandler collectionHandle, forced bool) (*vbBlobInternal, string, error) {
 	vbblob := &vbBlobInternal{
 		key:               key,
 		checkpointConfig:  checkpointConfig,
 		vbBlob:            nil,
 		collectionHandler: collectionHandler,
+		observer:          observer,
 	}
 
-	nodeUUID, err := vbblob.syncFromServerAndOwnTheKeyLocked(forced)
-	if err == errOwnerNotGivenUp {
+	nodeUUID, err := vbblob.syncFromServerAndOwnTheKey(forced)
+	if errors.Is(err, errOwnerNotGivenUp) {
 		return nil, nodeUUID, err
 	}
 
@@ -109,24 +113,18 @@ func (vbi *vbBlobInternal) unsetVbBlob() *VbBlob {
 }
 
 func (vbi *vbBlobInternal) close() (*VbBlob, error) {
-	vbi.Lock()
-	defer vbi.Unlock()
+	gocbMutateIn := vbi.collectionHandler.GetGocbMutateIn()
 
-	upsertOptions := &gocb.UpsertSpecOptions{CreatePath: true}
-	mutateIn := make([]gocb.MutateInSpec, 0, 6)
-	mutateIn = append(mutateIn, gocb.UpsertSpec("node_uuid", "", upsertOptions))
-	mutateIn, _ = vbi.getDirtyUpdateLocked(mutateIn)
+	// Capacity of the slice will be enough to put all so new list won't be created
+	gocbMutateIn = append(gocbMutateIn, gocb.UpsertSpec("node_uuid", "", upsertOptions))
+	gocbMutateIn, _ = vbi.getDirtyUpdates(gocbMutateIn)
 
-	err := vbi.subdocUpdateLocked(mutateIn)
-	if errors.Is(err, gocb.ErrDocumentNotFound) {
+	err := subdocUpdate(vbi.collectionHandler.GetCollectionHandle(), vbi.observer, vbi.checkpointConfig.Keyspace, vbi.key, gocbMutateIn)
+	if errors.Is(err, ErrDocumentNotFound) {
 		return vbi.unsetVbBlobLocked(), nil
 	}
 
-	if err != nil {
-		return nil, err
-	}
-
-	return vbi.unsetVbBlobLocked(), nil
+	return nil, err
 }
 
 func (vbi *vbBlobInternal) unsetVbBlobLocked() *VbBlob {
@@ -138,35 +136,36 @@ func (vbi *vbBlobInternal) unsetVbBlobLocked() *VbBlob {
 }
 
 func (vbi *vbBlobInternal) syncCheckpointBlob() error {
-	vbi.Lock()
-	defer vbi.Unlock()
-
 	dirty := false
-	var mutateIn []gocb.MutateInSpec
-	mutateIn, dirty = vbi.getDirtyUpdateLocked(mutateIn)
+	gocbMutateIn := vbi.collectionHandler.GetGocbMutateIn()
+	gocbMutateIn, dirty = vbi.getDirtyUpdates(gocbMutateIn)
 	if !dirty {
 		return nil
 	}
 
-	err := vbi.subdocUpdateLocked(mutateIn)
+	err := subdocUpdate(vbi.collectionHandler.GetCollectionHandle(), vbi.observer, vbi.checkpointConfig.Keyspace, vbi.key, gocbMutateIn)
 	if err != nil {
 		return err
 	}
 
-	for index, _ := range vbi.dirtyField {
+	vbi.Lock()
+	for index := range vbi.dirtyField {
 		vbi.dirtyField[index] = nil
 	}
 
 	vbi.dirty = false
+	vbi.Unlock()
 	return nil
 }
 
-func (vbi *vbBlobInternal) getDirtyUpdateLocked(mutateIn []gocb.MutateInSpec) ([]gocb.MutateInSpec, bool) {
+func (vbi *vbBlobInternal) getDirtyUpdates(mutateIn []gocb.MutateInSpec) ([]gocb.MutateInSpec, bool) {
+	vbi.RLock()
+	defer vbi.RUnlock()
+
 	if !vbi.dirty {
 		return mutateIn, false
 	}
 
-	upsertOptions := &gocb.UpsertSpecOptions{CreatePath: true}
 	uuid, ok := vbi.dirtyField[0].(uint64)
 	if ok {
 		mutateIn = append(mutateIn, gocb.UpsertSpec("vb_uuid", uuid, upsertOptions))
@@ -234,6 +233,69 @@ func (vbi *vbBlobInternal) getVbBlob() VbBlob {
 	return vbi.vbBlob.Copy()
 }
 
+// sync from server only if this is the owner otherwise ignore
+// and make the owner
+func (vbi *vbBlobInternal) syncFromServerAndOwnTheKey(forced bool) (string, error) {
+	vbBlob := &VbBlob{}
+	_, err := get(vbi.collectionHandler.GetCollectionHandle(), vbi.observer, vbi.checkpointConfig.Keyspace, vbi.key, vbBlob)
+	if errors.Is(err, ErrDocumentNotFound) {
+		vbi.vbBlob = &VbBlob{
+			NodeUUID: vbi.checkpointConfig.OwnerNodeUUID,
+		}
+
+		err := vbi.createCheckpointBlob()
+		if err != nil {
+			vbi.vbBlob = nil
+			return "", fmt.Errorf("error in creating checkpoint: %v", err)
+		}
+
+		return vbi.checkpointConfig.OwnerNodeUUID, nil
+	}
+
+	if err != nil {
+		return "", fmt.Errorf("error for get op: %v", err)
+	}
+
+	if !forced && (vbBlob.NodeUUID != "") && (vbBlob.NodeUUID != vbi.checkpointConfig.OwnerNodeUUID) {
+		return vbBlob.NodeUUID, errOwnerNotGivenUp
+	}
+
+	vbi.vbBlob = vbBlob
+	if vbBlob.NodeUUID == vbi.checkpointConfig.OwnerNodeUUID {
+		return vbBlob.NodeUUID, nil
+	}
+
+	gocbMutateIn := vbi.collectionHandler.GetGocbMutateIn()
+	gocbMutateIn = append(gocbMutateIn, gocb.UpsertSpec("node_uuid", vbi.checkpointConfig.OwnerNodeUUID, upsertOptions))
+	err = subdocUpdate(vbi.collectionHandler.GetCollectionHandle(), vbi.observer, vbi.checkpointConfig.Keyspace, vbi.key, gocbMutateIn)
+	if err != nil {
+		vbi.vbBlob = nil
+		return "", fmt.Errorf("error updating node_uuid: %v", err)
+	}
+
+	vbi.ownedTime = time.Now()
+	return vbi.checkpointConfig.OwnerNodeUUID, nil
+}
+
+func (vbi *vbBlobInternal) createCheckpointBlob() error {
+	upsertOption := &gocb.UpsertOptions{
+		Timeout: opsTimeout,
+	}
+
+	vbi.Lock()
+	vbBlob := vbi.vbBlob
+	if vbi.vbBlob != nil {
+		vbi.dirty = false
+		for index, _ := range vbi.dirtyField {
+			vbi.dirtyField[index] = nil
+		}
+	}
+	vbi.Unlock()
+
+	_, err := vbi.collectionHandler.GetCollectionHandle().Upsert(vbi.key, vbBlob, upsertOption)
+	return err
+}
+
 type stats struct {
 	VbsToOwn   []uint16                   `json:"vbs_to_own"`
 	VbsToClose []uint16                   `json:"vbs_to_close"`
@@ -245,49 +307,60 @@ type checkpointManager struct {
 
 	prefix            string
 	checkpointConfig  CheckpointConfig
-	collectionHandler atomic.Value
-
-	vbBlobSlice map[uint16]*vbBlobInternal
-
-	vbsToOwn   map[uint16]struct{}
-	vbsToClose map[uint16]*vbBlobInternal
-
 	observer          notifier.Observer
 	interruptCallback InterruptFunction
+	broadcaster       common.Broadcaster
+
+	collectionHandler atomic.Value
 	keyspaceExists    atomic.Bool
 
-	broadcaster common.Broadcaster
-	notifier    *common.Signal
+	notifier *common.Signal
+
+	// TODO: Use copy map such that we can avoid creating lot of copies
+	vbBlobSlice map[uint16]*vbBlobInternal
+	vbsToOwn    map[uint16]struct{}
+	vbsToClose  map[uint16]*vbBlobInternal
+
+	gocbMutateIn []gocb.MutateInSpec
 
 	close func()
 }
 
-func NewCheckpointManager(cc CheckpointConfig, cluster *gocb.Cluster, clusterConfig *common.ClusterSettings, interruptCallback InterruptFunction, observer notifier.Observer, broadcaster common.Broadcaster) Checkpoint {
-	bucket, err := GetBucketObjectWithRetry(cluster, 5, observer, cc.Keyspace.BucketName)
-	keyspaceExist := ((err == nil) || (err != errKeyspaceNotFound))
-	return NewCheckpointManagerForKeyspace(cc, interruptCallback, bucket, observer, broadcaster, keyspaceExist)
+func NewCheckpointManager(cc CheckpointConfig, cluster *gocb.Cluster, clusterConfig *common.ClusterSettings,
+	interruptCallback InterruptFunction, observer notifier.Observer, broadcaster common.Broadcaster) Checkpoint {
+
+	bucket, _ := GetBucketObjectWithRetry(cluster, 5, observer, cc.Keyspace.BucketName)
+	return NewCheckpointManagerForKeyspace(cc, interruptCallback, bucket, observer, broadcaster)
 }
 
-func NewCheckpointManagerForKeyspace(cc CheckpointConfig, interruptCallback InterruptFunction, bucket *gocb.Bucket, observer notifier.Observer, broadcaster common.Broadcaster, keyspaceExist bool) Checkpoint {
-	return NewCheckpointManagerForKeyspaceWithContext(context.Background(), cc, interruptCallback, bucket, observer, broadcaster, keyspaceExist)
+func NewCheckpointManagerForKeyspace(cc CheckpointConfig, interruptCallback InterruptFunction,
+	bucket *gocb.Bucket, observer notifier.Observer, broadcaster common.Broadcaster) Checkpoint {
+
+	return NewCheckpointManagerForKeyspaceWithContext(context.Background(), cc, interruptCallback, bucket, observer, broadcaster)
 }
 
-func NewCheckpointManagerForKeyspaceWithContext(ctx context.Context, cc CheckpointConfig, interruptCallback InterruptFunction, bucket *gocb.Bucket, observer notifier.Observer, broadcaster common.Broadcaster, keyspaceExist bool) Checkpoint {
+func NewCheckpointManagerForKeyspaceWithContext(ctx context.Context, cc CheckpointConfig, interruptCallback InterruptFunction,
+	bucket *gocb.Bucket, observer notifier.Observer, broadcaster common.Broadcaster) Checkpoint {
+
 	logPrefix := "checkpointManager::NewCheckpointManager"
 	cm := &checkpointManager{
 		checkpointConfig:  cc,
 		prefix:            getCheckpointKeyTemplate(cc.AppID),
-		vbsToOwn:          make(map[uint16]struct{}),
-		vbsToClose:        make(map[uint16]*vbBlobInternal),
-		vbBlobSlice:       make(map[uint16]*vbBlobInternal),
 		interruptCallback: interruptCallback,
 		observer:          observer,
 		broadcaster:       broadcaster,
 
+		vbsToOwn:    make(map[uint16]struct{}),
+		vbsToClose:  make(map[uint16]*vbBlobInternal),
+		vbBlobSlice: make(map[uint16]*vbBlobInternal),
+
 		notifier: common.NewSignal(),
+
+		gocbMutateIn: make([]gocb.MutateInSpec, 0, 6),
 	}
 
 	gocb.SetLogger(&GocbLogger{})
+	// Store true and lazily detect if keyspace exists or not
 	cm.keyspaceExists.Store(true)
 	cm.collectionHandler.Store(GetCollectionHandle(bucket, cc.Keyspace))
 
@@ -295,43 +368,24 @@ func NewCheckpointManagerForKeyspaceWithContext(ctx context.Context, cc Checkpoi
 	cm.close = close
 
 	logging.Infof("%s Started new checkpoint manager with config: %s", logPrefix, cc)
-	go cm.periodicCheckpoint(ctx)
-	go cm.runOwnershipRoutine(ctx)
+	go cm.checkpointRoutine(ctx)
 
 	return cm
 }
 
 func (cm *checkpointManager) OwnVbCheckpoint(vb uint16) {
-	// Get the field from checkpoint doc
-	// If not owned yet wait for some time and again check for ownership
-
 	cm.Lock()
-	defer cm.Unlock()
-
-	// Delete from vbs to close since again we need to
-	// own this vb
-	delete(cm.vbsToClose, vb)
-
+	// No need to delete from close vbs since close followed by own for same vb not possible
 	cm.vbsToOwn[vb] = struct{}{}
+	cm.Unlock()
+
 	cm.notifier.Notify()
-}
-
-func (cm *checkpointManager) GetCheckpoint(vb uint16) (VbBlob, error) {
-	cm.RLock()
-	blob, err := cm.getCheckpointBlob(vb)
-	cm.RUnlock()
-
-	if err != nil {
-		return VbBlob{}, err
-	}
-
-	return blob.getVbBlob(), nil
 }
 
 func (cm *checkpointManager) UpdateVal(vb uint16, field checkpointField, value interface{}) {
 	// update the dirty value
 	cm.RLock()
-	blob, err := cm.getCheckpointBlob(vb)
+	blob, err := cm.getCheckpointBlobLocked(vb)
 	cm.RUnlock()
 
 	if err != nil {
@@ -343,17 +397,24 @@ func (cm *checkpointManager) UpdateVal(vb uint16, field checkpointField, value i
 
 func (cm *checkpointManager) StopCheckpoint(vb uint16) {
 	cm.Lock()
-	defer cm.Unlock()
-	delete(cm.vbsToOwn, vb)
+	if _, ok := cm.vbsToOwn[vb]; ok {
+		delete(cm.vbsToOwn, vb)
+		cm.Unlock()
+		vbBlob := getDummyVbBlob()
+		cm.interruptCallback(OWNERSHIP_CLOSED, vb, vbBlob)
+		return
+	}
 
-	blob, err := cm.getCheckpointBlob(vb)
+	blob, err := cm.getCheckpointBlobLocked(vb)
 	if err != nil {
+		cm.Unlock()
 		vbBlob := getDummyVbBlob()
 		cm.interruptCallback(OWNERSHIP_CLOSED, vb, vbBlob)
 		return
 	}
 
 	cm.vbsToClose[vb] = blob
+	cm.Unlock()
 	cm.notifier.Notify()
 }
 
@@ -371,7 +432,7 @@ func (cm *checkpointManager) WaitTillAllGiveUp(numVbs uint16) {
 		checkVbs[vb] = struct{}{}
 	}
 
-	for vb, _ := range checkVbs {
+	for vb := range checkVbs {
 		owner, err := cm.vbCurrentOwner(vb)
 		if err != nil || owner != "" {
 			continue
@@ -391,7 +452,7 @@ func (cm *checkpointManager) WaitTillAllGiveUp(numVbs uint16) {
 	for len(checkVbs) > 0 {
 		select {
 		case <-t.C:
-			for vb, _ := range checkVbs {
+			for vb := range checkVbs {
 				owner, err := cm.vbCurrentOwner(vb)
 				if err != nil || owner != "" {
 					continue
@@ -401,7 +462,7 @@ func (cm *checkpointManager) WaitTillAllGiveUp(numVbs uint16) {
 
 		case <-failoverCheckTicker.C:
 			nodesToVbs := make(map[string][]uint16)
-			for vb, _ := range checkVbs {
+			for vb := range checkVbs {
 				owner, err := cm.vbCurrentOwner(vb)
 				if err != nil {
 					logging.Errorf("%s Error getting ownership info of vb: %d err: %v", logPrefix, vb, err)
@@ -420,16 +481,12 @@ func (cm *checkpointManager) WaitTillAllGiveUp(numVbs uint16) {
 			}
 
 			logging.Infof("%s Ownership not given up for %s. Querying its owners", logPrefix, utils.CondenseMap(nodesToVbs))
-			query := application.QueryMap(cm.checkpointConfig.AppLocation)
-			req := &pc.Request{
-				Query:   query,
-				Timeout: common.HttpCallWaitTime,
-			}
 
 			for uuid, vbs := range nodesToVbs {
-				rebalanceProgress, err := cm.getOwnershipVbs(uuid, req)
-				// TODO: Possibilty that due to this few vbs won't be closed
-				if err == common.ErrNodeNotAvailable {
+				rebalanceProgress, err := cm.getOwnershipVbs(uuid)
+				// This function is called when we are trying to undeploy function so that all the vbuckets are given up
+				// and no more timer checkpoints are created. So no need to update the ownership in checkpoint.
+				if errors.Is(err, common.ErrNodeNotAvailable) {
 					logging.Errorf("%s Node %s not available so its vbs not gonna close. Continuing...", logPrefix, uuid)
 					for _, vb := range vbs {
 						delete(checkVbs, vb)
@@ -442,6 +499,7 @@ func (cm *checkpointManager) WaitTillAllGiveUp(numVbs uint16) {
 					continue
 				}
 
+				logging.Infof("%s Node %s current owning vbs: %v", logPrefix, uuid, rebalanceProgress.OwnedVbs)
 				for _, waitingVb := range vbs {
 					found := false
 					for _, ownedVb := range rebalanceProgress.OwnedVbs {
@@ -466,33 +524,44 @@ func (cm *checkpointManager) GetKeyPrefix() string {
 
 func (cm *checkpointManager) CloseCheckpointManager() {
 	cm.close()
+
+	if !cm.keyspaceExists.Load() {
+		return
+	}
+
+	cm.Lock()
+	vbBlobSlice := cm.vbBlobSlice
+	cm.vbBlobSlice = make(map[uint16]*vbBlobInternal)
+	cm.Unlock()
+
+	for vb, vbi := range vbBlobSlice {
+		_, err := cm.closeOwnership(vb, vbi)
+		if err != nil {
+			logging.Errorf("checkpointManager::CloseCheckpointManager[%s] Error closing ownership for vb: %d err: %v", cm.checkpointConfig.AppLocation, vb, err)
+
+			if errors.Is(err, errKeyspaceNotFound) {
+				cm.keyspaceExists.Store(false)
+				return
+			}
+		}
+	}
 }
 
 func (cm *checkpointManager) DeleteCheckpointBlob(vb uint16) error {
-	logPrefix := fmt.Sprintf("checkpointManager::DeleteCheckpointBlob[%s]", cm.checkpointConfig.AppLocation)
 	if !cm.keyspaceExists.Load() {
 		return nil
 	}
 
 	key := cm.getKey(vb)
-	err := cm.remove(key)
-	if err != nil {
-		if !errors.Is(err, gocb.ErrDocumentNotFound) {
-			logging.Errorf("%s Error while deleting ownership checkpoint for vb %d err: %v", logPrefix, vb, err)
-		}
-		// TODO: Try different mechanism to check scope or collection is deleted or not
-		if common.CheckKeyspaceExist(cm.observer, cm.checkpointConfig.Keyspace) {
-			// Maybe retry couple of time and then giveup
-			return err
-		}
-		cm.keyspaceExists.Store(false)
-	}
-	return nil
+	err := remove(cm.getCollectionHandle(), cm.observer, cm.checkpointConfig.Keyspace, key)
+	cm.keyspaceExists.Store(!errors.Is(err, errKeyspaceNotFound))
+	return err
 }
 
 func (cm *checkpointManager) SyncUpsertCheckpoint(vb uint16, vbBlob *VbBlob) error {
 	key := cm.getKey(vb)
-	err := cm.upsert(key, vbBlob)
+	err := upsert(cm.getCollectionHandle(), cm.observer, cm.checkpointConfig.Keyspace, key, vbBlob)
+	cm.keyspaceExists.Store(!errors.Is(err, errKeyspaceNotFound))
 	return err
 }
 
@@ -500,15 +569,15 @@ func (cm *checkpointManager) OwnershipSnapshot(snapshot *common.AppRebalanceProg
 	cm.RLock()
 	defer cm.RUnlock()
 
-	for vb, _ := range cm.vbsToOwn {
+	for vb := range cm.vbsToOwn {
 		snapshot.ToOwn = append(snapshot.ToOwn, vb)
 	}
 
-	for vb, _ := range cm.vbsToClose {
+	for vb := range cm.vbsToClose {
 		snapshot.ToClose = append(snapshot.ToClose, vb)
 	}
 
-	for vb, _ := range cm.vbBlobSlice {
+	for vb := range cm.vbBlobSlice {
 		snapshot.OwnedVbs = append(snapshot.OwnedVbs, vb)
 	}
 }
@@ -516,11 +585,10 @@ func (cm *checkpointManager) OwnershipSnapshot(snapshot *common.AppRebalanceProg
 func (cm *checkpointManager) GetTimerCheckpoints(appId uint32) (*gocb.ScanResult, error) {
 	startTimerKey := fmt.Sprintf(timerStartKeyCheckpointTemplate, appId)
 	endTimerKey := fmt.Sprintf(timerEndKeyCheckpointTemplate, appId)
-	return cm.scan(startTimerKey, endTimerKey, true)
+	return scan(cm.getCollectionHandle(), cm.observer, cm.checkpointConfig.Keyspace, startTimerKey, endTimerKey, true)
 }
 
 func (cm *checkpointManager) DeleteKeys(deleteKeys []string) {
-	logPrefix := fmt.Sprintf("checkpointManager::DeleteKeys[%s]", cm.checkpointConfig.AppLocation)
 	if !cm.keyspaceExists.Load() {
 		return
 	}
@@ -529,16 +597,8 @@ func (cm *checkpointManager) DeleteKeys(deleteKeys []string) {
 		return
 	}
 
-	err := cm.deleteBulk(deleteKeys)
-	if err != nil {
-		logging.Errorf("%s Error deleting bulk ownership checkpoint err: %v", logPrefix, err)
-		// TODO: Try different mechanism to check scope or collection is deleted or not
-		if common.CheckKeyspaceExist(cm.observer, cm.checkpointConfig.Keyspace) {
-			// Maybe retry couple of time and then giveup
-			return
-		}
-		cm.keyspaceExists.Store(false)
-	}
+	err := deleteBulk(cm.getCollectionHandle(), cm.observer, cm.checkpointConfig.Keyspace, deleteKeys)
+	cm.keyspaceExists.Store(!errors.Is(err, errKeyspaceNotFound))
 }
 
 func (cm *checkpointManager) GetRuntimeStats() common.StatsInterface {
@@ -563,13 +623,12 @@ func (cm *checkpointManager) GetRuntimeStats() common.StatsInterface {
 
 // TryToBeLeaderUrl try to be leader for this debugger session
 // returns true if able to be leader false otherwise
-func (cm *checkpointManager) TryTobeLeader(lType leaderType) (bool, error) {
+func (cm *checkpointManager) TryTobeLeader(lType leaderType, seq uint32) (bool, error) {
 	switch lType {
 	case DebuggerLeader:
-		key := cm.prefix + ":debugger"
-		result, err := getCheckpointWithPrefix(cm.getCollectionHandle(), key)
+		result, checkpoint, err := getDebuggerCheckpoint(cm.getCollectionHandle(), cm.observer, cm.checkpointConfig.Keyspace, cm.checkpointConfig.AppID)
 		// Already someone deleted the file. Maybe someone stopped the debugger
-		if errors.Is(err, gocb.ErrDocumentNotFound) {
+		if errors.Is(err, ErrDocumentNotFound) {
 			return false, nil
 		}
 
@@ -577,16 +636,10 @@ func (cm *checkpointManager) TryTobeLeader(lType leaderType) (bool, error) {
 			return false, err
 		}
 
-		var checkpoint debuggerCheckpoint
-		err = result.Content(&checkpoint)
-		if err != nil {
-			return false, err
-		}
 		checkpoint.LeaderElected = true
-		replaceOptions := &gocb.ReplaceOptions{Cas: result.Result.Cas(),
-			Expiry: 0}
-		_, err = cm.getCollectionHandle().Replace(key, checkpoint, replaceOptions)
-		if errors.Is(err, gocb.ErrCasMismatch) || errors.Is(err, gocb.ErrDocumentNotFound) {
+		key := getDebuggerKey(cm.checkpointConfig.AppID)
+		err = replace(cm.getCollectionHandle(), cm.observer, cm.checkpointConfig.Keyspace, key, checkpoint, result.Result.Cas())
+		if errors.Is(err, gocb.ErrCasMismatch) || errors.Is(err, ErrDocumentNotFound) {
 			return false, nil
 		}
 
@@ -594,12 +647,38 @@ func (cm *checkpointManager) TryTobeLeader(lType leaderType) (bool, error) {
 			return false, err
 		}
 		return true, nil
+
+	case OnDeployLeader:
+		doc := OnDeployCheckpoint{
+			NodeUUID: cm.checkpointConfig.OwnerNodeUUID,
+			Seq:      seq,
+			Status:   PendingOnDeploy,
+		}
+		key := getOnDeployKey(cm.checkpointConfig.AppLocation)
+		for {
+			err := insert(cm.getCollectionHandle(), cm.observer, cm.checkpointConfig.Keyspace, key, doc)
+			if err != nil {
+				if errors.Is(err, gocb.ErrDocumentExists) {
+					return false, nil
+				}
+
+				if errors.Is(err, errKeyspaceNotFound) {
+					cm.keyspaceExists.Store(false)
+					return false, nil
+				}
+				// Let the caller routine handle this
+				time.Sleep(100 * time.Millisecond)
+				continue
+			}
+			break
+		}
+		return true, nil
 	}
 	return true, nil
 }
 
 // Caller should lock before calling this function
-func (cm *checkpointManager) getCheckpointBlob(vb uint16) (*vbBlobInternal, error) {
+func (cm *checkpointManager) getCheckpointBlobLocked(vb uint16) (*vbBlobInternal, error) {
 	blob, ok := cm.vbBlobSlice[vb]
 	if !ok {
 		return nil, fmt.Errorf("vb %d isn't owned by this node", vb)
@@ -608,9 +687,10 @@ func (cm *checkpointManager) getCheckpointBlob(vb uint16) (*vbBlobInternal, erro
 	return blob, nil
 }
 
-func (cm *checkpointManager) periodicCheckpoint(ctx context.Context) {
-	logPrefix := fmt.Sprintf("checkpointManager::periodicCheckpoint[%s]", cm.checkpointConfig.AppLocation)
+func (cm *checkpointManager) checkpointRoutine(ctx context.Context) {
+	logPrefix := fmt.Sprintf("checkpointManager::checkpointRoutine[%s]", cm.checkpointConfig.AppLocation)
 
+	ownershipRoutineTicker := time.NewTicker(ownershipCheckInterval)
 	periodicUpdateTicker := time.NewTicker(updateInterval)
 	failoverCheckTicker := time.NewTicker(failoverCheck)
 
@@ -624,53 +704,50 @@ func (cm *checkpointManager) periodicCheckpoint(ctx context.Context) {
 		case <-periodicUpdateTicker.C:
 			cm.updateCheckpoint()
 
-		case <-failoverCheckTicker.C:
-			nodesToVbs := make(map[string][]uint16)
-			cm.Lock()
-			if len(cm.vbsToOwn) != 0 {
-				for vb, _ := range cm.vbsToOwn {
-					vbBlob, uuid, err := cm.getOwnership(vb, false)
-					if err == errOwnerNotGivenUp {
-						nodesToVbs[uuid] = append(nodesToVbs[uuid], vb)
-						continue
-					}
+		case <-cm.notifier.Wait():
+			cm.notifier.Ready()
+			cm.ownershipTakeover()
 
-					if err == nil {
-						delete(cm.vbsToOwn, vb)
-						cm.interruptCallback(OWNERSHIP_OBTAINED, vb, vbBlob)
-					}
-				}
-			}
-			cm.Unlock()
+		case <-ownershipRoutineTicker.C:
+			cm.ownershipTakeover()
+
+		case <-failoverCheckTicker.C:
+			nodesToVbs := cm.ownershipTakeover()
 			if len(nodesToVbs) == 0 {
 				continue
 			}
 
 			logging.Infof("%s Ownership not given up for %s. Querying its owners", logPrefix, utils.CondenseMap(nodesToVbs))
-			query := application.QueryMap(cm.checkpointConfig.AppLocation)
-			req := &pc.Request{
-				Query:   query,
-				Timeout: common.HttpCallWaitTime,
+			var vbsStatus []struct {
+				vb     uint16
+				vbBlob *VbBlob
 			}
-
 			for uuid, vbs := range nodesToVbs {
-				rebalanceProgress, err := cm.getOwnershipVbs(uuid, req)
-				if err == common.ErrNodeNotAvailable {
+				rebalanceProgress, err := cm.getOwnershipVbs(uuid)
+				if errors.Is(err, common.ErrNodeNotAvailable) {
 					logging.Infof("%s Node uuid %s not active. Forcefully taking over all vbs from this node", logPrefix, uuid)
 					// check and forcefully takeover the vb
-					cm.Lock()
+
 					for _, vb := range vbs {
+						cm.RLock()
 						if _, ok := cm.vbsToOwn[vb]; !ok {
+							cm.RUnlock()
 							continue
 						}
+						cm.RUnlock()
 
 						vbBlob, _, err := cm.getOwnership(vb, true)
 						if err == nil {
-							delete(cm.vbsToOwn, vb)
-							cm.interruptCallback(OWNERSHIP_OBTAINED, vb, vbBlob)
+							vbsStatus = append(vbsStatus, struct {
+								vb     uint16
+								vbBlob *VbBlob
+							}{
+								vb:     vb,
+								vbBlob: vbBlob,
+							})
+
 						}
 					}
-					cm.Unlock()
 					continue
 				}
 
@@ -690,20 +767,36 @@ func (cm *checkpointManager) periodicCheckpoint(ctx context.Context) {
 
 					if !found {
 						logging.Infof("%s Node uuid: %s already own given up vb: %d. Forcefully taking control now", logPrefix, uuid, waitingVb)
-						cm.Lock()
+						cm.RLock()
 						if _, ok := cm.vbsToOwn[waitingVb]; !ok {
+							cm.RUnlock()
 							continue
 						}
+						cm.RUnlock()
 
 						vbBlob, _, err := cm.getOwnership(waitingVb, true)
 						if err == nil {
-							delete(cm.vbsToOwn, waitingVb)
-							cm.interruptCallback(OWNERSHIP_OBTAINED, waitingVb, vbBlob)
+							vbsStatus = append(vbsStatus, struct {
+								vb     uint16
+								vbBlob *VbBlob
+							}{
+								vb:     waitingVb,
+								vbBlob: vbBlob,
+							})
 						}
-						cm.Unlock()
 					}
 				}
 			}
+
+			for _, status := range vbsStatus {
+				cm.interruptCallback(OWNERSHIP_OBTAINED, status.vb, status.vbBlob)
+			}
+
+			cm.Lock()
+			for _, vb := range vbsStatus {
+				delete(cm.vbsToClose, vb.vb)
+			}
+			cm.Unlock()
 
 		case <-ctx.Done():
 			return
@@ -711,9 +804,15 @@ func (cm *checkpointManager) periodicCheckpoint(ctx context.Context) {
 	}
 }
 
-func (cm *checkpointManager) getOwnershipVbs(uuid string, req *pc.Request) (*common.AppRebalanceProgress, error) {
+func (cm *checkpointManager) getOwnershipVbs(uuid string) (*common.AppRebalanceProgress, error) {
+	query := application.QueryMap(cm.checkpointConfig.AppLocation)
+	req := &pc.Request{
+		Query:   query,
+		Timeout: common.HttpCallWaitTime,
+	}
+
 	responseBytes, _, err := cm.broadcaster.RequestFor(uuid, "/getOwnedVbsForApp", req)
-	if err == common.ErrNodeNotAvailable {
+	if errors.Is(err, common.ErrNodeNotAvailable) {
 		return nil, err
 	}
 
@@ -730,45 +829,30 @@ func (cm *checkpointManager) getOwnershipVbs(uuid string, req *pc.Request) (*com
 	return rebalanceProgress, nil
 }
 
-func (cm *checkpointManager) runOwnershipRoutine(ctx context.Context) {
-	t := time.NewTicker(1 * time.Second)
-	defer func() {
-		t.Stop()
-	}()
-
-	for {
-		select {
-		case <-t.C:
-			cm.ownershipTakeover()
-
-		case <-cm.notifier.Wait():
-			cm.ownershipTakeover()
-			cm.notifier.Ready()
-
-		case <-ctx.Done():
-			return
-		}
-	}
-}
-
 func (cm *checkpointManager) updateCheckpoint() {
 	logPrefix := fmt.Sprintf("checkpointManager::updateCheckpoint[%s]", cm.checkpointConfig.AppLocation)
-
-	cm.RLock()
-	defer cm.RUnlock()
 
 	if !cm.keyspaceExists.Load() {
 		return
 	}
 
-	for _, vbBlob := range cm.vbBlobSlice {
+	cm.RLock()
+	if len(cm.vbBlobSlice) == 0 {
+		cm.RUnlock()
+		return
+	}
+	vbBlobSlice := make(map[uint16]*vbBlobInternal)
+	maps.Copy(vbBlobSlice, cm.vbBlobSlice)
+	cm.RUnlock()
+
+	for _, vbBlob := range vbBlobSlice {
 		err := vbBlob.syncCheckpointBlob()
 		if err != nil {
-			if !common.CheckKeyspaceExist(cm.observer, cm.checkpointConfig.Keyspace) {
+			if errors.Is(err, errKeyspaceNotFound) {
 				cm.keyspaceExists.Store(false)
 				return
 			}
-			if errors.Is(err, gocb.ErrDocumentNotFound) {
+			if errors.Is(err, ErrDocumentNotFound) {
 				err = vbBlob.createCheckpointBlob()
 				logging.Errorf("%s Checkpoint blob deleted. Recreating checkpoint blob from inmemory blob for %s. error creating blob? %v", logPrefix, vbBlob.key, err)
 			} else {
@@ -784,21 +868,18 @@ func (cm *checkpointManager) vbCurrentOwner(vb uint16) (string, error) {
 	}
 
 	key := cm.getKey(vb)
-	result, err := getCheckpointWithPrefix(cm.getCollectionHandle(), key)
+	vbBlob := &VbBlob{}
+	_, err := get(cm.getCollectionHandle(), cm.observer, cm.checkpointConfig.Keyspace, key, vbBlob)
 	if err != nil {
-		if errors.Is(err, gocb.ErrDocumentNotFound) {
+		if errors.Is(err, ErrDocumentNotFound) {
 			return "", nil
 		}
-		if !common.CheckKeyspaceExist(cm.observer, cm.checkpointConfig.Keyspace) {
+
+		if errors.Is(err, errKeyspaceNotFound) {
 			cm.keyspaceExists.Store(false)
 			return "", nil
 		}
-		return "", err
-	}
 
-	vbBlob := &VbBlob{}
-	err = result.Content(vbBlob)
-	if err != nil {
 		return "", err
 	}
 
@@ -813,14 +894,21 @@ func (cm *checkpointManager) GetCollectionHandle() *gocb.Collection {
 	return cm.getCollectionHandle()
 }
 
+func (cm *checkpointManager) GetGocbMutateIn() []gocb.MutateInSpec {
+	cm.gocbMutateIn = cm.gocbMutateIn[:0]
+	return cm.gocbMutateIn
+}
+
 func (cm *checkpointManager) getOwnership(vb uint16, forced bool) (*VbBlob, string, error) {
 	key := cm.getKey(vb)
-	vbi, uuid, err := NewVbBlobInternal(key, &cm.checkpointConfig, cm, forced)
+	vbi, uuid, err := NewVbBlobInternal(key, cm.observer, &cm.checkpointConfig, cm, forced)
 	if err != nil {
 		return nil, uuid, err
 	}
 
+	cm.Lock()
 	cm.vbBlobSlice[vb] = vbi
+	cm.Unlock()
 	copyVbBlob := vbi.getVbBlob()
 	return &copyVbBlob, uuid, nil
 }
@@ -831,7 +919,9 @@ func (cm *checkpointManager) closeOwnership(vb uint16, vbi *vbBlobInternal) (*Vb
 		return nil, err
 	}
 
+	cm.Lock()
 	delete(cm.vbBlobSlice, vb)
+	cm.Unlock()
 	return vbBlob, nil
 }
 
@@ -839,137 +929,267 @@ func (cm *checkpointManager) getKey(vb uint16) string {
 	return cm.prefix + fmt.Sprintf(":%d", vb)
 }
 
-func (cm *checkpointManager) ownershipTakeover() {
+func (cm *checkpointManager) ownershipTakeover() map[string][]uint16 {
 	logPrefix := fmt.Sprintf("checkpointManager::ownershipTakeover[%s]", cm.checkpointConfig.AppLocation)
-	cm.Lock()
-	defer cm.Unlock()
 
-	if len(cm.vbsToOwn) != 0 {
-		if !cm.keyspaceExists.Load() {
-			for vb, _ := range cm.vbsToOwn {
-				vbBlob := getDummyVbBlob()
-				delete(cm.vbsToOwn, vb)
-				cm.interruptCallback(OWNERSHIP_CLOSED, vb, vbBlob)
-			}
-			return
+	cm.RLock()
+	if len(cm.vbsToOwn) == 0 && len(cm.vbsToClose) == 0 {
+		cm.RUnlock()
+		return nil
+	}
+
+	nodesToVbs := make(map[string][]uint16)
+	vbsStatus := make(map[OwnMsg][]struct {
+		vb     uint16
+		vbBlob *VbBlob
+	})
+	vbsToOwn := make(map[uint16]struct{})
+	maps.Copy(vbsToOwn, cm.vbsToOwn)
+
+	vbsToClose := make(map[uint16]*vbBlobInternal)
+	maps.Copy(vbsToClose, cm.vbsToClose)
+	cm.RUnlock()
+
+	if !cm.keyspaceExists.Load() {
+		for vb := range vbsToOwn {
+			vbsStatus[OWNERSHIP_OBTAINED] = append(vbsStatus[OWNERSHIP_OBTAINED], struct {
+				vb     uint16
+				vbBlob *VbBlob
+			}{
+				vb:     vb,
+				vbBlob: getDummyVbBlob(),
+			})
 		}
 
-		for vb, _ := range cm.vbsToOwn {
-			vbBlob, _, err := cm.getOwnership(vb, false)
-			if err == errOwnerNotGivenUp {
+		for vb, vbi := range vbsToClose {
+			vbBlob := vbi.unsetVbBlob()
+			vbsStatus[OWNERSHIP_CLOSED] = append(vbsStatus[OWNERSHIP_CLOSED], struct {
+				vb     uint16
+				vbBlob *VbBlob
+			}{
+				vb:     vb,
+				vbBlob: vbBlob,
+			})
+		}
+
+	} else {
+		for vb := range vbsToOwn {
+			vbBlob, uuid, err := cm.getOwnership(vb, false)
+			if errors.Is(err, errOwnerNotGivenUp) {
+				nodesToVbs[uuid] = append(nodesToVbs[uuid], vb)
 				continue
 			}
 
 			if err != nil {
 				logging.Errorf("%s Error while taking over vbucket ownership: %v err: %v", logPrefix, vb, err)
-				// TODO: Try different mechanism to check scope or collection is deleted or not
-				if common.CheckKeyspaceExist(cm.observer, cm.checkpointConfig.Keyspace) {
+				if !errors.Is(err, errKeyspaceNotFound) {
 					// Ownership not closed continue
 					continue
 				}
 
 				cm.keyspaceExists.Store(false)
 				vbBlob = getDummyVbBlob()
-			}
 
-			delete(cm.vbsToOwn, vb)
-			cm.interruptCallback(OWNERSHIP_OBTAINED, vb, vbBlob)
-		}
-	}
-
-	if len(cm.vbsToClose) != 0 {
-		for vb, vbBlobInternal := range cm.vbsToClose {
-			if !cm.keyspaceExists.Load() {
-				for vb, vbi := range cm.vbsToClose {
-					vbBlob := vbi.unsetVbBlob()
-					delete(cm.vbsToClose, vb)
-					cm.interruptCallback(OWNERSHIP_CLOSED, vb, vbBlob)
+				for vb := range vbsToOwn {
+					vbsStatus[OWNERSHIP_OBTAINED] = append(vbsStatus[OWNERSHIP_OBTAINED], struct {
+						vb     uint16
+						vbBlob *VbBlob
+					}{
+						vb:     vb,
+						vbBlob: vbBlob,
+					})
 				}
-				return
+				break
 			}
 
+			vbsStatus[OWNERSHIP_OBTAINED] = append(vbsStatus[OWNERSHIP_OBTAINED], struct {
+				vb     uint16
+				vbBlob *VbBlob
+			}{
+				vb:     vb,
+				vbBlob: vbBlob,
+			})
+		}
+
+		for vb, vbBlobInternal := range vbsToClose {
 			vbBlob, err := cm.closeOwnership(vb, vbBlobInternal)
 			if err != nil {
-				logging.Errorf("%s Error while closing ownership for: %d", logPrefix, vb)
-				// TODO: Try different mechanism to check scope or collection is deleted or not
-				if common.CheckKeyspaceExist(cm.observer, cm.checkpointConfig.Keyspace) {
+				logging.Errorf("%s Error while closing ownership for: %d err: %v", logPrefix, vb, err)
+				if !errors.Is(err, errKeyspaceNotFound) {
 					// Ownership not closed continue
 					continue
 				}
+
 				// keyspace is deleted
-				vbBlob = vbBlobInternal.unsetVbBlob()
 				cm.keyspaceExists.Store(false)
+				for vb, vbi := range vbsToClose {
+					vbBlob := vbi.unsetVbBlob()
+
+					vbsStatus[OWNERSHIP_CLOSED] = append(vbsStatus[OWNERSHIP_CLOSED], struct {
+						vb     uint16
+						vbBlob *VbBlob
+					}{
+						vb:     vb,
+						vbBlob: vbBlob,
+					})
+				}
+				return nodesToVbs
 			}
 
-			delete(cm.vbsToClose, vb)
-			cm.interruptCallback(OWNERSHIP_CLOSED, vb, vbBlob)
+			vbsStatus[OWNERSHIP_CLOSED] = append(vbsStatus[OWNERSHIP_CLOSED], struct {
+				vb     uint16
+				vbBlob *VbBlob
+			}{
+				vb:     vb,
+				vbBlob: vbBlob,
+			})
 		}
 	}
+
+	for _, vbs := range vbsStatus[OWNERSHIP_CLOSED] {
+		cm.interruptCallback(OWNERSHIP_CLOSED, vbs.vb, vbs.vbBlob)
+	}
+
+	for _, vbs := range vbsStatus[OWNERSHIP_OBTAINED] {
+		cm.interruptCallback(OWNERSHIP_OBTAINED, vbs.vb, vbs.vbBlob)
+	}
+
+	cm.Lock()
+	for _, vbs := range vbsStatus[OWNERSHIP_CLOSED] {
+		// closed so just delete from the vbsBlobSlice so that no more updates are done
+		delete(cm.vbBlobSlice, vbs.vb)
+		delete(cm.vbsToClose, vbs.vb)
+	}
+
+	for _, vbs := range vbsStatus[OWNERSHIP_OBTAINED] {
+		delete(cm.vbsToOwn, vbs.vb)
+	}
+	cm.Unlock()
+
+	return nodesToVbs
 }
 
-// ReadOnDeployCheckpoint returns contents of the OnDeploy checkpoint from the Metadata collection of the app
-func (cm *checkpointManager) ReadOnDeployCheckpoint() (string, uint32, string) {
-	logPrefix := fmt.Sprintf("checkpointManager::ReadOnDeployCheckpoint[%s]", cm.checkpointConfig.AppLocation)
+func (cm *checkpointManager) PollUntilOnDeployCompletes() *OnDeployCheckpoint {
+	failoverCheckTicker := time.NewTicker(failoverCheck)
+	defer failoverCheckTicker.Stop()
+	onDeployStatusCheckTicker := time.NewTicker(onDeployStatusCheck)
+	defer onDeployStatusCheckTicker.Stop()
 
-	nodeLeader, seq, status, err := readOnDeployCheckpoint(cm.checkpointConfig.AppLocation, cm.getCollectionHandle())
-	if err != nil {
-		logging.Errorf("%s Error while reading OnDeploy checkpoint: %v", logPrefix, err)
-		if !common.CheckKeyspaceExist(cm.observer, cm.checkpointConfig.Keyspace) {
-			cm.keyspaceExists.Store(false)
-			status = common.FAILED.String()
-		}
-	}
-	return nodeLeader, seq, status
-}
-
-// WriteOnDeployCheckpoint inserts OnDeploy checkpoint in metadata collection,
-// retries until OnDeploy checkpoint is successfully inserted and returns if current node is leader
-func (cm *checkpointManager) WriteOnDeployCheckpoint(nodeUUID string, seq uint32, appLocation application.AppLocation) bool {
-	doc := onDeployCheckpoint{
-		NodeUUID:       nodeUUID,
-		Seq:            seq,
-		OnDeployStatus: common.PENDING.String(),
-	}
-	key := fmt.Sprintf(onDeployLeaderKeyTemplate, appLocation)
+	ownerNode := ""
 	for {
-		_, err := cm.getCollectionHandle().Insert(key, doc, &gocb.InsertOptions{Timeout: opsTimeout})
-		if err != nil {
-			if errors.Is(err, gocb.ErrDocumentExists) {
-				return false
+		select {
+		case <-failoverCheckTicker.C:
+			if ownerNode == "" {
+				continue
 			}
-			if !common.CheckKeyspaceExist(cm.observer, cm.checkpointConfig.Keyspace) {
+
+			// get all active eventing node
+			nodesInterface, _ := cm.observer.GetCurrentState(notifier.InterestedEvent{
+				Event: notifier.EventEventingTopologyChanges,
+			})
+
+			ownerAlive := false
+			nodes := nodesInterface.([]*notifier.Node)
+			for _, node := range nodes {
+				if node.NodeUUID == ownerNode {
+					ownerAlive = true
+					break
+				}
+			}
+
+			if ownerAlive {
+				continue
+			}
+
+			// node not healthy. write failed status
+			checkpoint := cm.PublishOnDeployStatus(FailedStateOnDeploy)
+			return checkpoint
+
+		case <-onDeployStatusCheckTicker.C:
+			_, checkpoint, err := readOnDeployCheckpoint(cm.checkpointConfig.AppLocation, cm.getCollectionHandle(), cm.observer, cm.checkpointConfig.Keyspace)
+			if err != nil {
+				if errors.Is(err, ErrDocumentNotFound) {
+					checkpoint.Status = FailedStateOnDeploy
+					return checkpoint
+				}
+
+				if errors.Is(err, errKeyspaceNotFound) {
+					cm.keyspaceExists.Store(false)
+					checkpoint.Status = FailedStateOnDeploy
+					return checkpoint
+				}
+				continue
+			}
+
+			ownerNode = checkpoint.NodeUUID
+			if checkpoint.Status != PendingOnDeploy {
+				return checkpoint
+			}
+		}
+	}
+}
+
+// PublishOnDeployStatus upserts the status field in the OnDeploy checkpoint
+func (cm *checkpointManager) PublishOnDeployStatus(status OnDeployState) *OnDeployCheckpoint {
+
+	gocbResult, checkpoint := pollAndGetCheckpont(cm.checkpointConfig.AppLocation, cm.getCollectionHandle(), cm.observer, cm.checkpointConfig.Keyspace)
+	// Some other node already written the status
+	if checkpoint.Status != PendingOnDeploy {
+		return checkpoint
+	}
+
+	cas := gocbResult.Cas()
+	mutateIn := []gocb.MutateInSpec{gocb.UpsertSpec("on_deploy_status", status, upsertOptions)}
+	key := getOnDeployKey(cm.checkpointConfig.AppLocation)
+
+	for {
+		err := subdocUpdateUsingCas(cm.getCollectionHandle(), cm.observer, cm.checkpointConfig.Keyspace, key, cas, mutateIn)
+		if err != nil {
+			if errors.Is(err, ErrDocumentNotFound) {
+				checkpoint.Status = FailedStateOnDeploy
+				return checkpoint
+			}
+
+			if errors.Is(err, errKeyspaceNotFound) {
 				cm.keyspaceExists.Store(false)
-				// Let the caller routine handle this
-				return false
+				checkpoint.Status = FailedStateOnDeploy
+				return checkpoint
+			}
+
+			if errors.Is(err, gocb.ErrCasMismatch) {
+				_, checkpoint = pollAndGetCheckpont(cm.checkpointConfig.AppLocation, cm.getCollectionHandle(), cm.observer, cm.checkpointConfig.Keyspace)
+				return checkpoint
 			}
 			continue
 		}
 		break
 	}
-	return true
+	// Able to write the status
+	checkpoint.Status = status
+	return checkpoint
 }
 
-func (cm *checkpointManager) PollUntilOnDeployCompletes() {
-	_, _, onDeployStatus := cm.ReadOnDeployCheckpoint()
-	for onDeployStatus == common.PENDING.String() {
-		time.Sleep(1 * time.Second)
-		_, _, onDeployStatus = cm.ReadOnDeployCheckpoint()
-	}
+func pollAndGetCheckpont(applocation application.AppLocation, collectionHandler *gocb.Collection,
+	observer notifier.Observer, keyspace application.Keyspace) (gocbResult *gocb.GetResult, checkpoint *OnDeployCheckpoint) {
 
-	// TODO: Add for select, periodic timer with waitforevent, similar to broadcast observer, for Node failure
-}
+	var err error
+	for {
+		gocbResult, checkpoint, err = readOnDeployCheckpoint(applocation, collectionHandler, observer, keyspace)
+		if err != nil {
+			if errors.Is(err, ErrDocumentNotFound) {
+				return nil, &OnDeployCheckpoint{
+					Status: FailedStateOnDeploy,
+				}
+			}
 
-// PublishOnDeployStatus upserts the status field in the OnDeploy checkpoint
-func (cm *checkpointManager) PublishOnDeployStatus(status string) error {
-	upsertOptions := &gocb.UpsertSpecOptions{CreatePath: true}
-	mutateIn := []gocb.MutateInSpec{gocb.UpsertSpec("on_deploy_status", status, upsertOptions)}
-	key := fmt.Sprintf(onDeployLeaderKeyTemplate, cm.checkpointConfig.AppLocation)
-	_, err := cm.getCollectionHandle().MutateIn(key, mutateIn, &gocb.MutateInOptions{PreserveExpiry: true})
-	if err != nil {
-		if !common.CheckKeyspaceExist(cm.observer, cm.checkpointConfig.Keyspace) {
-			cm.keyspaceExists.Store(false)
-			return nil
+			if errors.Is(err, errKeyspaceNotFound) {
+				return nil, &OnDeployCheckpoint{
+					Status: FailedStateOnDeploy,
+				}
+			}
+			time.Sleep(onDeployStatusCheck)
+			continue
 		}
+		return
 	}
-	return err
 }

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"regexp"
+	"runtime/debug"
 	"strconv"
 	"strings"
 
@@ -204,6 +205,11 @@ func (m *serviceMgr) statsHandler(w http.ResponseWriter, r *http.Request) {
 	runtimeInfo := &response.RuntimeInfo{}
 
 	defer func() {
+
+		if r := recover(); r != nil {
+			logging.Infof("Recovered in statsHandler, reason: %v stack: %v", r, string(debug.Stack()))
+			return
+		}
 		res.LogAndSend(runtimeInfo)
 	}()
 

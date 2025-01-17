@@ -24,8 +24,8 @@ type DcpConsumer interface {
 	Wait() error
 
 	StartStreamReq(sr *StreamReq) error
-	PauseStreamReq(sr *StreamReq)
-	StopStreamReq(sr *StreamReq) *StreamReq
+	PauseStreamReq(id uint16, vbno uint16)
+	StopStreamReq(id uint16, vbno uint16)
 
 	GetSeqNumber(collectionID string) map[uint16]uint64
 	GetFailoverLog(vbs []uint16) (map[uint16]FailoverLog, error)

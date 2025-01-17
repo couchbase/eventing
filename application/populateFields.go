@@ -283,6 +283,8 @@ func (settings *HandlerSettings) verifyAndMergeSettings(allowedFields map[string
 		changed = (changed || fieldChanged)
 		disallowErr = nil
 	}
+
+	settings.populateDerivedSettings()
 	return
 }
 

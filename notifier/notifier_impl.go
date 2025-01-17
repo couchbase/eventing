@@ -2,7 +2,9 @@ package notifier
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"maps"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -27,8 +29,6 @@ var (
 )
 
 type subscriber struct {
-	sync.RWMutex
-
 	id         uint32
 	subChannel *subscriberSendMedium
 }
@@ -45,8 +45,6 @@ func (s *subscriber) WaitForEvent() <-chan *TransitionEvent {
 }
 
 type subscriberSendMedium struct {
-	sync.Mutex
-
 	sendChannel chan *TransitionEvent
 	closed      bool
 }
@@ -58,9 +56,6 @@ func newSubscriberSendMedium(capacity int) *subscriberSendMedium {
 }
 
 func (ssm *subscriberSendMedium) send(event *TransitionEvent) (sent bool) {
-	ssm.Lock()
-	defer ssm.Unlock()
-
 	if ssm.closed {
 		return
 	}
@@ -76,7 +71,7 @@ func (ssm *subscriberSendMedium) send(event *TransitionEvent) (sent bool) {
 	case ssm.sendChannel <- event:
 		sent = true
 	case <-t.C:
-		ssm.closeWithLock()
+		ssm.close()
 	}
 	return
 }
@@ -86,13 +81,6 @@ func (ssm *subscriberSendMedium) receive() <-chan *TransitionEvent {
 }
 
 func (ssm *subscriberSendMedium) close() {
-	ssm.Lock()
-	defer ssm.Unlock()
-
-	ssm.closeWithLock()
-}
-
-func (ssm *subscriberSendMedium) closeWithLock() {
 	if ssm.closed {
 		return
 	}
@@ -138,10 +126,12 @@ func (sl *subscriberList) remove(s *subscriber) {
 
 func (sl *subscriberList) send(event *TransitionEvent) {
 	sl.Lock()
-	defer sl.Unlock()
-
 	sl.currentState = event.CurrentState
-	for id, sendMedium := range sl.subscriberChannel {
+	subChannel := make(map[uint32]*subscriberSendMedium)
+	maps.Copy(subChannel, sl.subscriberChannel)
+	sl.Unlock()
+
+	for id, sendMedium := range subChannel {
 		send := sendMedium.send(event)
 		if !send {
 			delete(sl.subscriberChannel, id)
@@ -150,14 +140,17 @@ func (sl *subscriberList) send(event *TransitionEvent) {
 }
 
 func (sl *subscriberList) close() {
-	sl.Lock()
-	defer sl.Unlock()
-
 	event := &TransitionEvent{
 		Event:   sl.event,
 		Deleted: true,
 	}
-	for _, sendMedium := range sl.subscriberChannel {
+
+	sl.Lock()
+	subChannel := sl.subscriberChannel
+	sl.subscriberChannel = make(map[uint32]*subscriberSendMedium)
+	sl.Unlock()
+
+	for _, sendMedium := range subChannel {
 		sendMedium.send(event)
 	}
 }
@@ -231,7 +224,7 @@ func (ob *observer) PoolChangeCallback(transitionEvent []*TransitionEvent, _ err
 // collection changes
 func (ob *observer) BucketChangeCallback(bucket *Bucket, co []*TransitionEvent, err error) {
 	logPrefix := "observer::BucketChangeCallback"
-	if err == ErrBucketDeleted {
+	if errors.Is(err, ErrBucketDeleted) {
 		logging.Infof("%s bucket deleted: %s", logPrefix, bucket)
 		if bucket == nil {
 			// no subscriber for it
@@ -420,14 +413,9 @@ func getName(poolName, restAddress string) string {
 
 // notifier implements Observer interface
 type notifier struct {
-	count uint32
-
+	count    uint32
 	observer *observer
-
-	// CHECK: Do we need this?
 	pool     *poolObserver
-	poolName string
-	restAddr string
 }
 
 func newNotifier(settings *TLSClusterConfig, poolName, restAddr string, isIpv4 bool) (Observer, error) {

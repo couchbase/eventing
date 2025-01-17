@@ -24,7 +24,6 @@ type SeqNumerInterface interface {
 	GetRuntimeStats() common.StatsInterface
 
 	CloseManager()
-	CloseConditional() bool
 }
 
 type ManagerPool interface {

@@ -41,8 +41,7 @@ type CursorCheckpointHandler interface {
 type InterruptHandler func(id uint16, seq uint32, appLocation application.AppLocation, err error)
 
 type Config struct {
-	SpawnLogWriter bool
-	OnDeployLeader bool
+	LeaderHandler bool
 }
 
 // Sequence:
@@ -116,7 +115,7 @@ type FunctionHandler interface {
 
 	// ChangeState will changes the state of an app
 	// It can be called for spawn/pause/undeploy/RuntimeEnvironment crash
-	ChangeState(re RuntimeEnvironment, state funcHandlerState) *application.FunctionDetails
+	ChangeState(re RuntimeEnvironment, state funcHandlerState)
 	TrapEvent(trapEvent TrapEventOp, value interface{}) error
 
 	// ReceiveMessage is when msg is received from the c++ side
@@ -144,4 +143,55 @@ type FunctionHandler interface {
 	GetRebalanceProgress(version string, appProgress *common.AppRebalanceProgress) bool
 
 	CloseFunctionHandler()
+}
+
+type dummy struct{}
+
+// NewDummyFunctionHandler creates a dummy function handler
+func NewDummyFunctionHandler() dummy {
+	return dummy{}
+}
+
+func (d dummy) AddFunctionDetails(funcDetails *application.FunctionDetails) {
+}
+
+func (d dummy) ChangeState(re RuntimeEnvironment, state funcHandlerState) {
+}
+
+func (d dummy) TrapEvent(trapEvent TrapEventOp, value interface{}) error {
+	return nil
+}
+
+func (d dummy) ReceiveMessage(msg *processManager.ResponseMessage) {
+}
+
+func (d dummy) Stats(statsType common.StatsType) *common.Stats {
+	return nil
+}
+
+func (d dummy) GetInsight() *common.Insight {
+	return nil
+}
+
+func (d dummy) GetApplicationLog(size int64) ([]string, error) {
+	return nil, nil
+}
+
+func (d dummy) ResetStats() {
+}
+
+func (d dummy) ApplicationLog(msg string) {
+}
+
+func (d dummy) NotifyOwnershipChange() {
+}
+
+func (d dummy) NotifyGlobalConfigChange() {
+}
+
+func (d dummy) GetRebalanceProgress(version string, appProgress *common.AppRebalanceProgress) bool {
+	return false
+}
+
+func (d dummy) CloseFunctionHandler() {
 }

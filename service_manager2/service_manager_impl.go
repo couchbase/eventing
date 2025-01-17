@@ -2,6 +2,7 @@ package servicemanager2
 
 import (
 	"crypto/tls"
+	"errors"
 	"net"
 	"net/http"
 	"os"
@@ -225,7 +226,7 @@ func (s *serviceMgr) startListener(mux *http.ServeMux, signal *common.Signal, di
 			signal.Notify()
 			wg.Done()
 			serveErr := httpServer.Serve(listener)
-			if serveErr == http.ErrServerClosed {
+			if errors.Is(serveErr, http.ErrServerClosed) {
 				return
 			}
 			logging.Errorf("%s Error serving HTTP port: %v. Restarting process...", logPrefix, err)
@@ -250,7 +251,7 @@ func (s *serviceMgr) startListener(mux *http.ServeMux, signal *common.Signal, di
 			tls_ln := tls.NewListener(listener, tlsConfig.Config)
 			wg.Done()
 			tlsServeErr := httpSSLServer.Serve(tls_ln)
-			if tlsServeErr == http.ErrServerClosed {
+			if errors.Is(tlsServeErr, http.ErrServerClosed) {
 				return
 			}
 			logging.Errorf("%s Error serving SSL port: %v. Restarting process...", logPrefix, err)

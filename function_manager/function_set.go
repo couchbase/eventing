@@ -14,13 +14,32 @@ import (
 	serverConfig "github.com/couchbase/eventing/server_config"
 )
 
+type funcSetType uint8
+
+const (
+	// FunctionSetType is the type of function set
+	GroupOfFunctions funcSetType = iota
+	SingleFunction
+)
+
 // This manages multiple fuction in one single executor
 type functionSet interface {
-	GetFunctionHandler(instanceID string) (functionHandler.FunctionHandler, bool)
+	GetID() funcSetType
+
 	AddFunctionHandler(instanceID string, fhHandler functionHandler.FunctionHandler)
 	DeleteFunctionHandler(instanceID string) (functionHandler.FunctionHandler, int)
 
 	ChangeState(instanceID string, funcDetails *application.FunctionDetails, nextState application.LifeCycleOp) (application.LifeCycleOp, bool)
+
+	Stats(instanceID string, statsType common.StatsType) *common.Stats
+	ApplicationLog(instanceID, msg string)
+	GetInsight(instanceID string) *common.Insight
+	GetApplicationLog(instanceID string, size int64) ([]string, error)
+	// ResetStats will reset all the stats
+	ResetStats(instanceID string)
+	TrapEvent(instanceID string, trapEvent functionHandler.TrapEventOp, value interface{}) error
+
+	GetRebalanceProgress(instanceID string, version string, appProgress *common.AppRebalanceProgress) bool
 
 	NotifyOwnershipChange()
 	NotifyGlobalConfigChange()
@@ -36,13 +55,18 @@ type funcHandlerDetails struct {
 type funcSet struct {
 	sync.RWMutex
 
+	fType   funcSetType
 	id      string
 	process processManager.ProcessManager
+
+	// spawned is used in sequential manner so no need to protect it
 	spawned bool
 	config  config
 
 	functionHandlerMap map[string]*funcHandlerDetails
-	close              func()
+
+	singleFunctionHandler *funcHandlerDetails
+	close                 func()
 }
 
 type config struct {
@@ -51,7 +75,7 @@ type config struct {
 
 func dummyClose() {}
 
-func NewFunctionSet(id string, funcSetConfig config, clusterSettings *common.ClusterSettings, appCallback processManager.AppLogFunction, systemConfig serverConfig.SystemConfig) functionSet {
+func NewFunctionSet(fType funcSetType, id string, funcSetConfig config, clusterSettings *common.ClusterSettings, appCallback processManager.AppLogFunction, systemConfig serverConfig.SystemConfig) functionSet {
 	processConfig := processManager.ProcessConfig{
 		Username:        clusterSettings.LocalUsername,
 		Password:        clusterSettings.LocalPassword,
@@ -73,12 +97,23 @@ func NewFunctionSet(id string, funcSetConfig config, clusterSettings *common.Clu
 	}
 
 	fset := &funcSet{
-		id:                 id,
-		config:             funcSetConfig,
-		spawned:            false,
-		functionHandlerMap: make(map[string]*funcHandlerDetails),
-		process:            processManager.NewProcessManager(processConfig, systemConfig),
-		close:              dummyClose,
+		fType:   fType,
+		id:      id,
+		config:  funcSetConfig,
+		spawned: false,
+		process: processManager.NewProcessManager(processConfig, systemConfig),
+		close:   dummyClose,
+	}
+
+	switch fType {
+	case SingleFunction:
+		fset.singleFunctionHandler = &funcHandlerDetails{
+			funcHandler:  functionHandler.NewDummyFunctionHandler(),
+			currentState: application.Undeploy,
+		}
+
+	case GroupOfFunctions:
+		fset.functionHandlerMap = make(map[string]*funcHandlerDetails)
 	}
 
 	if funcSetConfig.spawnImmediately {
@@ -91,16 +126,8 @@ func NewFunctionSet(id string, funcSetConfig config, clusterSettings *common.Clu
 	return fset
 }
 
-func (fs *funcSet) GetFunctionHandler(instanceID string) (functionHandler.FunctionHandler, bool) {
-	fs.RLock()
-	defer fs.RUnlock()
-
-	fh, ok := fs.functionHandlerMap[instanceID]
-	if !ok {
-		return nil, false
-	}
-
-	return fh.funcHandler, true
+func (fs *funcSet) GetID() funcSetType {
+	return fs.fType
 }
 
 func (fs *funcSet) AddFunctionHandler(instanceID string, fHandler functionHandler.FunctionHandler) {
@@ -109,21 +136,27 @@ func (fs *funcSet) AddFunctionHandler(instanceID string, fHandler functionHandle
 		funcHandler:  fHandler,
 	}
 
-	fs.Lock()
-	defer fs.Unlock()
+	if fs.fType == SingleFunction {
+		fs.singleFunctionHandler = fDetails
+		return
+	}
 
+	fs.Lock()
 	fs.functionHandlerMap[instanceID] = fDetails
+	fs.Unlock()
 }
 
 func (fs *funcSet) ChangeState(oldInstanceID string, funcDetails *application.FunctionDetails, nextState application.LifeCycleOp) (application.LifeCycleOp, bool) {
-	fs.Lock()
-	defer fs.Unlock()
-
 	instanceID := funcDetails.AppInstanceID
-	fDetails := fs.functionHandlerMap[oldInstanceID]
-	if oldInstanceID != instanceID {
-		delete(fs.functionHandlerMap, oldInstanceID)
-		fs.functionHandlerMap[instanceID] = fDetails
+
+	fDetails := fs.getFunctionHandler(oldInstanceID)
+	if fs.fType == GroupOfFunctions {
+		if oldInstanceID != instanceID {
+			fs.Lock()
+			delete(fs.functionHandlerMap, oldInstanceID)
+			fs.functionHandlerMap[instanceID] = fDetails
+			fs.Unlock()
+		}
 	}
 
 	currState := fDetails.currentState
@@ -153,52 +186,78 @@ func (fs *funcSet) ChangeState(oldInstanceID string, funcDetails *application.Fu
 	return currState, true
 }
 
-func (fs *funcSet) NotifyOwnershipChange() {
-	fs.RLock()
-	defer fs.RUnlock()
+func (fs *funcSet) Stats(instanceID string, statsType common.StatsType) *common.Stats {
+	fHandler := fs.getFunctionHandler(instanceID)
+	return fHandler.funcHandler.Stats(statsType)
+}
 
-	for _, fDetails := range fs.functionHandlerMap {
-		if fDetails.currentState == application.Deploy {
-			fDetails.funcHandler.NotifyOwnershipChange()
-		}
+func (fs *funcSet) ApplicationLog(instanceID, msg string) {
+	fHandler := fs.getFunctionHandler(instanceID)
+	fHandler.funcHandler.ApplicationLog(msg)
+}
+
+func (fs *funcSet) GetInsight(instanceID string) *common.Insight {
+	fHandler := fs.getFunctionHandler(instanceID)
+	return fHandler.funcHandler.GetInsight()
+}
+
+func (fs *funcSet) GetApplicationLog(instanceID string, size int64) ([]string, error) {
+	fHandler := fs.getFunctionHandler(instanceID)
+	return fHandler.funcHandler.GetApplicationLog(size)
+}
+
+func (fs *funcSet) ResetStats(instanceID string) {
+	fHandler := fs.getFunctionHandler(instanceID)
+	fHandler.funcHandler.ResetStats()
+}
+
+func (fs *funcSet) TrapEvent(instanceID string, trapEvent functionHandler.TrapEventOp, value interface{}) error {
+	fHandler := fs.getFunctionHandler(instanceID)
+	return fHandler.funcHandler.TrapEvent(trapEvent, value)
+}
+
+func (fs *funcSet) GetRebalanceProgress(instanceID string, version string, appProgress *common.AppRebalanceProgress) bool {
+	fHandler := fs.getFunctionHandler(instanceID)
+	return fHandler.funcHandler.GetRebalanceProgress(version, appProgress)
+}
+
+func (fs *funcSet) NotifyOwnershipChange() {
+	funcHandlerList := fs.getFunctionHandlerList()
+
+	for _, fHandler := range funcHandlerList {
+		fHandler.funcHandler.NotifyOwnershipChange()
 	}
 }
 
 func (fs *funcSet) NotifyGlobalConfigChange() {
-	fs.RLock()
-	defer fs.RUnlock()
+	funcHandlerList := fs.getFunctionHandlerList()
 
-	for _, fDetails := range fs.functionHandlerMap {
-		if fDetails.currentState == application.Deploy {
-			fDetails.funcHandler.NotifyGlobalConfigChange()
-		}
+	for _, fHandler := range funcHandlerList {
+		fHandler.funcHandler.NotifyGlobalConfigChange()
 	}
 }
 
 // Remove it from the list of processes and send how many process remained
 func (fs *funcSet) DeleteFunctionHandler(instanceID string) (functionHandler.FunctionHandler, int) {
+	if fs.fType == SingleFunction {
+		fHandler := fs.singleFunctionHandler.funcHandler
+		fs.singleFunctionHandler = &funcHandlerDetails{
+			funcHandler:  functionHandler.NewDummyFunctionHandler(),
+			currentState: application.Undeploy,
+		}
+		return fHandler, 0
+	}
+
 	fs.Lock()
 	defer fs.Unlock()
 
-	fh, ok := fs.functionHandlerMap[instanceID]
-	if !ok {
-		return nil, len(fs.functionHandlerMap)
-	}
-
+	fh := fs.functionHandlerMap[instanceID]
 	delete(fs.functionHandlerMap, instanceID)
 	return fh.funcHandler, len(fs.functionHandlerMap)
 }
 
 // It will be called when all the functions are undeployed successfully
 func (fs *funcSet) DeleteFunctionSet() {
-	fs.Lock()
-	if !fs.spawned {
-		fs.Unlock()
-		return
-	}
-	fs.spawned = false
-	fs.Unlock()
-
 	fs.close()
 	fs.process.StopProcess()
 }
@@ -248,13 +307,8 @@ func (fs *funcSet) spawnApp(ctx context.Context, receive <-chan *processManager.
 				return
 			}
 
-			fs.RLock()
-			fh, ok := fs.functionHandlerMap[msg.HandlerID]
-			fs.RUnlock()
-
-			if ok {
-				fh.funcHandler.ReceiveMessage(msg)
-			}
+			funcHandler := fs.getFunctionHandler(msg.HandlerID)
+			funcHandler.funcHandler.ReceiveMessage(msg)
 
 		case <-ctx.Done():
 			return
@@ -263,19 +317,13 @@ func (fs *funcSet) spawnApp(ctx context.Context, receive <-chan *processManager.
 }
 
 func (fs *funcSet) spawnProcess(ctx context.Context) (<-chan *processManager.ResponseMessage, error) {
-	fs.Lock()
-	defer fs.Unlock()
-
 	return fs.spawnProcessLocked(ctx)
 }
 
 func (fs *funcSet) spawnProcessLocked(ctx context.Context) (<-chan *processManager.ResponseMessage, error) {
-	deployedList := make([]functionHandler.FunctionHandler, 0, len(fs.functionHandlerMap))
-	for _, fh := range fs.functionHandlerMap {
-		if fh.currentState == application.Deploy {
-			deployedList = append(deployedList, fh.funcHandler)
-		}
-		fh.funcHandler.ChangeState(nil, functionHandler.TempPause)
+	funcHandlerList := fs.getFunctionHandlerList()
+	for _, fh := range funcHandlerList {
+		fh.funcHandler.ChangeState(processManager.NewDummyProcessManager(), functionHandler.TempPause)
 	}
 
 	receive, err := fs.process.StartWithContext(ctx)
@@ -283,10 +331,50 @@ func (fs *funcSet) spawnProcessLocked(ctx context.Context) (<-chan *processManag
 		return nil, err
 	}
 
-	// No need to notify pause or undeploy list since function handler will take care of it
-	for _, fh := range deployedList {
-		fh.ChangeState(fs.process, functionHandler.Deployed)
+	funcHandlerList = fs.getFunctionHandlerList()
+	for _, fh := range funcHandlerList {
+		switch fh.currentState {
+		case application.Deploy:
+			fh.funcHandler.ChangeState(fs.process, functionHandler.Deployed)
+		case application.Pause:
+			fh.funcHandler.ChangeState(fs.process, functionHandler.Paused)
+		case application.Undeploy:
+			fh.funcHandler.ChangeState(fs.process, functionHandler.Undeployed)
+		}
 	}
 
 	return receive, nil
+}
+
+func (fs *funcSet) getFunctionHandlerList() []*funcHandlerDetails {
+	if fs.fType == SingleFunction {
+		return []*funcHandlerDetails{fs.singleFunctionHandler}
+	}
+
+	fs.RLock()
+	defer fs.RUnlock()
+
+	fhs := make([]*funcHandlerDetails, 0, len(fs.functionHandlerMap))
+	for _, fDetails := range fs.functionHandlerMap {
+		fhs = append(fhs, fDetails)
+	}
+	return fhs
+}
+
+func (fs *funcSet) getFunctionHandler(instanceID string) *funcHandlerDetails {
+	if fs.fType == SingleFunction {
+		return fs.singleFunctionHandler
+	}
+
+	fs.RLock()
+	defer fs.RUnlock()
+
+	fh, ok := fs.functionHandlerMap[instanceID]
+	if !ok {
+		return &funcHandlerDetails{
+			funcHandler:  functionHandler.NewDummyFunctionHandler(),
+			currentState: application.Undeploy,
+		}
+	}
+	return fh
 }

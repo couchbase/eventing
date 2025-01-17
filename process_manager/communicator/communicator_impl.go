@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -326,7 +327,7 @@ func (c *communicator) write(buffer *bytes.Buffer, msg *CommMessage) error {
 func (c *communicator) flushMessageWithLock(msgBuffer *bytes.Buffer) error {
 	err := io.ErrShortWrite
 
-	for ; err == io.ErrShortWrite; _, err = msgBuffer.WriteTo(c.conn) {
+	for ; errors.Is(err, io.ErrShortWrite); _, err = msgBuffer.WriteTo(c.conn) {
 	}
 
 	atomic.AddUint64(&c.stat.NumFlushed, 1)

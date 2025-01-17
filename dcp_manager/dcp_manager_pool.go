@@ -29,14 +29,12 @@ func (m *dcpManager) StartStreamReq(sr *dcpConn.StreamReq) error {
 	return m.manager.StartStreamReq(sr)
 }
 
-func (m *dcpManager) PauseStreamReq(sr *dcpConn.StreamReq) {
-	sr.ID = m.id
-	m.manager.PauseStreamReq(sr)
+func (m *dcpManager) PauseStreamReq(id uint16, vbno uint16) {
+	m.manager.PauseStreamReq(id, vbno)
 }
 
-func (m *dcpManager) CloseRequest(sr *dcpConn.StreamReq) (*dcpConn.StreamReq, error) {
-	sr.ID = m.id
-	return m.manager.CloseRequest(sr)
+func (m *dcpManager) CloseRequest(id uint16, vbno uint16) {
+	m.manager.CloseRequest(id, vbno)
 }
 
 func (m *dcpManager) GetFailoverLog(vbs []uint16) (map[uint16]dcpConn.FailoverLog, error) {
@@ -56,17 +54,20 @@ func (m *dcpManager) RegisterID(id uint16, sendChannel chan<- *dcpConn.DcpEvent)
 	m.manager.RegisterID(id, sendChannel)
 }
 
-func (m *dcpManager) DeregisterID(id uint16) {
-	// noop
+func (m *dcpManager) DeregisterID(_ uint16) {
+	m.manager.DeregisterID(m.id)
+}
+
+func (m *dcpManager) ClosePossible() bool {
+	return m.manager.ClosePossible()
 }
 
 func (m *dcpManager) CloseManager() {
 	// Just remove the id from the manager
 	m.manager.DeregisterID(m.id)
-}
-
-func (m *dcpManager) CloseConditional() bool {
-	return m.manager.CloseConditional()
+	if m.manager.ClosePossible() {
+		m.manager.CloseManager()
+	}
 }
 
 type dummy struct{}
@@ -82,11 +83,11 @@ func (_ dummy) StartStreamReq(sr *dcpConn.StreamReq) error {
 	panic("dummy manager is used to make stream request")
 }
 
-func (_ dummy) PauseStreamReq(sr *dcpConn.StreamReq) {
+func (_ dummy) PauseStreamReq(id uint16, vbno uint16) {
 	panic("dummy dcp manager is used to pause stream request")
 }
 
-func (_ dummy) CloseRequest(sr *dcpConn.StreamReq) (*dcpConn.StreamReq, error) {
+func (_ dummy) CloseRequest(id uint16, vbno uint16) {
 	panic("dummy dcp manager is used to close stream request")
 }
 
@@ -108,6 +109,10 @@ func (_ dummy) DeregisterID(id uint16) {
 
 func (_ dummy) GetRuntimeStats() common.StatsInterface {
 	return common.NewMarshalledData(&stats{})
+}
+
+func (_ dummy) ClosePossible() bool {
+	return true
 }
 
 func (_ dummy) CloseManager() {

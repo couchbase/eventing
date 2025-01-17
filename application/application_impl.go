@@ -176,11 +176,11 @@ func (fd *FunctionDetails) addSensitiveFields(bindings []Bindings) {
 					currCurlBinding := currBind.CurlBinding
 
 					if currCurlBinding.Alias == curlBinding.Alias {
-						if curlBinding.BearerKey == PASSWORD_MASK {
+						if curlBinding.BearerKey == PasswordMask {
 							curlBinding.BearerKey = currCurlBinding.BearerKey
 						}
 
-						if curlBinding.Password == PASSWORD_MASK {
+						if curlBinding.Password == PasswordMask {
 							curlBinding.Password = currCurlBinding.Password
 						}
 						break

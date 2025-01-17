@@ -91,13 +91,13 @@ type VbHandler interface {
 }
 
 var (
-	DummyVbHandler = dummy(0)
+	dummyVbHandler = dummy(0)
 )
 
 type dummy uint8
 
 func NewDummyVbHandler() VbHandler {
-	return DummyVbHandler
+	return dummyVbHandler
 }
 
 func (_ dummy) RefreshSystemResourceLimits() {

@@ -84,7 +84,7 @@ func (fd *functionScopeDistributor) AddDistribution(bucketId string, payload []b
 
 	changeID, _, payload := getTopologyMessageConvert(payload)
 	fd.changeId = changeID
-	nodes, distribution := decodeStorageBytes(changeID, fd.uuid, payload)
+	nodes, distribution := decodeStorageBytes(changeID, payload)
 	oldScopeMap, ok := fd.distribution[bucketId]
 	fd.nodes = nodes
 
@@ -551,7 +551,6 @@ func (fd *functionScopeDistributor) adjustFunctionsLocked(changeId string, newNo
 			}
 		}
 	}
-	return
 }
 
 func (fd *functionScopeDistributor) reDistributeLocked(ejectedNodes, addedNodes []string) {
@@ -648,7 +647,7 @@ func encodeBytes(changeID string, nodes []string, bucketIdDistribution map[strin
 }
 
 // lengthOfNodes[uuidLen nodeuuid...] scopeIdLen nodeIndexLen scopeId [nodeIndex...]
-func decodeStorageBytes(changeId string, uuid string, payload []byte) ([]string, map[string]*fsDistribution) {
+func decodeStorageBytes(changeId string, payload []byte) ([]string, map[string]*fsDistribution) {
 	nodes := make([]string, 0)
 	scopeDistribution := make(map[string]*fsDistribution)
 

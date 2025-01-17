@@ -314,6 +314,7 @@ func decodeHandlerSetting(config *cfgv2.Config) (hSettings HandlerSettings) {
 	hSettings.MaxUnackedCount = setting.MaxUnackedCount()
 	hSettings.FlushTimer = setting.FlushTimer()
 
+	hSettings.populateDerivedSettings()
 	return
 }
 

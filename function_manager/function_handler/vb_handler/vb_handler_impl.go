@@ -23,15 +23,17 @@ const (
 )
 
 type vbHandler struct {
-	logPrefix    string
-	config       *Config
-	eventChannel chan *dcpMessage.DcpEvent
+	logPrefix string
+	config    *Config
 
+	eventChannel       chan *dcpMessage.DcpEvent
 	commonDcpManager   dcpManager.DcpManager
 	isolatedDcpManager dcpManager.DcpManager
-	flushNotifier      *common.Signal
-	allocator          *allocator
-	workers            []*workerDetails
+
+	allocator *allocator
+	workers   []*workerDetails
+
+	flushNotifier *common.Signal
 
 	msgBuffer *msgBuffer
 
@@ -70,12 +72,12 @@ func NewVbHandler(ctx context.Context, logPrefix string, keyspace application.Ke
 		handler.workers[index] = InitWorkerDetails()
 	}
 	handler.allocator = NewAllocatorWithContext(ctx, logPrefix, keyspace, handler.workers, requester, config)
+	go handler.flusher(ctx)
 
-	ctx2, closeContext := context.WithCancel(ctx)
+	// Closing of this will affect other routines. So closing of this goroutine controls remain with the module and not with external caller
+	ctx2, closeContext := context.WithCancel(context.Background())
 	handler.close = closeContext
-
 	go handler.eventReceiver(ctx2)
-	go handler.flusher(ctx2)
 
 	return handler
 }
@@ -151,6 +153,8 @@ func (handler *vbHandler) eventReceiver(ctx context.Context) {
 					handler.allocator.DoneVb(msg.SrRequest)
 				}
 				if update {
+					// TODO: Shouldn't update here. We need to update failover log differently. This can cause event loss during data loss scenario
+					// Passed seq 6 till different failover id. Now data loss happened and we received fID and update with this then new request will use different fID
 					handler.config.CheckpointManager.UpdateVal(msg.Vbno, checkpointManager.Checkpoint_FailoverLog, msg.FailoverLog)
 				}
 
@@ -291,9 +295,12 @@ func (handler *vbHandler) Close() []uint16 {
 	ownershipVbSlice := handler.allocator.Close()
 	handler.msgBuffer.Close()
 	handler.flushNotifier.Close()
-	handler.commonDcpManager.CloseManager()
+
+	// Just Deregister the random id from the manager
+	// It will be garbage collected later
+	handler.commonDcpManager.DeregisterID(0)
 	handler.isolatedDcpManager.CloseManager()
-	handler.isolatedDcpManager.CloseConditional()
+
 	handler.close()
 	logging.Infof("%s Done closing vbHandler", logPrefix)
 	return ownershipVbSlice

@@ -12,7 +12,11 @@ import (
 )
 
 const (
-	PASSWORD_MASK = "*****"
+	PasswordMask = "*****"
+)
+
+const (
+	OldAppSeq uint32 = 0
 )
 
 const (
@@ -437,13 +441,13 @@ func QueryMap(appLocation AppLocation) map[string][]string {
 
 func GetApplocation(params map[string][]string) (appLocation AppLocation) {
 	appLocation.Namespace, _ = GetNamespace(params, true)
-	val, _ := params["appName"]
+	val := params["appName"]
 	if len(val) > 0 {
 		appLocation.Appname = val[0]
 	}
 
 	if appLocation.Appname == "" {
-		val, _ = params["name"]
+		val = params["name"]
 		if len(val) > 0 {
 			appLocation.Appname = val[0]
 		}
@@ -508,6 +512,16 @@ type LanguageRuntimeSettings struct {
 	BucketCacheSize         uint64          `json:"bucket_cache_size"`
 	BucketCacheAge          uint64          `json:"bucket_cache_age"`
 	CurlRespSize            uint64          `json:"curl_max_allowed_resp_size"`
+
+	BinDocAllowed bool `json:"-"` // Not exposed in JSON
+}
+
+func isBinaryDocAllowed(lanCompat langCompat) bool {
+	return lanCompat != lang600 && lanCompat != lang650
+}
+
+func (settings *HandlerSettings) populateDerivedSettings() {
+	settings.BinDocAllowed = isBinaryDocAllowed(settings.LanguageCompat)
 }
 
 type streamBoundary string
@@ -635,6 +649,8 @@ func (hs HandlerSettings) Clone() HandlerSettings {
 	clonedHS.N1qlConsistency = hs.N1qlConsistency
 	clonedHS.N1qlPrepare = hs.N1qlPrepare
 
+	clonedHS.BinDocAllowed = hs.BinDocAllowed
+
 	clonedHS.HandlerHeader = make([]string, 0, len(hs.HandlerHeader))
 	clonedHS.HandlerHeader = append(clonedHS.HandlerHeader, hs.HandlerHeader...)
 	clonedHS.HandlerFooter = make([]string, 0, len(hs.HandlerFooter))
@@ -685,6 +701,8 @@ func DefaultSettings() HandlerSettings {
 	hSettings.BucketCacheSize = 67108864
 	hSettings.BucketCacheAge = 1000
 	hSettings.CurlRespSize = 100
+
+	hSettings.BinDocAllowed = false
 
 	return hSettings
 }
@@ -1039,8 +1057,8 @@ func (cb *CurlBinding) Clone(redact bool) (clone *CurlBinding) {
 	clone.Alias = cb.Alias
 	clone.AllowCookie = cb.AllowCookie
 	clone.ValidateSSL = cb.ValidateSSL
-	clone.BearerKey = PASSWORD_MASK
-	clone.Password = PASSWORD_MASK
+	clone.BearerKey = PasswordMask
+	clone.Password = PasswordMask
 
 	if !redact {
 		clone.AuthType = cb.AuthType

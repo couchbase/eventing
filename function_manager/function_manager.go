@@ -17,9 +17,6 @@ type InterruptHandler interface {
 
 	// Undeploy due to internal changes
 	StopCalledInterupt(seq uint32, msg common.LifecycleMsg)
-
-	// Revert to previous app state
-	FailStateInterrupt(seq uint32, appLocation application.AppLocation, msg common.LifecycleMsg)
 }
 
 type FunctionManager interface {
