@@ -14,12 +14,11 @@
 
 #include "js_exception.h"
 #include "lcb_utils.h"
+#include "query-controllers.h"
 #include "query-helper.h"
 #include "query-iterator.h"
 #include "query-mgr.h"
-#include "query-controllers.h"
-
-std::atomic<int64_t> n1ql_op_exception_count = {0};
+#include "v8worker2.h"
 
 ::Info Query::N1qlController::build(void *cookie) {
   auto info = do_build(cookie);
@@ -140,11 +139,13 @@ lcb_STATUS Query::N1qlController::run() {
   return result;
 }
 
-void Query::N1qlController::cancel() { lcb_query_cancel(connection_, GetHandle()); }
+void Query::N1qlController::cancel() {
+  lcb_query_cancel(connection_, GetHandle());
+}
 
 ::Info Query::N1qlController::ErrorFormat(const std::string &message,
-                                     lcb_INSTANCE *connection,
-                                     lcb_STATUS error) const {
+                                          lcb_INSTANCE *connection,
+                                          lcb_STATUS error) const {
   auto helper = UnwrapData(isolate_)->query_helper;
   return {true, helper->ErrorFormat(message, connection, error)};
 }
@@ -155,13 +156,14 @@ bool Query::N1qlController::IsStatusSuccess(const std::string &row) {
 }
 
 void Query::N1qlController::ThrowQueryError(const std::string &err_msg) {
-  ++n1ql_op_exception_count;
+  auto v8worker = UnwrapData(isolate_)->v8worker2;
+  v8worker->stats_->IncrementFailureStat("n1ql_op_exception_count");
   auto js_exception = UnwrapData(isolate_)->js_exception;
   js_exception->ThrowN1qlError(err_msg);
 }
 
 void Query::N1qlController::RowCallback(lcb_INSTANCE *connection, int,
-                                   const lcb_RESPQUERY *resp) {
+                                        const lcb_RESPQUERY *resp) {
   auto cursor = static_cast<Query::Iterator::Cursor *>(
       const_cast<void *>(lcb_get_cookie(connection)));
 
@@ -262,10 +264,11 @@ void Query::N1qlFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
   auto query_mgr = UnwrapData(isolate)->query_mgr;
   auto helper = UnwrapData(isolate)->query_helper;
   auto js_exception = UnwrapData(isolate)->js_exception;
+  auto v8worker = UnwrapData(isolate)->v8worker2;
 
   auto validation_info = Query::N1qlController::ValidateQuery(args);
   if (validation_info.is_fatal) {
-    ++n1ql_op_exception_count;
+    v8worker->stats_->IncrementFailureStat("n1ql_op_exception_count");
     js_exception->ThrowN1qlError(validation_info.msg);
     return;
   }
@@ -276,16 +279,17 @@ void Query::N1qlFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
     retry++;
     auto query_info = Query::N1qlController::GetQueryInfo(helper, args);
     if (query_info.is_fatal) {
-      ++n1ql_op_exception_count;
+      v8worker->stats_->IncrementFailureStat("n1ql_op_exception_count");
       js_exception->ThrowN1qlError(query_info.msg);
       return;
     }
 
     std::unique_ptr<QueryController> query_controller;
-    query_controller = std::make_unique<N1qlController>(isolate, std::move(query_info));
+    query_controller =
+        std::make_unique<N1qlController>(isolate, std::move(query_info));
     auto it_info = query_mgr->NewIterable(std::move(query_controller));
     if (it_info.is_fatal) {
-      ++n1ql_op_exception_count;
+      v8worker->stats_->IncrementFailureStat("n1ql_op_exception_count");
       js_exception->ThrowN1qlError(it_info.msg);
       return;
     }
@@ -304,7 +308,7 @@ void Query::N1qlFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
           helper->CheckRetriable(max_retry, max_timeout, retry, start_time)) {
         continue;
       }
-      ++n1ql_op_exception_count;
+      v8worker->stats_->IncrementFailureStat("n1ql_op_exception_count");
       js_exception->ThrowN1qlError(start_info.msg);
       return;
     }
@@ -324,7 +328,7 @@ void Query::N1qlFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
             helper->CheckRetriable(max_retry, max_timeout, retry, start_time)) {
           continue;
         }
-        ++n1ql_op_exception_count;
+        v8worker->stats_->IncrementFailureStat("n1ql_op_exception_count");
         js_exception->ThrowN1qlError(it_result.msg);
         return;
       }
@@ -345,7 +349,7 @@ void Query::N1qlFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
     if (first_row.is_error) {
       auto err_msg = helper->RowErrorString(first_row);
-      ++n1ql_op_exception_count;
+      v8worker->stats_->IncrementFailureStat("n1ql_op_exception_count");
       js_exception->ThrowN1qlError(err_msg);
       return;
     }

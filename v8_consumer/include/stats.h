@@ -33,6 +33,58 @@ public:
                         const std::string &script) {
     code_insight_.Setup(script);
     exception_insight_.Setup(instance_id);
+
+    // pre declare all the possible key to avoid rebalance of hash map
+    // execution stats
+    execution_stats_["curl.get"] = 0;
+    execution_stats_["curl.post"] = 0;
+    execution_stats_["curl.delete"] = 0;
+    execution_stats_["curl.head"] = 0;
+    execution_stats_["curl.put"] = 0;
+    execution_stats_["curl_success_count"] = 0;
+    execution_stats_["on_update_success"] = 0;
+    execution_stats_["on_update_failure"] = 0;
+    execution_stats_["on_delete_success"] = 0;
+    execution_stats_["on_delete_failure"] = 0;
+    execution_stats_["no_op_counter"] = 0;
+
+    execution_stats_["timer_callback_failure"] = 0;
+    execution_stats_["timer_callback_success"] = 0;
+    execution_stats_["timer_create_counter"] = 0;
+    execution_stats_["timer_create_failure"] = 0;
+    execution_stats_["timer_cancel_counter"] = 0;
+    execution_stats_["timer_msg_counter"] = 0;
+
+    execution_stats_["dcp_delete_msg_counter"] = 0;
+    execution_stats_["dcp_mutation_msg_counter"] = 0;
+    execution_stats_["filtered_dcp_mutation_counter"] = 0;
+    execution_stats_["filtered_dcp_delete_counter"] = 0;
+    execution_stats_["enqueued_dcp_mutation_msg_counter"] = 0;
+    execution_stats_["enqueued_dcp_delete_msg_counter"] = 0;
+    execution_stats_["dcp_mutation_checkpoint_cas_mismatch"] = 0;
+
+    execution_stats_["messages_parsed"] = 0;
+    execution_stats_["lcb_retry_failure"] = 0;
+    execution_stats_["num_processed_events"] = 0;
+    execution_stats_["processed_events_size"] = 0;
+
+    // failure stats
+    failure_stats_["curl_failure_count"] = 0;
+    failure_stats_["curl_timeout_count"] = 0;
+    failure_stats_["curl_non_200_response"] = 0;
+
+    failure_stats_["n1ql_op_exception_count"] = 0;
+    failure_stats_["analytics_op_exception_count"] = 0;
+    failure_stats_["bucket_op_exception_count"] = 0;
+    failure_stats_["bkt_ops_cas_mismatch_count"] = 0;
+    failure_stats_["bucket_op_cache_miss_count"] = 0;
+    failure_stats_["dcp_mutation_checkpoint_failure"] = 0;
+    failure_stats_["timer_callback_missing_counter"] = 0;
+    failure_stats_["timeout_count"] = 0;
+    failure_stats_["timer_context_size_exceeded_counter"] = 0;
+    failure_stats_["bucket_cache_overflow_count"] = 0;
+    failure_stats_["debugger_events_lost"] = 0;
+    failure_stats_["curl_max_resp_size_exceeded"] = 0;
   }
 
   ~RuntimeStats() {}
@@ -57,7 +109,11 @@ public:
     return failure_stats_[key].load();
   }
 
-  inline void AddLcbException(int err_code) { lcb_exception_stats[err_code]++; }
+  inline void AddLcbException(int err_code) {
+    lcbMutex.lock();
+    lcb_exception_stats[err_code]++;
+    lcbMutex.unlock();
+  }
 
   inline void AddException(v8::Isolate *isolate_, v8::TryCatch &try_catch) {
     code_insight_.AccumulateException(isolate_, try_catch);
@@ -91,13 +147,15 @@ private:
   RuntimeStats(RuntimeStats const &) = delete;
   RuntimeStats &operator=(RuntimeStats const &) = delete;
 
-  std::map<std::string, std::atomic<int64_t>> execution_stats_;
-  std::map<std::string, std::atomic<int64_t>> failure_stats_;
+  std::unordered_map<std::string, std::atomic<int64_t>> execution_stats_;
+  std::unordered_map<std::string, std::atomic<int64_t>> failure_stats_;
   CodeInsight code_insight_;
   ExceptionInsight exception_insight_;
   Histogram latency_stats_;
   Histogram curl_latency_stats_;
-  std::map<int, std::atomic<int64_t>> lcb_exception_stats;
+
+  std::mutex lcbMutex;
+  std::unordered_map<int, int64_t> lcb_exception_stats;
 };
 
 #endif

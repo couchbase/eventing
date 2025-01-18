@@ -18,8 +18,7 @@
 #include "query-helper.h"
 #include "query-iterator.h"
 #include "query-mgr.h"
-
-std::atomic<int64_t> analytics_op_exception_count = {0};
+#include "v8worker2.h"
 
 ::Info Query::AnalyticsController::build(void *cookie) {
   auto info = do_build(cookie);
@@ -132,7 +131,8 @@ lcb_STATUS Query::AnalyticsController::run() {
 }
 
 void Query::AnalyticsController::ThrowQueryError(const std::string &err_msg) {
-  analytics_op_exception_count++;
+  auto v8worker = UnwrapData(isolate_)->v8worker2;
+  v8worker->stats_->IncrementFailureStat("analytics_op_exception_count");
   auto js_exception = UnwrapData(isolate_)->js_exception;
   js_exception->ThrowAnalyticsError(err_msg);
 }
@@ -262,10 +262,11 @@ void Query::AnalyticsFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
   auto helper = UnwrapData(isolate)->query_helper;
   auto js_exception = UnwrapData(isolate)->js_exception;
   auto max_retry = UnwrapData(isolate)->lcb_retry_count;
+  auto v8worker = UnwrapData(isolate)->v8worker2;
 
   auto validation_info = Query::AnalyticsController::ValidateQuery(args);
   if (validation_info.is_fatal) {
-    analytics_op_exception_count++;
+    v8worker->stats_->IncrementFailureStat("analytics_op_exception_count");
     js_exception->ThrowAnalyticsError(validation_info.msg);
     return;
   }
@@ -276,7 +277,7 @@ void Query::AnalyticsFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
     retry++;
     auto query_info = Query::AnalyticsController::GetQueryInfo(helper, args);
     if (query_info.is_fatal) {
-      analytics_op_exception_count++;
+      v8worker->stats_->IncrementFailureStat("analytics_op_exception_count");
       js_exception->ThrowAnalyticsError(query_info.msg);
       return;
     }
@@ -286,7 +287,7 @@ void Query::AnalyticsFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
         std::make_unique<AnalyticsController>(isolate, std::move(query_info));
     auto it_info = query_mgr->NewIterable(std::move(qBase));
     if (it_info.is_fatal) {
-      analytics_op_exception_count++;
+      v8worker->stats_->IncrementFailureStat("analytics_op_exception_count");
       js_exception->ThrowAnalyticsError(it_info.msg);
       return;
     }
@@ -305,7 +306,7 @@ void Query::AnalyticsFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
           helper->CheckRetriable(max_retry, max_timeout, retry, start_time)) {
         continue;
       }
-      analytics_op_exception_count++;
+      v8worker->stats_->IncrementFailureStat("analytics_op_exception_count");
       js_exception->ThrowAnalyticsError(start_info.msg);
       return;
     }
@@ -325,7 +326,7 @@ void Query::AnalyticsFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
             helper->CheckRetriable(max_retry, max_timeout, retry, start_time)) {
           continue;
         }
-        analytics_op_exception_count++;
+        v8worker->stats_->IncrementFailureStat("analytics_op_exception_count");
         js_exception->ThrowAnalyticsError(it_result.msg);
         return;
       }
@@ -346,7 +347,7 @@ void Query::AnalyticsFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
     if (first_row.is_error) {
       auto err_msg = helper->RowErrorString(first_row);
-      analytics_op_exception_count++;
+      v8worker->stats_->IncrementFailureStat("analytics_op_exception_count");
       js_exception->ThrowAnalyticsError(err_msg);
       return;
     }

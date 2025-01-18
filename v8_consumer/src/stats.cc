@@ -52,7 +52,6 @@ std::string RuntimeStats::GetFailureStats() {
 std::string RuntimeStats::GetExecutionStats() {
   nlohmann::json estats;
 
-  estats["curl_success_count"] = execution_stats_["curl_success_count"].load();
   estats["on_update_success"] = execution_stats_["on_update_success"].load();
   estats["on_update_failure"] = execution_stats_["on_update_failure"].load();
   estats["on_delete_success"] = execution_stats_["on_delete_success"].load();
@@ -117,9 +116,11 @@ std::string RuntimeStats::GetCurlLatencyStats() {
 }
 
 std::string RuntimeStats::GetLcbExceptionStats() {
+  lcbMutex.lock();
   nlohmann::json lcb_stats;
   for (const auto &it : lcb_exception_stats) {
-    lcb_stats[std::to_string(it.first)] = it.second.load();
+    lcb_stats[std::to_string(it.first)] = it.second;
   }
+  lcbMutex.unlock();
   return lcb_stats.dump();
 }
