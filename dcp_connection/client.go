@@ -60,6 +60,32 @@ const (
 	failoverLogID = uint32(math.MaxUint32)
 )
 
+type stats struct {
+	Config                     Config           `json:"config"`
+	Spawned                    uint64           `json:"spawned"`
+	LastSpawnedVersion         uint32           `json:"last_spawned_version"`
+	NoopCount                  uint64           `json:"noop_count"`
+	StreamCloseRequestExecuted uint64           `json:"stream_close_request_executed"`
+	StreamStartRequestExecuted uint64           `json:"stream_start_request_executed"`
+	ReqManagerStats            *reqManagerStats `json:"req_manager_stats"`
+	DcpStreamRequestResponse   uint64           `json:"dcp_stream_request_response"`
+	DcpEventMessages           uint64           `json:"dcp_event_messages"`
+	DcpAdvancdedSeqno          uint64           `json:"dcp_advanced_seqno"`
+	DcpSystemEvent             uint64           `json:"dcp_system_event"`
+	DcpSeqNumber               uint64           `json:"dcp_seq_number"`
+	DcpFailoverLog             uint64           `json:"dcp_failover_log"`
+	DcpStreamEnd               uint64           `json:"dcp_stream_end"`
+	DcpCloseStream             uint64           `json:"dcp_close_stream"`
+	DcpSnapshotMarker          uint64           `json:"dcp_snapshot_marker"`
+	DcpUnknownOpcodes          uint64           `json:"dcp_unknown_opcodes"`
+	NumSent                    uint64           `json:"num_sent"`
+}
+
+func (s *stats) Copy() *stats {
+	copyStats := *s
+	return &copyStats
+}
+
 type client struct {
 	sync.Mutex
 
@@ -87,6 +113,8 @@ type client struct {
 	seqMapChannel          chan map[uint16]uint64
 	seqConnected           chan struct{}
 	internalCommandChannel map[uint32]map[uint16][]chan interface{}
+
+	stats *stats
 }
 
 type dummyRWC struct {
@@ -129,6 +157,7 @@ func GetDcpConsumerWithContext(ctx context.Context, config Config, tlsConfig *no
 		requestRoutineClosed: &atomic.Bool{},
 		genServerClosed:      &atomic.Bool{},
 		pendingDcpEvents:     make([]*DcpEvent, 0),
+		stats:                &stats{},
 	}
 
 	c.requestRoutineClosed.Store(false)
@@ -170,6 +199,15 @@ func GetDcpConsumerWithContext(ctx context.Context, config Config, tlsConfig *no
 	go c.genServer(ctx)
 
 	return c
+}
+
+func (c *client) GetRuntimeStats() common.StatsInterface {
+	copyStats := c.stats.Copy()
+	copyStats.Config = c.config
+	if c.config.Mode != InfoMode {
+		copyStats.ReqManagerStats = c.requestManager.GetRuntimeStats()
+	}
+	return common.NewMarshalledData(copyStats)
 }
 
 func (c *client) TlsSettingsChange(config *notifier.TlsConfig) {
@@ -430,6 +468,7 @@ func (c *client) receiveWorker(ctx context.Context) {
 		}
 
 		if mcCommand.resCommand == DCP_NOOP {
+			c.stats.NoopCount++
 			c.noopResponse(mcCommand)
 			continue
 		}
@@ -458,6 +497,7 @@ func (c *client) genServer(ctx context.Context) {
 			if send {
 				select {
 				case c.sendChannel <- dcpEvent:
+					c.stats.NumSent++
 				case <-ctx.Done():
 					c.pendingDcpEvents = append(c.pendingDcpEvents, dcpEvent)
 					return
@@ -478,9 +518,11 @@ func (c *client) handleDcpRequest(cmd command) (req *StreamReq, err error) {
 	case stream_close:
 		// Caller asked to close it so request won't be there
 		// no need update state to closing
+		c.stats.StreamCloseRequestExecuted++
 		err = c.streamClose(cmd.id, cmd.opaque, cmd.vbno)
 
 	case stream_request:
+		c.stats.StreamStartRequestExecuted++
 		req = c.requestManager.readyRequest(cmd.opaque)
 		if req == nil {
 			return nil, nil
@@ -504,42 +546,51 @@ func (c *client) handlePacket(res *memcachedCommand) (msg *DcpEvent, send bool) 
 	case DCP_BUFFERACK:
 
 	case DCP_STREAMREQ:
+		c.stats.DcpStreamRequestResponse++
 		msg, send = c.handleStreamRequest(res)
 
 	case DCP_MUTATION, DCP_DELETION,
 		DCP_EXPIRATION:
+		c.stats.DcpEventMessages++
 		sendAck = true
 		msg = c.handleDcpMessages(res)
 		send = c.requestManager.mutationNote(msg)
 
 	case DCP_STREAM_END:
+		c.stats.DcpStreamEnd++
 		msg, send = c.handleStreamEnd(res)
 		sendAck = true
 
 	case DCP_SNAPSHOT_MARKER:
+		c.stats.DcpSnapshotMarker++
 		sendAck = true
 
 	case DCP_CLOSESTREAM:
+		c.stats.DcpCloseStream++
 		// dcp will send streamend for this request so no need to send this message
 
 	case DCP_SYSTEM_EVENT:
+		c.stats.DcpSystemEvent++
 		sendAck = true
-		send = true
 		msg = c.handleSystemEvent(res)
 		send = c.requestManager.mutationNote(msg)
 
 	case DCP_ADV_SEQNUM:
+		c.stats.DcpAdvancdedSeqno++
 		sendAck = true
 		msg = c.handleAdvSeqNumber(res)
 		send = c.requestManager.mutationNote(msg)
 
 	case DCP_SEQ_NUMBER:
+		c.stats.DcpSeqNumber++
 		c.handleSeqNumber(res)
 
 	case DCP_FAILOVER:
+		c.stats.DcpFailoverLog++
 		c.handleFailoverLog(res)
 
 	default:
+		c.stats.DcpUnknownOpcodes++
 	}
 
 	c.sendBufferAck(sendAck, res.size, res.connVersion)
@@ -598,7 +649,7 @@ func (c *client) initConnection(parent context.Context) (err error) {
 	// Created new connection
 	c.unackedBytes = 0
 	c.tcpConn = conn
-	c.connVersion.Add(1)
+	c.stats.LastSpawnedVersion = c.connVersion.Add(1)
 	c.Unlock()
 
 	switch c.config.Mode {
@@ -633,6 +684,7 @@ func (c *client) requestInternalCommand() {
 // start the connection and
 func (c *client) startConnection(parent context.Context) (conn net.Conn, err error) {
 	c.Lock()
+	c.stats.Spawned++
 	// All new requests are rejected
 	c.tcpConn = &dummyRWC{}
 	tlsConfig := c.tlsConfig

@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/couchbase/eventing/common"
 	dcpConn "github.com/couchbase/eventing/dcp_connection"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/notifier"
@@ -52,6 +53,7 @@ type manager struct {
 	vbMap     *atomic.Value // *notifier.VBmap
 	tlsConfig *atomic.Value // *notifier.TlsConfig
 
+	stat   *stats
 	closed bool
 	close  func()
 }
@@ -78,6 +80,7 @@ func NewDcpManagerWithContext(ctx context.Context, mode dcpConn.Mode, id string,
 		vbMap:            &atomic.Value{},
 		tlsConfig:        &atomic.Value{},
 
+		stat:   &stats{},
 		closed: false,
 		close:  func() {},
 	}
@@ -125,6 +128,32 @@ func NewDcpManagerWithContext(ctx context.Context, mode dcpConn.Mode, id string,
 	go m.waitForConfigChanges(ctx)
 	go m.receiveChan(ctx)
 	return m
+}
+
+type stats struct {
+	NumFiltered      uint64                  `json:"num_filtered"`
+	DcpConsumerStats []common.StatsInterface `json:"dcp_consumer_stats"`
+	VbMapping        string                  `json:"vb_mapping"`
+	NumRegistered    uint64                  `json:"num_registered"`
+}
+
+func (m *manager) GetRuntimeStats() common.StatsInterface {
+	stats := &stats{}
+
+	consumers := m.consumers.Load().(map[string]dcpConn.DcpConsumer)
+	stats.DcpConsumerStats = make([]common.StatsInterface, 0, len(consumers))
+	for _, consumer := range consumers {
+		stats.DcpConsumerStats = append(stats.DcpConsumerStats, consumer.GetRuntimeStats())
+	}
+
+	vbMap := m.vbMap.Load().(*notifier.VBmap)
+	stats.VbMapping = vbMap.String()
+
+	m.idToChannelLock.RLock()
+	stats.NumRegistered = uint64(len(m.idToChannel))
+	m.idToChannelLock.RUnlock()
+
+	return common.NewMarshalledData(stats)
 }
 
 func (m *manager) RegisterID(id uint16, sendChannel chan<- *dcpConn.DcpEvent) {
@@ -514,6 +543,8 @@ func (m *manager) analyseDcpEvent(msg *dcpConn.DcpEvent) {
 		m.idToChannelLock.RUnlock()
 
 		if !ok {
+			m.DoneDcpEvent(msg)
+			m.stat.NumFiltered++
 			return
 		}
 

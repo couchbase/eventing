@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/couchbase/eventing/application"
 	"github.com/couchbase/eventing/common"
@@ -30,6 +31,7 @@ type DcpConsumer interface {
 
 	TlsSettingsChange(config *notifier.TlsConfig)
 
+	GetRuntimeStats() common.StatsInterface
 	CloseDcpConsumer() []*DcpEvent
 }
 
@@ -42,12 +44,12 @@ const (
 )
 
 type Config struct {
-	Mode       Mode
-	ClientName string
-	BucketName string
-	KvAddress  string
+	Mode       Mode   `json:"mode"`
+	ClientName string `json:"client_name"`
+	BucketName string `json:"bucket_name"`
+	KvAddress  string `json:"kv_address"`
 
-	DcpConfig map[ConfigKey]interface{}
+	DcpConfig map[ConfigKey]interface{} `json:"dcp_config"`
 }
 
 func (c Config) String() string {
@@ -68,35 +70,66 @@ const (
 )
 
 type StreamReq struct {
-	ID      uint16
-	Version uint32
+	ID      uint16 `json:"-"`
+	Version uint32 `json:"-"`
 
 	// Status gives whats the status of the current request
-	Status status
+	Status status `json:"status"`
 
-	RequestType   RequestType
-	CollectionIDs []string //array of collction ids
-	ScopeID       string   // scope id
-	ManifestUID   string   //manifest id
+	RequestType   RequestType `json:"-"`
+	CollectionIDs []string    `json:"-"` //array of collction ids
+	ScopeID       string      `json:"-"` // scope id
+	ManifestUID   string      `json:"-"` //manifest id
 
-	Vbno             uint16
-	Flags            uint32
-	StartSeq         uint64
-	EndSeq           uint64
-	Vbuuid           uint64
-	FailoverLog      FailoverLog
+	Vbno             uint16      `json:"vb_no"`
+	Flags            uint32      `json:"flags"`
+	StartSeq         uint64      `json:"seq_num_received"`
+	EndSeq           uint64      `json:"end_seq_no"`
+	Vbuuid           uint64      `json:"vb_uuid"`
+	FailoverLog      FailoverLog `json:"-"`
 	failoverLogIndex int
 
 	// Internal field to check if request is already made on this
 	// connection or not
-	reqState    reqState
-	currVersion uint32
-	opaque      uint32
-	running     bool
+	opaque  uint32
+	running bool
+
+	LastStreamSuccessTime   time.Time `json:"stream_success_time"`
+	LastStreamRequestedTime time.Time `json:"stream_requested_time"`
 }
 
-func getUnit32ToBase16(val uint32) string {
-	return fmt.Sprintf("%x", val)
+func (sr *StreamReq) Copy() *StreamReq {
+	newSR := &StreamReq{
+		ID:      sr.ID,
+		Version: sr.Version,
+
+		Status: sr.Status,
+
+		RequestType:   sr.RequestType,
+		CollectionIDs: sr.CollectionIDs,
+		ScopeID:       sr.ScopeID,
+		ManifestUID:   sr.ManifestUID,
+
+		Vbno:             sr.Vbno,
+		Flags:            sr.Flags,
+		StartSeq:         sr.StartSeq,
+		EndSeq:           sr.EndSeq,
+		Vbuuid:           sr.Vbuuid,
+		FailoverLog:      sr.FailoverLog,
+		failoverLogIndex: sr.failoverLogIndex,
+
+		opaque:  sr.opaque,
+		running: sr.running,
+
+		LastStreamSuccessTime:   sr.LastStreamSuccessTime,
+		LastStreamRequestedTime: sr.LastStreamRequestedTime,
+	}
+
+	return newSR
+}
+
+func (sr *StreamReq) String() string {
+	return fmt.Sprintf("{ \"id\": %d, \"version\": %d, \"status\": %d, \"requestType\": %d, \"collection_id\": %v, \"scope_id\": %s, \"vb_no\": %d, \"start_seq\": %d, \"end_seq\": %d, \"vbuuid\": %d, \"running\": %t, \"lastStreamSuccessTime\": %v, \"lastStreamRequtedTime\": %v }", sr.ID, sr.Version, sr.Status, sr.RequestType, sr.CollectionIDs, sr.ScopeID, sr.Vbno, sr.StartSeq, sr.EndSeq, sr.Vbuuid, sr.running, sr.LastStreamSuccessTime, sr.LastStreamRequestedTime)
 }
 
 type valueType uint8

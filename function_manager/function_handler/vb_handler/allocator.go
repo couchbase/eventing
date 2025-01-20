@@ -120,6 +120,19 @@ func NewAllocatorWithContext(ctx context.Context, logPrefix string, keyspace app
 	return al
 }
 
+func (al *allocator) GetRuntimeStats() *common.MarshalledData[map[string]interface{}] {
+	stats := make(map[string]interface{})
+	for index, worker := range al.workers {
+		worker.RLock()
+		stats[fmt.Sprintf("worker_%s_%d", al.logPrefix, index)] = worker.GetRuntimeStats()
+		worker.RUnlock()
+	}
+
+	stats["dcp_manager_stats"] = al.dcpManager.isolatedDcpManager.GetRuntimeStats()
+	s := common.NewMarshalledData(stats)
+	return s
+}
+
 // FilterEvent check whether eventing requested this document or not
 func (al *allocator) FilterEvent(msg *dcpMessage.DcpEvent) (*checkpointManager.ParsedInternalDetails, int, bool, bool) {
 	switch msg.Opcode {
@@ -159,7 +172,7 @@ func (al *allocator) FilterEvent(msg *dcpMessage.DcpEvent) (*checkpointManager.P
 			totalMsg > upperMark*al.maxUnackedCount {
 
 			yieldGoRoutine = true
-			if status.isStreaming {
+			if status.IsStreaming {
 				// Streaming mode can't just leave
 				return parsedDetails, workerID, false, true
 			}
@@ -168,15 +181,15 @@ func (al *allocator) FilterEvent(msg *dcpMessage.DcpEvent) (*checkpointManager.P
 			sr, _ = al.dcpManager.commonDcpManager.CloseRequest(sr)
 			if sr == nil {
 				al.config.StatsHandler.IncrementCountProcessingStats("already_sent_streamend", 1)
-				status.status = forcedClosed
+				status.Status = forcedClosed
 				return parsedDetails, workerID, true, false
 			}
 
 			al.config.StatsHandler.IncrementCountProcessingStats("closed_request", 1)
-			sr.StartSeq = status.lastSentSeq
-			status.streamReq = sr
-			status.status = waiting
-			status.lastDoneRequest = time.Now()
+			sr.StartSeq = status.LastSentSeq
+			status.StreamReq = sr
+			status.Status = waiting
+			status.LastDoneRequest = time.Now()
 			delete(worker.runningMap, vb)
 			worker.runningCount.Add(-1)
 			return parsedDetails, workerID, true, false
@@ -184,14 +197,14 @@ func (al *allocator) FilterEvent(msg *dcpMessage.DcpEvent) (*checkpointManager.P
 
 		if !al.isStreamMode.Load() && totalBytes > pauseMark*float64(al.maxUnackedBytes.Load()) ||
 			totalMsg > pauseMark*al.maxUnackedCount {
-			if status.status != paused {
+			if status.Status != paused {
 				sr := &dcpMessage.StreamReq{Vbno: msg.Vbno}
 				al.config.StatsHandler.IncrementCountProcessingStats("pause_request", 1)
 				al.dcpManager.commonDcpManager.PauseStreamReq(sr)
-				status.status = paused
+				status.Status = paused
 			}
 		}
-		status.lastSentSeq = msg.Seqno
+		status.LastSentSeq = msg.Seqno
 		return parsedDetails, workerID, false, false
 
 	default:
@@ -300,21 +313,21 @@ func (al *allocator) DoneVb(streamReq *dcpMessage.StreamReq) (sendNoop bool) {
 		return
 	}
 
-	if status.version != streamReq.Version {
+	if status.Version != streamReq.Version {
 		worker.Unlock()
 		return
 	}
 
 	sendNoop = true
-	if status.status == forcedClosed {
+	if status.Status == forcedClosed {
 		sendNoop = false
-		streamReq.StartSeq = status.lastSentSeq
+		streamReq.StartSeq = status.LastSentSeq
 	}
 	delete(worker.runningMap, vb)
 
-	status.status = waiting
-	status.lastDoneRequest = time.Now()
-	status.streamReq = streamReq
+	status.Status = waiting
+	status.LastDoneRequest = time.Now()
+	status.StreamReq = streamReq
 	worker.runningCount.Add(-1)
 	worker.Unlock()
 
@@ -354,10 +367,10 @@ func (al *allocator) vbReadyState(msg *dcpMessage.DcpEvent) bool {
 		return false
 	}
 
-	if status.version != msg.Version || status.status != ready {
+	if status.Version != msg.Version || status.Status != ready {
 		return false
 	}
-	status.status = running
+	status.Status = running
 	return true
 }
 
@@ -403,11 +416,11 @@ func (al *allocator) checkAndMakeRequest() {
 		for count := 0; count < vbListLength; count++ {
 			status := worker.allVbList[worker.index]
 			worker.index = (worker.index + 1) % vbListLength
-			if status.status != waiting {
+			if status.Status != waiting {
 				continue
 			}
 
-			vb := status.vbno
+			vb := status.Vbno
 			endSeqNum := uint64(math.MaxUint64)
 			if !isStreaming {
 				var ok bool
@@ -417,12 +430,12 @@ func (al *allocator) checkAndMakeRequest() {
 				}
 			}
 
-			sr := status.streamReq
+			sr := status.StreamReq
 			worker.updateModeTo(vb, isStreaming)
 			if endSeqNum <= sr.StartSeq {
 				// Maybe bucket flushed and high seq number is always less than executed seq number
 				// check for when we fetched the last seq number and current seq number
-				if al.lastSeqFetched.Sub(status.lastDoneRequest) < minTimeWait {
+				if al.lastSeqFetched.Sub(status.LastDoneRequest) < minTimeWait {
 					continue
 				}
 
@@ -435,8 +448,8 @@ func (al *allocator) checkAndMakeRequest() {
 				continue
 			}
 
-			status.streamReq = nil
-			status.status = ready
+			status.StreamReq = nil
+			status.Status = ready
 			worker.runningMap[vb] = status
 			totalParallelRequest := worker.runningCount.Add(1)
 
@@ -465,7 +478,7 @@ func (al *allocator) Close() []uint16 {
 	for _, worker := range al.workers {
 		worker.RLock()
 		for _, status := range worker.allVbList {
-			vb := status.vbno
+			vb := status.Vbno
 			vbStatus, ok := worker.CloseVb(vb)
 			if ok {
 				sr := &dcpMessage.StreamReq{Vbno: vb}
@@ -478,7 +491,7 @@ func (al *allocator) Close() []uint16 {
 				}
 			}
 
-			if vbStatus.status != initStatus {
+			if vbStatus.Status != initStatus {
 				ownedVbs = append(ownedVbs, vb)
 			}
 			al.closedVbsLock.Lock()

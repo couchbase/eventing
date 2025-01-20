@@ -1,7 +1,8 @@
 package dcpManager
 
 import (
-	"github.com/couchbase/eventing/dcp_connection"
+	"github.com/couchbase/eventing/common"
+	dcpConn "github.com/couchbase/eventing/dcp_connection"
 )
 
 // DcpManager manages dcp connection
@@ -19,6 +20,7 @@ type DcpManager interface {
 	RegisterID(id uint16, sendChannel chan<- *dcpConn.DcpEvent)
 	DeregisterID(id uint16)
 
+	GetRuntimeStats() common.StatsInterface
 	CloseManager()
 	CloseConditional() bool
 }

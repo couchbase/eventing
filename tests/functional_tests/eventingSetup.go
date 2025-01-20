@@ -622,6 +622,13 @@ var undeployFunction = func(handler string) (response *restResponse) {
 	return response
 }
 
+func dumpDebugStats() {
+	makeStatsRequest("Node0: Eventing stats", statsEndpointURL0+"?type=debug", true)
+	makeStatsRequest("Node1: Eventing stats", statsEndpointURL1+"?type=debug", true)
+	makeStatsRequest("Node2: Eventing stats", statsEndpointURL2+"?type=debug", true)
+	makeStatsRequest("Node3: Eventing stats", statsEndpointURL3+"?type=debug", true)
+}
+
 func dumpStats() {
 	/*
 		makeStatsRequest("Node0: Eventing stats", statsEndpointURL0, true)

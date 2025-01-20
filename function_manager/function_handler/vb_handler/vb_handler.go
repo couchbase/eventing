@@ -66,6 +66,8 @@ type VbHandler interface {
 	// RefreshSystemResourceLimits refreshes the system resource limits
 	RefreshSystemResourceLimits()
 
+	GetRuntimeStats() common.StatsInterface
+
 	// NotifyOwnershipChange notifies the new vb map. Returns newly added and closed vbs
 	NotifyOwnershipChange() (vbMapVersion string, newVbs []uint16, closedVbs []uint16, notFullyOwned []uint16, err error)
 
@@ -99,7 +101,10 @@ func NewDummyVbHandler() VbHandler {
 }
 
 func (_ dummy) RefreshSystemResourceLimits() {
-	return
+}
+
+func (_ dummy) GetRuntimeStats() common.StatsInterface {
+	return nil
 }
 
 func (_ dummy) GetHighSeqNum() map[uint16]uint64 {

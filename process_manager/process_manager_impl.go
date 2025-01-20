@@ -59,16 +59,24 @@ type requestMessage struct {
 
 func dummyClose() {}
 
+type stats struct {
+	CommStats         common.StatsInterface `json:"connection_stats"`    // Communication stats
+	ProcessDetails    ProcessDetails        `json:"process_details"`     // Process details
+	NumProcessSpawned uint64                `json:"num_process_spawned"` // Number of times process was spawned
+}
+
+func (s *stats) Copy() *stats {
+	return &stats{
+		NumProcessSpawned: s.NumProcessSpawned,
+	}
+}
+
 type processManager struct {
 	version atomic.Uint32
 
 	cmd           *exec.Cmd
 	executableImg string
 	processConfig ProcessConfig
-
-	// Socket names
-	ipcType        string
-	sockIdentifier string
 
 	com communicator.Comm
 
@@ -78,10 +86,9 @@ type processManager struct {
 	status     uint32
 
 	close func()
-	// Not a good way to count the message. Maybe this can be implemented in the communicator module
-	// We don't need to count it accurately. Precision is not required since we periodically flush messages
-	// to the socket
-	msgCounter uint64
+
+	// all stats for this process for all stats
+	stats *stats
 }
 
 func NewProcessManager(pc ProcessConfig, serverConfig serverConfig.SystemConfig) ProcessManager {
@@ -99,6 +106,7 @@ func NewProcessManager(pc ProcessConfig, serverConfig serverConfig.SystemConfig)
 		status:        closed,
 		com:           communicator.NewCommunicator(communicator.SOCKET, settings),
 		close:         dummyClose,
+		stats:         &stats{},
 	}
 
 	return pm
@@ -110,6 +118,10 @@ func (pm *processManager) Start() (<-chan *ResponseMessage, error) {
 }
 
 func (pm *processManager) GetProcessDetails() ProcessDetails {
+	return pm.processDetails()
+}
+
+func (pm *processManager) processDetails() ProcessDetails {
 	pid := 0
 	if atomic.LoadUint32(&pm.status) == spawned {
 		pid = pm.cmd.Process.Pid
@@ -211,19 +223,6 @@ func (pm *processManager) GetStats(version uint32, opcode uint8, handlerID []byt
 	pm.sendMessage(req)
 }
 
-type dcpMetadata struct {
-	Cas      string                    `json:"cas"`
-	DocID    string                    `json:"id"`
-	Flag     uint32                    `json:"flags"`
-	Vbucket  uint16                    `json:"vb"`
-	SeqNo    uint64                    `json:"seq"`
-	Type     string                    `json:"datatype,omitempty"`
-	Cid      uint32                    `json:"cid"`
-	Keyspace json.Marshaler            `json:"keyspace"`
-	Expiry   uint32                    `json:"expiration"`
-	Xattr    map[string]json.Marshaler `json:"xattr,omitempty"`
-}
-
 const (
 	RawDatatype uint8 = iota
 	JsonDatatype
@@ -299,6 +298,13 @@ func (pm *processManager) WriteDcpMessage(version uint32, buffer *bytes.Buffer, 
 		return
 	}
 	return
+}
+
+func (pm *processManager) GetRuntimeStats() common.StatsInterface {
+	copyStats := pm.stats.Copy()
+	copyStats.ProcessDetails = pm.processDetails()
+	copyStats.CommStats = pm.com.GetRuntimeStats()
+	return common.NewMarshalledData(copyStats)
 }
 
 // Cleanup and stops this process
@@ -505,34 +511,33 @@ func (pm *processManager) spawnProcess() error {
 	return nil
 }
 
-func (pm *processManager) sendMessage(msg requestMessage) error {
+func (pm *processManager) sendMessage(msg requestMessage) (err error) {
 	logPrefix := fmt.Sprintf("processManager::sendMessage[%s:%d]", pm.processConfig.ID, pm.version.Load())
 
 	defer func() {
 		pm.msgBuilder.putBuilder(msg.message, msg.builder)
 	}()
 
+	remainingMsgs := uint64(0)
 	switch msg.priority {
 	case highest:
-		err := pm.com.FlushMessageImmediately(msg.message)
+		err = pm.com.FlushMessageImmediately(msg.message)
 		if err != nil {
 			// Maybe some temp error wait for the next cycle to send the message
 			logging.Errorf("%s error sending highest priority message immediately: %v. Sending it with other message", logPrefix, err)
-			err := pm.com.Write(msg.message)
+			remainingMsgs, err = pm.com.Write(msg.message)
 			if err != nil {
 				logging.Errorf("%s error writing highest priority message to buffer: %v", logPrefix, err)
 				return err
 			}
-			atomic.AddUint64(&pm.msgCounter, uint64(1))
 		}
 
 	case send_all_now:
-		err := pm.com.Write(msg.message)
+		_, err = pm.com.Write(msg.message)
 		if err != nil {
 			logging.Errorf("%s error writing message to buffer: %v", logPrefix, err)
 			return err
 		}
-		atomic.StoreUint64(&pm.msgCounter, uint64(0))
 		err = pm.com.FlushMessage()
 		if err != nil {
 			logging.Errorf("%s error flusing message to socket: %v", logPrefix, err)
@@ -541,21 +546,19 @@ func (pm *processManager) sendMessage(msg requestMessage) error {
 		return nil
 
 	case delayed:
-		err := pm.com.Write(msg.message)
+		remainingMsgs, err = pm.com.Write(msg.message)
 		if err != nil {
 			logging.Errorf("%s error writing message to buffer: %v", logPrefix, err)
 			return err
 		}
-		atomic.AddUint64(&pm.msgCounter, uint64(1))
 	}
 
-	if atomic.LoadUint64(&pm.msgCounter) > bufferMessageCount {
+	if remainingMsgs > bufferMessageCount {
 		err := pm.com.FlushMessage()
 		if err != nil {
 			logging.Errorf("%s error flusing message to socket: %v", logPrefix, err)
 			return err
 		}
-		atomic.StoreUint64(&pm.msgCounter, uint64(0))
 	}
 
 	return nil
@@ -571,7 +574,6 @@ func (pm *processManager) sendMessageLoop(ctx context.Context, version uint32) {
 	for {
 		select {
 		case <-timer.C:
-			atomic.StoreUint64(&pm.msgCounter, uint64(0))
 			if err := pm.com.FlushMessage(); err != nil {
 				logging.Errorf("%s error flusing message to socket: %v. Stopping process.", logPrefix, err)
 				pm.stopProcess(version)

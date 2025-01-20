@@ -6,6 +6,18 @@ import (
 	"strings"
 )
 
+type CopyInterface[T any] interface {
+	Copy() T
+}
+
+func CopyMap[K comparable, V CopyInterface[V]](m map[K]V) map[K]V {
+	copy := make(map[K]V)
+	for k, v := range m {
+		copy[k] = v.Copy()
+	}
+	return copy
+}
+
 func CondenseMap(vbOwners map[string][]uint16) string {
 	stringBuilder := strings.Builder{}
 	first := true
@@ -17,6 +29,7 @@ func CondenseMap(vbOwners map[string][]uint16) string {
 		first = false
 		stringBuilder.WriteString(fmt.Sprintf(" \"%s\": %s", owner, Condense(vbs)))
 	}
+	stringBuilder.WriteRune('}')
 
 	return stringBuilder.String()
 }

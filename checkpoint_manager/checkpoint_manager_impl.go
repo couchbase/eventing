@@ -52,14 +52,31 @@ type collectionHandle interface {
 type vbBlobInternal struct {
 	sync.RWMutex
 
-	key    string
-	vbBlob *VbBlob
+	key       string
+	vbBlob    *VbBlob
+	ownedTime time.Time
 
 	dirty      bool
 	dirtyField []interface{}
 
 	collectionHandler collectionHandle
 	checkpointConfig  *CheckpointConfig
+}
+
+func (vbi *vbBlobInternal) MarshalJSON() ([]byte, error) {
+	vbBlob, _ := json.Marshal(vbi.vbBlob)
+	return []byte(fmt.Sprintf("{ \"key\": \"%s\", \"vb_blob\": %s, \"owned_time\": \"%s\" }", vbi.key, vbBlob, vbi.ownedTime)), nil
+}
+
+func (vbi *vbBlobInternal) Copy() *vbBlobInternal {
+	vbBlob := vbi.vbBlob.Copy()
+	return &vbBlobInternal{
+		key:               vbi.key,
+		vbBlob:            &vbBlob,
+		ownedTime:         vbi.ownedTime,
+		collectionHandler: vbi.collectionHandler,
+		checkpointConfig:  vbi.checkpointConfig,
+	}
 }
 
 // Get the ownership of the blob
@@ -217,6 +234,12 @@ func (vbi *vbBlobInternal) getVbBlob() VbBlob {
 	return vbi.vbBlob.Copy()
 }
 
+type stats struct {
+	VbsToOwn   []uint16                   `json:"vbs_to_own"`
+	VbsToClose []uint16                   `json:"vbs_to_close"`
+	VbiDetails map[uint16]*vbBlobInternal `json:"vb_blobs"`
+}
+
 type checkpointManager struct {
 	sync.RWMutex
 
@@ -235,7 +258,8 @@ type checkpointManager struct {
 
 	broadcaster common.Broadcaster
 	notifier    *common.Signal
-	close       func()
+
+	close func()
 }
 
 func NewCheckpointManager(cc CheckpointConfig, cluster *gocb.Cluster, clusterConfig *common.ClusterSettings, interruptCallback InterruptFunction, observer notifier.Observer, broadcaster common.Broadcaster) Checkpoint {
@@ -515,6 +539,26 @@ func (cm *checkpointManager) DeleteKeys(deleteKeys []string) {
 		}
 		cm.keyspaceExists.Store(false)
 	}
+}
+
+func (cm *checkpointManager) GetRuntimeStats() common.StatsInterface {
+	s := &stats{}
+	cm.RLock()
+	defer cm.RUnlock()
+
+	s.VbsToOwn = make([]uint16, 0, len(cm.vbsToOwn))
+	for vb := range cm.vbsToOwn {
+		s.VbsToOwn = append(s.VbsToOwn, vb)
+	}
+
+	s.VbsToClose = make([]uint16, 0, len(cm.vbsToClose))
+	for vb := range cm.vbsToClose {
+		s.VbsToClose = append(s.VbsToClose, vb)
+	}
+
+	s.VbiDetails = utils.CopyMap(cm.vbBlobSlice)
+
+	return common.NewMarshalledData(s)
 }
 
 // TryToBeLeaderUrl try to be leader for this debugger session

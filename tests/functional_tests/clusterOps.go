@@ -386,6 +386,9 @@ func failAndCollectLogs(t *testing.T, args ...interface{}) {
 		log.Printf("Error collecting log for test: %s error: %v", t.Name(), err)
 	}
 	t.Error(args...)
+	dumpDebugStats()
+	time.Sleep(5 * time.Second)
+	panic("Failed")
 }
 
 func failAndCollectLogsf(t *testing.T, errorString string, args ...interface{}) {
@@ -394,4 +397,7 @@ func failAndCollectLogsf(t *testing.T, errorString string, args ...interface{}) 
 		log.Printf("Error collecting log for test: %s error: %v", t.Name(), err)
 	}
 	t.Errorf(errorString, args...)
+	dumpDebugStats()
+	time.Sleep(5 * time.Second)
+	panic("Failed")
 }

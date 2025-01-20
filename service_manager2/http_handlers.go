@@ -204,6 +204,16 @@ func (m *serviceMgr) statsHandler(w http.ResponseWriter, r *http.Request) {
 			switch val[0] {
 			case "full":
 				statType = common.FullStats
+				// For backward compatibility use type=full&debug=true
+				// This will make sure that older version will get full stats and new version will get full debug stats in cbcollect
+				if val, ok := query["debug"]; ok {
+					if len(val) > 0 && val[0] == "true" {
+						statType = common.FullDebugStats
+					}
+				}
+
+			case "debug":
+				statType = common.FullDebugStats
 			}
 		}
 	}

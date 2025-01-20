@@ -1,8 +1,10 @@
 package checkpointManager
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+
 	"github.com/couchbase/cbauth/metakv"
 	"github.com/couchbase/eventing/application"
 	"github.com/couchbase/eventing/common"
@@ -65,6 +67,11 @@ func (blob *VbBlob) Copy() VbBlob {
 	return newVbBlob
 }
 
+func (blob *VbBlob) String() string {
+	marshalledBytes, _ := json.Marshal(blob)
+	return string(marshalledBytes)
+}
+
 type OwnMsg uint8
 
 const (
@@ -104,6 +111,7 @@ type Checkpoint interface {
 	GetKeyPrefix() string
 
 	GetTimerCheckpoints(appId uint32) (*gocb.ScanResult, error)
+	GetRuntimeStats() common.StatsInterface
 
 	TryTobeLeader(leaderType leaderType) (bool, error)
 

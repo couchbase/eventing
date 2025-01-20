@@ -76,7 +76,6 @@ void Query::Iterable::Impl(const v8::FunctionCallbackInfo<v8::Value> &args) {
       reinterpret_cast<Iterator *>(iter_val.As<v8::External>()->Value());
 
   if (auto impl_info = iterable_impl->NewObject(iterator); impl_info.is_fatal) {
-    v8worker->stats_->IncrementFailureStat("n1ql_op_exception_count");
     js_exception->ThrowN1qlError(impl_info.msg);
     return;
   } else {
@@ -147,7 +146,6 @@ void Query::IterableImpl::Next(
   if (next.is_done || next.is_error) {
     // Error reported by lcb_wait (coming from LCB client)
     if (auto it_result = iterator->Wait(); it_result.is_fatal) {
-      v8worker->stats_->IncrementFailureStat("n1ql_op_exception_count");
       js_exception->ThrowN1qlError(it_result.msg);
       return;
     }
@@ -161,7 +159,6 @@ void Query::IterableImpl::Next(
 
   if (auto result_info = iterable_result->NewObject(next);
       result_info.is_fatal) {
-    v8worker->stats_->IncrementFailureStat("n1ql_op_exception_count");
     js_exception->ThrowN1qlError(result_info.msg);
     return;
   } else {

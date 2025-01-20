@@ -1,6 +1,7 @@
 package dcpManager
 
 import (
+	"github.com/couchbase/eventing/common"
 	dcpConn "github.com/couchbase/eventing/dcp_connection"
 )
 
@@ -44,6 +45,10 @@ func (m *dcpManager) GetFailoverLog(vbs []uint16) (map[uint16]dcpConn.FailoverLo
 
 func (m *dcpManager) GetSeqNumber(vbs []uint16, collectionID string) (map[uint16]uint64, error) {
 	return m.manager.GetSeqNumber(vbs, collectionID)
+}
+
+func (m *dcpManager) GetRuntimeStats() common.StatsInterface {
+	return m.manager.GetRuntimeStats()
 }
 
 func (m *dcpManager) RegisterID(id uint16, sendChannel chan<- *dcpConn.DcpEvent) {
@@ -99,6 +104,10 @@ func (_ dummy) RegisterID(id uint16, sendChannel chan<- *dcpConn.DcpEvent) {
 
 func (_ dummy) DeregisterID(id uint16) {
 	panic("trying to deregister with dummy manager")
+}
+
+func (_ dummy) GetRuntimeStats() common.StatsInterface {
+	return common.NewMarshalledData(&stats{})
 }
 
 func (_ dummy) CloseManager() {
