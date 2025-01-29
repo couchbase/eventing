@@ -176,6 +176,11 @@ type AppStatusResponse struct {
 	NumEventingNodes int          `json:"num_eventing_nodes"`
 }
 
+type SingleAppStatusResponse struct {
+	App              *AppStatus `json:"app"`
+	NumEventingNodes int        `json:"num_eventing_nodes"`
+}
+
 type AppStatus struct {
 	CompositeStatus       string                `json:"composite_status"`
 	Name                  string                `json:"name"`

@@ -354,3 +354,10 @@ func cleanupEventingPath(path string) {
 		time.Sleep(time.Second)
 	}
 }
+
+// Add warningsInfo status to response for backwards compatibility with old architecture
+func determineWarnings(funcDetails *application.FunctionDetails) *response.WarningsInfo {
+	wInfo := &response.WarningsInfo{}
+	wInfo.Status = fmt.Sprintf("Stored function: '%s' in metakv", funcDetails.AppLocation)
+	return wInfo
+}
