@@ -31,7 +31,7 @@ const (
 )
 
 type CheckpointConfig struct {
-	Applocation  application.AppLocation
+	AppLocation  application.AppLocation
 	Keyspace     application.Keyspace
 	AppID        uint32
 	LocalAddress string
@@ -41,7 +41,7 @@ type CheckpointConfig struct {
 }
 
 func (c CheckpointConfig) String() string {
-	return fmt.Sprintf("{ \"appLocation\": %s, \"checkpoint_for\": %s, \"appId\": %d }", c.Applocation, c.Keyspace, c.AppID)
+	return fmt.Sprintf("{ \"appLocation\": %s, \"checkpoint_for\": %s, \"appId\": %d }", c.AppLocation, c.Keyspace, c.AppID)
 }
 
 type VbBlob struct {

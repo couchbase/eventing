@@ -41,7 +41,7 @@ func NewBucketCheckpointManager(clusterSettings *common.ClusterSettings, bucketN
 
 func (bCheckpoint *bucketCheckpoint) GetCheckpointManager(appID uint32, interruptCallback InterruptFunction, appLocation application.AppLocation, keyspace application.Keyspace) Checkpoint {
 	cc := CheckpointConfig{
-		Applocation:   appLocation,
+		AppLocation:   appLocation,
 		Keyspace:      keyspace,
 		AppID:         appID,
 		LocalAddress:  bCheckpoint.clusterSettings.LocalAddress,

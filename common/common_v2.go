@@ -182,15 +182,15 @@ type SingleAppStatusResponse struct {
 }
 
 type AppStatus struct {
-	CompositeStatus       string                `json:"composite_status"`
-	Name                  string                `json:"name"`
-	FunctionScope         application.Namespace `json:"function_scope"`
-	NumBootstrappingNodes int                   `json:"num_bootstrapping_nodes"`
-	NumDeployedNodes      int                   `json:"num_deployed_nodes"`
-	DeploymentStatus      bool                  `json:"deployment_status"`
-	ProcessingStatus      bool                  `json:"processing_status"`
-	RedeployRequired      bool                  `json:"redeploy_required"`
-	AppState              stateMachine.AppState `json:"-"`
+	CompositeStatus       string                   `json:"composite_status"`
+	Name                  string                   `json:"name"`
+	FunctionScope         application.OldNamespace `json:"function_scope"`
+	NumBootstrappingNodes int                      `json:"num_bootstrapping_nodes"`
+	NumDeployedNodes      int                      `json:"num_deployed_nodes"`
+	DeploymentStatus      bool                     `json:"deployment_status"`
+	ProcessingStatus      bool                     `json:"processing_status"`
+	RedeployRequired      bool                     `json:"redeploy_required"`
+	AppState              stateMachine.AppState    `json:"-"`
 }
 
 type AppRebalanceProgress struct {

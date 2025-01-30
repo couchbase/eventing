@@ -107,7 +107,7 @@ func convertToFunctionDetails(oldApp *OldApplication) (*FunctionDetails, error) 
 	funcDetails.AppID = oldApp.FunctionID
 	funcDetails.AppInstanceID = oldApp.FunctionInstanceID
 
-	// Create Applocation
+	// Create AppLocation
 	appLocation, err := NewAppLocation(oldApp.AppName, oldApp.FunctionScope.BucketName, oldApp.FunctionScope.ScopeName)
 	if err != nil {
 		return nil, err

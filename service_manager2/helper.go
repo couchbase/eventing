@@ -351,7 +351,7 @@ func (m *serviceMgr) getAggAppsStatus(runtimeInfo *response.RuntimeInfo,
 
 		stringLocation := appL.ToLocationString()
 		aggStatus[stringLocation] = &common.AppStatus{
-			FunctionScope:    appL.Namespace,
+			FunctionScope:    appL.Namespace.ToOldNamespace(),
 			Name:             appL.Appname,
 			DeploymentStatus: funcDetails.AppState.DeploymentState,
 			ProcessingStatus: funcDetails.AppState.ProcessingState,

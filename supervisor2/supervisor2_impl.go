@@ -1140,7 +1140,7 @@ func (s *supervisor) CreateInitCheckpoint(funcDetails *application.FunctionDetai
 	defer manager.CloseManager()
 
 	cc := checkpointManager.CheckpointConfig{
-		Applocation:   funcDetails.AppLocation,
+		AppLocation:   funcDetails.AppLocation,
 		Keyspace:      funcDetails.DeploymentConfig.MetaKeyspace,
 		AppID:         funcDetails.AppID,
 		LocalAddress:  s.clusterSetting.LocalAddress,
@@ -1526,7 +1526,7 @@ func (s *supervisor) GetGarbagedFunction(namespaces map[application.KeyspaceInfo
 		}
 
 		// Function is undeployed/paused
-		deployedMap[reverseLookup[appState.FunctionScope]] = struct{}{}
+		deployedMap[reverseLookup[application.Namespace(appState.FunctionScope)]] = struct{}{}
 	}
 
 	for namespace := range namespaces {

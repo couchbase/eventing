@@ -1268,7 +1268,7 @@ func (m *serviceMgr) prometheusLow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	//TODO: avg script execution time, avg timer scan time
+	// TODO: avg script execution time, avg timer scan time
 	out := make([]byte, 0)
 	out = append(out, []byte(fmt.Sprintf("eventing_worker_restart_count %v\n", 0))...)
 
