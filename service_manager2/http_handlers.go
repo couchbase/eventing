@@ -40,6 +40,7 @@ var (
 	functionsConfig       = regexp.MustCompile("^/api/v1/functions/(.*[^/])/config/?$")
 
 	singleFuncStatusPattern = regexp.MustCompile("^/api/v1/status/(.*[^/])/?$") // Match is agnostic of trailing '/'
+	statsFuncRegex          = regexp.MustCompile("^/api/v1/stats/(.*[^/])/?$")
 )
 
 // Clears up all Eventing related artifacts from metakv, typically will be
@@ -90,6 +91,7 @@ func (m *serviceMgr) clearNodeEventStats(w http.ResponseWriter, r *http.Request)
 
 	params := r.URL.Query()
 	appLocation := application.GetApplocation(params)
+	res.AddRequestData(common.AppLocationTag, appLocation.String())
 	perms := rbac.HandlerManagePermissions(application.Keyspace{Namespace: appLocation.Namespace})
 	if notAllowed, err := rbac.IsAllowed(r, perms, false); err != nil {
 		getAuthErrorInfo(runtimeInfo, notAllowed, false, err)
@@ -135,6 +137,7 @@ func (m *serviceMgr) statusHandler(w http.ResponseWriter, r *http.Request) {
 	if match := singleFuncStatusPattern.FindStringSubmatch(r.URL.Path); len(match) != 0 {
 		// api/v1/status/<function_name> type URL for checking status of a single function
 		appLocation := application.GetApplocation(r.URL.Query())
+		res.AddRequestData(common.AppLocationTag, appLocation.String())
 		appLocation.Appname = match[1]
 		tempAppList = append(tempAppList, appLocation)
 		isSingleAppStatus = true
@@ -211,6 +214,7 @@ func (m *serviceMgr) statsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	query := r.URL.Query()
+	res.AddRequestData("query", query)
 	statType := common.PartialStats
 	if val, ok := query["type"]; ok {
 		if len(val) > 0 {
@@ -237,19 +241,37 @@ func (m *serviceMgr) statsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tempAppList := m.appManager.ListApplication()
-	appLocationList := make([]application.AppLocation, 0, len(tempAppList))
-	for _, appLocation := range tempAppList {
+	runtimeInfo.OnlyDescription = true
+	singleStat := false
+	appLocationList := make([]application.AppLocation, 0, 1)
+	if match := statsFuncRegex.FindStringSubmatch(r.URL.Path); len(match) > 0 {
+		appLocation := application.GetApplocation(query)
+		appLocation.Appname = match[1]
 		perms := rbac.HandlerManagePermissions(application.Keyspace{Namespace: appLocation.Namespace})
 		if _, err := rbac.IsAllowedCreds(cred, perms, false); err != nil {
-			continue
+			runtimeInfo.Description = &common.Stats{}
+			return
 		}
 		appLocationList = append(appLocationList, appLocation)
+		res.AddRequestData(common.AppLocationTag, appLocation.String())
+		singleStat = true
+	} else {
+		tempAppList := m.appManager.ListApplication()
+		for _, appLocation := range tempAppList {
+			perms := rbac.HandlerManagePermissions(application.Keyspace{Namespace: appLocation.Namespace})
+			if _, err := rbac.IsAllowedCreds(cred, perms, false); err != nil {
+				continue
+			}
+			appLocationList = append(appLocationList, appLocation)
+		}
 	}
 
 	statsList := m.populateStats(appLocationList, statType)
-	runtimeInfo.Description = statsList
-	runtimeInfo.OnlyDescription = true
+	if singleStat && len(statsList) > 0 {
+		runtimeInfo.Description = statsList[0]
+	} else {
+		runtimeInfo.Description = statsList
+	}
 }
 
 func (m *serviceMgr) populateStats(appLocations []application.AppLocation, statsType common.StatsType) []*common.Stats {
@@ -269,7 +291,7 @@ func (m *serviceMgr) populateStats(appLocations []application.AppLocation, stats
 }
 
 func (m *serviceMgr) configHandler(w http.ResponseWriter, r *http.Request) {
-	res := response.NewResponseWriter(w, r, response.EventGetConfig)
+	res := response.NewResponseWriter(w, r, response.EventSaveConfig)
 	runtimeInfo := &response.RuntimeInfo{}
 
 	defer func() {
@@ -301,6 +323,7 @@ func (m *serviceMgr) configHandler(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Method {
 	case http.MethodGet:
+		res.SetRequestEvent(response.EventGetConfig)
 		keyspaceInfo, err := m.namespaceToKeyspaceInfo(namespace)
 		if err != nil {
 			runtimeInfo.ErrCode = response.ErrInvalidRequest
@@ -312,14 +335,13 @@ func (m *serviceMgr) configHandler(w http.ResponseWriter, r *http.Request) {
 		runtimeInfo.OnlyDescription = true
 
 	case http.MethodPost:
-		res.SetRequestEvent(response.EventSaveConfig)
-
 		data, err := io.ReadAll(r.Body)
 		if err != nil {
 			runtimeInfo.ErrCode = response.ErrReadReq
 			runtimeInfo.Description = fmt.Sprintf("failed to read request body, err: %v", err)
 			return
 		}
+		res.AddRequestData("body", string(data))
 
 		m.checkAndSaveConfig(cred, runtimeInfo, namespace, data)
 		if runtimeInfo.ErrCode != response.Ok {
@@ -393,6 +415,7 @@ func (m *serviceMgr) functionsHandler(w http.ResponseWriter, r *http.Request) {
 func (m *serviceMgr) functionNameSettings(w http.ResponseWriter, r *http.Request,
 	appLocation application.AppLocation) {
 	res := response.NewResponseWriter(w, r, response.EventUpdateFunction)
+	res.AddRequestData(common.AppLocationTag, appLocation.String())
 	runtimeInfo := &response.RuntimeInfo{}
 
 	defer func() {
@@ -449,6 +472,7 @@ func (m *serviceMgr) functionNameSettings(w http.ResponseWriter, r *http.Request
 			return
 		}
 
+		res.AddRequestData("body", settings)
 		runtimeInfo = m.storeFunctionSettings(cred, appLocation, settings)
 		if runtimeInfo.ErrCode != response.Ok {
 			return
@@ -467,6 +491,7 @@ func (m *serviceMgr) functionAppcode(w http.ResponseWriter, r *http.Request,
 	appLocation application.AppLocation, checksum string) {
 
 	res := response.NewResponseWriter(w, r, response.EventGetFunctionDraft)
+	res.AddRequestData(common.AppLocationTag, appLocation.String())
 	runtimeInfo := &response.RuntimeInfo{}
 
 	defer func() {
@@ -528,6 +553,7 @@ func (m *serviceMgr) functionAppcode(w http.ResponseWriter, r *http.Request,
 			return
 		}
 
+		res.AddRequestData("body", appCode)
 		runtimeInfo = m.storeFunctionCode(cred, appLocation, appCode)
 		if runtimeInfo.ErrCode != response.Ok {
 			return
@@ -560,6 +586,7 @@ func (m *serviceMgr) functionConfig(w http.ResponseWriter, r *http.Request,
 	appLocation application.AppLocation) {
 
 	res := response.NewResponseWriter(w, r, response.EventGetFunctionDraft)
+	res.AddRequestData(common.AppLocationTag, appLocation.String())
 	runtimeInfo := &response.RuntimeInfo{}
 
 	defer func() {
@@ -601,6 +628,7 @@ func (m *serviceMgr) functionConfig(w http.ResponseWriter, r *http.Request,
 		runtimeInfo.OnlyDescription = true
 
 	case http.MethodPost:
+		res.SetRequestEvent(response.EventUpdateFunction)
 		data, err := io.ReadAll(r.Body)
 		if err != nil {
 			runtimeInfo.ErrCode = response.ErrReadReq
@@ -608,6 +636,7 @@ func (m *serviceMgr) functionConfig(w http.ResponseWriter, r *http.Request,
 			return
 		}
 
+		res.AddRequestData("body", string(data))
 		depcfg, bindings, err := application.GetDeploymentConfig(data)
 		if err != nil {
 			runtimeInfo.ErrCode = response.ErrInvalidRequest
@@ -632,7 +661,8 @@ func (m *serviceMgr) functionConfig(w http.ResponseWriter, r *http.Request,
 func (m *serviceMgr) functionPause(w http.ResponseWriter, r *http.Request,
 	appLocation application.AppLocation) {
 
-	res := response.NewResponseWriter(w, r, response.EventGetFunctionDraft)
+	res := response.NewResponseWriter(w, r, response.EventPauseFunction)
+	res.AddRequestData(common.AppLocationTag, appLocation.String())
 	runtimeInfo := &response.RuntimeInfo{}
 
 	defer func() {
@@ -681,7 +711,8 @@ func (m *serviceMgr) functionPause(w http.ResponseWriter, r *http.Request,
 func (m *serviceMgr) functionResume(w http.ResponseWriter, r *http.Request,
 	appLocation application.AppLocation) {
 
-	res := response.NewResponseWriter(w, r, response.EventGetFunctionDraft)
+	res := response.NewResponseWriter(w, r, response.EventResumeFunction)
+	res.AddRequestData(common.AppLocationTag, appLocation.String())
 	runtimeInfo := &response.RuntimeInfo{}
 
 	defer func() {
@@ -730,7 +761,8 @@ func (m *serviceMgr) functionResume(w http.ResponseWriter, r *http.Request,
 func (m *serviceMgr) functionDeploy(w http.ResponseWriter, r *http.Request,
 	appLocation application.AppLocation) {
 
-	res := response.NewResponseWriter(w, r, response.EventGetFunctionDraft)
+	res := response.NewResponseWriter(w, r, response.EventDeployFunction)
+	res.AddRequestData(common.AppLocationTag, appLocation.String())
 	runtimeInfo := &response.RuntimeInfo{}
 
 	defer func() {
@@ -778,7 +810,8 @@ func (m *serviceMgr) functionDeploy(w http.ResponseWriter, r *http.Request,
 
 func (m *serviceMgr) functionUndeploy(w http.ResponseWriter, r *http.Request,
 	appLocation application.AppLocation) {
-	res := response.NewResponseWriter(w, r, response.EventGetFunctionDraft)
+	res := response.NewResponseWriter(w, r, response.EventUndeployFunction)
+	res.AddRequestData(common.AppLocationTag, appLocation.String())
 	runtimeInfo := &response.RuntimeInfo{}
 
 	defer func() {
@@ -826,7 +859,8 @@ func (m *serviceMgr) functionUndeploy(w http.ResponseWriter, r *http.Request,
 
 func (m *serviceMgr) functionName(w http.ResponseWriter, r *http.Request,
 	appLocation application.AppLocation) {
-	res := response.NewResponseWriter(w, r, response.EventGetFunctionDraft)
+	res := response.NewResponseWriter(w, r, response.EventUpdateFunction)
+	res.AddRequestData(common.AppLocationTag, appLocation.String())
 	runtimeInfo := &response.RuntimeInfo{}
 
 	defer func() {
@@ -856,6 +890,7 @@ func (m *serviceMgr) functionName(w http.ResponseWriter, r *http.Request,
 
 	switch r.Method {
 	case http.MethodGet:
+		res.SetRequestEvent(response.EventGetFunctionDraft)
 		application, err := m.appManager.GetAppMarshaler(appLocation, application.Version1)
 		if err != nil {
 			runtimeInfo.ErrCode = response.ErrAppNotFoundTs
@@ -875,6 +910,7 @@ func (m *serviceMgr) functionName(w http.ResponseWriter, r *http.Request,
 		}
 		data = bytes.Trim(data, "[]\n \t\r\f\v")
 
+		res.AddRequestData("body", string(data))
 		sb := application.StorageBytes{
 			Body: data,
 		}
@@ -1046,15 +1082,18 @@ func (m *serviceMgr) functions(w http.ResponseWriter, r *http.Request) {
 		runtimeInfo.OnlyDescription = true
 
 	case http.MethodPost:
+		res.SetRequestEvent(response.EventImportFunctions)
 		funcList := m.extractFunctionList(runtimeInfo, cred, r, nil, nil, "")
 		if runtimeInfo.ErrCode != response.Ok {
 			return
 		}
 
 		importedFuncs := m.storeFunctionList(cred, runtimeInfo, funcList)
+		res.AddRequestData(common.AppLocationsTag, importedFuncs)
 		runtimeInfo.ExtraAttributes = map[string]interface{}{common.AppLocationsTag: importedFuncs}
 
 	case http.MethodDelete:
+		res.SetRequestEvent(response.EventDeleteFunction)
 		listApps := m.appManager.ListApplication()
 		for _, appLocation := range listApps {
 			perms := rbac.HandlerManagePermissions(application.Keyspace{Namespace: appLocation.Namespace})
@@ -1128,6 +1167,7 @@ func (m *serviceMgr) importHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	importedFuncs := m.storeFunctionList(cred, runtimeInfo, funcList)
+	res.AddRequestData(common.AppLocationsTag, importedFuncs)
 	runtimeInfo.ExtraAttributes = map[string]interface{}{common.AppLocationsTag: importedFuncs}
 }
 
@@ -1210,7 +1250,7 @@ func (m *serviceMgr) backupHandler(w http.ResponseWriter, r *http.Request) {
 		if runtimeInfo.ErrCode != response.Ok {
 			return
 		}
-		res.AddRequestData("body", funcList)
+		res.AddRequestData(common.AppLocationsTag, funcList)
 		importedFuncs := m.storeFunctionList(cred, runtimeInfo, funcList)
 		runtimeInfo.ExtraAttributes = map[string]interface{}{common.AppLocationsTag: importedFuncs}
 
@@ -1371,7 +1411,7 @@ func (m *serviceMgr) getDebuugerUrl(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *serviceMgr) stopDebugger(w http.ResponseWriter, r *http.Request) {
-	res := response.NewResponseWriter(w, r, response.EventGetDebuggerUrl)
+	res := response.NewResponseWriter(w, r, response.EventStopDebugger)
 	runtimeInfo := &response.RuntimeInfo{}
 
 	defer res.LogAndSend(runtimeInfo)

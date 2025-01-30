@@ -17,6 +17,7 @@ import (
 	"github.com/couchbase/eventing/notifier"
 	pc "github.com/couchbase/eventing/point_connection"
 	serverConfig "github.com/couchbase/eventing/server_config"
+	"github.com/couchbase/eventing/service_manager2/response"
 )
 
 const (
@@ -81,6 +82,11 @@ func NewServiceManager(config *common.ClusterSettings, observer notifier.Observe
 
 func (s *serviceMgr) initServiceManager() error {
 	logPrefix := "serviceManager::initServiceManager"
+
+	err := response.Init(s.config.RestPort)
+	if err != nil {
+		logging.Errorf("%s Error initializing response package: %v", logPrefix, err)
+	}
 	go s.startSubscriberObject()
 
 	mux := s.getServerMux()

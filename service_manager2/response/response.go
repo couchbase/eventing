@@ -45,6 +45,14 @@ func GetErrCodes() ErrorPayloadList {
 	return epl
 }
 
+func Init(restPort string) error {
+	err := audit.Init(restPort)
+	if err != nil {
+		return fmt.Errorf("Failed to initialize audit service, err: %v", err)
+	}
+	return nil
+}
+
 func NewResponseWriter(w http.ResponseWriter, r *http.Request, event eventCode) *responseWriter {
 	clientRequest := &clientRequest{
 		event: event,
