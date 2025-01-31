@@ -130,11 +130,14 @@ func (m *serviceMgr) statusHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var tempAppList []application.AppLocation
+	isSingleAppStatus := false
 
 	if match := singleFuncStatusPattern.FindStringSubmatch(r.URL.Path); len(match) != 0 {
+		// api/v1/status/<function_name> type URL for checking status of a single function
 		appLocation := application.GetApplocation(r.URL.Query())
 		appLocation.Appname = match[1]
 		tempAppList = append(tempAppList, appLocation)
+		isSingleAppStatus = true
 	} else {
 		params := r.URL.Query()
 		if appNames, ok := params["appNames"]; ok {
@@ -156,7 +159,7 @@ func (m *serviceMgr) statusHandler(w http.ResponseWriter, r *http.Request) {
 		appLocationList = append(appLocationList, appLocation)
 	}
 
-	status := m.statusImpl(runtimeInfo, appLocationList)
+	status := m.statusImpl(runtimeInfo, appLocationList, isSingleAppStatus)
 	if runtimeInfo.ErrCode != response.Ok {
 		return
 	}
@@ -166,7 +169,7 @@ func (m *serviceMgr) statusHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *serviceMgr) statusImpl(runtimeInfo *response.RuntimeInfo,
-	appLocation []application.AppLocation) (resp common.AppStatusResponse) {
+	appLocation []application.AppLocation, isSingleAppStatus bool) (resp interface{}) {
 	aggStatus, numEventingNode := m.getAggAppsStatus(runtimeInfo, appLocation)
 	if runtimeInfo.ErrCode != response.Ok {
 		return
@@ -177,8 +180,18 @@ func (m *serviceMgr) statusImpl(runtimeInfo *response.RuntimeInfo,
 		statusList = append(statusList, appStatus)
 	}
 
-	resp.Apps = statusList
-	resp.NumEventingNodes = numEventingNode
+	if isSingleAppStatus && len(statusList) == 1 {
+		resp = common.SingleAppStatusResponse{
+			App:              statusList[0],
+			NumEventingNodes: numEventingNode,
+		}
+		return
+	}
+
+	resp = common.AppStatusResponse{
+		Apps:             statusList,
+		NumEventingNodes: numEventingNode,
+	}
 
 	return
 }
@@ -1255,7 +1268,7 @@ func (m *serviceMgr) prometheusLow(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	//TODO: avg script execution time, avg timer scan time
+	// TODO: avg script execution time, avg timer scan time
 	out := make([]byte, 0)
 	out = append(out, []byte(fmt.Sprintf("eventing_worker_restart_count %v\n", 0))...)
 

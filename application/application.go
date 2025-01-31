@@ -154,6 +154,13 @@ func (ns Namespace) ToOldNamespace() OldNamespace {
 	}
 }
 
+func (oldNamespace OldNamespace) String() string {
+	if oldNamespace.BucketName == GlobalValue && oldNamespace.ScopeName == GlobalValue {
+		return GlobalValue
+	}
+	return fmt.Sprintf("%s/%s", oldNamespace.BucketName, oldNamespace.ScopeName)
+}
+
 func (ns Namespace) Clone() (clone Namespace) {
 	clone.BucketName = ns.BucketName
 	clone.ScopeName = ns.ScopeName
@@ -701,7 +708,7 @@ func (a AppState) String() string {
 type LifeCycleOp uint8
 
 const (
-	Undeploy      LifeCycleOp = iota //00
+	Undeploy      LifeCycleOp = iota // 00
 	Pause                            // 01
 	InvalidState                     // 10
 	Deploy                           // 11

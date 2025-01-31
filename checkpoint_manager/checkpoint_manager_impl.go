@@ -363,7 +363,7 @@ func (cm *checkpointManager) TlsSettingChange(bucket *gocb.Bucket) {
 }
 
 func (cm *checkpointManager) WaitTillAllGiveUp(numVbs uint16) {
-	logPrefix := fmt.Sprintf("checkpointManager::WaitTillAllGiveUp[%s]", cm.checkpointConfig.Applocation)
+	logPrefix := fmt.Sprintf("checkpointManager::WaitTillAllGiveUp[%s]", cm.checkpointConfig.AppLocation)
 
 	// Check if all the nodes given up the ownership
 	checkVbs := make(map[uint16]struct{})
@@ -420,7 +420,7 @@ func (cm *checkpointManager) WaitTillAllGiveUp(numVbs uint16) {
 			}
 
 			logging.Infof("%s Ownership not given up for %s. Querying its owners", logPrefix, utils.CondenseMap(nodesToVbs))
-			query := application.QueryMap(cm.checkpointConfig.Applocation)
+			query := application.QueryMap(cm.checkpointConfig.AppLocation)
 			req := &pc.Request{
 				Query:   query,
 				Timeout: common.HttpCallWaitTime,
@@ -469,7 +469,7 @@ func (cm *checkpointManager) CloseCheckpointManager() {
 }
 
 func (cm *checkpointManager) DeleteCheckpointBlob(vb uint16) error {
-	logPrefix := fmt.Sprintf("checkpointManager::DeleteCheckpointBlob[%s]", cm.checkpointConfig.Applocation)
+	logPrefix := fmt.Sprintf("checkpointManager::DeleteCheckpointBlob[%s]", cm.checkpointConfig.AppLocation)
 	if !cm.keyspaceExists.Load() {
 		return nil
 	}
@@ -520,7 +520,7 @@ func (cm *checkpointManager) GetTimerCheckpoints(appId uint32) (*gocb.ScanResult
 }
 
 func (cm *checkpointManager) DeleteKeys(deleteKeys []string) {
-	logPrefix := fmt.Sprintf("checkpointManager::DeleteKeys[%s]", cm.checkpointConfig.Applocation)
+	logPrefix := fmt.Sprintf("checkpointManager::DeleteKeys[%s]", cm.checkpointConfig.AppLocation)
 	if !cm.keyspaceExists.Load() {
 		return
 	}
@@ -609,7 +609,7 @@ func (cm *checkpointManager) getCheckpointBlob(vb uint16) (*vbBlobInternal, erro
 }
 
 func (cm *checkpointManager) periodicCheckpoint(ctx context.Context) {
-	logPrefix := fmt.Sprintf("checkpointManager::periodicCheckpoint[%s]", cm.checkpointConfig.Applocation)
+	logPrefix := fmt.Sprintf("checkpointManager::periodicCheckpoint[%s]", cm.checkpointConfig.AppLocation)
 
 	periodicUpdateTicker := time.NewTicker(updateInterval)
 	failoverCheckTicker := time.NewTicker(failoverCheck)
@@ -647,7 +647,7 @@ func (cm *checkpointManager) periodicCheckpoint(ctx context.Context) {
 			}
 
 			logging.Infof("%s Ownership not given up for %s. Querying its owners", logPrefix, utils.CondenseMap(nodesToVbs))
-			query := application.QueryMap(cm.checkpointConfig.Applocation)
+			query := application.QueryMap(cm.checkpointConfig.AppLocation)
 			req := &pc.Request{
 				Query:   query,
 				Timeout: common.HttpCallWaitTime,
@@ -752,7 +752,7 @@ func (cm *checkpointManager) runOwnershipRoutine(ctx context.Context) {
 }
 
 func (cm *checkpointManager) updateCheckpoint() {
-	logPrefix := fmt.Sprintf("checkpointManager::updateCheckpoint[%s]", cm.checkpointConfig.Applocation)
+	logPrefix := fmt.Sprintf("checkpointManager::updateCheckpoint[%s]", cm.checkpointConfig.AppLocation)
 
 	cm.RLock()
 	defer cm.RUnlock()
@@ -840,7 +840,7 @@ func (cm *checkpointManager) getKey(vb uint16) string {
 }
 
 func (cm *checkpointManager) ownershipTakeover() {
-	logPrefix := fmt.Sprintf("checkpointManager::ownershipTakeover[%s]", cm.checkpointConfig.Applocation)
+	logPrefix := fmt.Sprintf("checkpointManager::ownershipTakeover[%s]", cm.checkpointConfig.AppLocation)
 	cm.Lock()
 	defer cm.Unlock()
 
@@ -909,9 +909,9 @@ func (cm *checkpointManager) ownershipTakeover() {
 
 // ReadOnDeployCheckpoint returns contents of the OnDeploy checkpoint from the Metadata collection of the app
 func (cm *checkpointManager) ReadOnDeployCheckpoint() (string, uint32, string) {
-	logPrefix := fmt.Sprintf("checkpointManager::ReadOnDeployCheckpoint[%s]", cm.checkpointConfig.Applocation)
+	logPrefix := fmt.Sprintf("checkpointManager::ReadOnDeployCheckpoint[%s]", cm.checkpointConfig.AppLocation)
 
-	nodeLeader, seq, status, err := readOnDeployCheckpoint(cm.checkpointConfig.Applocation, cm.getCollectionHandle())
+	nodeLeader, seq, status, err := readOnDeployCheckpoint(cm.checkpointConfig.AppLocation, cm.getCollectionHandle())
 	if err != nil {
 		logging.Errorf("%s Error while reading OnDeploy checkpoint: %v", logPrefix, err)
 		if !common.CheckKeyspaceExist(cm.observer, cm.checkpointConfig.Keyspace) {
@@ -963,7 +963,7 @@ func (cm *checkpointManager) PollUntilOnDeployCompletes() {
 func (cm *checkpointManager) PublishOnDeployStatus(status string) error {
 	upsertOptions := &gocb.UpsertSpecOptions{CreatePath: true}
 	mutateIn := []gocb.MutateInSpec{gocb.UpsertSpec("on_deploy_status", status, upsertOptions)}
-	key := fmt.Sprintf(onDeployLeaderKeyTemplate, cm.checkpointConfig.Applocation)
+	key := fmt.Sprintf(onDeployLeaderKeyTemplate, cm.checkpointConfig.AppLocation)
 	_, err := cm.getCollectionHandle().MutateIn(key, mutateIn, &gocb.MutateInOptions{PreserveExpiry: true})
 	if err != nil {
 		if !common.CheckKeyspaceExist(cm.observer, cm.checkpointConfig.Keyspace) {

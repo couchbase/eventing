@@ -174,6 +174,7 @@ func (m *serviceMgr) storeFunction(cred cbauth.Creds, funcDetails *application.F
 	if runtimeInfo.ErrCode != response.Ok {
 		return runtimeInfo
 	}
+	runtimeInfo.WarningInfo = determineWarnings(funcDetails)
 
 	// Update the local state with this function details
 	m.updateLocalState(funcDetails)

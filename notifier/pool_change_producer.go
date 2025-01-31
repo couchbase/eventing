@@ -229,7 +229,10 @@ func (p *poolObserver) nodeChanges(sResult *streamingResult) ([]*TransitionEvent
 	}
 
 	events := make([]*TransitionEvent, 0, 3)
-	nodes := sResult.mergeAndCreateNodes(services, p.isIpv4)
+	nodes, err := sResult.mergeAndCreateNodes(services, p.isIpv4)
+	if err != nil {
+		return nil, err
+	}
 	oldNodes := p.currentNodes
 
 	// check for each node service and if changed then add it to that node

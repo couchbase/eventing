@@ -7,8 +7,6 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
-
-	"github.com/couchbase/eventing/logging"
 )
 
 var (
@@ -106,9 +104,7 @@ func (sResult *streamingResult) getVersion(path string) int {
 	return ver1
 }
 
-func (sResult *streamingResult) mergeAndCreateNodes(nServices *nodeServices, isIpv4 bool) map[string][]*Node {
-	logPrefix := "streamingResult::mergeAndCreateNodes"
-
+func (sResult *streamingResult) mergeAndCreateNodes(nServices *nodeServices, isIpv4 bool) (map[string][]*Node, error) {
 	nodes := make(map[string][]*Node)
 	nodes[kvService] = make([]*Node, 0, 2)
 	nodes[queryService] = make([]*Node, 0, 2)
@@ -118,8 +114,7 @@ func (sResult *streamingResult) mergeAndCreateNodes(nServices *nodeServices, isI
 	for _, node := range sResult.Nodes {
 		if node.ClusterMembership == "active" {
 			if servicesIndex >= len(nServices.Services) {
-				logging.Errorf("%s possible sync error: %s nodeServices: %s", logPrefix, sResult, nServices)
-				return nodes
+				return nodes, fmt.Errorf("possible sync error: %s nodeServices: %s", sResult, nServices)
 			}
 
 			exportedNode := node.createNode(nServices.Services[servicesIndex], isIpv4)
@@ -132,7 +127,7 @@ func (sResult *streamingResult) mergeAndCreateNodes(nServices *nodeServices, isI
 		}
 	}
 
-	return nodes
+	return nodes, nil
 }
 
 type nodeInternal struct {
