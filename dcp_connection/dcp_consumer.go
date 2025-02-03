@@ -17,6 +17,7 @@ var (
 
 const (
 	systemXattrByte = byte('_')
+	SystemScope     = "_system"
 )
 
 type DcpConsumer interface {

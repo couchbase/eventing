@@ -28,7 +28,7 @@ type annotation struct {
 }
 
 func (m *serviceMgr) getAggBootstrapStatusHandler(w http.ResponseWriter, r *http.Request) {
-	res := response.NewResponseWriter(w, r, response.EventGetBootstrappingApps)
+	res := response.NewResponseWriter(w, r, response.EventGetBootstrapStatus)
 	runtimeInfo := &response.RuntimeInfo{}
 
 	defer func() {
@@ -234,7 +234,7 @@ func (m *serviceMgr) getAggRebalanceProgress(w http.ResponseWriter, r *http.Requ
 }
 
 func (m *serviceMgr) getAggRebalanceStatus(w http.ResponseWriter, r *http.Request) {
-	res := response.NewResponseWriter(w, r, response.EventGetRebalanceProgress)
+	res := response.NewResponseWriter(w, r, response.EventGetRebalanceStatus)
 	runtimeInfo := &response.RuntimeInfo{}
 
 	defer func() {
@@ -430,7 +430,9 @@ func (m *serviceMgr) getAppLog(w http.ResponseWriter, r *http.Request) {
 	}
 
 	params := r.URL.Query()
+	res.AddRequestData("query", params)
 	appLocation := application.GetApplocation(params)
+	res.AddRequestData(common.AppLocationTag, appLocation.String())
 
 	perms := rbac.HandlerManagePermissions(application.Keyspace{Namespace: appLocation.Namespace})
 	if notAllowed, err := rbac.IsAllowed(r, perms, false); err != nil {
@@ -663,6 +665,7 @@ func (m *serviceMgr) getBootstrapAppStatusHandler(w http.ResponseWriter, r *http
 	}()
 
 	appLocation := application.GetApplocation(r.URL.Query())
+	res.AddRequestData(common.AppLocationTag, appLocation)
 	perms := rbac.HandlerManagePermissions(application.Keyspace{Namespace: appLocation.Namespace})
 	if notAllowed, err := rbac.IsAllowed(r, perms, false); err != nil {
 		getAuthErrorInfo(runtimeInfo, notAllowed, false, err)
@@ -733,7 +736,7 @@ func (m *serviceMgr) getCPUCount(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *serviceMgr) getErrCodes(w http.ResponseWriter, r *http.Request) {
-	res := response.NewResponseWriter(w, r, response.EventGetFunctionStatus)
+	res := response.NewResponseWriter(w, r, response.EventGetErrCodes)
 	runtimeInfo := &response.RuntimeInfo{}
 	defer func() {
 		res.LogAndSend(runtimeInfo)
@@ -793,7 +796,7 @@ func (m *serviceMgr) getStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func (m *serviceMgr) getWorkerCount(w http.ResponseWriter, r *http.Request) {
-	res := response.NewResponseWriter(w, r, response.EventGetCpuCount)
+	res := response.NewResponseWriter(w, r, response.EventGetWorkerCount)
 	runtimeInfo := &response.RuntimeInfo{}
 
 	defer func() {

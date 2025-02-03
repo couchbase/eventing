@@ -335,6 +335,11 @@ func (fHandler *funcHandler) CheckAndGetEventsInternalDetails(msg *dcpMessage.Dc
 	if msg.Opcode != dcpMessage.DCP_MUTATION && msg.Opcode != dcpMessage.DCP_DELETION && msg.Opcode != dcpMessage.DCP_EXPIRATION {
 		return nil, false
 	}
+
+	if msg.Keyspace.GetOriginalKeyspace().ScopeName == dcpMessage.SystemScope {
+		return nil, true
+	}
+
 	if bytes.HasPrefix(msg.Key, common.TransactionMutationPrefix) {
 		return nil, true
 	}
