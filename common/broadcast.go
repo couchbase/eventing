@@ -139,8 +139,7 @@ func (b *broadcaster) initPointConnection() error {
 		setting.TlsConfig = b.tlsConfig.Config
 	}
 
-	// Use client certificate authentication for http client in point conn, when client auth type is set to mandatory
-	if b.tlsConfig.IsClientAuthMandatory {
+	if b.tlsConfig.UseClientCert {
 		setting.ClientCertificate = b.tlsConfig.ClientCertificate
 	}
 

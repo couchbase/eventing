@@ -107,7 +107,7 @@ func (config *TlsConfig) Copy() *TlsConfig {
 	copyConfig.EncryptData = config.EncryptData
 	copyConfig.DisableNonSSLPorts = config.DisableNonSSLPorts
 	copyConfig.Config = config.Config.Clone()
-	copyConfig.IsClientAuthMandatory = config.IsClientAuthMandatory
+	copyConfig.UseClientCert = config.UseClientCert
 	copyConfig.ClientCertificate = config.ClientCertificate
 
 	return copyConfig

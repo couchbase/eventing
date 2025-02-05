@@ -296,18 +296,17 @@ type TlsConfig struct {
 }
 
 type ClientTlsConfig struct {
-	// IsClientAuthMandatory tells if n2n encryption is enabled and client auth type is mandatory
-	// TODO: We can extend this to multiple client auth type states {disabled, enabled, mandatory}
-	IsClientAuthMandatory bool
-	ClientCertificate     *tls.Certificate
+	// UseClientCert is true when N2N encryption is all/strict and client auth type is hybrid/mandatory
+	UseClientCert     bool
+	ClientCertificate *tls.Certificate
 }
 
 func (t *TlsConfig) String() string {
 	if t == nil {
-		return "encryptData: false, disableNonSSLPort: false, isClientAuthMandatory: false"
+		return "encryptData: false, disableNonSSLPort: false, useClientCert: false"
 	}
 
-	return fmt.Sprintf("encryptData: %v, disableNonSSLPort: %v, isClientAuthMandatory: %v", t.EncryptData, t.DisableNonSSLPorts, t.IsClientAuthMandatory)
+	return fmt.Sprintf("encryptData: %v, disableNonSSLPort: %v, useClientCert: %v", t.EncryptData, t.DisableNonSSLPorts, t.UseClientCert)
 }
 
 type Observer interface {

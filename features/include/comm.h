@@ -29,7 +29,7 @@ struct CredsInfo {
 struct KVNodesInfo {
   std::vector<std::string> kv_nodes;
   bool encrypt_data;
-  bool is_client_auth_mandatory;
+  bool use_client_cert;
   bool is_valid{true};
   std::string msg;
 };

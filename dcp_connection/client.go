@@ -751,7 +751,7 @@ func makeConn(parent context.Context, address string, tlsConfig *notifier.TlsCon
 	if tlsConfig.EncryptData {
 		var t tls.Dialer
 		t.Config = &tls.Config{RootCAs: tlsConfig.Config.RootCAs}
-		if tlsConfig.IsClientAuthMandatory {
+		if tlsConfig.UseClientCert {
 			t.Config.Certificates = []tls.Certificate{*tlsConfig.ClientCertificate}
 		}
 		conn, err = t.DialContext(ctx, "tcp", address)

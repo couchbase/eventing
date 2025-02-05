@@ -101,7 +101,7 @@ func GetGocbClusterObject(clusterConfig *common.ClusterSettings, observer notifi
 		if tlsConfig.EncryptData {
 			clusterOptions.SecurityConfig = gocb.SecurityConfig{TLSRootCAs: tlsConfig.Config.RootCAs}
 			// Use client certificate authentication when n2n encryption is enabled and client auth type is mandatory
-			if tlsConfig.IsClientAuthMandatory {
+			if tlsConfig.UseClientCert {
 				authenticator.clientCertificate = tlsConfig.ClientCertificate
 			}
 		}
