@@ -229,9 +229,23 @@ func (al *allocator) VbDistribution() (distributedVbsBytes []byte, vbMapVersion 
 		distributedVbs[index] = make([]uint16, 0, perWorkerVbs)
 	}
 
+	timer, nonTimer := GetTimerPartitionsInVbs(vbs, al.config.ConfiguredVbs, al.config.HandlerSettings.NumTimerPartition)
 	oldVbToWorkerMap := al.getVbToWorkerMap()
 	index := int32(0)
-	for _, vb := range vbs {
+
+	for _, vb := range timer {
+		if workerID, ok := oldVbToWorkerMap[vb]; ok {
+			vbtoWorker[vb] = int(workerID)
+			distributedVbs[workerID] = append(distributedVbs[workerID], vb)
+			continue
+		}
+		vbtoWorker[vb] = int(index)
+		distributedVbs[index] = append(distributedVbs[index], vb)
+		index = (index + 1) % int32(al.config.HandlerSettings.CppWorkerThread)
+	}
+
+	index = 0
+	for _, vb := range nonTimer {
 		if workerID, ok := oldVbToWorkerMap[vb]; ok {
 			vbtoWorker[vb] = int(workerID)
 			distributedVbs[workerID] = append(distributedVbs[workerID], vb)
@@ -519,7 +533,7 @@ func (al *allocator) Close() []uint16 {
 
 // Internal Functions
 func (al *allocator) getVbOwnershipMap() (string, []uint16, error) {
-	vbMapVersion, vbSlice, err := al.config.OwnershipRoutine.GetVbMap(&al.config.MetaInfo.FunctionScopeID, al.config.FuncID, al.config.ConfiguredVbs, al.config.AppLocation)
+	vbMapVersion, vbSlice, err := al.config.OwnershipRoutine.GetVbMap(&al.config.MetaInfo.FunctionScopeID, al.config.FuncID, al.config.ConfiguredVbs, al.config.HandlerSettings.NumTimerPartition, al.config.AppLocation)
 	return vbMapVersion, vbSlice, err
 }
 

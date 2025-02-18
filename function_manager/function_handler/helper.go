@@ -37,9 +37,9 @@ const (
 // Sequential event processing
 func (fHandler *funcHandler) deleteAllCheckpoint() {
 	logPrefix := fmt.Sprintf("funcHandler::deleteAllCheckpoint[%s]", fHandler.logPrefix)
-	_, vbSlice, err := fHandler.ownershipRoutine.GetVbMap(&fHandler.fd.MetaInfo.FunctionScopeID, fHandler.id, fHandler.fd.MetaInfo.MetaID.NumVbuckets, fHandler.fd.AppLocation)
+	_, vbSlice, err := fHandler.ownershipRoutine.GetVbMap(&fHandler.fd.MetaInfo.FunctionScopeID, fHandler.id, fHandler.fd.MetaInfo.MetaID.NumVbuckets, fHandler.fd.Settings.NumTimerPartition, fHandler.fd.AppLocation)
 	for err != nil {
-		_, vbSlice, err = fHandler.ownershipRoutine.GetVbMap(&fHandler.fd.MetaInfo.FunctionScopeID, fHandler.id, fHandler.fd.MetaInfo.MetaID.NumVbuckets, fHandler.fd.AppLocation)
+		_, vbSlice, err = fHandler.ownershipRoutine.GetVbMap(&fHandler.fd.MetaInfo.FunctionScopeID, fHandler.id, fHandler.fd.MetaInfo.MetaID.NumVbuckets, fHandler.fd.Settings.NumTimerPartition, fHandler.fd.AppLocation)
 		time.Sleep(1 * time.Second)
 	}
 

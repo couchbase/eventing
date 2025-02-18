@@ -12,6 +12,7 @@ import (
 
 	eventPool "github.com/couchbase/eventing/event_pool"
 	functionHandler "github.com/couchbase/eventing/function_manager/function_handler"
+	vbDistribution "github.com/couchbase/eventing/function_manager/function_handler/vb_handler"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/notifier"
 	serverConfig "github.com/couchbase/eventing/server_config"
@@ -522,7 +523,7 @@ func (fm *functionManager) interruptForStateChange(id uint16, seq uint32, appLoc
 	fm.interrupt.StateChangeInterupt(seq, appLocation)
 }
 
-func (fm *functionManager) GetVbMap(keyspaceInfo *application.KeyspaceInfo, id uint16, numVb uint16, appLocation application.AppLocation) (string, []uint16, error) {
+func (fm *functionManager) GetVbMap(keyspaceInfo *application.KeyspaceInfo, id uint16, numVb, timerPartitions uint16, appLocation application.AppLocation) (string, []uint16, error) {
 	// This is called sequentially so no need to store latest vbMapVersion for a single funcHandler.
 	// Guranteed to have latest one once notifyOwnership is called
 	vbMapVersion, vbs, err := fm.ownershipRoutine.GetVbMap(keyspaceInfo, numVb)
@@ -562,43 +563,67 @@ func (fm *functionManager) GetVbMap(keyspaceInfo *application.KeyspaceInfo, id u
 		runtimeDetails.vbsVersion = vbMapVersion
 	}
 
-	numOwningvbs := len(vbs) / len(funHandlerIDs)
+	numVBsToOwn := len(vbs) / len(funHandlerIDs)
 	remainingVbs := len(vbs) % len(funHandlerIDs)
 	if handlerPosition < remainingVbs {
-		numOwningvbs++
+		numVBsToOwn++
 	}
-	ownedVbs := make([]uint16, 0, numOwningvbs)
+
+	ownedVbs := make([]uint16, 0, numVBsToOwn)
 	for _, vb := range vbs {
 		if runtimeDetails.vbsAllocated[vb] == id {
-			numOwningvbs--
+			numVBsToOwn--
 			ownedVbs = append(ownedVbs, vb)
 		}
 	}
-	// all the old remainging vbs are allocated
-	if numOwningvbs != 0 {
-		for index := handlerPosition; index < len(vbs); index = index + len(funHandlerIDs) {
-			vb := vbs[index]
-			if _, ok := runtimeDetails.vbsAllocated[vb]; !ok {
+
+	timerVbs, nonTimerVbs := vbDistribution.GetTimerPartitionsInVbs(vbs, numVb, timerPartitions)
+	perHandlerTimerVbs := len(timerVbs) / len(funHandlerIDs)
+	if handlerPosition < len(timerVbs)%len(funHandlerIDs) {
+		perHandlerTimerVbs++
+	}
+
+	for index := handlerPosition; index < len(timerVbs) && perHandlerTimerVbs != 0; index = index + len(funHandlerIDs) {
+		vb := timerVbs[index]
+		if owner, ok := runtimeDetails.vbsAllocated[vb]; !ok || owner == id {
+			perHandlerTimerVbs--
+			numVBsToOwn--
+			if !ok {
 				runtimeDetails.vbsAllocated[vb] = id
-				numOwningvbs--
 				ownedVbs = append(ownedVbs, vb)
-			}
-			if numOwningvbs == 0 {
-				break
 			}
 		}
 	}
 
-	if numOwningvbs != 0 {
-		for _, vb := range vbs {
-			if _, ok := runtimeDetails.vbsAllocated[vb]; !ok {
+	for index := 0; index < len(timerVbs) && perHandlerTimerVbs != 0; index++ {
+		vb := timerVbs[index]
+		if owner, ok := runtimeDetails.vbsAllocated[vb]; !ok || owner == id {
+			perHandlerTimerVbs--
+			numVBsToOwn--
+			if !ok {
 				runtimeDetails.vbsAllocated[vb] = id
-				numOwningvbs--
 				ownedVbs = append(ownedVbs, vb)
 			}
-			if numOwningvbs == 0 {
-				break
-			}
+		}
+	}
+
+	// all the old remainging vbs are allocated
+	for index := handlerPosition; index < len(nonTimerVbs) && numVBsToOwn != 0; index = index + len(funHandlerIDs) {
+		vb := nonTimerVbs[index]
+		if _, ok := runtimeDetails.vbsAllocated[vb]; !ok {
+			runtimeDetails.vbsAllocated[vb] = id
+			numVBsToOwn--
+			ownedVbs = append(ownedVbs, vb)
+		}
+
+	}
+
+	for index := 0; index < len(nonTimerVbs) && numVBsToOwn != 0; index++ {
+		vb := nonTimerVbs[index]
+		if _, ok := runtimeDetails.vbsAllocated[vb]; !ok {
+			runtimeDetails.vbsAllocated[vb] = id
+			numVBsToOwn--
+			ownedVbs = append(ownedVbs, vb)
 		}
 	}
 
