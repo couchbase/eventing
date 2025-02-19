@@ -214,7 +214,7 @@ func NewFunctionManager(id string, cluster *gocb.Cluster, clusterSettings *commo
 	// Initialise the init funcSet whose id will be 0. This is used for serverless features and all the
 	// serverless functions are spawned in this function set. Also it will hold functions which are not deployed
 	initFuncSetID := fmt.Sprintf("%s_%d", id, serverlessProcessID)
-	fm.serverlessFunctionSet = NewFunctionSet(GroupOfFunctions, initFuncSetID, config{},
+	fm.serverlessFunctionSet = NewFunctionSet("", GroupOfFunctions, initFuncSetID, config{},
 		clusterSettings, fm.appCallback, systemConfig)
 
 	fm.utilityWorker = processManager.NewUtilityWorker(fm.clusterSettings, fm.id, fm.systemConfig)
@@ -400,7 +400,7 @@ func (fm *functionManager) deployFunctionLocked(fd *application.FunctionDetails,
 			}
 
 			initFuncSetID := fmt.Sprintf("%s_%d", fm.id, fm.incrementalFuncSetID)
-			funcSet := NewFunctionSet(SingleFunction, initFuncSetID, config{spawnImmediately: true},
+			funcSet := NewFunctionSet(instanceID, SingleFunction, initFuncSetID, config{spawnImmediately: true},
 				fm.clusterSettings, fm.appCallback, fm.systemConfig)
 			// Add it with old instance id since function is in undeploy state and ChangeState will change the function to new instanceID
 			funcSet.AddFunctionHandler(instanceID, fHandler)

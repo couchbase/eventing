@@ -35,6 +35,9 @@ type ProcessConfig struct {
 	// Id used to create tcp socket
 	ID string
 
+	InstanceID         string
+	SingleFunctionMode bool
+
 	AppLogCallback AppLogFunction
 }
 

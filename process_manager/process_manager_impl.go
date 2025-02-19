@@ -433,7 +433,9 @@ func (pm *processManager) spawnProcess() error {
 		pm.processConfig.DebuggerPort,
 		pm.processConfig.CertPath,
 		pm.processConfig.ClientCertPath,
-		pm.processConfig.ClientKeyPath)
+		pm.processConfig.ClientKeyPath,
+		strconv.FormatBool(pm.processConfig.SingleFunctionMode),
+	)
 
 	pm.cmd.Env = append(os.Environ(),
 		fmt.Sprintf("CBEVT_CALLBACK_USR=%s", pm.processConfig.Username),
@@ -484,25 +486,38 @@ func (pm *processManager) spawnProcess() error {
 	go func() {
 		// Go routine to note application related logs
 		appLog := make([]byte, 0, 4096)
-		appLogHeader := make([]byte, 0, 6)
+		headerSize, appLogStart, totSize, instanceSize := uint32(6), uint32(0), uint32(0), uint32(0)
+		if pm.processConfig.SingleFunctionMode {
+			headerSize = 4
+		}
+		appLogHeader := make([]byte, 0, headerSize)
+		instanceId := pm.processConfig.InstanceID
 
 		defer outPipe.Close()
 		for {
-			appLogHeader, err = pm.com.ReceiveStdoutMsg(appLogHeader, 6)
+			appLogHeader, err = pm.com.ReceiveStdoutMsg(appLogHeader, headerSize)
 			if err != nil {
 				return
 			}
 
-			instanceSize := binary.BigEndian.Uint16(appLogHeader)
-			logSize := binary.BigEndian.Uint32(appLogHeader[2:])
-			totSize := uint32(instanceSize) + uint32(logSize)
-
+			if pm.processConfig.SingleFunctionMode {
+				totSize = binary.BigEndian.Uint32(appLogHeader)
+			} else {
+				instanceSize = binary.BigEndian.Uint32(appLogHeader)
+				logSize := binary.BigEndian.Uint32(appLogHeader[2:])
+				totSize = uint32(instanceSize) + uint32(logSize)
+			}
 			appLog, err = pm.com.ReceiveStdoutMsg(appLog, totSize)
 			if err != nil {
 				return
 			}
 
-			pm.processConfig.AppLogCallback(string(appLog[:instanceSize]), string(appLog[instanceSize:totSize]))
+			if !pm.processConfig.SingleFunctionMode {
+				appLogStart = instanceSize
+				instanceId = string(appLog[:instanceSize])
+			}
+
+			pm.processConfig.AppLogCallback(instanceId, string(appLog[appLogStart:]))
 		}
 	}()
 

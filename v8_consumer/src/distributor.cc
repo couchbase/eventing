@@ -6,7 +6,92 @@
 #include "../gen/flatbuf/header_v2_generated.h"
 #include "distributor.h"
 
-distributor::eventingDist::eventingDist(
+distributor::singleFunctionDistributor::singleFunctionDistributor(
+    std::shared_ptr<communicator> comm,
+    std::shared_ptr<settings::cluster> cluster_setting)
+    : cluster_setting_(cluster_setting), comm_(comm) {
+
+  platform_ = v8::platform::NewDefaultPlatform();
+  v8::V8::InitializePlatform(platform_.get());
+  v8::V8::Initialize();
+}
+
+void distributor::singleFunctionDistributor::push_msg(
+    std::unique_ptr<messages::worker_request> wReq) {
+  switch (wReq->event) {
+  case messages::eInitEvent: {
+    switch (wReq->opcode) {
+    case messages::eInitHandler: {
+      worker_ = new function_worker(platform_, cluster_setting_, wReq, comm_);
+      auto send_msg = std::unique_ptr<messages::worker_request>(
+          new messages::worker_request);
+      send_msg->event = wReq->event;
+      send_msg->opcode = wReq->opcode;
+      send_msg->identifier = std::move(wReq->identifier);
+
+      worker_->init_event(std::move(wReq));
+      comm_->send_message(send_msg, "", "", "");
+    } break;
+
+    case messages::eCompileHandler: {
+      auto handlerID = messages::getHandlerID(wReq->identifier);
+      worker_ = new function_worker(handlerID, platform_, comm_);
+      worker_->init_event(std::move(wReq));
+    } break;
+
+    case messages::eDebugHandlerStart:
+    case messages::eDebugHandlerStop: {
+      worker_->push_msg(std::move(wReq));
+    } break;
+
+    case messages::eOnDeployHandler: {
+      worker_->push_msg(std::move(wReq));
+    } break;
+
+    default:
+      break;
+    }
+  } break;
+
+  case messages::eHandlerDynamicSettings: {
+    worker_->push_msg(std::move(wReq), true);
+  } break;
+
+  case messages::eVbSettings: {
+    worker_->push_msg(std::move(wReq));
+  } break;
+
+  case messages::eLifeCycleChange: {
+    switch (wReq->opcode) {
+    case messages::eDestroy: {
+      worker_->prepare_destroy_event();
+    } break;
+
+    default:
+      break;
+    }
+    worker_->push_msg(std::move(wReq));
+  } break;
+
+  case messages::eStatsEvent: {
+    auto stats = worker_->stats((messages::stats_opcode)wReq->opcode);
+    comm_->send_message(wReq, "", "", stats);
+  } break;
+
+  case messages::eDcpEvent: {
+    worker_->push_msg(std::move(wReq));
+  } break;
+
+  case messages::eGlobalConfigChange: {
+    worker_->push_msg(std::move(wReq), true);
+  } break;
+
+  default: {
+  } break;
+  }
+}
+
+distributor::multiFunctionDistributor::multiFunctionDistributor(
     std::shared_ptr<communicator> comm,
     std::shared_ptr<settings::cluster> cluster_setting)
     : cluster_setting_(cluster_setting), comm_(comm) {
@@ -17,15 +102,15 @@ distributor::eventingDist::eventingDist(
 
   worker_queue_ =
       new BlockingDeque<std::unique_ptr<messages::worker_request>>();
-  thread_ = std::thread(&eventingDist::start, this);
+  thread_ = std::thread(&multiFunctionDistributor::start, this);
 }
 
-void distributor::eventingDist::push_msg(
+void distributor::multiFunctionDistributor::push_msg(
     std::unique_ptr<messages::worker_request> task) {
   worker_queue_->PushBack(std::move(task));
 }
 
-void distributor::eventingDist::start() {
+void distributor::multiFunctionDistributor::start() {
   while (!terminator_.load()) {
     std::unique_ptr<messages::worker_request> wRequest;
     if (!worker_queue_->PopFront(wRequest)) {
@@ -74,6 +159,9 @@ void distributor::eventingDist::start() {
         }
         worker->push_msg(std::move(wRequest));
       } break;
+
+      default:
+        break;
       }
     } break;
 

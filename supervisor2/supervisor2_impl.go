@@ -1259,11 +1259,12 @@ func (s *supervisor) CompileHandler(funcDetails *application.FunctionDetails) (c
 	randomID, _ := common.GetRand16Byte()
 	id := fmt.Sprintf("Compile_%s_%d", funcDetails.AppLocation.Namespace.BucketName, randomID)
 	processConfig := processManager.ProcessConfig{
-		Address:    s.clusterSetting.LocalAddress,
-		IPMode:     s.clusterSetting.IpMode,
-		BreakpadOn: true,
-		ExecPath:   s.clusterSetting.ExecutablePath,
-		ID:         id,
+		Address:            s.clusterSetting.LocalAddress,
+		IPMode:             s.clusterSetting.IpMode,
+		BreakpadOn:         true,
+		ExecPath:           s.clusterSetting.ExecutablePath,
+		ID:                 id,
+		SingleFunctionMode: true,
 	}
 
 	process := processManager.NewProcessManager(processConfig, s.systemConfig)

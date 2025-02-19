@@ -26,7 +26,6 @@ void Log(const v8::FunctionCallbackInfo<v8::Value> &args) {
   }
 
   v8::Locker locker(isolate);
-  auto location = UnwrapData(isolate)->instance_id;
   auto v8worker = UnwrapData(isolate)->v8worker2;
   v8::HandleScope handle_scope(isolate);
   auto context = isolate->GetCurrentContext();
@@ -60,17 +59,29 @@ void Log(const v8::FunctionCallbackInfo<v8::Value> &args) {
     log_msg += " ";
   }
 
-  std::ostringstream ss;
-  auto locationSize = location.length();
+  auto single_function_mode = UnwrapData(isolate)->single_function_mode_;
   auto msgSize = log_msg.length();
 
-  ss << static_cast<uint8_t>(locationSize >> 8)
-     << static_cast<uint8_t>(locationSize);
-  ss << static_cast<uint8_t>(msgSize >> 24)
-     << static_cast<uint8_t>(msgSize >> 16)
-     << static_cast<uint8_t>(msgSize >> 8) << static_cast<uint8_t>(msgSize);
+  auto ss = std::move(UnwrapData(isolate)->ss);
+  if (single_function_mode) {
+    ss << static_cast<uint8_t>(msgSize >> 24)
+       << static_cast<uint8_t>(msgSize >> 16)
+       << static_cast<uint8_t>(msgSize >> 8) << static_cast<uint8_t>(msgSize);
+    APPLOG << ss.str() << log_msg << std::flush;
+  } else {
+    auto location = UnwrapData(isolate)->instance_id;
+    auto locationSize = location.length();
+    ss << static_cast<uint8_t>(locationSize >> 8)
+       << static_cast<uint8_t>(locationSize)
+       << static_cast<uint8_t>(msgSize >> 24)
+       << static_cast<uint8_t>(msgSize >> 16)
+       << static_cast<uint8_t>(msgSize >> 8) << static_cast<uint8_t>(msgSize);
 
-  APPLOG << ss.str() << location << log_msg << std::flush;
+    APPLOG << ss.str() << location << log_msg << std::flush;
+  }
+  ss.str("");
+  ss.clear();
+  UnwrapData(isolate)->ss = std::move(ss);
   v8worker->AccumulateLog(log_msg);
 }
 

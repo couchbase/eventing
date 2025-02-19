@@ -15,6 +15,7 @@
 #include <libcouchbase/couchbase.h>
 #include <libcouchbase/sysdefs.h>
 #include <mutex>
+#include <sstream>
 #include <v8.h>
 
 class Curl;
@@ -55,6 +56,7 @@ struct IsolateData {
   long lcb_cursor_checkpoint_timeout{0};
   uint32_t insight_line_offset{1};
   bool n1ql_prepare_all{false};
+  bool single_function_mode_{false};
 
   Query::Manager *query_mgr{nullptr};
   Query::Iterable *query_iterable{nullptr};
@@ -73,6 +75,7 @@ struct IsolateData {
   CurlResponseBuilder *resp_builder{nullptr};
   LanguageCompatibility *lang_compat{nullptr};
   std::string instance_id;
+  std::ostringstream ss;
 
   Logger *logger;
   BucketOps *bucket_ops{nullptr};

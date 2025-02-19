@@ -24,7 +24,7 @@ UDSClient::UDSClient(std::string ipc_type, std::string ip_mode,
 
   auto comm = std::shared_ptr<communicator>(this);
   distributor_ = std::unique_ptr<distributor::distributor>(
-      new distributor::eventingDist(comm, cluster));
+      new distributor::multiFunctionDistributor(comm, cluster));
 
   id_len_ = 0;
   payload_len_ = 0;
@@ -280,12 +280,12 @@ void UDSClient::flushToConn() {
 
 int main(int argc, char **argv) {
 
-  if (argc != 14) {
+  if (argc != 15) {
     LOG(logError)
-        << "Need at least 14 arguments: executable_loc, ipc_type, ip_mode, "
+        << "Need at least 15 arguments: executable_loc, ipc_type, ip_mode, "
            "port, feedback_sock_path, diag_dir, eventing_dir, breakpad_on, "
            "ns_server_port, eventing_port, debugger_port, cert_file, "
-           "client_cert_file, client_key_file"
+           "client_cert_file, client_key_file, single_function_mode"
         << std::endl;
     return 2;
   }
@@ -304,15 +304,21 @@ int main(int argc, char **argv) {
   std::string cert_file(argv[11]);
   std::string client_cert_file(argv[12]);
   std::string client_key_file(argv[13]);
+  std::string single_function_mode(argv[14]);
 
   v8::V8::InitializeICUDefaultLocation(executable_loc.c_str(), nullptr);
   if (breakpad_on == "true")
     setupBreakpad(diag_dir);
 
+  bool single_function_mode_ = false;
+  if (single_function_mode == "true") {
+    single_function_mode_ = true;
+  }
+
   std::string host_addr_ = Localhost(ip_mode);
   auto cluster = std::make_shared<settings::cluster>(
       host_addr_, eventing_dir, ns_server_port, eventing_port, debugger_port,
-      cert_file, client_cert_file, client_key_file);
+      cert_file, client_cert_file, client_key_file, single_function_mode_);
   client_ = new UDSClient(ipc_type, ip_mode, port, feedback_sock_path,
                           std::move(cluster));
   client_->Start();

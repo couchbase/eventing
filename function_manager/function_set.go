@@ -75,7 +75,7 @@ type config struct {
 
 func dummyClose() {}
 
-func NewFunctionSet(fType funcSetType, id string, funcSetConfig config, clusterSettings *common.ClusterSettings, appCallback processManager.AppLogFunction, systemConfig serverConfig.SystemConfig) functionSet {
+func NewFunctionSet(instanceID string, fType funcSetType, id string, funcSetConfig config, clusterSettings *common.ClusterSettings, appCallback processManager.AppLogFunction, systemConfig serverConfig.SystemConfig) functionSet {
 	processConfig := processManager.ProcessConfig{
 		Username:        clusterSettings.LocalUsername,
 		Password:        clusterSettings.LocalPassword,
@@ -94,6 +94,11 @@ func NewFunctionSet(fType funcSetType, id string, funcSetConfig config, clusterS
 		ID:              id,
 		AppLogCallback:  appCallback,
 		NsServerPort:    clusterSettings.RestPort,
+		InstanceID:      id,
+	}
+
+	if fType == SingleFunction {
+		processConfig.SingleFunctionMode = true
 	}
 
 	fset := &funcSet{
