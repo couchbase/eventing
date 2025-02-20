@@ -2,6 +2,7 @@ package functionManager
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 
@@ -11,6 +12,7 @@ import (
 
 	eventPool "github.com/couchbase/eventing/event_pool"
 	functionHandler "github.com/couchbase/eventing/function_manager/function_handler"
+	vbDistribution "github.com/couchbase/eventing/function_manager/function_handler/vb_handler"
 	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/notifier"
 	serverConfig "github.com/couchbase/eventing/server_config"
@@ -21,38 +23,46 @@ const (
 	serverlessProcessID = uint32(0)
 )
 
-type funcDetails struct {
+type funcRuntimeDetails struct {
+	sync.RWMutex
+
 	state             application.LifeCycleOp
 	funcHandlerIDList []uint16
 	vbsAllocated      map[uint16]uint16
 	vbsVersion        string
 	statusChanged     map[uint16]bool
-	funcSetList       []uint32
+	funcSetList       []functionSet
 	seq               uint32
 }
 
-func NewFuncDetails(id uint16) *funcDetails {
-	fdetails := &funcDetails{
+func NewFuncRuntimeDetails(id uint16, funcSet functionSet) *funcRuntimeDetails {
+	fdetails := &funcRuntimeDetails{
 		funcHandlerIDList: make([]uint16, 0, 1),
 		statusChanged:     make(map[uint16]bool),
-		funcSetList:       make([]uint32, 0, 1),
+		funcSetList:       make([]functionSet, 0, 1),
 		vbsAllocated:      make(map[uint16]uint16),
 		seq:               0,
 	}
 	fdetails.state = application.Undeploy
-	fdetails.addFuncDetails(id, serverlessProcessID)
+	fdetails.addFuncDetails(id, funcSet)
 	return fdetails
 }
 
-func (fdetails *funcDetails) initFuncDetails(seq uint32) {
-	for id, _ := range fdetails.statusChanged {
+func (fdetails *funcRuntimeDetails) initFuncDetails(seq uint32) {
+	fdetails.Lock()
+	defer fdetails.Unlock()
+
+	for id := range fdetails.statusChanged {
 		fdetails.statusChanged[id] = false
 	}
 	fdetails.seq = seq
 }
 
 // remove everything and returns first id
-func (fdetails *funcDetails) reset() uint16 {
+func (fdetails *funcRuntimeDetails) reset() uint16 {
+	fdetails.Lock()
+	defer fdetails.Unlock()
+
 	fdetails.funcSetList = fdetails.funcSetList[:0]
 	handlerID := fdetails.funcHandlerIDList[0]
 	fdetails.funcHandlerIDList = fdetails.funcHandlerIDList[:0]
@@ -61,24 +71,41 @@ func (fdetails *funcDetails) reset() uint16 {
 	return handlerID
 }
 
-func (fdetails *funcDetails) addFuncDetails(id uint16, setId uint32) {
+func (fdetails *funcRuntimeDetails) addFuncDetails(id uint16, functionSet functionSet) {
+	fdetails.Lock()
+	defer fdetails.Unlock()
+	fdetails.addFuncDetailsLocked(id, functionSet)
+}
+
+func (fdetails *funcRuntimeDetails) addFuncDetailsLocked(id uint16, functionSet functionSet) {
 	fdetails.statusChanged[id] = false
-	fdetails.funcSetList = append(fdetails.funcSetList, setId)
+	fdetails.funcSetList = append(fdetails.funcSetList, functionSet)
 	fdetails.funcHandlerIDList = append(fdetails.funcHandlerIDList, id)
 }
 
-func (fdetails *funcDetails) resetTo(id uint16, setID uint32) {
+func (fdetails *funcRuntimeDetails) resetTo(id uint16, functionSet functionSet) {
+	fdetails.Lock()
+	defer fdetails.Unlock()
+
 	fdetails.funcSetList = fdetails.funcSetList[:0]
 	for _, funcID := range fdetails.funcHandlerIDList {
 		delete(fdetails.statusChanged, funcID)
 	}
 	fdetails.funcHandlerIDList = fdetails.funcHandlerIDList[:0]
 	fdetails.vbsAllocated = make(map[uint16]uint16)
-	fdetails.addFuncDetails(id, setID)
+	fdetails.addFuncDetailsLocked(id, functionSet)
 }
 
-func (fdetails *funcDetails) notifyStateChange(id uint16, seq uint32) bool {
+func (fdetails *funcRuntimeDetails) notifyStateChange(id uint16, seq uint32) bool {
+	fdetails.Lock()
+	defer fdetails.Unlock()
+
 	if fdetails.seq != seq {
+		return false
+	}
+
+	notified, ok := fdetails.statusChanged[id]
+	if !ok {
 		return false
 	}
 
@@ -88,12 +115,44 @@ func (fdetails *funcDetails) notifyStateChange(id uint16, seq uint32) bool {
 			return false
 		}
 	}
-	return true
+	return !notified
+}
+
+func (fdetails *funcRuntimeDetails) getFunctionHandlerList() []functionSet {
+	fdetails.RLock()
+	defer fdetails.RUnlock()
+
+	funcSetList := fdetails.funcSetList
+	funcHandlerList := make([]functionSet, len(funcSetList))
+	copy(funcHandlerList, funcSetList)
+	return funcHandlerList
+}
+
+func (fdetails *funcRuntimeDetails) getLeaderFunctionHandler() (functionSet, bool) {
+	fdetails.RLock()
+	defer fdetails.RUnlock()
+
+	if len(fdetails.funcSetList) == 0 {
+		return nil, false
+	}
+
+	return fdetails.funcSetList[0], true
+}
+
+func (fdetails *funcRuntimeDetails) getFunctionSet() []functionSet {
+	fdetails.RLock()
+	defer fdetails.RUnlock()
+
+	fSet := make([]functionSet, len(fdetails.funcSetList))
+	if len(fdetails.funcSetList) == 0 {
+		return fSet
+	}
+
+	copy(fSet, fdetails.funcSetList)
+	return fSet
 }
 
 type functionManager struct {
-	sync.RWMutex
-
 	id                      string
 	clusterSettings         *common.ClusterSettings
 	observer                notifier.Observer
@@ -108,15 +167,12 @@ type functionManager struct {
 
 	pool eventPool.ManagerPool
 
-	funcCache *funcCache
+	funcCache             funcCache
+	serverlessFunctionSet functionSet
 
-	incrementalFuncSetID uint32
-	// function_set id -> function_set
-	funcSet map[uint32]functionSet
-
+	// Accessed by sequential process so no need to protect these
+	incrementalFuncSetID        uint32
 	incrementalFuncHandlerCount uint16
-	// instanceID -> functionDetails
-	functionMapper map[string]*funcDetails
 
 	close func()
 }
@@ -131,16 +187,18 @@ func NewFunctionManager(id string, cluster *gocb.Cluster, clusterSettings *commo
 	broadcaster common.Broadcaster) *functionManager {
 
 	fm := &functionManager{
-		id:                      id,
-		interrupt:               interrupt,
-		clusterSettings:         clusterSettings,
-		observer:                observer,
-		ownershipRoutine:        ownershipRoutine,
-		serverConfig:            serverConfig,
-		systemConfig:            systemConfig,
-		cursorCheckpointHandler: cursorCheckpointHandler,
-		broadcaster:             broadcaster,
-		systemResourceDetails:   systemResourceDetails,
+		id:                          id,
+		interrupt:                   interrupt,
+		clusterSettings:             clusterSettings,
+		observer:                    observer,
+		ownershipRoutine:            ownershipRoutine,
+		serverConfig:                serverConfig,
+		systemConfig:                systemConfig,
+		cursorCheckpointHandler:     cursorCheckpointHandler,
+		broadcaster:                 broadcaster,
+		systemResourceDetails:       systemResourceDetails,
+		incrementalFuncSetID:        1,
+		incrementalFuncHandlerCount: 0,
 	}
 
 	ctx, close := context.WithCancel(context.Background())
@@ -154,15 +212,11 @@ func NewFunctionManager(id string, cluster *gocb.Cluster, clusterSettings *commo
 	fm.funcCache = NewFunctionNameCache(ctx, id, observer, interrupt)
 
 	// Initialise the init funcSet whose id will be 0. This is used for serverless features and all the
-	// serverless functions are spawned in this function set
-	fm.funcSet = make(map[uint32]functionSet)
+	// serverless functions are spawned in this function set. Also it will hold functions which are not deployed
 	initFuncSetID := fmt.Sprintf("%s_%d", id, serverlessProcessID)
-	fm.funcSet[serverlessProcessID] = NewFunctionSet(initFuncSetID, config{},
+	fm.serverlessFunctionSet = NewFunctionSet("", GroupOfFunctions, initFuncSetID, config{},
 		clusterSettings, fm.appCallback, systemConfig)
-	fm.incrementalFuncSetID = uint32(1)
 
-	fm.functionMapper = make(map[string]*funcDetails)
-	fm.incrementalFuncHandlerCount = uint16(0)
 	fm.utilityWorker = processManager.NewUtilityWorker(fm.clusterSettings, fm.id, fm.systemConfig)
 
 	return fm
@@ -200,10 +254,10 @@ func (fm *functionManager) NotifyTlsChanges(cluster *gocb.Cluster) {
 }
 
 func (fm *functionManager) RebalanceProgress(version string, appLocation application.AppLocation, rebalanceProgress *common.AppRebalanceProgress) {
-	fhList := fm.getFunctionHandlerListFromLocation(appLocation)
+	instanceID, fhList := fm.getFunctionHandlerListFromLocation(appLocation)
 	for _, fh := range fhList {
-		// GetRebalanceProgress should be first
-		rebalanceProgress.RebalanceInProgress = (fh.GetRebalanceProgress(version, rebalanceProgress) || rebalanceProgress.RebalanceInProgress)
+		// GetRebalanceProgress should be first so that we get the correct progress from all workers
+		rebalanceProgress.RebalanceInProgress = (fh.GetRebalanceProgress(instanceID, version, rebalanceProgress) || rebalanceProgress.RebalanceInProgress)
 	}
 
 	if len(rebalanceProgress.ToOwn) != 0 || len(rebalanceProgress.ToClose) != 0 {
@@ -212,10 +266,10 @@ func (fm *functionManager) RebalanceProgress(version string, appLocation applica
 }
 
 func (fm *functionManager) GetStats(appLocation application.AppLocation, statType common.StatsType) *common.Stats {
-	fhList := fm.getFunctionHandlerListFromLocation(appLocation)
+	instanceID, fhList := fm.getFunctionHandlerListFromLocation(appLocation)
 	stats := common.NewStats(true, appLocation.Namespace, appLocation.Appname, statType)
 	for _, fh := range fhList {
-		functionStats := fh.Stats(statType)
+		functionStats := fh.Stats(instanceID, statType)
 		stats.Add(functionStats, statType)
 	}
 
@@ -223,17 +277,17 @@ func (fm *functionManager) GetStats(appLocation application.AppLocation, statTyp
 }
 
 func (fm *functionManager) ResetStats(appLocation application.AppLocation) {
-	fhList := fm.getFunctionHandlerListFromLocation(appLocation)
+	instanceID, fhList := fm.getFunctionHandlerListFromLocation(appLocation)
 	for _, fh := range fhList {
-		fh.ResetStats()
+		fh.ResetStats(instanceID)
 	}
 }
 
 func (fm *functionManager) GetInsight(appLocation application.AppLocation) *common.Insight {
-	fhList := fm.getFunctionHandlerListFromLocation(appLocation)
+	instanceID, fhList := fm.getFunctionHandlerListFromLocation(appLocation)
 	insight := common.NewInsight()
 	for _, fh := range fhList {
-		nInsight := fh.GetInsight()
+		nInsight := fh.GetInsight(instanceID)
 		if nInsight == nil {
 			continue
 		}
@@ -245,31 +299,28 @@ func (fm *functionManager) GetInsight(appLocation application.AppLocation) *comm
 
 // All app log is gone into first function handler so read it from it
 func (fm *functionManager) GetApplicationLog(appLocation application.AppLocation, size int64) ([]string, error) {
-	fh, ok := fm.getAggFunctionHandlerFromLocation(appLocation)
+	instanceID, fh, ok := fm.getAggFunctionHandlerFromLocation(appLocation)
 	if !ok {
 		return nil, nil
 	}
 
-	return fh.GetApplicationLog(size)
+	return fh.GetApplicationLog(instanceID, size)
 }
 
 func (fm *functionManager) RemoveFunction(funcDetails *application.FunctionDetails) int {
-	fm.Lock()
-	funcSet := fm.funcSet[serverlessProcessID]
 	instanceID, count := fm.funcCache.DeleteFromFuncCache(funcDetails)
-	fHandler, _ := funcSet.DeleteFunctionHandler(instanceID)
-	fm.Unlock()
+	fHandler, _ := fm.serverlessFunctionSet.DeleteFunctionHandler(instanceID)
 	fHandler.CloseFunctionHandler()
 
 	return count
 }
 
 func (fm *functionManager) TrapEventOp(trapEvent functionHandler.TrapEventOp, appLocation application.AppLocation, value interface{}) error {
-	fh, ok := fm.getAggFunctionHandlerFromLocation(appLocation)
+	instanceID, fh, ok := fm.getAggFunctionHandlerFromLocation(appLocation)
 	if !ok {
 		return nil
 	}
-	return fh.TrapEvent(trapEvent, value)
+	return fh.TrapEvent(instanceID, trapEvent, value)
 }
 
 // Make sure all the functions are deleted before calling this
@@ -277,69 +328,48 @@ func (fm *functionManager) TrapEventOp(trapEvent functionHandler.TrapEventOp, ap
 func (fm *functionManager) CloseFunctionManager() {
 	logPrefix := fmt.Sprintf("functionManager::CloseFunctionManager[%s]", fm.id)
 	fm.pool.ClosePool()
-
-	fm.Lock()
-	funcSet := fm.funcSet[serverlessProcessID]
-	delete(fm.funcSet, serverlessProcessID)
 	fm.close()
-	fm.Unlock()
-
-	funcSet.DeleteFunctionSet()
+	fm.serverlessFunctionSet.DeleteFunctionSet()
+	fm.funcCache.CloseFuncCache()
 	logging.Infof("%s closed function manager", logPrefix)
 }
 
 func (fm *functionManager) lifeCycleOp(fd *application.FunctionDetails, nextState application.LifeCycleOp) {
-	logPrefix := fmt.Sprintf("functionManager::lifeCycleOp[%s]", fd.AppLocation)
-	fm.Lock()
-	defer fm.Unlock()
-
 	// Create the function first if not present it will be associated with function set 0
-	oldInstanceID, instanceID, ok := fm.funcCache.AddToFuncCache(fd, nextState)
-	logging.Infof("%s lifecycle change called -> %s, OldInstanceID: %s NewInstanceID: %s. Is function present? %v", logPrefix, nextState, oldInstanceID, instanceID, ok)
+	instanceID, fRuntimeDetails, ok := fm.funcCache.GetFunctionRuntimeDetails(fd.AppLocation)
 	if !ok {
 		fm.incrementalFuncHandlerCount++
 		config := functionHandler.Config{
-			SpawnLogWriter: true,
-			OnDeployLeader: true,
+			LeaderHandler: true,
 		}
-		fHandler := functionHandler.NewFunctionHandler(fm.incrementalFuncHandlerCount, config, fd.AppLocation, fm.clusterSettings,
+		fHandler := functionHandler.NewFunctionHandler(fm.incrementalFuncHandlerCount, fd, config, fd.AppLocation, fm.clusterSettings,
 			fm.interruptForStateChange, fm.systemResourceDetails, fm.observer, fm, fm.pool, fm.serverConfig, fm.cursorCheckpointHandler, fm.utilityWorker, fm.broadcaster)
-		fHandler.AddFunctionDetails(fd)
 
-		fdetails := NewFuncDetails(fm.incrementalFuncHandlerCount)
-		fm.funcSet[serverlessProcessID].AddFunctionHandler(instanceID, fHandler)
-		fm.functionMapper[instanceID] = fdetails
-
-	} else {
-		if oldInstanceID != instanceID {
-			// Move the functionDetails to new instanceID
-			fm.functionMapper[instanceID] = fm.functionMapper[oldInstanceID]
-			delete(fm.functionMapper, oldInstanceID)
-		}
+		fRuntimeDetails = NewFuncRuntimeDetails(fm.incrementalFuncHandlerCount, fm.serverlessFunctionSet)
+		fm.serverlessFunctionSet.AddFunctionHandler(fd.AppInstanceID, fHandler)
+		instanceID = fd.AppInstanceID
 	}
+	fm.funcCache.AddToFuncCache(fd, fRuntimeDetails, nextState)
+	fRuntimeDetails.initFuncDetails(fd.MetaInfo.Seq)
 
-	fdetails := fm.functionMapper[instanceID]
-	fdetails.initFuncDetails(fd.MetaInfo.Seq)
-
-	switch fdetails.state {
+	switch fRuntimeDetails.state {
 	case application.Undeploy, application.Pause:
 		switch nextState {
 		case application.Deploy:
-			fm.deployFunctionLocked(fd, oldInstanceID, fdetails)
+			fm.deployFunctionLocked(fd, instanceID, fRuntimeDetails)
 		}
 
 	case application.Deploy:
 		// Already in deployed state. Change the state of the function
 	}
 
-	fdetails.state = nextState
-	for _, funcSetID := range fdetails.funcSetList {
-		funcSet := fm.funcSet[funcSetID]
-		funcSet.ChangeState(oldInstanceID, fd, nextState)
+	fRuntimeDetails.state = nextState
+	for _, funcSet := range fRuntimeDetails.funcSetList {
+		funcSet.ChangeState(instanceID, fd, nextState)
 	}
 }
 
-func (fm *functionManager) deployFunctionLocked(fd *application.FunctionDetails, instanceID string, fdetails *funcDetails) {
+func (fm *functionManager) deployFunctionLocked(fd *application.FunctionDetails, instanceID string, fdetails *funcRuntimeDetails) {
 	logPrefix := fmt.Sprintf("functionManager::deployFunctionLocked[%s]", fm.id)
 	_, namespaceConfig := fm.serverConfig.GetServerConfig(fd.MetaInfo.FunctionScopeID)
 
@@ -352,7 +382,7 @@ func (fm *functionManager) deployFunctionLocked(fd *application.FunctionDetails,
 
 	case serverConfig.IsolateFunction, serverConfig.HybridMode:
 		// Get the already created fHandler
-		fHandler, _ := fm.funcSet[serverlessProcessID].DeleteFunctionHandler(instanceID)
+		fHandler, _ := fm.serverlessFunctionSet.DeleteFunctionHandler(instanceID)
 		funcID := fdetails.reset()
 
 		// Create worker count number of function set
@@ -362,22 +392,19 @@ func (fm *functionManager) deployFunctionLocked(fd *application.FunctionDetails,
 			if i != uint32(0) {
 				fm.incrementalFuncHandlerCount++
 				config := functionHandler.Config{
-					SpawnLogWriter: false,
-					OnDeployLeader: false,
+					LeaderHandler: false,
 				}
-				fHandler = functionHandler.NewFunctionHandler(fm.incrementalFuncHandlerCount, config, fd.AppLocation, fm.clusterSettings,
+				fHandler = functionHandler.NewFunctionHandler(fm.incrementalFuncHandlerCount, fd, config, fd.AppLocation, fm.clusterSettings,
 					fm.interruptForStateChange, fm.systemResourceDetails, fm.observer, fm, fm.pool, fm.serverConfig, fm.cursorCheckpointHandler, fm.utilityWorker, fm.broadcaster)
 				funcID = fm.incrementalFuncHandlerCount
 			}
 
-			fHandler.AddFunctionDetails(fd)
 			initFuncSetID := fmt.Sprintf("%s_%d", fm.id, fm.incrementalFuncSetID)
-			funcSet := NewFunctionSet(initFuncSetID, config{spawnImmediately: true},
+			funcSet := NewFunctionSet(instanceID, SingleFunction, initFuncSetID, config{spawnImmediately: true},
 				fm.clusterSettings, fm.appCallback, fm.systemConfig)
 			// Add it with old instance id since function is in undeploy state and ChangeState will change the function to new instanceID
 			funcSet.AddFunctionHandler(instanceID, fHandler)
-			fm.funcSet[fm.incrementalFuncSetID] = funcSet
-			fdetails.addFuncDetails(funcID, fm.incrementalFuncSetID)
+			fdetails.addFuncDetails(funcID, funcSet)
 			fm.incrementalFuncSetID++
 		}
 	}
@@ -385,106 +412,66 @@ func (fm *functionManager) deployFunctionLocked(fd *application.FunctionDetails,
 
 // Helper functions to get the info
 func (fm *functionManager) getAllFunctionSet() []functionSet {
-	fm.RLock()
-	defer fm.RUnlock()
-
-	fSetList := make([]functionSet, 0, len(fm.funcSet))
-	for _, funcSet := range fm.funcSet {
-		fSetList = append(fSetList, funcSet)
+	runtimeDetails := fm.funcCache.GetAllFunctionRuntimeDetails()
+	fSetList := make([]functionSet, 0, len(runtimeDetails))
+	for _, runtimeDetail := range runtimeDetails {
+		fSetList = append(fSetList, runtimeDetail.getFunctionSet()...)
 	}
 
 	return fSetList
 }
 
-func (fm *functionManager) getFunctionHandlerListFromLocation(appLocation application.AppLocation) []functionHandler.FunctionHandler {
-	fm.RLock()
-	defer fm.RUnlock()
-
-	instanceID, ok := fm.funcCache.GetInstanceID(appLocation)
+func (fm *functionManager) getFunctionHandlerListFromLocation(appLocation application.AppLocation) (string, []functionSet) {
+	instanceID, funcDetails, ok := fm.funcCache.GetFunctionRuntimeDetails(appLocation)
 	if !ok {
-		return nil
+		return instanceID, nil
 	}
 
-	return fm.getFunctionHandlerListFromInstanceIDLocked(instanceID)
+	return instanceID, funcDetails.getFunctionHandlerList()
 }
 
-func (fm *functionManager) getFunctionHandlerListFromInstanceID(instanceID string) []functionHandler.FunctionHandler {
-	fm.RLock()
-	defer fm.RUnlock()
-
-	return fm.getFunctionHandlerListFromInstanceIDLocked(instanceID)
-}
-
-func (fm *functionManager) getFunctionHandlerListFromInstanceIDLocked(instanceID string) []functionHandler.FunctionHandler {
-	funcDetails := fm.functionMapper[instanceID]
-	funcSetList := funcDetails.funcSetList
-
-	funcHandlerList := make([]functionHandler.FunctionHandler, 0, len(funcSetList))
-	for _, fIndex := range funcSetList {
-		fSet := fm.funcSet[fIndex]
-		funcHandler, ok := fSet.GetFunctionHandler(instanceID)
-		if !ok {
-			continue
-		}
-		funcHandlerList = append(funcHandlerList, funcHandler)
+func (fm *functionManager) getAggFunctionHandlerFromLocation(appLocation application.AppLocation) (string, functionSet, bool) {
+	instanceID, funcRuntimeDetails, ok := fm.funcCache.GetFunctionRuntimeDetails(appLocation)
+	if !ok {
+		return instanceID, nil, false
 	}
-	return funcHandlerList
+
+	funcSet, ok := funcRuntimeDetails.getLeaderFunctionHandler()
+	return instanceID, funcSet, ok
 }
 
-func (fm *functionManager) getAggFunctionHandlerFromLocation(appLocation application.AppLocation) (functionHandler.FunctionHandler, bool) {
-	fm.RLock()
-	defer fm.RUnlock()
-
-	instanceID, ok := fm.funcCache.GetInstanceID(appLocation)
+func (fm *functionManager) getAggFunctionHandlerFromInstanceID(instanceID string) (functionSet, bool) {
+	runtimeDetails, ok := fm.funcCache.GetFunctionRuntimeDetailsFromInstanceID(instanceID)
 	if !ok {
 		return nil, false
 	}
 
-	return fm.getFunctionHandlerInstanceIDLocked(instanceID)
-}
-
-func (fm *functionManager) getAggFunctionHandlerFromInstanceID(instanceID string) (functionHandler.FunctionHandler, bool) {
-	fm.RLock()
-	defer fm.RUnlock()
-
-	return fm.getFunctionHandlerInstanceIDLocked(instanceID)
-}
-
-func (fm *functionManager) getFunctionHandlerInstanceIDLocked(instanceID string) (functionHandler.FunctionHandler, bool) {
-	funcDetails := fm.functionMapper[instanceID]
-	if len(funcDetails.funcSetList) == 0 {
-		return nil, false
-	}
-
-	funcSetID := funcDetails.funcSetList[0]
-	funcSet := fm.funcSet[funcSetID]
-	return funcSet.GetFunctionHandler(instanceID)
+	return runtimeDetails.getLeaderFunctionHandler()
 }
 
 // Callbacks
 func (fm *functionManager) appCallback(handlerID string, msg string) {
 	fh, ok := fm.getAggFunctionHandlerFromInstanceID(handlerID)
 	if ok {
-		fh.ApplicationLog(msg)
+		fh.ApplicationLog(handlerID, msg)
 	}
 }
 
 func (fm *functionManager) interruptForStateChange(id uint16, seq uint32, appLocation application.AppLocation, err error) {
 	logPrefix := fmt.Sprintf("functionManager::interruptForStateChange[%s]", fm.id)
 
-	fm.Lock()
-	defer fm.Unlock()
-
-	instanceID, _ := fm.funcCache.GetInstanceID(appLocation)
-	funcDetails := fm.functionMapper[instanceID]
-	done := funcDetails.notifyStateChange(id, seq)
+	instanceID, runtimeDetails, ok := fm.funcCache.GetFunctionRuntimeDetails(appLocation)
+	if !ok {
+		return
+	}
+	done := runtimeDetails.notifyStateChange(id, seq)
 	if !done {
 		return
 	}
 
-	lifecycleChange := funcDetails.state
+	lifecycleChange := runtimeDetails.state
 	// TODO: Change this to appropriate previous state, although should not affect functionality
-	if err == common.ErrOnDeployFail {
+	if errors.Is(err, common.ErrOnDeployFail) {
 		lifecycleChange = application.Undeploy
 	}
 
@@ -493,32 +480,26 @@ func (fm *functionManager) interruptForStateChange(id uint16, seq uint32, appLoc
 	case application.Undeploy, application.Pause:
 		fm.pool.CloseConditional()
 
-		funcHandlerList := funcDetails.funcHandlerIDList
-		funcSetList := funcDetails.funcSetList
+		funcHandlerList := runtimeDetails.funcHandlerIDList
+		funcSet := runtimeDetails.funcSetList[0]
 
-		if funcSetList[0] != serverlessProcessID {
-			var fHandler functionHandler.FunctionHandler
-			var fHandlerID uint16
-			// This is the onprem mode. Close all the functionSet and move the first one to serverlessProcessID
-			for index, funcSetIndex := range funcSetList {
-				funcSet := fm.funcSet[funcSetIndex]
-				fHandlerTemp, _ := funcSet.DeleteFunctionHandler(instanceID)
-				fHandlerIDTemp := funcHandlerList[index]
-				if index == 0 {
-					// This handler will have essential config
-					// Maybe we need to pass the config during ChangeState
-					fHandler = fHandlerTemp
-					fHandlerID = fHandlerIDTemp
-				} else {
-					fHandlerTemp.CloseFunctionHandler()
-				}
+		if funcSet.GetID() != GroupOfFunctions {
+
+			// Get the first func set and put it into serverless mode
+
+			funcSet := runtimeDetails.funcSetList[0]
+			funcSet.DeleteFunctionSet()
+			fHandler, _ := funcSet.DeleteFunctionHandler(instanceID)
+			fHandlerID := funcHandlerList[0]
+			fm.serverlessFunctionSet.AddFunctionHandler(instanceID, fHandler)
+
+			for index := 1; index < len(runtimeDetails.funcSetList); index++ {
+				funcSet = runtimeDetails.funcSetList[index]
+				fHandler, _ = funcSet.DeleteFunctionHandler(instanceID)
+				fHandler.CloseFunctionHandler()
 				funcSet.DeleteFunctionSet()
-				delete(fm.funcSet, funcSetIndex)
 			}
-			fm.funcSet[serverlessProcessID].AddFunctionHandler(instanceID, fHandler)
-			funcDetails.resetTo(fHandlerID, serverlessProcessID)
-		} else {
-			// Serverless mode already in correct state
+			runtimeDetails.resetTo(fHandlerID, fm.serverlessFunctionSet)
 		}
 
 	case application.Deploy:
@@ -530,40 +511,44 @@ func (fm *functionManager) interruptForStateChange(id uint16, seq uint32, appLoc
 		msg := common.LifecycleMsg{
 			InstanceID:  instanceID,
 			Applocation: appLocation,
+			Revert:      true,
+			Description: err.Error(),
 		}
-		// Calls supervisor's FailStateInterrupt to restore previous state in the app state machine
-		fm.interrupt.FailStateInterrupt(seq, appLocation, msg)
+		// Calls supervisor's StopCalledInterupt to restore previous state in the app state machine
+		fm.interrupt.StopCalledInterupt(seq, msg)
 		return
 	}
 
-	logging.Infof("%s state change done for %s seq: %d. state: %s", logPrefix, appLocation, seq, funcDetails.state)
+	logging.Infof("%s state change done for %s seq: %d. state: %s", logPrefix, appLocation, seq, runtimeDetails.state)
 	fm.interrupt.StateChangeInterupt(seq, appLocation)
 }
 
-func (fm *functionManager) GetVbMap(keyspaceInfo *application.KeyspaceInfo, id uint16, numVb uint16, appLocation application.AppLocation) (string, []uint16, error) {
+func (fm *functionManager) GetVbMap(keyspaceInfo *application.KeyspaceInfo, id uint16, numVb, timerPartitions uint16, appLocation application.AppLocation) (string, []uint16, error) {
+	// This is called sequentially so no need to store latest vbMapVersion for a single funcHandler.
+	// Guranteed to have latest one once notifyOwnership is called
 	vbMapVersion, vbs, err := fm.ownershipRoutine.GetVbMap(keyspaceInfo, numVb)
 	if err != nil {
 		return "", nil, err
 	}
 
-	fm.Lock()
-	defer fm.Unlock()
-	instanceID, ok := fm.funcCache.GetInstanceID(appLocation)
+	_, runtimeDetails, ok := fm.funcCache.GetFunctionRuntimeDetails(appLocation)
 	if !ok {
 		return vbMapVersion, vbs, nil
 	}
 
-	funcDetails := fm.functionMapper[instanceID]
-	funHandlerIDs := funcDetails.funcHandlerIDList
+	runtimeDetails.Lock()
+	defer runtimeDetails.Unlock()
+
+	funHandlerIDs := runtimeDetails.funcHandlerIDList
 	handlerPosition := 0
-	for index, hId := range funcDetails.funcHandlerIDList {
+	for index, hId := range runtimeDetails.funcHandlerIDList {
 		if hId == id {
 			handlerPosition = index
 			break
 		}
 	}
-	if funcDetails.vbsVersion != vbMapVersion {
-		for vb, _ := range funcDetails.vbsAllocated {
+	if runtimeDetails.vbsVersion != vbMapVersion {
+		for vb, _ := range runtimeDetails.vbsAllocated {
 			found := false
 			for _, newVb := range vbs {
 				if newVb == vb {
@@ -572,49 +557,73 @@ func (fm *functionManager) GetVbMap(keyspaceInfo *application.KeyspaceInfo, id u
 				}
 			}
 			if !found {
-				delete(funcDetails.vbsAllocated, vb)
+				delete(runtimeDetails.vbsAllocated, vb)
 			}
 		}
-		funcDetails.vbsVersion = vbMapVersion
+		runtimeDetails.vbsVersion = vbMapVersion
 	}
 
-	numOwningvbs := len(vbs) / len(funHandlerIDs)
+	numVBsToOwn := len(vbs) / len(funHandlerIDs)
 	remainingVbs := len(vbs) % len(funHandlerIDs)
 	if handlerPosition < remainingVbs {
-		numOwningvbs++
+		numVBsToOwn++
 	}
-	ownedVbs := make([]uint16, 0, numOwningvbs)
+
+	ownedVbs := make([]uint16, 0, numVBsToOwn)
 	for _, vb := range vbs {
-		if funcDetails.vbsAllocated[vb] == id {
-			numOwningvbs--
+		if runtimeDetails.vbsAllocated[vb] == id {
+			numVBsToOwn--
 			ownedVbs = append(ownedVbs, vb)
 		}
 	}
-	// all the old remainging vbs are allocated
-	if numOwningvbs != 0 {
-		for index := handlerPosition; index < len(vbs); index = index + len(funHandlerIDs) {
-			vb := vbs[index]
-			if _, ok := funcDetails.vbsAllocated[vb]; !ok {
-				funcDetails.vbsAllocated[vb] = id
-				numOwningvbs--
+
+	timerVbs, nonTimerVbs := vbDistribution.GetTimerPartitionsInVbs(vbs, numVb, timerPartitions)
+	perHandlerTimerVbs := len(timerVbs) / len(funHandlerIDs)
+	if handlerPosition < len(timerVbs)%len(funHandlerIDs) {
+		perHandlerTimerVbs++
+	}
+
+	for index := handlerPosition; index < len(timerVbs) && perHandlerTimerVbs != 0; index = index + len(funHandlerIDs) {
+		vb := timerVbs[index]
+		if owner, ok := runtimeDetails.vbsAllocated[vb]; !ok || owner == id {
+			perHandlerTimerVbs--
+			numVBsToOwn--
+			if !ok {
+				runtimeDetails.vbsAllocated[vb] = id
 				ownedVbs = append(ownedVbs, vb)
-			}
-			if numOwningvbs == 0 {
-				break
 			}
 		}
 	}
 
-	if numOwningvbs != 0 {
-		for _, vb := range vbs {
-			if _, ok := funcDetails.vbsAllocated[vb]; !ok {
-				funcDetails.vbsAllocated[vb] = id
-				numOwningvbs--
+	for index := 0; index < len(timerVbs) && perHandlerTimerVbs != 0; index++ {
+		vb := timerVbs[index]
+		if owner, ok := runtimeDetails.vbsAllocated[vb]; !ok || owner == id {
+			perHandlerTimerVbs--
+			numVBsToOwn--
+			if !ok {
+				runtimeDetails.vbsAllocated[vb] = id
 				ownedVbs = append(ownedVbs, vb)
 			}
-			if numOwningvbs == 0 {
-				break
-			}
+		}
+	}
+
+	// all the old remainging vbs are allocated
+	for index := handlerPosition; index < len(nonTimerVbs) && numVBsToOwn != 0; index = index + len(funHandlerIDs) {
+		vb := nonTimerVbs[index]
+		if _, ok := runtimeDetails.vbsAllocated[vb]; !ok {
+			runtimeDetails.vbsAllocated[vb] = id
+			numVBsToOwn--
+			ownedVbs = append(ownedVbs, vb)
+		}
+
+	}
+
+	for index := 0; index < len(nonTimerVbs) && numVBsToOwn != 0; index++ {
+		vb := nonTimerVbs[index]
+		if _, ok := runtimeDetails.vbsAllocated[vb]; !ok {
+			runtimeDetails.vbsAllocated[vb] = id
+			numVBsToOwn--
+			ownedVbs = append(ownedVbs, vb)
 		}
 	}
 

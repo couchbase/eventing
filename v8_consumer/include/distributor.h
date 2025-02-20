@@ -22,21 +22,43 @@ public:
   virtual void push_msg(std::unique_ptr<messages::worker_request>) = 0;
 };
 
-class eventingDist : public distributor {
+class singleFunctionDistributor : public distributor {
 public:
-  eventingDist(std::shared_ptr<communicator> comm,
-               std::shared_ptr<settings::cluster> cluster_setting);
-  ~eventingDist() {
+  singleFunctionDistributor(std::shared_ptr<communicator> comm,
+                            std::shared_ptr<settings::cluster> cluster_setting);
+  ~singleFunctionDistributor() {}
+
+  singleFunctionDistributor(singleFunctionDistributor &&) = delete;
+  singleFunctionDistributor(const singleFunctionDistributor &) = delete;
+  singleFunctionDistributor &operator=(singleFunctionDistributor &&) = delete;
+  singleFunctionDistributor &
+  operator=(const singleFunctionDistributor &) = delete;
+
+  void push_msg(std::unique_ptr<messages::worker_request> wReq);
+
+private:
+  std::unique_ptr<v8::Platform> platform_;
+  std::shared_ptr<settings::cluster> cluster_setting_;
+  std::shared_ptr<communicator> comm_;
+  function_worker *worker_;
+};
+
+class multiFunctionDistributor : public distributor {
+public:
+  multiFunctionDistributor(std::shared_ptr<communicator> comm,
+                           std::shared_ptr<settings::cluster> cluster_setting);
+  ~multiFunctionDistributor() {
     if (thread_.joinable()) {
       thread_.join();
     }
     delete worker_queue_;
   }
 
-  eventingDist(eventingDist &&) = delete;
-  eventingDist(const eventingDist &) = delete;
-  eventingDist &operator=(eventingDist &&) = delete;
-  eventingDist &operator=(const eventingDist &) = delete;
+  multiFunctionDistributor(multiFunctionDistributor &&) = delete;
+  multiFunctionDistributor(const multiFunctionDistributor &) = delete;
+  multiFunctionDistributor &operator=(multiFunctionDistributor &&) = delete;
+  multiFunctionDistributor &
+  operator=(const multiFunctionDistributor &) = delete;
 
   void push_msg(std::unique_ptr<messages::worker_request> wReq);
 

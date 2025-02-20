@@ -229,7 +229,7 @@ func (c *client) StartStreamReq(sr *StreamReq) error {
 		return ErrConnClosed
 	}
 
-	sr.opaque = composeOpaqueValue(sr)
+	sr.opaque = composeOpaque(sr.ID, sr.Vbno)
 	ok := c.requestManager.initRequest(sr)
 	if !ok {
 		return ErrConnClosed
@@ -237,15 +237,14 @@ func (c *client) StartStreamReq(sr *StreamReq) error {
 	return nil
 }
 
-func (c *client) PauseStreamReq(sr *StreamReq) {
-	sr.opaque = composeOpaqueValue(sr)
-	c.requestManager.closeRequest(sr.opaque, false)
+func (c *client) PauseStreamReq(id, vbno uint16) {
+	opaque := composeOpaque(id, vbno)
+	c.requestManager.closeRequest(opaque, false)
 }
 
-func (c *client) StopStreamReq(sr *StreamReq) *StreamReq {
-	sr.opaque = composeOpaqueValue(sr)
-	c.requestManager.closeRequest(sr.opaque, true)
-	return nil
+func (c *client) StopStreamReq(id, vbno uint16) {
+	opaque := composeOpaque(id, vbno)
+	c.requestManager.closeRequest(opaque, true)
 }
 
 func (c *client) Wait() error {
@@ -751,7 +750,7 @@ func makeConn(parent context.Context, address string, tlsConfig *notifier.TlsCon
 	if tlsConfig.EncryptData {
 		var t tls.Dialer
 		t.Config = &tls.Config{RootCAs: tlsConfig.Config.RootCAs}
-		if tlsConfig.IsClientAuthMandatory {
+		if tlsConfig.UseClientCert {
 			t.Config.Certificates = []tls.Certificate{*tlsConfig.ClientCertificate}
 		}
 		conn, err = t.DialContext(ctx, "tcp", address)
@@ -1069,10 +1068,6 @@ func LEB128Dec(data []byte) ([]byte, uint32) {
 // These function will create the opaque to identify the request
 // Top 16 bits will contain the id and bottom 16 bits will have the
 // vbucket number
-func composeOpaqueValue(sr *StreamReq) uint32 {
-	return composeOpaque(sr.ID, sr.Vbno)
-}
-
 func composeOpaque(id, vbno uint16) uint32 {
 	return (uint32(id) << 16) | uint32(vbno)
 }

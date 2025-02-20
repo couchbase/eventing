@@ -179,12 +179,12 @@ func (m *manager) StartStreamReq(sr *dcpConn.StreamReq) error {
 	return m.startRequestInternal(sr)
 }
 
-func (m *manager) PauseStreamReq(sr *dcpConn.StreamReq) {
-	m.pauseRequestInternal(sr)
+func (m *manager) PauseStreamReq(id, vbno uint16) {
+	m.pauseRequestInternal(id, vbno)
 }
 
-func (m *manager) CloseRequest(sr *dcpConn.StreamReq) (*dcpConn.StreamReq, error) {
-	return m.closeRequestInternal(sr)
+func (m *manager) CloseRequest(id, vbno uint16) {
+	m.closeRequestInternal(id, vbno)
 }
 
 func (m *manager) GetFailoverLog(vbs []uint16) (map[uint16]dcpConn.FailoverLog, error) {
@@ -244,17 +244,11 @@ func (m *manager) GetSeqNumber(vbs []uint16, collectionID string) (map[uint16]ui
 	return returnMap, nil
 }
 
-func (m *manager) CloseConditional() bool {
+func (m *manager) ClosePossible() bool {
 	m.idToChannelLock.RLock()
 	defer m.idToChannelLock.RUnlock()
 
-	registeredIDLen := len(m.idToChannel)
-	if registeredIDLen != 0 {
-		return false
-	}
-
-	m.closeManager()
-	return true
+	return (len(m.idToChannel) == 0)
 }
 
 func (m *manager) CloseManager() {
@@ -286,22 +280,22 @@ func (m *manager) startRequestInternal(sr *dcpConn.StreamReq) error {
 	return nil
 }
 
-func (m *manager) pauseRequestInternal(sr *dcpConn.StreamReq) {
-	_, dcpConsumer, err := m.getDcpConsumerForVb(sr.Vbno)
+func (m *manager) pauseRequestInternal(id, vbno uint16) {
+	_, dcpConsumer, err := m.getDcpConsumerForVb(vbno)
 	if err != nil {
 		return
 	}
 
-	dcpConsumer.PauseStreamReq(sr)
+	dcpConsumer.PauseStreamReq(id, vbno)
 }
 
-func (m *manager) closeRequestInternal(sr *dcpConn.StreamReq) (*dcpConn.StreamReq, error) {
-	_, dcpConsumer, err := m.getDcpConsumerForVb(sr.Vbno)
+func (m *manager) closeRequestInternal(id, vbno uint16) {
+	_, dcpConsumer, err := m.getDcpConsumerForVb(vbno)
 	if err != nil {
-		return nil, err
+		return
 	}
 
-	return dcpConsumer.StopStreamReq(sr), nil
+	dcpConsumer.StopStreamReq(id, vbno)
 }
 
 func (m *manager) findKvNodeAddress(vb uint16) (notifier.NodeAddress, error) {

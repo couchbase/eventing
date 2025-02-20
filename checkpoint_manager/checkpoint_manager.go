@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/couchbase/cbauth/metakv"
 	"github.com/couchbase/eventing/application"
 	"github.com/couchbase/eventing/common"
 	dcpConn "github.com/couchbase/eventing/dcp_connection"
@@ -28,6 +27,10 @@ const (
 	Checkpoint_FailoverLog
 	Checkpoint_ProcessedSeqNum
 	Checkpoint_SeqNum
+)
+
+var (
+	ErrDocumentNotFound = errors.New("document not found")
 )
 
 type CheckpointConfig struct {
@@ -84,20 +87,22 @@ type InterruptFunction func(msg OwnMsg, vb uint16, vbBlob *VbBlob)
 type BucketCheckpoint interface {
 	GetCheckpointManager(appId uint32, interruptCallback InterruptFunction, appLocation application.AppLocation, keyspace application.Keyspace) Checkpoint
 	TlsSettingChange(gocbCluster *gocb.Cluster)
+	CloseBucketManager()
 }
 
 type leaderType uint8
 
 const (
 	DebuggerLeader leaderType = iota
+	OnDeployLeader
 )
 
 type Checkpoint interface {
 	OwnershipSnapshot(*common.AppRebalanceProgress)
 
 	OwnVbCheckpoint(vb uint16)
-	GetCheckpoint(vb uint16) (VbBlob, error)
 	UpdateVal(vb uint16, field checkpointField, value interface{})
+
 	StopCheckpoint(vb uint16)
 	CloseCheckpointManager()
 
@@ -113,173 +118,81 @@ type Checkpoint interface {
 	GetTimerCheckpoints(appId uint32) (*gocb.ScanResult, error)
 	GetRuntimeStats() common.StatsInterface
 
-	TryTobeLeader(leaderType leaderType) (bool, error)
-
-	ReadOnDeployCheckpoint() (nodeLeader string, seq uint32, onDeployStatus string)
-	WriteOnDeployCheckpoint(nodeUUID string, seq uint32, appLocation application.AppLocation) bool
-	PollUntilOnDeployCompletes()
-	PublishOnDeployStatus(status string) error
+	TryTobeLeader(leaderType leaderType, seq uint32) (bool, error)
+	PollUntilOnDeployCompletes() *OnDeployCheckpoint
+	PublishOnDeployStatus(status OnDeployState) *OnDeployCheckpoint
 }
 
-const (
-	checkpointPrefixTemplate  = "eventing::%d::"
-	debuggerKeyTemplate       = checkpointPrefixTemplate + "debugger"
-	onDeployLeaderKeyTemplate = "%s::onDeployLeader"
+type dummyCheckpointManager struct{}
+
+var (
+	dummyCheckpointMgrStruct = &dummyCheckpointManager{}
 )
 
-type debuggerCheckpoint struct {
-	Token         string `json:"token"`
-	LeaderElected bool   `json:"leaderElected"`
-	Url           string `json:"url"`
+func NewDummyCheckpointManager() Checkpoint {
+	return dummyCheckpointMgrStruct
 }
 
-type onDeployCheckpoint struct {
-	NodeUUID       string `json:"node_uuid"`
-	Seq            uint32 `json:"seq"`
-	OnDeployStatus string `json:"on_deploy_status"`
+func (d *dummyCheckpointManager) OwnershipSnapshot(progress *common.AppRebalanceProgress) {
 }
 
-func WriteDebuggerCheckpoint(collectionHandle *gocb.Collection, id uint32) (string, error) {
-	token, err := common.RandomID()
-	if err != nil {
-		return "", err
-	}
-
-	dCheckpoint := debuggerCheckpoint{
-		Token: token,
-	}
-
-	key := fmt.Sprintf(debuggerKeyTemplate, id)
-	upsertOption := &gocb.UpsertOptions{
-		Timeout: opsTimeout,
-	}
-	_, err = collectionHandle.Upsert(key, dCheckpoint, upsertOption)
-	if err != nil {
-		return "", err
-	}
-	return token, nil
+func (d *dummyCheckpointManager) OwnVbCheckpoint(vb uint16) {
 }
 
-func DeleteDebuggerCheckpoint(collectionHandle *gocb.Collection, id uint32) error {
-	removeOption := &gocb.RemoveOptions{
-		Timeout: opsTimeout,
-	}
+func (d *dummyCheckpointManager) GetCheckpoint(vb uint16) (VbBlob, error) {
+	return VbBlob{}, nil
+}
 
-	key := fmt.Sprintf(debuggerKeyTemplate, id)
-	_, err := collectionHandle.Remove(key, removeOption)
-	if err != nil {
-		return err
-	}
+func (d *dummyCheckpointManager) UpdateVal(vb uint16, field checkpointField, value interface{}) {
+}
+
+func (d *dummyCheckpointManager) StopCheckpoint(vb uint16) {
+}
+
+func (d *dummyCheckpointManager) CloseCheckpointManager() {
+}
+
+func (d *dummyCheckpointManager) DeleteCheckpointBlob(vb uint16) error {
 	return nil
 }
 
-func GetDebuggerURL(collectionHandle *gocb.Collection, id uint32) (string, error) {
-	result, err := getDebuggerCheckpoint(collectionHandle, id)
-	if err != nil {
-		return "", err
-	}
-
-	var checkpoint debuggerCheckpoint
-	err = result.Content(&checkpoint)
-	if err != nil {
-		return "", err
-	}
-
-	return checkpoint.Url, nil
+func (d *dummyCheckpointManager) DeleteKeys(deleteKeys []string) {
 }
 
-func WriteDebuggerUrl(collectionHandle *gocb.Collection, id uint32, url string) error {
-	result, err := getDebuggerCheckpoint(collectionHandle, id)
-	if err != nil {
-		return err
-	}
-
-	var checkpoint debuggerCheckpoint
-	err = result.Content(&checkpoint)
-	if err != nil {
-		return err
-	}
-	checkpoint.Url = url
-
-	key := fmt.Sprintf(debuggerKeyTemplate, id)
-	replaceOptions := &gocb.ReplaceOptions{Cas: result.Result.Cas(),
-		Expiry: 0}
-	_, err = collectionHandle.Replace(key, checkpoint, replaceOptions)
-	return err
+func (d *dummyCheckpointManager) SyncUpsertCheckpoint(vb uint16, vbBlob *VbBlob) error {
+	return nil
 }
 
-func getDebuggerCheckpoint(collectionHandle *gocb.Collection, id uint32) (*gocb.GetResult, error) {
-	prefix := fmt.Sprintf(debuggerKeyTemplate, id)
-	return getCheckpointWithPrefix(collectionHandle, prefix)
+func (d *dummyCheckpointManager) TlsSettingChange(*gocb.Bucket) {
 }
 
-func getCheckpointWithPrefix(collectionHandle *gocb.Collection, key string) (*gocb.GetResult, error) {
-	getOption := &gocb.GetOptions{
-		Timeout: opsTimeout,
-	}
-
-	result, err := collectionHandle.Get(key, getOption)
-	if errors.Is(err, gocb.ErrDocumentNotFound) {
-		return nil, gocb.ErrDocumentNotFound
-	}
-
-	return result, err
+func (d *dummyCheckpointManager) WaitTillAllGiveUp(vbs uint16) {
 }
 
-func SetDebuggerCallback(appLocation application.AppLocation, value []byte) error {
-	debuggerPath := fmt.Sprintf(common.EventingDebuggerPathTemplate, appLocation)
-	return metakv.Set(debuggerPath, value, nil)
+func (d *dummyCheckpointManager) GetKeyPrefix() string {
+	return ""
 }
 
-func DeleteDebuggerCallback(appLocation application.AppLocation) error {
-	debuggerPath := fmt.Sprintf(common.EventingDebuggerPathTemplate, appLocation)
-	return metakv.Delete(debuggerPath, nil)
+func (d *dummyCheckpointManager) GetTimerCheckpoints(appId uint32) (*gocb.ScanResult, error) {
+	return nil, fmt.Errorf("dummyCheckpointManager.GetTimerCheckpoints not implemented")
 }
 
-func GetCheckpointKeyTemplate(appId uint32) string {
-	return getCheckpointKeyTemplate(appId)
+func (d *dummyCheckpointManager) GetRuntimeStats() common.StatsInterface {
+	return nil
 }
 
-func getCheckpointKeyTemplate(appId uint32) string {
-	return fmt.Sprintf(checkpointBlobTemplate, appId)
+func (d *dummyCheckpointManager) TryTobeLeader(leaderType leaderType, seq uint32) (bool, error) {
+	return false, nil
 }
 
-func DeleteOnDeployCheckpoint(appLocation application.AppLocation, collectionHandle *gocb.Collection) error {
-	return deleteOnDeployCheckpoint(appLocation, collectionHandle)
+func (d *dummyCheckpointManager) ReadOnDeployCheckpoint() (*OnDeployCheckpoint, error) {
+	return &OnDeployCheckpoint{Status: FinishedOnDeploy}, nil
 }
 
-func deleteOnDeployCheckpoint(appLocation application.AppLocation, collectionHandle *gocb.Collection) error {
-	key := fmt.Sprintf(onDeployLeaderKeyTemplate, appLocation)
-	_, err := collectionHandle.Remove(key, nil)
-	if errors.Is(err, gocb.ErrDocumentNotFound) {
-		return nil
-	}
-	return err
+func (d *dummyCheckpointManager) PollUntilOnDeployCompletes() *OnDeployCheckpoint {
+	return &OnDeployCheckpoint{Status: FinishedOnDeploy}
 }
 
-func ReadOnDeployCheckpoint(appLocation application.AppLocation, collectionHandle *gocb.Collection) (string, uint32, string, error) {
-	return readOnDeployCheckpoint(appLocation, collectionHandle)
-}
-
-func readOnDeployCheckpoint(appLocation application.AppLocation, collectionHandle *gocb.Collection) (nodeLeader string, seq uint32, onDeployStatus string, err error) {
-	var res *gocb.GetResult
-
-	onDeployStatus = common.PENDING.String()
-
-	key := fmt.Sprintf(onDeployLeaderKeyTemplate, appLocation)
-	res, err = collectionHandle.Get(key, &gocb.GetOptions{})
-	if err != nil {
-		return
-	}
-
-	var checkpoint onDeployCheckpoint
-	err = res.Content(&checkpoint)
-	if err != nil {
-		return
-	}
-
-	nodeLeader = checkpoint.NodeUUID
-	seq = checkpoint.Seq
-	onDeployStatus = checkpoint.OnDeployStatus
-	return
+func (d *dummyCheckpointManager) PublishOnDeployStatus(status OnDeployState) *OnDeployCheckpoint {
+	return nil
 }

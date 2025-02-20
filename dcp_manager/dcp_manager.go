@@ -12,8 +12,8 @@ import (
 type DcpManager interface {
 	DoneDcpEvent(event *dcpConn.DcpEvent)
 	StartStreamReq(sr *dcpConn.StreamReq) error
-	PauseStreamReq(sr *dcpConn.StreamReq)
-	CloseRequest(sr *dcpConn.StreamReq) (*dcpConn.StreamReq, error)
+	PauseStreamReq(id uint16, vbno uint16)
+	CloseRequest(id uint16, vbno uint16)
 	GetFailoverLog(vbs []uint16) (map[uint16]dcpConn.FailoverLog, error)
 	GetSeqNumber(vbs []uint16, collectionID string) (map[uint16]uint64, error)
 
@@ -21,6 +21,7 @@ type DcpManager interface {
 	DeregisterID(id uint16)
 
 	GetRuntimeStats() common.StatsInterface
+
+	ClosePossible() bool
 	CloseManager()
-	CloseConditional() bool
 }

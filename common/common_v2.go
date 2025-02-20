@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"hash/crc32"
 	"maps"
@@ -636,6 +637,10 @@ func (s2 *Stats) Sub(s1 *Stats, statType StatsType) *Stats {
 // s2 = s2 + s1
 // s2 should be more than or equals to statType provided
 func (s2 *Stats) Add(s1 *Stats, statType StatsType) {
+	if s1 == nil {
+		return
+	}
+
 	switch statType {
 	case FullDebugStats:
 		maps.Copy(s2.ProcessStats, s1.ProcessStats)
@@ -752,12 +757,14 @@ type OwnershipRoutine interface {
 }
 
 type LifecycleMsg struct {
-	InstanceID      string
-	Applocation     application.AppLocation
+	InstanceID  string
+	Applocation application.AppLocation
+	Description string
+	Revert      bool
+
 	DeleteFunction  bool
 	PauseFunction   bool
 	UndeloyFunction bool
-	Description     string
 }
 
 func (u LifecycleMsg) String() string {
@@ -924,29 +931,34 @@ func DistributeAndWaitWork[T comparable](parallism int, batchSize int, initialis
 func StopServer(server *http.Server) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
-	if err := server.Shutdown(ctx); err != nil && err != http.ErrServerClosed {
+	if err := server.Shutdown(ctx); !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}
 	return nil
 }
 
-type OnDeployState int8
+type container[T any] struct {
+	value T
+}
 
-const (
-	PENDING OnDeployState = iota + 1
-	FINISHED
-	FAILED
-)
+type AtomicTypes[T any] struct {
+	value atomic.Value
+}
 
-func (state OnDeployState) String() string {
-	switch state {
-	case PENDING:
-		return "Pending"
-	case FINISHED:
-		return "Finished"
-	case FAILED:
-		return "Failed"
-	default:
-		return fmt.Sprintf("Unknown OnDeployState: %d", state)
-	}
+func NewAtomicTypes[T any](val T) *AtomicTypes[T] {
+	a := &AtomicTypes[T]{}
+	a.value.Store(container[T]{value: val})
+	return a
+}
+
+func (a *AtomicTypes[T]) Load() T {
+	return a.value.Load().(container[T]).value
+}
+
+func (a *AtomicTypes[T]) Store(val T) {
+	a.value.Store(container[T]{value: val})
+}
+
+func (a *AtomicTypes[T]) Swap(new T) T {
+	return a.value.Swap(container[T]{value: new}).(container[T]).value
 }

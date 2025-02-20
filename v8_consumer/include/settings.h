@@ -103,11 +103,13 @@ struct cluster {
   cluster(std::string local_address_, std::string eventing_dir_,
           std::string ns_server_port_, std::string eventing_port_,
           std::string debugger_port_, std::string cert_file,
-          std::string client_cert_file, std::string client_key_file)
+          std::string client_cert_file, std::string client_key_file,
+          bool single_function_mode_)
       : local_address_(local_address_), eventing_dir_(eventing_dir_),
         ns_server_port_(ns_server_port_), eventing_port_(eventing_port_),
         debugger_port_(debugger_port_), cert_file_(cert_file),
-        client_cert_file_(client_cert_file), client_key_file_(client_key_file){}
+        client_cert_file_(client_cert_file), client_key_file_(client_key_file),
+        single_function_mode_(single_function_mode_) {}
 
   std::string local_address_;
   std::string eventing_dir_;
@@ -117,6 +119,7 @@ struct cluster {
   std::string cert_file_;
   std::string client_cert_file_;
   std::string client_key_file_;
+  bool single_function_mode_{false};
 };
 
 std::shared_ptr<settings::app_details>

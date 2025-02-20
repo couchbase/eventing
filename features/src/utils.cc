@@ -1249,7 +1249,7 @@ std::string GetConnectionStr(const KVNodesInfo &nodes_info,
     conn_str << "couchbases://" << nodes_list << '/' << bucket_name
              << "?select_bucket=true&detailed_errcodes=1&truststorepath="
              << certFile;
-    if (nodes_info.is_client_auth_mandatory) {
+    if (nodes_info.use_client_cert) {
       conn_str << "&certpath=" << client_cert_file
                << "&keypath=" << client_key_file
                << "&use_credentials_with_client_certificate=true";

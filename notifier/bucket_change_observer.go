@@ -161,7 +161,7 @@ func (b *bucketObserver) bucketChangeCallback(res *pc.Response) pc.WhatNext {
 	}
 
 	err = b.interruptBucketChange(terseRes)
-	if err == ErrBucketDeleted {
+	if errors.Is(err, ErrBucketDeleted) {
 		b.responseCallback.BucketChangeCallback(b.bucket, nil, ErrBucketDeleted)
 		return pc.Stop
 	}
@@ -187,7 +187,7 @@ func (b *bucketObserver) interruptBucketChange(terseRes *terseBucketResponse) er
 	var err error
 
 	defer func() {
-		if err == ErrBucketDeleted {
+		if errors.Is(err, ErrBucketDeleted) {
 			return
 		}
 

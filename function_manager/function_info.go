@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -38,9 +39,7 @@ type keyspaceOwner struct {
 
 func (ko *keyspaceOwner) Copy() *keyspaceOwner {
 	permsRequired := make([]string, 0, len(ko.permsRequired))
-	for _, perm := range ko.permsRequired {
-		permsRequired = append(permsRequired, perm)
-	}
+	permsRequired = append(permsRequired, ko.permsRequired...)
 
 	return &keyspaceOwner{
 		owner:            ko.owner,
@@ -55,12 +54,17 @@ func (ko *keyspaceOwner) Copy() *keyspaceOwner {
 
 // Helper function for keyspaceObserver
 func checkPermError(err error) bool {
-	return (err == rbac.ErrAuthorisation) ||
-		(err == rbac.ErrUserDeleted)
+	return errors.Is(err, rbac.ErrAuthorisation) ||
+		errors.Is(err, rbac.ErrUserDeleted)
 }
 
 func getObserverKey(bucket, scope, collection, keyspaceType string) string {
 	return fmt.Sprintf("%s/%s/%s/%s", bucket, scope, collection, keyspaceType)
+}
+
+func splitObserverKey(key string) (bucket, scope, collection, keyspaceType string) {
+	split := strings.Split(key, "/")
+	return split[0], split[1], split[2], split[3]
 }
 
 func getPermission(keyspace application.Keyspace, currState string) (perms []string) {
@@ -114,10 +118,7 @@ type keyspaceObserver struct {
 
 	// bucket/scope/collection/keytype -> instanceID -> keyspaceOwner
 	observerMap map[string]map[string]*keyspaceOwner
-
-	// bucket -> bucket/scope/collection/keytype
-	bucketObserverList map[string]map[string]struct{}
-	observerCh         chan application.Keyspace
+	observerCh  chan application.Keyspace
 
 	observer   notifier.Observer
 	subscriber notifier.Subscriber
@@ -127,9 +128,8 @@ type keyspaceObserver struct {
 
 func NewKeyspaceObserverWithContext(ctx context.Context, id string, observer notifier.Observer, interrupt InterruptHandler) *keyspaceObserver {
 	ko := &keyspaceObserver{
-		id:                 id,
-		observerMap:        make(map[string]map[string]*keyspaceOwner),
-		bucketObserverList: make(map[string]map[string]struct{}),
+		id:          id,
+		observerMap: make(map[string]map[string]*keyspaceOwner),
 
 		observerCh: make(chan application.Keyspace, 1000),
 		observer:   observer,
@@ -141,12 +141,18 @@ func NewKeyspaceObserverWithContext(ctx context.Context, id string, observer not
 	return ko
 }
 
+func (f *keyspaceObserver) InternalUndeploymentMap(undeployMap map[string]*keyspaceOwner) {
+	for instanceID, ko := range undeployMap {
+		f.InternalUndeployment(instanceID, ko)
+	}
+}
+
 func (f *keyspaceObserver) InternalUndeployment(instanceID string, ko *keyspaceOwner) {
 	seq, undeployMsg := getUndeployMessageFromkeyspaceOwner(instanceID, ko)
 	f.interrupt.StopCalledInterupt(seq, undeployMsg)
 }
 
-func (f *keyspaceObserver) AddToObserverList(funcDetails *application.FunctionDetails, currState application.LifeCycleOp) {
+func (f *keyspaceObserver) AddToObserverList(funcDetails *application.FunctionDetails, nextState application.LifeCycleOp) {
 	logPrefix := fmt.Sprintf("keyspaceObserver::AddToObserverList[%s]", f.id)
 	funcScope := funcDetails.AppLocation.Namespace
 	funcScopeKeyspace, _ := application.NewKeyspace(funcScope.BucketName, funcScope.ScopeName, "*", true)
@@ -157,7 +163,7 @@ func (f *keyspaceObserver) AddToObserverList(funcDetails *application.FunctionDe
 	f.Lock()
 	defer f.Unlock()
 
-	switch currState {
+	switch nextState {
 	case application.Undeploy:
 		f.removeLocked(instanceID, srcKeyspace, sourceType)
 		f.removeLocked(instanceID, metaKeyspace, metaType)
@@ -174,7 +180,7 @@ func (f *keyspaceObserver) AddToObserverList(funcDetails *application.FunctionDe
 			funcDetails.MetaInfo.SourceID,
 			metaKeyspace,
 			funcDetails.MetaInfo.MetaID,
-			currState,
+			nextState,
 		)
 
 	case application.Deploy, application.Pause:
@@ -193,7 +199,7 @@ func (f *keyspaceObserver) AddToObserverList(funcDetails *application.FunctionDe
 			funcDetails.MetaInfo.SourceID,
 			metaKeyspace,
 			funcDetails.MetaInfo.MetaID,
-			currState,
+			nextState,
 		)
 	}
 }
@@ -246,16 +252,18 @@ func (f *keyspaceObserver) routineForControlMessage(ctx context.Context) {
 	}()
 
 	f.Lock()
+	m := make(map[string]*keyspaceOwner)
 	for _, iMap := range f.observerMap {
 		for instanceID, keyspaceOwner := range iMap {
 			err := f.registerWithNotifierLocked(keyspaceOwner.keyspaceIdentity, keyspaceOwner.keyspaceID)
 			if err != nil {
-				f.InternalUndeployment(instanceID, keyspaceOwner)
+				m[instanceID] = keyspaceOwner
 			}
 		}
 	}
 	f.Unlock()
 
+	f.InternalUndeploymentMap(m)
 	for {
 		select {
 		case trans := <-f.subscriber.WaitForEvent():
@@ -266,7 +274,8 @@ func (f *keyspaceObserver) routineForControlMessage(ctx context.Context) {
 			f.analyseClusterChange(trans)
 
 		case <-ownershipCheckTimer.C:
-			f.analyseOwnership()
+			undeployMap := f.analyseOwnership()
+			f.InternalUndeploymentMap(undeployMap)
 
 		case <-ctx.Done():
 			return
@@ -275,12 +284,10 @@ func (f *keyspaceObserver) routineForControlMessage(ctx context.Context) {
 }
 
 func (f *keyspaceObserver) analyseClusterChange(trans *notifier.TransitionEvent) {
-	f.Lock()
-	defer f.Unlock()
-
 	if trans.Deleted {
 		bucketName := trans.Event.Filter
-		f.handleBucketDeleteLocked(bucketName)
+		undeployMap := f.handleBucketDelete(bucketName)
+		f.InternalUndeploymentMap(undeployMap)
 		return
 	}
 
@@ -290,21 +297,25 @@ func (f *keyspaceObserver) analyseClusterChange(trans *notifier.TransitionEvent)
 		if !ok {
 			return
 		}
-
-		f.analyseCollectionChangeLocked(trans.Event.Filter, rManifest.(*notifier.CollectionManifest))
+		undeployMap := f.analyseCollectionChange(trans.Event.Filter, rManifest.(*notifier.CollectionManifest))
+		f.InternalUndeploymentMap(undeployMap)
 
 	default:
 	}
 }
 
-func (f *keyspaceObserver) analyseCollectionChangeLocked(bucketName string, removedCol *notifier.CollectionManifest) {
+func (f *keyspaceObserver) analyseCollectionChange(bucketName string, removedCol *notifier.CollectionManifest) map[string]*keyspaceOwner {
+	f.RLock()
+	defer f.RUnlock()
+
+	m := make(map[string]*keyspaceOwner)
 	for sName, sStruct := range removedCol.Scopes {
-		for cName, _ := range sStruct.Collections {
+		for cName := range sStruct.Collections {
 			key := getObserverKey(bucketName, sName, cName, funcScopeType)
 			iMap, ok := f.observerMap[key]
 			if ok {
 				for instanceID, ko := range iMap {
-					f.InternalUndeployment(instanceID, ko)
+					m[instanceID] = ko
 				}
 			}
 
@@ -312,7 +323,7 @@ func (f *keyspaceObserver) analyseCollectionChangeLocked(bucketName string, remo
 			iMap, ok = f.observerMap[key]
 			if ok {
 				for instanceID, ko := range iMap {
-					f.InternalUndeployment(instanceID, ko)
+					m[instanceID] = ko
 				}
 			}
 
@@ -320,17 +331,19 @@ func (f *keyspaceObserver) analyseCollectionChangeLocked(bucketName string, remo
 			iMap, ok = f.observerMap[key]
 			if ok {
 				for instanceID, ko := range iMap {
-					f.InternalUndeployment(instanceID, ko)
+					m[instanceID] = ko
 				}
 			}
 		}
 	}
+	return m
 }
 
-func (f *keyspaceObserver) analyseOwnership() {
+func (f *keyspaceObserver) analyseOwnership() map[string]*keyspaceOwner {
 	f.RLock()
 	defer f.RUnlock()
 
+	m := make(map[string]*keyspaceOwner)
 	for _, iMap := range f.observerMap {
 		for instanceID, keyspaceOwner := range iMap {
 			notAllowed, err := rbac.HasPermissions(&keyspaceOwner.owner, keyspaceOwner.permsRequired, true)
@@ -338,26 +351,28 @@ func (f *keyspaceObserver) analyseOwnership() {
 				continue
 			}
 
-			f.InternalUndeployment(instanceID, keyspaceOwner)
+			m[instanceID] = keyspaceOwner
 		}
 	}
+	return m
 }
 
-func (f *keyspaceObserver) handleBucketDeleteLocked(bucketName string) {
-	bucketMap, ok := f.bucketObserverList[bucketName]
-	if !ok {
-		return
-	}
+func (f *keyspaceObserver) handleBucketDelete(bucketName string) map[string]*keyspaceOwner {
+	f.RLock()
+	defer f.RUnlock()
 
-	for key, _ := range bucketMap {
-		iMap, ok := f.observerMap[key]
-		if !ok {
+	m := make(map[string]*keyspaceOwner)
+	for key, iMap := range f.observerMap {
+		bucket, _, _, _ := splitObserverKey(key)
+		if bucket != bucketName {
 			continue
 		}
 		for instanceID, keyspaceOwner := range iMap {
-			f.InternalUndeployment(instanceID, keyspaceOwner)
+			m[instanceID] = keyspaceOwner
 		}
 	}
+
+	return m
 }
 
 func (f *keyspaceObserver) addLocked(instanceID string, seq uint32,
@@ -365,10 +380,18 @@ func (f *keyspaceObserver) addLocked(instanceID string, seq uint32,
 	keyspaceID application.KeyspaceInfo,
 	owner application.Owner, kType string) error {
 
+	keyspaceOwnerStruct := &keyspaceOwner{
+		seq:              seq,
+		owner:            owner,
+		keyspaceID:       keyspaceID,
+		keyspaceIdentity: keyspace,
+		appLocation:      appLocation,
+		keyspaceType:     kType,
+		permsRequired:    getPermission(keyspace, kType),
+	}
 	err := f.registerWithNotifierLocked(keyspace, keyspaceID)
 	if err != nil {
-		undeployMsg := getUndeployMessage(instanceID, appLocation, kType)
-		f.interrupt.StopCalledInterupt(seq, undeployMsg)
+		f.InternalUndeployment(instanceID, keyspaceOwnerStruct)
 		return err
 	}
 
@@ -379,22 +402,7 @@ func (f *keyspaceObserver) addLocked(instanceID string, seq uint32,
 		f.observerMap[key] = oMap
 	}
 
-	keyMap, ok := f.bucketObserverList[keyspace.BucketName]
-	if !ok {
-		keyMap = make(map[string]struct{})
-		f.bucketObserverList[keyspace.BucketName] = keyMap
-	}
-
-	keyMap[key] = struct{}{}
-	oMap[instanceID] = &keyspaceOwner{
-		seq:              seq,
-		owner:            owner,
-		keyspaceID:       keyspaceID,
-		keyspaceIdentity: keyspace,
-		appLocation:      appLocation,
-		keyspaceType:     kType,
-		permsRequired:    getPermission(keyspace, kType),
-	}
+	oMap[instanceID] = keyspaceOwnerStruct
 
 	return nil
 }
@@ -411,17 +419,6 @@ func (f *keyspaceObserver) removeLocked(instanceID string, keyspace application.
 		delete(f.observerMap, key)
 	}
 
-	keyMap, ok := f.bucketObserverList[keyspace.BucketName]
-	if !ok {
-		return
-	}
-
-	delete(keyMap, key)
-	if len(keyMap) > 0 {
-		return
-	}
-
-	delete(f.bucketObserverList, keyspace.BucketName)
 	f.deregisterWithNotifierLocked(keyspace.BucketName)
 }
 
@@ -436,7 +433,7 @@ func (f *keyspaceObserver) registerWithNotifierLocked(keyspace application.Keysp
 	}
 
 	currState, err := f.observer.RegisterForEvents(f.subscriber, iEvent)
-	if err == notifier.ErrFilterNotFound {
+	if errors.Is(err, notifier.ErrFilterNotFound) {
 		return bucketDeleted
 	}
 
@@ -447,7 +444,7 @@ func (f *keyspaceObserver) registerWithNotifierLocked(keyspace application.Keysp
 
 	iEvent.Event = notifier.EventScopeOrCollectionChanges
 	currState, err = f.observer.RegisterForEvents(f.subscriber, iEvent)
-	if err == notifier.ErrFilterNotFound {
+	if errors.Is(err, notifier.ErrFilterNotFound) {
 		return bucketDeleted
 	}
 
@@ -491,8 +488,6 @@ func (f *keyspaceObserver) deregisterWithNotifierLocked(bucketName string) {
 
 	iEvent.Event = notifier.EventScopeOrCollectionChanges
 	f.observer.DeregisterEvent(f.subscriber, iEvent)
-
-	delete(f.bucketObserverList, bucketName)
 }
 
 func (f *keyspaceObserver) closeKeyspaceObserver() {
@@ -511,37 +506,83 @@ func (f *keyspaceObserver) closeKeyspaceObserver() {
 // funcCache will observe if there is any deletion of function required or not based on ownership or details change
 // Alos it will convert apploction to instance id
 type funcCache struct {
-	appLocationToInstanceID map[application.AppLocation]string
-	kO                      *keyspaceObserver
+	sync.RWMutex
+
+	instanceIdToFunctionRuntime map[string]*funcRuntimeDetails
+	applocationToInstanceId     map[application.AppLocation]string
+	kO                          *keyspaceObserver
 }
 
-func NewFunctionNameCache(ctx context.Context, id string, observer notifier.Observer, interrupt InterruptHandler) *funcCache {
-	return &funcCache{
-		appLocationToInstanceID: make(map[application.AppLocation]string),
-		kO:                      NewKeyspaceObserverWithContext(ctx, id, observer, interrupt),
+func NewFunctionNameCache(ctx context.Context, id string, observer notifier.Observer, interrupt InterruptHandler) funcCache {
+	return funcCache{
+		instanceIdToFunctionRuntime: make(map[string]*funcRuntimeDetails),
+		applocationToInstanceId:     make(map[application.AppLocation]string),
+		kO:                          NewKeyspaceObserverWithContext(ctx, id, observer, interrupt),
 	}
 }
 
-func (fCache *funcCache) AddToFuncCache(funcDetails *application.FunctionDetails, nextState application.LifeCycleOp) (string, string, bool) {
+func (fCache *funcCache) AddToFuncCache(funcDetails *application.FunctionDetails, funcRuntimeDetails *funcRuntimeDetails, nextState application.LifeCycleOp) {
 	fCache.kO.AddToObserverList(funcDetails, nextState)
+	fCache.Lock()
+	defer fCache.Unlock()
 
-	oldInstanceID, ok := fCache.appLocationToInstanceID[funcDetails.AppLocation]
-	fCache.appLocationToInstanceID[funcDetails.AppLocation] = funcDetails.AppInstanceID
-	if !ok {
-		oldInstanceID = funcDetails.AppInstanceID
+	currInstanceId, ok := fCache.applocationToInstanceId[funcDetails.AppLocation]
+	if ok {
+		delete(fCache.instanceIdToFunctionRuntime, currInstanceId)
 	}
-	return oldInstanceID, funcDetails.AppInstanceID, ok
+	fCache.applocationToInstanceId[funcDetails.AppLocation] = funcDetails.AppInstanceID
+	fCache.instanceIdToFunctionRuntime[funcDetails.AppInstanceID] = funcRuntimeDetails
 }
 
-func (fCache *funcCache) GetInstanceID(appLocation application.AppLocation) (string, bool) {
-	instanceID, ok := fCache.appLocationToInstanceID[appLocation]
-	return instanceID, ok
+func (fCache *funcCache) GetFunctionRuntimeDetails(appLocation application.AppLocation) (string, *funcRuntimeDetails, bool) {
+	fCache.RLock()
+	defer fCache.RUnlock()
+
+	instanceId, ok := fCache.applocationToInstanceId[appLocation]
+	if !ok {
+		return "", nil, ok
+	}
+
+	runtimeDetails, ok := fCache.instanceIdToFunctionRuntime[instanceId]
+	return instanceId, runtimeDetails, ok
+}
+
+func (fCache *funcCache) GetFunctionRuntimeDetailsFromInstanceID(instanceId string) (*funcRuntimeDetails, bool) {
+	fCache.RLock()
+	defer fCache.RUnlock()
+
+	runtimeDetails, ok := fCache.instanceIdToFunctionRuntime[instanceId]
+	if !ok {
+		return nil, ok
+	}
+
+	return runtimeDetails, ok
+}
+
+func (fCache *funcCache) GetAllFunctionRuntimeDetails() []*funcRuntimeDetails {
+	fCache.RLock()
+	defer fCache.RUnlock()
+
+	runtimeDetails := make([]*funcRuntimeDetails, 0, len(fCache.instanceIdToFunctionRuntime))
+	for _, runtimeDetail := range fCache.instanceIdToFunctionRuntime {
+		runtimeDetails = append(runtimeDetails, runtimeDetail)
+	}
+	return runtimeDetails
 }
 
 func (fCache *funcCache) DeleteFromFuncCache(funcDetails *application.FunctionDetails) (string, int) {
 	fCache.kO.DeleteFromObserverList(funcDetails)
 
-	oldInstanceID := fCache.appLocationToInstanceID[funcDetails.AppLocation]
-	delete(fCache.appLocationToInstanceID, funcDetails.AppLocation)
-	return oldInstanceID, len(fCache.appLocationToInstanceID)
+	fCache.Lock()
+	defer fCache.Unlock()
+
+	instanceID := fCache.applocationToInstanceId[funcDetails.AppLocation]
+	delete(fCache.applocationToInstanceId, funcDetails.AppLocation)
+	delete(fCache.instanceIdToFunctionRuntime, instanceID)
+	return instanceID, len(fCache.applocationToInstanceId)
+}
+
+func (fCache *funcCache) CloseFuncCache() {
+	// No need to make other struct to empty since this is called when all the functions are removed
+	fCache.kO.closeKeyspaceObserver()
 }

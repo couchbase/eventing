@@ -13,6 +13,35 @@ import (
 	"github.com/couchbase/eventing/logging"
 )
 
+type LogWriter interface {
+	Write(p []byte) (n int, err error)
+	Tail(sz int64) ([]byte, error)
+	Flush()
+	Close() error
+}
+
+// dummyLogWriter is a dummy implementation of LogWriter
+type dummyLogWriter struct{}
+
+func NewDummyLogWriter() LogWriter {
+	return dummyLogWriter{}
+}
+
+func (dlw dummyLogWriter) Write(p []byte) (n int, err error) {
+	return len(p), nil
+}
+
+func (dlw dummyLogWriter) Tail(sz int64) ([]byte, error) {
+	return nil, nil
+}
+
+func (dlw dummyLogWriter) Flush() {
+}
+
+func (dlw dummyLogWriter) Close() error {
+	return nil
+}
+
 type filePtr struct {
 	ptr  *os.File
 	wptr *bufio.Writer
@@ -79,7 +108,7 @@ func (wc *appLogCloser) Tail(sz int64) ([]byte, error) {
 		from = 0
 	}
 	read, err := fptr.ptr.ReadAt(buf, from)
-	if err != nil && err != io.EOF || read < 0 {
+	if !errors.Is(err, io.EOF) || read < 0 {
 		return nil, fmt.Errorf("unable to read %v: %v", wc.path, err)
 	}
 	return buf[:read], nil

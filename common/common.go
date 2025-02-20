@@ -526,8 +526,6 @@ type EventingSuperSup interface {
 	WriteOnDeployMsgBuffer(appName, msg string)
 	GetOnDeployMsgBuffer(appName string) []string
 	ClearOnDeployMsgBuffer(appName string)
-	GetOnDeployStatus(appName string) OnDeployState
-	GetPreviousOnDeployStatus(appName string) OnDeployState
 	UpdateFailedOnDeployStatus(appName string)
 	CleanupOnDeployTimers(appName string, skipCheckpointBlobs bool) error
 

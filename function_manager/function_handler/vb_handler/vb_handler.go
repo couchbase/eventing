@@ -17,7 +17,7 @@ type StatsHandler interface {
 }
 
 type Ownership interface {
-	GetVbMap(keyspaceInfo *application.KeyspaceInfo, id uint16, numVb uint16, appLocation application.AppLocation) (string, []uint16, error)
+	GetVbMap(keyspaceInfo *application.KeyspaceInfo, id uint16, numVb, timerVbs uint16, appLocation application.AppLocation) (string, []uint16, error)
 }
 
 type SystemResourceDetails interface {
@@ -91,13 +91,13 @@ type VbHandler interface {
 }
 
 var (
-	DummyVbHandler = dummy(0)
+	dummyVbHandler = dummy(0)
 )
 
 type dummy uint8
 
 func NewDummyVbHandler() VbHandler {
-	return DummyVbHandler
+	return dummyVbHandler
 }
 
 func (_ dummy) RefreshSystemResourceLimits() {
@@ -132,4 +132,21 @@ func (_ dummy) AckMessages(value []byte) (int, int) {
 
 func (_ dummy) Close() []uint16 {
 	return nil
+}
+
+func GetTimerPartitionsInVbs(vbs []uint16, numVbs, numTimerPartitions uint16) ([]uint16, []uint16) {
+	reductionRatio := numVbs / numTimerPartitions
+
+	timerVbs := make([]uint16, 0)
+	nonTimerVbs := make([]uint16, 0)
+
+	for _, vb := range vbs {
+		if vb%reductionRatio == 0 {
+			timerVbs = append(timerVbs, vb)
+		} else {
+			nonTimerVbs = append(nonTimerVbs, vb)
+		}
+	}
+
+	return timerVbs, nonTimerVbs
 }

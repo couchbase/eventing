@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/couchbase/eventing/application"
+	checkpointManager "github.com/couchbase/eventing/checkpoint_manager"
 	header "github.com/couchbase/eventing/gen/flatbuf/header_v2"
 	"github.com/couchbase/eventing/process_manager/communicator"
 	flatbuffers "github.com/google/flatbuffers/go"
@@ -245,7 +246,7 @@ func (mb *flatbufMessageBuilder) LifeCycleChangeMessage(opcode uint8, handlerID 
 
 // For OnDeploy status received from C++ layer
 type OnDeployAckMsg struct {
-	Status string `json:"on_deploy_status"`
+	Status checkpointManager.OnDeployState `json:"on_deploy_status"`
 }
 
 // For StatsEvent

@@ -65,7 +65,7 @@ func defaultIfUnset(s string) string {
 // Check for user credentials
 func authCreds(req *http.Request) (cbauth.Creds, error) {
 	cred, err := cbauth.AuthWebCreds(req)
-	if err == cbauth.ErrNoAuth {
+	if errors.Is(err, cbauth.ErrNoAuth) {
 		return nil, ErrAuthentication
 	}
 
@@ -187,7 +187,7 @@ func HasPermissions(owner *application.Owner, permissions []string, all bool) ([
 
 	if owner.UUID != "" {
 		uuid, err := cbauth.GetUserUuid(owner.User, owner.Domain)
-		if err == cbauth.ErrNoUuid {
+		if errors.Is(err, cbauth.ErrNoUuid) {
 			return permissions, ErrUserDeleted
 		}
 		if err != nil {

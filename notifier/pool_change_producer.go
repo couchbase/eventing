@@ -29,14 +29,14 @@ type poolObserver struct {
 	isIpv4                bool
 	streamingUri          string
 	responseCallback      changeCallback
-	bucketObserverMapLock *sync.RWMutex
+	bucketObserverMapLock sync.RWMutex
 	bucketObserverMap     map[string]*bucketObserver
 
 	pointConn pc.PointConnection
 	*clusterInternal
 
 	settings  *TLSClusterConfig
-	connected *atomic.Bool
+	connected atomic.Bool
 }
 
 var (
@@ -59,10 +59,10 @@ func newPoolObserver(settings *TLSClusterConfig, poolName, restPoint string, isI
 		restPoint:             restPoint,
 		isIpv4:                isIpv4,
 		responseCallback:      responseChangeCallback,
-		bucketObserverMapLock: &sync.RWMutex{},
+		bucketObserverMapLock: sync.RWMutex{},
 		bucketObserverMap:     make(map[string]*bucketObserver),
 		settings:              settings,
-		connected:             &atomic.Bool{},
+		connected:             atomic.Bool{},
 	}
 
 	p.connected.Store(false)
@@ -131,7 +131,7 @@ func (p *poolObserver) poolChangeCallback(res *pc.Response) pc.WhatNext {
 	// This might be due to network issue or
 	// something to do with security changes
 	// Localhost connection so no need for tls connection for now
-	if res.Err == pc.ErrEndOfConnection {
+	if errors.Is(res.Err, pc.ErrEndOfConnection) {
 		logging.Errorf("%s pools connection got disconnected. Retrying request...", logPrefix)
 		return pc.RetryRequest
 	}
@@ -323,8 +323,8 @@ func (p *poolObserver) bucketChanges(sResult *streamingResult) error {
 	}
 
 	// Wait for next response
-	err := p.startNewBuckets(addedBuckets, sResult)
-	if err == errConcurrencyError {
+	err := p.startNewBuckets(addedBuckets)
+	if errors.Is(err, errConcurrencyError) {
 		return nil
 	}
 
@@ -346,7 +346,7 @@ func (p *poolObserver) closeDeletedBuckets(deletedBuckets []*bucketInfo) {
 	}
 }
 
-func (p *poolObserver) startNewBuckets(buckets []*bucketInfo, sResult *streamingResult) error {
+func (p *poolObserver) startNewBuckets(buckets []*bucketInfo) error {
 	logPrefix := "poolObserver::startNewBuckets"
 	p.bucketObserverMapLock.Lock()
 	defer p.bucketObserverMapLock.Unlock()

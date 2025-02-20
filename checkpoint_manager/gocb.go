@@ -14,6 +14,14 @@ import (
 	"github.com/couchbase/gocb/v2"
 )
 
+type GocbLogger struct{}
+
+func (r *GocbLogger) Log(level gocb.LogLevel, offset int, format string, v ...interface{}) error {
+	// TODO: Add logging for gocb based on level
+	// logging.Infof(format, v...)
+	return nil
+}
+
 type dynamicAuthenticator struct {
 	statsCounter      *common.GlobalStatsCounter
 	clientCertificate *tls.Certificate
@@ -101,7 +109,7 @@ func GetGocbClusterObject(clusterConfig *common.ClusterSettings, observer notifi
 		if tlsConfig.EncryptData {
 			clusterOptions.SecurityConfig = gocb.SecurityConfig{TLSRootCAs: tlsConfig.Config.RootCAs}
 			// Use client certificate authentication when n2n encryption is enabled and client auth type is mandatory
-			if tlsConfig.IsClientAuthMandatory {
+			if tlsConfig.UseClientCert {
 				authenticator.clientCertificate = tlsConfig.ClientCertificate
 			}
 		}
@@ -143,9 +151,10 @@ func GetBucketObjectWithRetry(cluster *gocb.Cluster, retryCount int, observer no
 	logPrefix := "checkpointManager::GetBucketObjectWithRetry"
 
 	for retryCount != 0 {
+		// gocb won't return nil bucket. So we can retur this bucket in case of error and any ops will be no op
 		bucket = cluster.Bucket(bucketName)
 		err = bucket.WaitUntilReady(5*time.Second, nil)
-		if err == gocb.ErrShutdown {
+		if errors.Is(err, gocb.ErrShutdown) {
 			return bucket, err
 		}
 
@@ -171,101 +180,45 @@ func GetCollectionHandle(bucket *gocb.Bucket, keyspace application.Keyspace) (co
 	return bucket.Scope(keyspace.ScopeName).Collection(keyspace.CollectionName)
 }
 
-// sync from server only if this is the owner otherwise ignore
-// and make the owner
-func (vbi *vbBlobInternal) syncFromServerAndOwnTheKeyLocked(forced bool) (string, error) {
-	result, err := getCheckpointWithPrefix(vbi.collectionHandler.GetCollectionHandle(), vbi.key)
-	if errors.Is(err, gocb.ErrDocumentNotFound) {
-		vbi.vbBlob = &VbBlob{
-			NodeUUID: vbi.checkpointConfig.OwnerNodeUUID,
+// Gocb calls
+func get[T any](collectionHandle *gocb.Collection, observer notifier.Observer, keyspace application.Keyspace, key string, resultInterface T) (*gocb.GetResult, error) {
+	getOption := &gocb.GetOptions{
+		Timeout: opsTimeout,
+	}
+	result, err := collectionHandle.Get(key, getOption)
+	if err != nil {
+		if errors.Is(err, gocb.ErrDocumentNotFound) {
+			return nil, ErrDocumentNotFound
 		}
 
-		err := vbi.createCheckpointBlob()
-		if err != nil {
-			vbi.vbBlob = nil
-			return "", fmt.Errorf("error in creating checkpoint: %v", err)
+		if !common.CheckKeyspaceExist(observer, keyspace) {
+			return nil, errKeyspaceNotFound
 		}
 
-		return vbi.checkpointConfig.OwnerNodeUUID, nil
+		return nil, err
 	}
 
-	if err != nil {
-		return "", fmt.Errorf("error for get op: %v", err)
-	}
-
-	vbBlob := &VbBlob{}
-	err = result.Content(vbBlob)
-	if err != nil {
-		return "", fmt.Errorf("error parsing content of blob: %v", err)
-	}
-
-	if !forced && (vbBlob.NodeUUID != "") && (vbBlob.NodeUUID != vbi.checkpointConfig.OwnerNodeUUID) {
-		return vbBlob.NodeUUID, errOwnerNotGivenUp
-	}
-
-	upsertOptions := &gocb.UpsertSpecOptions{CreatePath: true}
-	mutateIn := make([]gocb.MutateInSpec, 0)
-
-	vbi.vbBlob = vbBlob
-	if vbBlob.NodeUUID == vbi.checkpointConfig.OwnerNodeUUID {
-		return vbBlob.NodeUUID, nil
-	}
-
-	mutateIn = append(mutateIn, gocb.UpsertSpec("node_uuid", vbi.checkpointConfig.OwnerNodeUUID, upsertOptions))
-	err = vbi.subdocUpdateLocked(mutateIn)
-	if err != nil {
-		vbi.vbBlob = nil
-		return "", fmt.Errorf("error updating node_uuid: %v", err)
-	}
-
-	vbi.ownedTime = time.Now()
-	return vbi.checkpointConfig.OwnerNodeUUID, nil
+	return result, result.Content(resultInterface)
 }
 
-func (vbi *vbBlobInternal) createCheckpointBlob() error {
-	vbi.Lock()
-	defer vbi.Unlock()
-
-	upsertOption := &gocb.UpsertOptions{
-		Timeout: opsTimeout,
+func deleteBulk(collection *gocb.Collection, observer notifier.Observer, keyspace application.Keyspace, deleteKeys []string) error {
+	bulkOptions := &gocb.BulkOpOptions{
+		Timeout: 5 * opsTimeout,
 	}
 
-	_, err := vbi.collectionHandler.GetCollectionHandle().Upsert(vbi.key, vbi.vbBlob, upsertOption)
-	if vbi.vbBlob != nil {
-		vbi.dirty = false
-		for index, _ := range vbi.dirtyField {
-			vbi.dirtyField[index] = nil
-		}
+	items := make([]gocb.BulkOp, 0, len(deleteKeys))
+	for _, key := range deleteKeys {
+		items = append(items, &gocb.RemoveOp{ID: key})
+	}
+
+	err := collection.Do(items, bulkOptions)
+	if err != nil && common.CheckKeyspaceExist(observer, keyspace) {
+		return errKeyspaceNotFound
 	}
 	return err
 }
 
-func (vbi *vbBlobInternal) subdocUpdateLocked(mutateSpec []gocb.MutateInSpec) error {
-	mutateInOption := &gocb.MutateInOptions{
-		Timeout: opsTimeout,
-	}
-
-	_, err := vbi.collectionHandler.GetCollectionHandle().MutateIn(vbi.key, mutateSpec, mutateInOption)
-	return err
-}
-
-func (cm *checkpointManager) upsert(key string, vbBlob *VbBlob) error {
-	upsertOption := &gocb.UpsertOptions{
-		Timeout: opsTimeout,
-	}
-	_, err := cm.getCollectionHandle().Upsert(key, vbBlob, upsertOption)
-	return err
-}
-
-func (cm *checkpointManager) remove(key string) error {
-	removeOption := &gocb.RemoveOptions{
-		Timeout: opsTimeout,
-	}
-	_, err := cm.getCollectionHandle().Remove(key, removeOption)
-	return err
-}
-
-func (cm *checkpointManager) scan(startKey, endKey string, idsOnly bool) (*gocb.ScanResult, error) {
+func scan(collection *gocb.Collection, observer notifier.Observer, keyspace application.Keyspace, startKey, endKey string, idsOnly bool) (*gocb.ScanResult, error) {
 	scan := gocb.RangeScan{
 		From: &gocb.ScanTerm{
 			Term: startKey,
@@ -280,24 +233,110 @@ func (cm *checkpointManager) scan(startKey, endKey string, idsOnly bool) (*gocb.
 	}
 
 	// Perform the range scan request
-	return cm.getCollectionHandle().Scan(scan, opts)
+	scanR, err := collection.Scan(scan, opts)
+	if err != nil && common.CheckKeyspaceExist(observer, keyspace) {
+		return scanR, errKeyspaceNotFound
+	}
+	return scanR, err
 }
 
-func (cm *checkpointManager) deleteBulk(deleteKeys []string) error {
-	bulkOptions := &gocb.BulkOpOptions{
-		Timeout: 5 * opsTimeout,
+func insert(collection *gocb.Collection, observer notifier.Observer, keyspace application.Keyspace, key string, doc interface{}) error {
+	insertOption := &gocb.InsertOptions{
+		Timeout: opsTimeout,
 	}
-
-	items := make([]gocb.BulkOp, 0, len(deleteKeys))
-	for _, key := range deleteKeys {
-		items = append(items, &gocb.RemoveOp{ID: key})
+	_, err := collection.Insert(key, doc, insertOption)
+	if err != nil && !common.CheckKeyspaceExist(observer, keyspace) {
+		return errKeyspaceNotFound
 	}
+	return err
+}
 
-	return cm.getCollectionHandle().Do(items, bulkOptions)
-	/*
-		for _, key := range deleteKeys {
-			cm.remove(key)
+func upsert(collection *gocb.Collection, observer notifier.Observer, keyspace application.Keyspace, key string, doc interface{}) error {
+	upsertOption := &gocb.UpsertOptions{
+		Timeout: opsTimeout,
+	}
+	_, err := collection.Upsert(key, doc, upsertOption)
+	if err != nil {
+		if errors.Is(err, gocb.ErrDocumentNotFound) {
+			return ErrDocumentNotFound
 		}
-		return nil
-	*/
+
+		if !common.CheckKeyspaceExist(observer, keyspace) {
+			return errKeyspaceNotFound
+		}
+	}
+	return err
+}
+
+func remove(collection *gocb.Collection, observer notifier.Observer, keyspace application.Keyspace, key string) error {
+	removeOption := &gocb.RemoveOptions{
+		Timeout: opsTimeout,
+	}
+	_, err := collection.Remove(key, removeOption)
+	if err != nil {
+		if errors.Is(err, gocb.ErrDocumentNotFound) {
+			return nil
+		}
+
+		if !common.CheckKeyspaceExist(observer, keyspace) {
+			return errKeyspaceNotFound
+		}
+	}
+
+	return err
+}
+
+func replace(collection *gocb.Collection, observer notifier.Observer, keyspace application.Keyspace, key string, doc interface{}, cas gocb.Cas) error {
+	replaceOption := &gocb.ReplaceOptions{
+		Timeout: opsTimeout,
+		Cas:     cas,
+	}
+	_, err := collection.Replace(key, doc, replaceOption)
+	if err != nil {
+		if errors.Is(err, gocb.ErrDocumentNotFound) {
+			return ErrDocumentNotFound
+		}
+
+		if !common.CheckKeyspaceExist(observer, keyspace) {
+			return errKeyspaceNotFound
+		}
+	}
+	return err
+}
+
+func subdocUpdate(collection *gocb.Collection, observer notifier.Observer, keyspace application.Keyspace, key string, mutateSpec []gocb.MutateInSpec) error {
+	mutateInOption := &gocb.MutateInOptions{
+		Timeout: opsTimeout,
+	}
+
+	_, err := collection.MutateIn(key, mutateSpec, mutateInOption)
+	if err != nil {
+		if errors.Is(err, gocb.ErrDocumentNotFound) {
+			return ErrDocumentNotFound
+		}
+
+		if !common.CheckKeyspaceExist(observer, keyspace) {
+			return errKeyspaceNotFound
+		}
+	}
+	return err
+}
+
+func subdocUpdateUsingCas(collection *gocb.Collection, observer notifier.Observer, keyspace application.Keyspace, key string, cas gocb.Cas, mutateSpec []gocb.MutateInSpec) error {
+	mutateInOption := &gocb.MutateInOptions{
+		Timeout: opsTimeout,
+		Cas:     cas,
+	}
+
+	_, err := collection.MutateIn(key, mutateSpec, mutateInOption)
+	if err != nil {
+		if errors.Is(err, gocb.ErrDocumentNotFound) {
+			return ErrDocumentNotFound
+		}
+
+		if !common.CheckKeyspaceExist(observer, keyspace) {
+			return errKeyspaceNotFound
+		}
+	}
+	return err
 }

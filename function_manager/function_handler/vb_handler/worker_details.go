@@ -104,7 +104,7 @@ func (vs vbStatus) isOwned() bool {
 
 type workerDetails struct {
 	unackedDetails *bytesStats
-	runningCount   *atomic.Int32
+	runningCount   atomic.Int32
 
 	sync.RWMutex
 	version uint32
@@ -132,7 +132,6 @@ func (w *workerDetails) GetRuntimeStats() map[string]interface{} {
 func InitWorkerDetails() *workerDetails {
 	return &workerDetails{
 		unackedDetails: NewBytesStats(),
-		runningCount:   &atomic.Int32{},
 
 		runningMap: make(map[uint16]*vbStatus),
 		allVbList:  make([]*vbStatus, 0),
@@ -156,8 +155,8 @@ func (wd *workerDetails) InitVb(vb uint16) {
 func (wd *workerDetails) AddVb(vb uint16, sr *dcpMessage.StreamReq, isStreaminMode bool) (int, bool) {
 	sr.Version = wd.version
 	sendStatus := true
-	for index := 0; index < len(wd.allVbList); index++ {
-		vbStatus := wd.allVbList[index]
+
+	for _, vbStatus := range wd.allVbList {
 		if vbStatus.Vbno == vb {
 			if vbStatus.Status != initStatus {
 				sendStatus = false
@@ -199,8 +198,7 @@ func (wd *workerDetails) CloseVb(vb uint16) (*vbStatus, bool) {
 		delete(wd.runningMap, vb)
 	}
 
-	index := 0
-	for ; index < len(wd.allVbList); index++ {
+	for index := 0; index < len(wd.allVbList); index++ {
 		vbDetails := wd.allVbList[index]
 		if vbDetails.Vbno == vb {
 			wd.allVbList[index] = wd.allVbList[len(wd.allVbList)-1]
@@ -213,14 +211,6 @@ func (wd *workerDetails) CloseVb(vb uint16) (*vbStatus, bool) {
 	}
 
 	return nil, false
-}
-
-func (wd *workerDetails) isRunningVb(vb uint16) (*vbStatus, bool) {
-	vbStatus, ok := wd.runningMap[vb]
-	if !ok {
-		return nil, false
-	}
-	return vbStatus, true
 }
 
 func (wd *workerDetails) StillClaimedVbs(toOwn []uint16) []uint16 {
@@ -237,7 +227,6 @@ func (wd *workerDetails) GetVbOwned(vbMap map[uint16]struct{}) {
 	for _, vbDetails := range wd.allVbList {
 		vbMap[vbDetails.Vbno] = struct{}{}
 	}
-	return
 }
 
 func (wd *workerDetails) getVbsWithStatus(vbState status) (count int) {

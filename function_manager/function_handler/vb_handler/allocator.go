@@ -59,7 +59,11 @@ type allocator struct {
 	lastSeqFetched time.Time
 	highSeqNum     atomic.Value
 
-	observerNotifier *common.Signal
+	observerNotifier  *common.Signal
+	streamRequestList []struct {
+		srRequest *dcpMessage.StreamReq
+		lastDone  time.Time
+	}
 
 	close func()
 }
@@ -79,6 +83,10 @@ func NewAllocatorWithContext(ctx context.Context, logPrefix string, keyspace app
 		closedVbs:        make(map[uint16]struct{}),
 		isStreamMode:     &atomic.Bool{},
 		maxUnackedBytes:  atomic.Uint64{},
+		streamRequestList: make([]struct {
+			srRequest *dcpMessage.StreamReq
+			lastDone  time.Time
+		}, 0),
 	}
 
 	if dcpManager.mode != serverConfig.FunctionGroup {
@@ -177,30 +185,17 @@ func (al *allocator) FilterEvent(msg *dcpMessage.DcpEvent) (*checkpointManager.P
 				return parsedDetails, workerID, false, true
 			}
 
-			sr := &dcpMessage.StreamReq{Vbno: vb}
-			sr, _ = al.dcpManager.commonDcpManager.CloseRequest(sr)
-			if sr == nil {
-				al.config.StatsHandler.IncrementCountProcessingStats("already_sent_streamend", 1)
-				status.Status = forcedClosed
-				return parsedDetails, workerID, true, false
-			}
-
-			al.config.StatsHandler.IncrementCountProcessingStats("closed_request", 1)
-			sr.StartSeq = status.LastSentSeq
-			status.StreamReq = sr
-			status.Status = waiting
-			status.LastDoneRequest = time.Now()
-			delete(worker.runningMap, vb)
-			worker.runningCount.Add(-1)
+			al.dcpManager.commonDcpManager.CloseRequest(0, vb)
+			al.config.StatsHandler.IncrementCountProcessingStats("already_sent_streamend", 1)
+			status.Status = forcedClosed
 			return parsedDetails, workerID, true, false
 		}
 
 		if !al.isStreamMode.Load() && totalBytes > pauseMark*float64(al.maxUnackedBytes.Load()) ||
 			totalMsg > pauseMark*al.maxUnackedCount {
 			if status.Status != paused {
-				sr := &dcpMessage.StreamReq{Vbno: msg.Vbno}
 				al.config.StatsHandler.IncrementCountProcessingStats("pause_request", 1)
-				al.dcpManager.commonDcpManager.PauseStreamReq(sr)
+				al.dcpManager.commonDcpManager.PauseStreamReq(0, vb)
 				status.Status = paused
 			}
 		}
@@ -234,9 +229,23 @@ func (al *allocator) VbDistribution() (distributedVbsBytes []byte, vbMapVersion 
 		distributedVbs[index] = make([]uint16, 0, perWorkerVbs)
 	}
 
+	timer, nonTimer := GetTimerPartitionsInVbs(vbs, al.config.ConfiguredVbs, al.config.HandlerSettings.NumTimerPartition)
 	oldVbToWorkerMap := al.getVbToWorkerMap()
 	index := int32(0)
-	for _, vb := range vbs {
+
+	for _, vb := range timer {
+		if workerID, ok := oldVbToWorkerMap[vb]; ok {
+			vbtoWorker[vb] = int(workerID)
+			distributedVbs[workerID] = append(distributedVbs[workerID], vb)
+			continue
+		}
+		vbtoWorker[vb] = int(index)
+		distributedVbs[index] = append(distributedVbs[index], vb)
+		index = (index + 1) % int32(al.config.HandlerSettings.CppWorkerThread)
+	}
+
+	index = 0
+	for _, vb := range nonTimer {
 		if workerID, ok := oldVbToWorkerMap[vb]; ok {
 			vbtoWorker[vb] = int(workerID)
 			distributedVbs[workerID] = append(distributedVbs[workerID], vb)
@@ -274,9 +283,9 @@ func (al *allocator) AddVb(vb uint16, vbBlob *checkpointManager.VbBlob) (int, bo
 	}
 
 	worker.Lock()
-	defer worker.Unlock()
-
 	count, send := worker.AddVb(vb, sr, al.isStreamMode.Load())
+	worker.Unlock()
+
 	if send {
 		al.config.RuntimeSystem.VbSettings(al.config.Version, processManager.VbAddChanges, al.config.InstanceID, vb, []uint64{vbBlob.ProcessedSeqNum, vbBlob.Vbuuid})
 		al.config.StatsHandler.IncrementCountProcessingStats("agg_messages_sent_to_worker", 1)
@@ -400,16 +409,12 @@ func (al *allocator) checkAndMakeRequest() {
 				continue
 			}
 
-			worker.Lock()
 			unackedMsg, unackedBytes = worker.unackedDetails.UnackedMessageCount()
 			if unackedMsg > lowerMark*al.maxUnackedCount &&
 				unackedBytes > lowerMark*float64(al.maxUnackedBytes.Load()) {
-				worker.Unlock()
 				continue
 			}
-
 		}
-
 		worker.Lock()
 		// Use one complete circle
 		vbListLength := len(worker.allVbList)
@@ -420,7 +425,26 @@ func (al *allocator) checkAndMakeRequest() {
 				continue
 			}
 
-			vb := status.Vbno
+			al.streamRequestList = append(al.streamRequestList, struct {
+				srRequest *dcpMessage.StreamReq
+				lastDone  time.Time
+			}{
+				srRequest: status.StreamReq,
+				lastDone:  status.LastDoneRequest,
+			})
+			status.StreamReq = nil
+			status.Status = ready
+			worker.runningMap[status.Vbno] = status
+			totalParallelRequest := worker.runningCount.Add(1)
+			if !isStreaming && al.workerParallelRequest <= totalParallelRequest {
+				break
+			}
+		}
+		worker.Unlock()
+
+		for _, srStruct := range al.streamRequestList {
+			sr := srStruct.srRequest
+			vb := sr.Vbno
 			endSeqNum := uint64(math.MaxUint64)
 			if !isStreaming {
 				var ok bool
@@ -430,12 +454,11 @@ func (al *allocator) checkAndMakeRequest() {
 				}
 			}
 
-			sr := status.StreamReq
 			worker.updateModeTo(vb, isStreaming)
 			if endSeqNum <= sr.StartSeq {
 				// Maybe bucket flushed and high seq number is always less than executed seq number
 				// check for when we fetched the last seq number and current seq number
-				if al.lastSeqFetched.Sub(status.LastDoneRequest) < minTimeWait {
+				if al.lastSeqFetched.Sub(srStruct.lastDone) < minTimeWait {
 					continue
 				}
 
@@ -448,17 +471,10 @@ func (al *allocator) checkAndMakeRequest() {
 				continue
 			}
 
-			status.StreamReq = nil
-			status.Status = ready
-			worker.runningMap[vb] = status
-			totalParallelRequest := worker.runningCount.Add(1)
-
 			al.config.StatsHandler.IncrementCountProcessingStats("dcp_stream_req_counter", 1)
-			if !isStreaming && al.workerParallelRequest <= totalParallelRequest {
-				break
-			}
 		}
-		worker.Unlock()
+
+		al.streamRequestList = al.streamRequestList[:0]
 	}
 }
 
@@ -475,30 +491,40 @@ func (al *allocator) Close() []uint16 {
 
 	possibleOwnedVbs := al.ownedVbSlice.Swap(make([]uint16, 0)).([]uint16)
 	ownedVbs := make([]uint16, 0, len(possibleOwnedVbs))
+	vbStatuses := make([]*vbStatus, 0, 128)
+
 	for _, worker := range al.workers {
-		worker.RLock()
+		worker.Lock()
 		for _, status := range worker.allVbList {
-			vb := status.Vbno
-			vbStatus, ok := worker.CloseVb(vb)
-			if ok {
-				sr := &dcpMessage.StreamReq{Vbno: vb}
-				if requested, streaming := vbStatus.isRequested(); requested {
-					if !streaming {
-						al.dcpManager.commonDcpManager.CloseRequest(sr)
-					} else {
-						al.dcpManager.isolatedDcpManager.CloseRequest(sr)
-					}
-				}
+			vbStatus, ok := worker.CloseVb(status.Vbno)
+			if !ok {
+				continue
+			}
+			vbStatuses = append(vbStatuses, vbStatus)
+		}
+		worker.Unlock()
+
+		al.closedVbsLock.Lock()
+		for _, vbStatus := range vbStatuses {
+			if vbStatus.Status == initStatus {
+				continue
+			}
+			vb := vbStatus.Vbno
+			ownedVbs = append(ownedVbs, vb)
+			al.closedVbs[vb] = struct{}{}
+		}
+		al.closedVbsLock.Unlock()
+	}
+
+	for _, vbStatus := range vbStatuses {
+		if requested, streaming := vbStatus.isRequested(); requested {
+			if !streaming {
+				al.dcpManager.commonDcpManager.CloseRequest(0, vbStatus.Vbno)
+			} else {
+				al.dcpManager.isolatedDcpManager.CloseRequest(0, vbStatus.Vbno)
 			}
 
-			if vbStatus.Status != initStatus {
-				ownedVbs = append(ownedVbs, vb)
-			}
-			al.closedVbsLock.Lock()
-			al.closedVbs[vb] = struct{}{}
-			al.closedVbsLock.Unlock()
 		}
-		worker.RUnlock()
 	}
 
 	al.highSeqNum.Store(make(map[uint16]uint64))
@@ -507,7 +533,7 @@ func (al *allocator) Close() []uint16 {
 
 // Internal Functions
 func (al *allocator) getVbOwnershipMap() (string, []uint16, error) {
-	vbMapVersion, vbSlice, err := al.config.OwnershipRoutine.GetVbMap(&al.config.MetaInfo.FunctionScopeID, al.config.FuncID, al.config.ConfiguredVbs, al.config.AppLocation)
+	vbMapVersion, vbSlice, err := al.config.OwnershipRoutine.GetVbMap(&al.config.MetaInfo.FunctionScopeID, al.config.FuncID, al.config.ConfiguredVbs, al.config.HandlerSettings.NumTimerPartition, al.config.AppLocation)
 	return vbMapVersion, vbSlice, err
 }
 
@@ -525,11 +551,10 @@ func (al *allocator) updateNewOwnership(vbToWorker map[uint16]int) (toOwn, toClo
 			}
 
 			if isRequestesd, streamMode := vbStatus.isRequested(); isRequestesd {
-				sr := &dcpMessage.StreamReq{Vbno: vb}
 				if streamMode {
-					al.dcpManager.isolatedDcpManager.CloseRequest(sr)
+					al.dcpManager.isolatedDcpManager.CloseRequest(0, vb)
 				} else {
-					al.dcpManager.commonDcpManager.CloseRequest(sr)
+					al.dcpManager.commonDcpManager.CloseRequest(0, vb)
 				}
 			}
 
@@ -538,6 +563,7 @@ func (al *allocator) updateNewOwnership(vbToWorker map[uint16]int) (toOwn, toClo
 			}
 
 			al.workers[workerID].Unlock()
+
 			al.closedVbsLock.Lock()
 			al.closedVbs[vb] = struct{}{}
 			al.closedVbsLock.Unlock()
@@ -583,8 +609,8 @@ func (al *allocator) spawnObserver(ctx context.Context) {
 			al.checkAndMakeRequest()
 
 		case <-al.observerNotifier.Wait():
-			al.checkAndMakeRequest()
 			al.observerNotifier.Ready()
+			al.checkAndMakeRequest()
 
 		case <-printLog.C:
 			for index, worker := range al.workers {

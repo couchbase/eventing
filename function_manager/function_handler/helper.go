@@ -34,15 +34,12 @@ const (
 	checkpointXattr  = "_checkpoints"
 )
 
+// Sequential event processing
 func (fHandler *funcHandler) deleteAllCheckpoint() {
 	logPrefix := fmt.Sprintf("funcHandler::deleteAllCheckpoint[%s]", fHandler.logPrefix)
-	if fHandler.checkpointManager == nil {
-		return
-	}
-
-	_, vbSlice, err := fHandler.ownershipRoutine.GetVbMap(&fHandler.fd.MetaInfo.FunctionScopeID, fHandler.id, fHandler.fd.MetaInfo.MetaID.NumVbuckets, fHandler.fd.AppLocation)
+	_, vbSlice, err := fHandler.ownershipRoutine.GetVbMap(&fHandler.fd.MetaInfo.FunctionScopeID, fHandler.id, fHandler.fd.MetaInfo.MetaID.NumVbuckets, fHandler.fd.Settings.NumTimerPartition, fHandler.fd.AppLocation)
 	for err != nil {
-		_, vbSlice, err = fHandler.ownershipRoutine.GetVbMap(&fHandler.fd.MetaInfo.FunctionScopeID, fHandler.id, fHandler.fd.MetaInfo.MetaID.NumVbuckets, fHandler.fd.AppLocation)
+		_, vbSlice, err = fHandler.ownershipRoutine.GetVbMap(&fHandler.fd.MetaInfo.FunctionScopeID, fHandler.id, fHandler.fd.MetaInfo.MetaID.NumVbuckets, fHandler.fd.Settings.NumTimerPartition, fHandler.fd.AppLocation)
 		time.Sleep(1 * time.Second)
 	}
 
@@ -52,20 +49,21 @@ func (fHandler *funcHandler) deleteAllCheckpoint() {
 		vbsToDelete[vb] = struct{}{}
 	}
 
-	for vb := range vbsToDelete {
-		fHandler.checkpointManager.DeleteCheckpointBlob(vb)
-	}
-	logging.Infof("%s deleted all checkpoints. Is this function using timers? %v", logPrefix, fHandler.fd.MetaInfo.IsUsingTimer)
 	if !fHandler.fd.MetaInfo.IsUsingTimer {
+		for vb := range vbsToDelete {
+			fHandler.checkpointManager.Load().DeleteCheckpointBlob(vb)
+		}
+		logging.Infof("%s deleted all checkpoints. Not using timer.. Exiting", logPrefix)
 		return
 	}
 
+	logging.Infof("%s Using timers. Deleting all the checkpoint...", logPrefix)
 	// Possible that some timer function still running so wait till all nodes gave up the vbucket
-	fHandler.checkpointManager.WaitTillAllGiveUp(fHandler.fd.MetaInfo.SourceID.NumVbuckets)
+	fHandler.checkpointManager.Load().WaitTillAllGiveUp(fHandler.fd.MetaInfo.SourceID.NumVbuckets)
 	parallism := int(runtime.NumCPU())
 
 	logging.Infof("%s all nodes given up owned vbs. Continue deleting remaining checkpoints documents with parallism: %d", logPrefix, parallism)
-	function, err := initialiseScanner(fHandler.fd.AppID, fHandler.checkpointManager)
+	function, err := initialiseScanner(fHandler.fd.AppID, fHandler.checkpointManager.Load())
 	if err != nil {
 		logging.Infof("%s range scan deletion not possible error: %v. Proceeding with dcp stream deletion...", logPrefix, err)
 		common.DistributeAndWaitWork[uint16](parallism, len(vbsToDelete), initDcpDeletion(vbsToDelete), fHandler.deleteCheckpointsUsingDcp)
@@ -213,7 +211,7 @@ func (fHandler *funcHandler) deleteCheckpointsUsingDcp(waitGroup *sync.WaitGroup
 
 func (fHandler *funcHandler) tryDeleteKeys(forceDelete bool, deleteKeys []string) []string {
 	if forceDelete || len(deleteKeys) == batchDelete {
-		fHandler.checkpointManager.DeleteKeys(deleteKeys)
+		fHandler.checkpointManager.Load().DeleteKeys(deleteKeys)
 		return deleteKeys[:0]
 	}
 	return deleteKeys
@@ -332,21 +330,34 @@ func processCheckpointMutation(parsedDetails *checkpointManager.ParsedInternalDe
 }
 
 func (fHandler *funcHandler) CheckAndGetEventsInternalDetails(msg *dcpMessage.DcpEvent) (*checkpointManager.ParsedInternalDetails, bool) {
-	if msg.Opcode != dcpMessage.DCP_MUTATION && msg.Opcode != dcpMessage.DCP_DELETION && msg.Opcode != dcpMessage.DCP_EXPIRATION {
+
+	switch msg.Opcode {
+	case dcpMessage.DCP_MUTATION:
+		// if binary documents not allowed then supress them
+		if !fHandler.fd.Settings.BinDocAllowed && ((msg.Datatype & dcpMessage.JSON) != dcpMessage.JSON) {
+			return nil, true
+		}
+
+		// Check for transaction documents
+		if !fHandler.fd.Settings.AllowTransactionDocument &&
+			msg.Datatype == dcpMessage.XATTR && bytes.HasPrefix(msg.Key, common.TransactionMutationPrefix) {
+			return nil, true
+		}
+
+		fallthrough
+
+	case dcpMessage.DCP_DELETION, dcpMessage.DCP_EXPIRATION:
+		if msg.Keyspace.GetOriginalKeyspace().ScopeName == dcpMessage.SystemScope {
+			return nil, true
+		}
+
+		if !fHandler.fd.Settings.AllowSyncDocuments &&
+			(bytes.HasPrefix(msg.Key, common.SyncGatewayMutationPrefix) && !bytes.HasPrefix(msg.Key, common.SyncGatewayAttachmentPrefix)) {
+			return nil, true
+		}
+
+	default:
 		return nil, false
-	}
-
-	if msg.Keyspace.GetOriginalKeyspace().ScopeName == dcpMessage.SystemScope {
-		return nil, true
-	}
-
-	if bytes.HasPrefix(msg.Key, common.TransactionMutationPrefix) {
-		return nil, true
-	}
-
-	if !fHandler.fd.Settings.AllowSyncDocuments &&
-		(bytes.HasPrefix(msg.Key, common.SyncGatewayMutationPrefix) && !bytes.HasPrefix(msg.Key, common.SyncGatewayAttachmentPrefix)) {
-		return nil, true
 	}
 
 	if !fHandler.isSrcMutationPossible {
@@ -401,6 +412,19 @@ func (debuggerMessageReceiver) ApplicationLog(msg string) {
 }
 
 func (d debuggerMessageReceiver) ReceiveMessage(msg *processManager.ResponseMessage) {
+	const logPrefix = "debuggerMessageReceiver::ReceiveMessage"
+
+	if msg == nil {
+		logging.Errorf("%s Unexpected message received", logPrefix)
+		req := &pc.Request{
+			Query:  application.QueryMap(d.appLocation),
+			Method: pc.POST,
+		}
+
+		d.broadcaster.Request(true, "/stopDebugger", req)
+		return
+	}
+
 	switch msg.Event {
 	case processManager.DcpEvent:
 		req := &pc.Request{
@@ -423,6 +447,12 @@ func (o onDeployMessageReceiver) ApplicationLog(msg string) {
 func (o onDeployMessageReceiver) ReceiveMessage(msg *processManager.ResponseMessage) {
 	const logPrefix string = "onDeployMessageReceiver::ReceiveMessage"
 
+	if msg == nil {
+		logging.Errorf("%s Unexpected message received", logPrefix)
+		o.fHandler.checkpointManager.Load().PublishOnDeployStatus(checkpointManager.FailedStateOnDeploy)
+		return
+	}
+
 	switch msg.Event {
 	case processManager.InitEvent:
 		switch msg.Opcode {
@@ -430,12 +460,13 @@ func (o onDeployMessageReceiver) ReceiveMessage(msg *processManager.ResponseMess
 			var ack processManager.OnDeployAckMsg
 			if err := json.Unmarshal(msg.Value, &ack); err != nil {
 				logging.Errorf("%s Failed to unmarshal OnDeploy ack err: %v", logPrefix, err)
-				o.fHandler.checkpointManager.PublishOnDeployStatus(common.FAILED.String())
+				o.fHandler.checkpointManager.Load().PublishOnDeployStatus(checkpointManager.FailedStateOnDeploy)
 				return
 			}
-			if ack.Status != common.PENDING.String() {
+
+			if ack.Status != checkpointManager.PendingOnDeploy {
 				logging.Infof("%s Received OnDeploy ack for %s with status %s", logPrefix, o.appLocation, ack.Status)
-				o.fHandler.checkpointManager.PublishOnDeployStatus(ack.Status)
+				o.fHandler.checkpointManager.Load().PublishOnDeployStatus(ack.Status)
 				return
 			}
 		}
@@ -506,11 +537,6 @@ func (fHandler *funcHandler) validateStateForOnDeploy(nextState funcHandlerState
 	return (currState == Undeployed || currState == Paused) && nextState == Deployed
 }
 
-func (fHandler *funcHandler) getOnDeployStatus() string {
-	_, _, onDeployStatus := fHandler.checkpointManager.ReadOnDeployCheckpoint()
-	return onDeployStatus
-}
-
 func (fHandler *funcHandler) getOnDeployActionObject(prevState funcHandlerState) *processManager.OnDeployActionObject {
 	var onDeployReason string
 	var onDeployDelay int64
@@ -532,42 +558,6 @@ func (fHandler *funcHandler) getOnDeployActionObject(prevState funcHandlerState)
 	}
 }
 
-func (fHandler *funcHandler) chooseNodeLeaderOnDeploy(seq uint32) bool {
-	return fHandler.checkpointManager.WriteOnDeployCheckpoint(fHandler.clusterSettings.UUID, seq, fHandler.fd.AppLocation)
-}
-
-type vbHandlerWrapper struct {
-	sync.RWMutex
-
-	vbHandler vbhandler.VbHandler
-}
-
-func NewVbHandlerWrapper() *vbHandlerWrapper {
-	return &vbHandlerWrapper{
-		vbHandler: vbhandler.DummyVbHandler,
-	}
-}
-
-func (vbw *vbHandlerWrapper) Load() vbhandler.VbHandler {
-	vbw.RLock()
-	defer vbw.RUnlock()
-
-	return vbw.vbHandler
-}
-
-func (vbw *vbHandlerWrapper) Store(vbHandler vbhandler.VbHandler) {
-	vbw.Lock()
-	defer vbw.Unlock()
-
-	vbw.vbHandler = vbHandler
-}
-
-func (vbw *vbHandlerWrapper) Swap(newVbHandler vbhandler.VbHandler) vbhandler.VbHandler {
-	vbw.Lock()
-	defer vbw.Unlock()
-
-	vbHandler := vbw.vbHandler
-	vbw.vbHandler = newVbHandler
-
-	return vbHandler
+func (fHandler *funcHandler) chooseNodeLeaderOnDeploy(seq uint32) (bool, error) {
+	return fHandler.checkpointManager.Load().TryTobeLeader(checkpointManager.OnDeployLeader, seq)
 }

@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -194,7 +195,7 @@ func (p *pointConnection) sendOnce(ctx context.Context, request *internalRequest
 	next = Continue
 	for next == Continue {
 		request.res.Body, err = reader.ReadBytes(request.delim)
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			err = ErrEndOfConnection
 		}
 

@@ -3,7 +3,9 @@ package supervisor2
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"maps"
 	"net"
 	"net/http"
 	"os"
@@ -39,49 +41,91 @@ import (
 )
 
 const (
-	oldAppSeq          = uint32(0)
-	defaultCursorLimit = 5
-)
-
-const (
 	undeployCheck        = time.Second * 30
 	garbageCollectConfig = time.Minute * 1
 )
 
+type stage uint8
+
 const (
-	undeployStage uint8 = iota
+	undeployStage stage = iota
 	deleteStage
 	pauseStage
 )
 
-type tenantInfo struct {
-	running bool
+func (s stage) String() string {
+	switch s {
+	case undeployStage:
+		return "Undeploy"
+	case deleteStage:
+		return "Delete"
+	case pauseStage:
+		return "Pause"
+	default:
+		return "Unknown"
+	}
+}
+
+type functionInfo struct {
 	manager functionManager.FunctionManager
 }
 
 type stopMsg struct {
-	stage        uint8
+	stage        stage
 	lifecycleMsg common.LifecycleMsg
 }
 
 func (s stopMsg) String() string {
-	return fmt.Sprintf("stage: %d, lifecycleMsg: %v", s.stage, s.lifecycleMsg)
+	return fmt.Sprintf("stage: %s, lifecycleMsg: %v", s.stage, s.lifecycleMsg)
+}
+
+func (oldStopMsg stopMsg) Update(newStopMsg stopMsg) (bool, stopMsg) {
+	changed := false
+
+	// If old msg is pause and new msg is undeploy then undeploy takes priority over pause
+	switch {
+	case oldStopMsg.lifecycleMsg.UndeloyFunction && newStopMsg.lifecycleMsg.UndeloyFunction:
+		newStopMsg.stage = oldStopMsg.stage
+		if oldStopMsg.lifecycleMsg.DeleteFunction != newStopMsg.lifecycleMsg.DeleteFunction {
+			changed = true
+			newStopMsg.lifecycleMsg.DeleteFunction = true
+		}
+
+	case oldStopMsg.lifecycleMsg.UndeloyFunction && newStopMsg.lifecycleMsg.PauseFunction:
+		newStopMsg.lifecycleMsg.UndeloyFunction = true
+		newStopMsg.lifecycleMsg.PauseFunction = false
+		newStopMsg.lifecycleMsg.DeleteFunction = oldStopMsg.lifecycleMsg.DeleteFunction
+		newStopMsg.stage = oldStopMsg.stage
+		changed = true
+
+	case oldStopMsg.lifecycleMsg.PauseFunction && newStopMsg.lifecycleMsg.UndeloyFunction:
+		newStopMsg.lifecycleMsg.PauseFunction = false
+		newStopMsg.lifecycleMsg.UndeloyFunction = true
+		newStopMsg.stage = undeployStage
+		changed = true
+
+	case oldStopMsg.lifecycleMsg.PauseFunction && newStopMsg.lifecycleMsg.PauseFunction:
+		// Nothing to be done
+	}
+
+	if changed {
+		return true, newStopMsg
+	}
+	return false, oldStopMsg
 }
 
 type supervisor struct {
-	topologyChangeID *atomic.Value
+	topologyChangeID atomic.Value
 	clusterSetting   *common.ClusterSettings
 	appManager       appManager.AppManager
 	appState         stateMachine.StateMachine
 	observer         notifier.Observer
 	cursorRegistry   *cursorRegistry
 
-	tenantLock *sync.RWMutex
-
-	// namespace keyspace to namespace
-	keyspaceInfoToNamespaceCache map[application.KeyspaceInfo]application.Namespace
 	// bucketName to tenant
-	tenents map[string]*tenantInfo
+	// This is a single writer multiple reader scenario
+	// where its written by FunctionChangeCallback which is single threaded call and read from other routines
+	tenents atomic.Value // map[string]*functionInfo
 
 	distributor distributor.Distributor
 
@@ -96,15 +140,18 @@ type supervisor struct {
 	globalStatsCounter *common.GlobalStatsCounter
 	gocbCluster        *gocb.Cluster
 
-	undeployMapLock *sync.Mutex
-	undeploySignal  *common.Signal
-	undeployMap     map[string]stopMsg
+	// This is single reader multiple writer scenario
+	// Wrote by StopCalledInterupt which can be called from different routines and read by checkAndStopFunctions
+	internalLifecycleOpMapLock sync.Mutex
+	internalLifecycleOpMap     map[string]stopMsg
+	internalLifecycleOpSignal  *common.Signal
 
-	lifeCycleAllowed *atomic.Bool
-	stateRecovered   *atomic.Bool
+	lifeCycleAllowed atomic.Bool
+	stateRecovered   atomic.Bool
 
+	// Since only usd in functionChangeCallback which is called sequentially no need for concurrency protection
 	runningAppInstanceIds map[string]int32
-	numWorkersRunning     *atomic.Int32
+	numWorkersRunning     atomic.Int32
 }
 
 func StartSupervisor(ctx context.Context, cs *common.ClusterSettings) (Supervisor2, error) {
@@ -113,22 +160,13 @@ func StartSupervisor(ctx context.Context, cs *common.ClusterSettings) (Superviso
 	// Spawn the service manager
 
 	s := &supervisor{
-		topologyChangeID: &atomic.Value{},
-		clusterSetting:   cs,
+		clusterSetting: cs,
 
-		tenantLock:                   &sync.RWMutex{},
-		tenents:                      make(map[string]*tenantInfo),
-		keyspaceInfoToNamespaceCache: make(map[application.KeyspaceInfo]application.Namespace),
-
-		undeployMapLock: &sync.Mutex{},
-		undeployMap:     make(map[string]stopMsg),
-		undeploySignal:  common.NewSignal(),
-
-		lifeCycleAllowed: &atomic.Bool{},
-		stateRecovered:   &atomic.Bool{},
+		internalLifecycleOpMap:    make(map[string]stopMsg),
+		internalLifecycleOpSignal: common.NewSignal(),
 
 		runningAppInstanceIds: make(map[string]int32),
-		numWorkersRunning:     &atomic.Int32{},
+		numWorkersRunning:     atomic.Int32{},
 
 		appManager:         appManager.NewAppCache(),
 		appState:           stateMachine.NewStateMachine(),
@@ -136,6 +174,7 @@ func StartSupervisor(ctx context.Context, cs *common.ClusterSettings) (Superviso
 		globalStatsCounter: common.NewGlobalStatsCounters(),
 	}
 
+	s.tenents.Store(make(map[string]*functionInfo))
 	s.lifeCycleAllowed.Store(false)
 	s.stateRecovered.Store(false)
 
@@ -306,7 +345,6 @@ func (s *supervisor) recover(ctx context.Context) error {
 				return err
 			}
 
-			s.keyspaceInfoToNamespaceCache[function.MetaInfo.FunctionScopeID] = function.AppLocation.Namespace
 			switch function.AppState.GetLifeCycle() {
 			case application.Deploy:
 				src, dst, _ := function.GetSourceAndDestinations(true)
@@ -416,9 +454,9 @@ func (s *supervisor) periodicRun(ctx context.Context) {
 			// Garbage collect config
 			s.garbageCollectConfig()
 
-		case <-s.undeploySignal.Wait():
+		case <-s.internalLifecycleOpSignal.Wait():
 			s.checkAndStopFunctions()
-			s.undeploySignal.Ready()
+			s.internalLifecycleOpSignal.Ready()
 
 		case <-ctx.Done():
 			return
@@ -427,14 +465,13 @@ func (s *supervisor) periodicRun(ctx context.Context) {
 }
 
 func (s *supervisor) createGocbClusterObjectLocked(cluster *gocb.Cluster) {
-	s.tenantLock.RLock()
-	defer s.tenantLock.RUnlock()
 	if s.gocbCluster != nil {
 		s.gocbCluster.Close(nil)
 	}
 
+	tenents := s.tenents.Load().(map[string]*functionInfo)
 	s.gocbCluster = cluster
-	for _, tInfo := range s.tenents {
+	for _, tInfo := range tenents {
 		tInfo.manager.NotifyTlsChanges(s.gocbCluster)
 	}
 }
@@ -472,10 +509,8 @@ func (s *supervisor) ConfigChangeCallback(kve metakv.KVEntry) error {
 		s.serverConfig.DeleteSettings(keyspaceInfo)
 	}
 
-	s.tenantLock.RLock()
-	defer s.tenantLock.RUnlock()
-
-	for _, tInfo := range s.tenents {
+	tenents := s.tenents.Load().(map[string]*functionInfo)
+	for _, tInfo := range tenents {
 		tInfo.manager.NotifyGlobalConfigChange()
 	}
 
@@ -496,25 +531,27 @@ func (s *supervisor) TopologyChangeCallback(kve metakv.KVEntry) error {
 	logging.Infof("%s Called by %s, length of value: %d. changeId: %s uuids: %v", logPrefix, kve.Path, len(kve.Value), changeID, uuids)
 	switch rebalanceType {
 	case distributor.VbucketTopologyID:
-		s.tenantLock.RLock()
-		for _, tenant := range s.tenents {
+		tenents := s.tenents.Load().(map[string]*functionInfo)
+		for _, tenant := range tenents {
 			tenant.manager.NotifyOwnershipChange()
 		}
-		s.tenantLock.RUnlock()
 		s.topologyChangeID.Store(changeID)
 
 	case distributor.FunctionScopeTopologyID:
-		s.tenantLock.RLock()
+		tenents := s.tenents.Load().(map[string]*functionInfo)
+		bucketListInterface, _ := s.observer.GetCurrentState(notifier.InterestedEvent{Event: notifier.EventBucketListChanges})
+		bucketList := bucketListInterface.(map[string]string)
+		// User observer buckets to get the tenents info
 		for _, uuid := range uuids {
-			namespace, ok := s.keyspaceInfoToNamespaceCache[*uuid]
-			if !ok {
-				continue
+			for bucketName, bucketUuid := range bucketList {
+				if bucketUuid == uuid.BucketID {
+					tenant, ok := tenents[bucketName]
+					if ok {
+						tenant.manager.NotifyOwnershipChange()
+					}
+				}
 			}
-
-			s.tenents[namespace.BucketName].manager.NotifyOwnershipChange()
 		}
-		s.tenantLock.RUnlock()
-		return nil
 	}
 
 	return nil
@@ -581,12 +618,16 @@ func (s *supervisor) DeleteOnDeployCheckpoint(funcDetails *application.FunctionD
 	}
 
 	if forceDelete {
-		return checkpointManager.DeleteOnDeployCheckpoint(funcDetails.AppLocation, collectionHandler)
+		return checkpointManager.DeleteOnDeployCheckpoint(funcDetails.AppLocation, collectionHandler, s.observer, metadataKeyspace)
 	}
 
-	_, seq, _, _ := checkpointManager.ReadOnDeployCheckpoint(funcDetails.AppLocation, collectionHandler)
-	if seq > 0 && seq != funcDetails.MetaInfo.Seq {
-		err = checkpointManager.DeleteOnDeployCheckpoint(funcDetails.AppLocation, collectionHandler)
+	checkpoint, err := checkpointManager.ReadOnDeployCheckpoint(funcDetails.AppLocation, collectionHandler, s.observer, metadataKeyspace)
+	if errors.Is(err, checkpointManager.ErrDocumentNotFound) {
+		return nil
+	}
+
+	if err == nil && checkpoint.Seq > 0 && checkpoint.Seq != funcDetails.MetaInfo.Seq {
+		err = checkpointManager.DeleteOnDeployCheckpoint(funcDetails.AppLocation, collectionHandler, s.observer, metadataKeyspace)
 	}
 
 	return err
@@ -673,14 +714,14 @@ func (s *supervisor) FunctionChangeCallback(kve metakv.KVEntry) error {
 
 		// For function coming from older version
 		state, err := s.appState.StartStateChange(function.MetaInfo.Seq, function.AppLocation, function.AppState)
-		if err != nil && err != stateMachine.ErrAlreadyInGivenState {
+		if err != nil && !errors.Is(err, stateMachine.ErrAlreadyInGivenState) {
 			logging.Errorf("%s[%s] Error while checking state change %v", function.AppLocation, logPrefix, err)
 			return nil
 		}
 
 		switch state {
 		case application.Deploy:
-			if function.MetaInfo.Seq == oldAppSeq {
+			if function.MetaInfo.Seq == application.OldAppSeq {
 				// Old app so populate everything
 				function.MetaInfo.IsUsingTimer = parser.UsingTimer(function.AppCode)
 				s.populateMetaInfo(function, true)
@@ -688,7 +729,7 @@ func (s *supervisor) FunctionChangeCallback(kve metakv.KVEntry) error {
 			s.deployFunction(function)
 
 		case application.Undeploy:
-			if function.MetaInfo.Seq == oldAppSeq {
+			if function.MetaInfo.Seq == application.OldAppSeq {
 				funcScope := application.Keyspace{
 					Namespace:      function.AppLocation.Namespace,
 					CollectionName: application.GlobalValue,
@@ -698,7 +739,7 @@ func (s *supervisor) FunctionChangeCallback(kve metakv.KVEntry) error {
 			s.undeployFunction(function)
 
 		case application.Pause:
-			if function.MetaInfo.Seq == oldAppSeq {
+			if function.MetaInfo.Seq == application.OldAppSeq {
 				// Old app so populate everything
 				function.MetaInfo.IsUsingTimer = parser.UsingTimer(function.AppCode)
 				s.populateMetaInfo(function, true)
@@ -706,10 +747,8 @@ func (s *supervisor) FunctionChangeCallback(kve metakv.KVEntry) error {
 			s.pauseFunction(function)
 		}
 
-		s.tenantLock.RLock()
-		defer s.tenantLock.RUnlock()
-
-		for _, tInfo := range s.tenents {
+		tenents := s.tenents.Load().(map[string]*functionInfo)
+		for _, tInfo := range tenents {
 			tInfo.manager.NotifyGlobalConfigChange()
 		}
 	} else {
@@ -726,7 +765,8 @@ func (s *supervisor) DebuggerCallback(kve metakv.KVEntry) error {
 	logPrefix := fmt.Sprintf("supervisor::DebuggerCallback[%s]", appLocation)
 
 	logging.Infof("%s Called by %s length of value: %d", logPrefix, kve.Path, len(kve.Value))
-	tInfo, ok := s.tenents[appLocation.Namespace.BucketName]
+	tenents := s.tenents.Load().(map[string]*functionInfo)
+	tInfo, ok := tenents[appLocation.Namespace.BucketName]
 	if kve.Value != nil {
 		if !ok {
 			logging.Errorf("%s Function doesn't exist on this node.", logPrefix)
@@ -743,32 +783,6 @@ func (s *supervisor) StateChangeInterupt(seq uint32, appLocation application.App
 	// Check this applocation should be owned by this node or not
 	// If not then change the state to not running and pause function
 	s.appState.DoneStateChange(seq, appLocation)
-}
-
-func (s *supervisor) FailStateInterrupt(seq uint32, appLocation application.AppLocation, msg common.LifecycleMsg) {
-	logPrefix := fmt.Sprintf("supervisor::FailStateInterrupt[%s]", appLocation)
-
-	lastState, err := s.appState.FailStateChange(seq, appLocation)
-	if err != nil {
-		logging.Errorf("%s Fail state change got err: %v", logPrefix, err)
-		return
-	}
-
-	switch lastState {
-	case application.Undeployed:
-		msg.UndeloyFunction = true
-		s.undeployMapLock.Lock()
-		s.undeployMap[msg.InstanceID] = stopMsg{stage: undeployStage, lifecycleMsg: msg}
-		s.undeployMapLock.Unlock()
-		s.undeploySignal.Notify()
-
-	case application.Paused:
-		msg.PauseFunction = true
-		s.undeployMapLock.Lock()
-		s.undeployMap[msg.InstanceID] = stopMsg{stage: pauseStage, lifecycleMsg: msg}
-		s.undeployMapLock.Unlock()
-		s.undeploySignal.Notify()
-	}
 }
 
 const (
@@ -835,40 +849,90 @@ func (s *supervisor) garbageCollectConfig() {
 }
 
 func (s *supervisor) StopCalledInterupt(seq uint32, msg common.LifecycleMsg) {
+	logPrefix := "supervisor::StopCalledInterupt"
+	stage := undeployStage
+	if msg.Revert {
+		lastState, err := s.appState.FailStateChange(seq, msg.Applocation)
+		if err != nil {
+			logging.Errorf("%s Fail state change got err: %v", logPrefix, err)
+			return
+		}
+
+		switch lastState {
+		case application.Undeployed:
+			msg.UndeloyFunction = true
+
+		case application.Paused:
+			stage = pauseStage
+			msg.PauseFunction = true
+		}
+	}
+
+	newStage := stopMsg{
+		stage:        stage,
+		lifecycleMsg: msg,
+	}
+
+	changed := true
+	s.internalLifecycleOpMapLock.Lock()
+	undeployMsg, ok := s.internalLifecycleOpMap[msg.InstanceID]
+	if ok {
+		// Already present in the map so update the stage if needed
+		changed, newStage = undeployMsg.Update(newStage)
+	}
+
+	s.internalLifecycleOpMap[msg.InstanceID] = newStage
+	s.internalLifecycleOpMapLock.Unlock()
+
+	if !changed {
+		return
+	}
+	extraAttributes := map[string]interface{}{common.AppLocationsTag: msg.Applocation, common.ReasonTag: msg.Description}
 	if msg.UndeloyFunction {
-		extraAttributes := map[string]interface{}{common.AppLocationsTag: msg.Applocation, common.ReasonTag: msg.Description}
 		common.LogSystemEvent(common.EVENTID_UNDEPLOY_FUNCTION, systemeventlog.SEInfo, extraAttributes)
 	}
+
+	if msg.PauseFunction {
+		common.LogSystemEvent(common.EVENTID_PAUSE_FUNCTION, systemeventlog.SEInfo, extraAttributes)
+	}
+
 	if msg.DeleteFunction {
-		extraAttributes := map[string]interface{}{common.AppLocationsTag: msg.Applocation, common.ReasonTag: msg.Description}
 		common.LogSystemEvent(common.EVENTID_DELETE_FUNCTION, systemeventlog.SEInfo, extraAttributes)
 	}
 
-	s.undeployMapLock.Lock()
-	s.undeployMap[msg.InstanceID] = stopMsg{stage: undeployStage, lifecycleMsg: msg}
-	s.undeployMapLock.Unlock()
-	s.undeploySignal.Notify()
+	s.internalLifecycleOpSignal.Notify()
 }
 
 func (s *supervisor) checkAndStopFunctions() {
 	logPrefix := "supervisor::checkAndStopFunctions"
 
-	s.undeployMapLock.Lock()
-	for instanceID, msg := range s.undeployMap {
+	s.internalLifecycleOpMapLock.Lock()
+	if len(s.internalLifecycleOpMap) == 0 {
+		s.internalLifecycleOpMapLock.Unlock()
+		return
+	}
+
+	undeployMap := s.internalLifecycleOpMap
+	s.internalLifecycleOpMap = make(map[string]stopMsg)
+	s.internalLifecycleOpMapLock.Unlock()
+	for instanceID, msg := range undeployMap {
 		deleted, err := s.requestStopFunction(msg)
 		if err != nil {
 			logging.Errorf("%s Error in request stopping function %s err: %v", logPrefix, msg, err)
 			continue
 		}
 		if deleted || !msg.lifecycleMsg.DeleteFunction {
-			delete(s.undeployMap, instanceID)
+			delete(undeployMap, instanceID)
 			continue
 		}
 
 		msg.stage = deleteStage
-		s.undeployMap[instanceID] = msg
+		undeployMap[instanceID] = msg
 	}
-	s.undeployMapLock.Unlock()
+
+	s.internalLifecycleOpMapLock.Lock()
+	maps.Copy(s.internalLifecycleOpMap, undeployMap)
+	s.internalLifecycleOpMapLock.Unlock()
 }
 
 func (s *supervisor) requestStopFunction(msg stopMsg) (functionDeleted bool, err error) {
@@ -954,28 +1018,21 @@ func (s *supervisor) deleteFunction(appLocation application.AppLocation) {
 		logging.Errorf("%s Error opening log directory %s to delete: %v", logPrefix, logfileDir, err)
 	}
 
-	s.tenantLock.Lock()
-	tenant, ok := s.tenents[appLocation.Namespace.BucketName]
+	tenents := s.tenents.Load().(map[string]*functionInfo)
+	tenant, ok := tenents[appLocation.Namespace.BucketName]
 	if !ok {
-		s.tenantLock.Unlock()
 		return
 	}
-	s.tenantLock.Unlock()
 
 	count := tenant.manager.RemoveFunction(funcDetails)
 	if count != 0 {
 		return
 	}
 
-	for keyspaceInfo, namespace := range s.keyspaceInfoToNamespaceCache {
-		if namespace.BucketName == appLocation.Namespace.BucketName {
-			delete(s.keyspaceInfoToNamespaceCache, keyspaceInfo)
-			break
-		}
-	}
-	s.tenantLock.Lock()
-	delete(s.tenents, appLocation.Namespace.BucketName)
-	s.tenantLock.Unlock()
+	copyTenents := make(map[string]*functionInfo)
+	maps.Copy(copyTenents, tenents)
+	delete(copyTenents, appLocation.Namespace.BucketName)
+	s.tenents.Store(copyTenents)
 	tenant.manager.CloseFunctionManager()
 }
 
@@ -993,12 +1050,11 @@ func (s *supervisor) deployFunction(function *application.FunctionDetails) {
 		}
 	}
 
-	s.tenantLock.Lock()
-	tInfo, ok := s.tenents[function.AppLocation.Namespace.BucketName]
+	tenents := s.tenents.Load().(map[string]*functionInfo)
+	tInfo, ok := tenents[function.AppLocation.Namespace.BucketName]
 	if !ok {
 		tInfo = s.spawnTenantManagerLocked(function)
 	}
-	s.tenantLock.Unlock()
 
 	logFileDir, _ := application.GetLogDirectoryAndFileName(function, s.clusterSetting.EventingDir)
 	os.MkdirAll(logFileDir, 0755)
@@ -1018,12 +1074,11 @@ func (s *supervisor) stopFunction(function *application.FunctionDetails, pause b
 		}
 	}
 
-	s.tenantLock.Lock()
-	tInfo, ok := s.tenents[function.AppLocation.Namespace.BucketName]
+	tenents := s.tenents.Load().(map[string]*functionInfo)
+	tInfo, ok := tenents[function.AppLocation.Namespace.BucketName]
 	if !ok {
 		tInfo = s.spawnTenantManagerLocked(function)
 	}
-	s.tenantLock.Unlock()
 
 	if pause {
 		tInfo.manager.PauseFunction(function)
@@ -1044,7 +1099,7 @@ func (s *supervisor) undeployFunction(function *application.FunctionDetails) {
 	common.LogSystemEvent(common.EVENTID_UNDEPLOY_FUNCTION, systemeventlog.SEInfo, extraAttributes)
 }
 
-func (s *supervisor) spawnTenantManagerLocked(functionDetails *application.FunctionDetails) *tenantInfo {
+func (s *supervisor) spawnTenantManagerLocked(functionDetails *application.FunctionDetails) *functionInfo {
 	tenant := functionManager.NewFunctionManager(
 		functionDetails.AppLocation.Namespace.BucketName,
 		s.gocbCluster,
@@ -1059,21 +1114,22 @@ func (s *supervisor) spawnTenantManagerLocked(functionDetails *application.Funct
 		s.broadcaster,
 	)
 
-	tInfo := &tenantInfo{
+	tInfo := &functionInfo{
 		manager: tenant,
 	}
 
-	s.keyspaceInfoToNamespaceCache[functionDetails.MetaInfo.FunctionScopeID] = functionDetails.AppLocation.Namespace
-	s.tenents[functionDetails.AppLocation.Namespace.BucketName] = tInfo
+	tenents := s.tenents.Load().(map[string]*functionInfo)
+	copyTenents := make(map[string]*functionInfo)
+	maps.Copy(copyTenents, tenents)
+	copyTenents[functionDetails.AppLocation.Namespace.BucketName] = tInfo
+	s.tenents.Store(copyTenents)
 	return tInfo
 }
 
 // Exported functions
 func (s *supervisor) GetStats(location application.AppLocation, statType common.StatsType) (*common.Stats, error) {
-	s.tenantLock.RLock()
-	defer s.tenantLock.RUnlock()
-
-	tenant, ok := s.tenents[location.Namespace.BucketName]
+	tenents := s.tenents.Load().(map[string]*functionInfo)
+	tenant, ok := tenents[location.Namespace.BucketName]
 	if !ok {
 		return nil, fmt.Errorf("app doesn't exist")
 	}
@@ -1082,10 +1138,8 @@ func (s *supervisor) GetStats(location application.AppLocation, statType common.
 }
 
 func (s *supervisor) ClearStats(location application.AppLocation) error {
-	s.tenantLock.RLock()
-	defer s.tenantLock.RUnlock()
-
-	tenant, ok := s.tenents[location.Namespace.BucketName]
+	tenents := s.tenents.Load().(map[string]*functionInfo)
+	tenant, ok := tenents[location.Namespace.BucketName]
 	if !ok {
 		return nil
 	}
@@ -1205,11 +1259,12 @@ func (s *supervisor) CompileHandler(funcDetails *application.FunctionDetails) (c
 	randomID, _ := common.GetRand16Byte()
 	id := fmt.Sprintf("Compile_%s_%d", funcDetails.AppLocation.Namespace.BucketName, randomID)
 	processConfig := processManager.ProcessConfig{
-		Address:    s.clusterSetting.LocalAddress,
-		IPMode:     s.clusterSetting.IpMode,
-		BreakpadOn: true,
-		ExecPath:   s.clusterSetting.ExecutablePath,
-		ID:         id,
+		Address:            s.clusterSetting.LocalAddress,
+		IPMode:             s.clusterSetting.IpMode,
+		BreakpadOn:         true,
+		ExecPath:           s.clusterSetting.ExecutablePath,
+		ID:                 id,
+		SingleFunctionMode: true,
 	}
 
 	process := processManager.NewProcessManager(processConfig, s.systemConfig)
@@ -1265,7 +1320,7 @@ func (s *supervisor) DebuggerOp(op common.DebuggerOp, funcDetails *application.F
 
 	switch op {
 	case common.StartDebuggerOp:
-		token, err := checkpointManager.WriteDebuggerCheckpoint(collectionHandler, funcDetails.AppID)
+		token, err := checkpointManager.WriteDebuggerCheckpoint(collectionHandler, s.observer, metadataKeyspace, funcDetails.AppID)
 		if err != nil {
 			logging.Errorf("%s Error writing debugger checkpoint: %v", logPrefix, err)
 			return "", err
@@ -1275,13 +1330,13 @@ func (s *supervisor) DebuggerOp(op common.DebuggerOp, funcDetails *application.F
 		if err != nil {
 			logging.Errorf("%s Error setting debugger callback: %v", logPrefix, err)
 			// Try it once and leave it
-			checkpointManager.DeleteDebuggerCheckpoint(collectionHandler, funcDetails.AppID)
+			checkpointManager.DeleteDebuggerCheckpoint(collectionHandler, s.observer, metadataKeyspace, funcDetails.AppID)
 			return "", err
 		}
 		return token, nil
 
 	case common.StopDebuggerOp:
-		err := checkpointManager.DeleteDebuggerCheckpoint(collectionHandler, funcDetails.AppID)
+		err := checkpointManager.DeleteDebuggerCheckpoint(collectionHandler, s.observer, metadataKeyspace, funcDetails.AppID)
 		if err != nil {
 			logging.Errorf("%s Error deleting debugger checkpoint: %v", logPrefix, err)
 			return "", err
@@ -1294,7 +1349,7 @@ func (s *supervisor) DebuggerOp(op common.DebuggerOp, funcDetails *application.F
 		return "", nil
 
 	case common.GetDebuggerURl:
-		url, err := checkpointManager.GetDebuggerURL(collectionHandler, funcDetails.AppID)
+		url, err := checkpointManager.GetDebuggerURL(collectionHandler, s.observer, metadataKeyspace, funcDetails.AppID)
 		if err != nil {
 			return "", err
 		}
@@ -1302,16 +1357,14 @@ func (s *supervisor) DebuggerOp(op common.DebuggerOp, funcDetails *application.F
 
 	case common.WriteDebuggerURL:
 		url := value.(string)
-		return "", checkpointManager.WriteDebuggerUrl(collectionHandler, funcDetails.AppID, url)
+		return "", checkpointManager.WriteDebuggerUrl(collectionHandler, s.observer, metadataKeyspace, funcDetails.AppID, url)
 	}
 	panic(fmt.Sprintf("Unknown code path %v", op))
 }
 
 func (s *supervisor) GetApplicationLog(appLocation application.AppLocation, size int64) ([]string, error) {
-	s.tenantLock.RLock()
-	defer s.tenantLock.RUnlock()
-
-	tenant, ok := s.tenents[appLocation.Namespace.BucketName]
+	tenents := s.tenents.Load().(map[string]*functionInfo)
+	tenant, ok := tenents[appLocation.Namespace.BucketName]
 	if !ok {
 		return nil, nil
 	}
@@ -1320,10 +1373,8 @@ func (s *supervisor) GetApplicationLog(appLocation application.AppLocation, size
 }
 
 func (s *supervisor) GetInsights(appLocation application.AppLocation) *common.Insight {
-	s.tenantLock.RLock()
-	defer s.tenantLock.RUnlock()
-
-	tenant, ok := s.tenents[appLocation.Namespace.BucketName]
+	tenents := s.tenents.Load().(map[string]*functionInfo)
+	tenant, ok := tenents[appLocation.Namespace.BucketName]
 	if !ok {
 		return nil
 	}
@@ -1344,13 +1395,11 @@ func (s *supervisor) RebalanceProgress(vbMapVersion string, appLocation applicat
 		return appRebalanceProgress
 	}
 
-	s.tenantLock.RLock()
-	tenent, ok := s.tenents[appLocation.Namespace.BucketName]
+	tenents := s.tenents.Load().(map[string]*functionInfo)
+	tenent, ok := tenents[appLocation.Namespace.BucketName]
 	if !ok {
-		s.tenantLock.RUnlock()
 		return appRebalanceProgress
 	}
-	s.tenantLock.RUnlock()
 
 	tenent.manager.RebalanceProgress(vbMapVersion, appLocation, appRebalanceProgress)
 	return appRebalanceProgress

@@ -528,6 +528,7 @@ void V8Worker2::InitializeIsolateData() {
   data_.v8worker2 = this;
   data_.js_exception = new JsException(isolate_);
   data_.instance_id = app_details_->app_instance_id;
+  data_.single_function_mode_ = cluster_details_->single_function_mode_;
 
   auto key = GetLocalKey();
   data_.utils = new Utils(isolate_, context, cluster_details_->cert_file_,

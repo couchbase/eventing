@@ -2,7 +2,6 @@ package checkpointManager
 
 import (
 	"sync"
-	"sync/atomic"
 
 	"github.com/couchbase/eventing/application"
 	"github.com/couchbase/eventing/common"
@@ -11,16 +10,17 @@ import (
 )
 
 type bucketCheckpoint struct {
-	sync.Mutex
+	sync.RWMutex
 
-	bucket          *gocb.Bucket
 	clusterSettings *common.ClusterSettings
 	observer        notifier.Observer
 	bucketName      string
-	checkpoints     map[uint32]Checkpoint
-	keyspaceExist   bool
 	broadcaster     common.Broadcaster
-	id              uint32
+
+	bucket *common.AtomicTypes[*gocb.Bucket]
+
+	checkpoints map[uint32]Checkpoint
+	id          uint32
 }
 
 func NewBucketCheckpointManager(clusterSettings *common.ClusterSettings, bucketName string, gocbCluster *gocb.Cluster, observer notifier.Observer, broadcaster common.Broadcaster) BucketCheckpoint {
@@ -32,10 +32,8 @@ func NewBucketCheckpointManager(clusterSettings *common.ClusterSettings, bucketN
 		checkpoints:     make(map[uint32]Checkpoint),
 	}
 
-	var err error
-	bCheckpoint.bucket, err = GetBucketObject(gocbCluster, observer, bucketName)
-	bCheckpoint.keyspaceExist = ((err == nil) || (err != errKeyspaceNotFound))
-
+	bucket, _ := GetBucketObject(gocbCluster, observer, bucketName)
+	bCheckpoint.bucket = common.NewAtomicTypes(bucket)
 	return bCheckpoint
 }
 
@@ -49,39 +47,64 @@ func (bCheckpoint *bucketCheckpoint) GetCheckpointManager(appID uint32, interrup
 		OwnerNodeUUID: bCheckpoint.clusterSettings.UUID,
 	}
 
-	checkpointManager := NewCheckpointManagerForKeyspace(cc, interruptCallback, bCheckpoint.bucket, bCheckpoint.observer, bCheckpoint.broadcaster, bCheckpoint.keyspaceExist)
+	checkpointManager := NewCheckpointManagerForKeyspace(cc, interruptCallback, bCheckpoint.bucket.Load(), bCheckpoint.observer, bCheckpoint.broadcaster)
 	cw := &checkpointWrapper{
-		checkpoint:    checkpointManager,
-		bucketManager: bCheckpoint.CloseID,
+		checkpoint: checkpointManager,
 	}
-	cw.id = atomic.AddUint32(&bCheckpoint.id, uint32(1))
-	bCheckpoint.checkpoints[cw.id] = cw
+
+	bCheckpoint.Lock()
+	bCheckpoint.id++
+	cw.checkpointMgrIdCloser = bCheckpoint.closeID(bCheckpoint.id)
+	bCheckpoint.checkpoints[bCheckpoint.id] = cw
+	bCheckpoint.Unlock()
+
+	// This will protect against the case where the bucket is closed and tls changes made
+	cw.TlsSettingChange(bCheckpoint.bucket.Load())
 	return cw
 }
 
 func (bCheckpoint *bucketCheckpoint) TlsSettingChange(gocbCluster *gocb.Cluster) {
-	bCheckpoint.Lock()
-	defer bCheckpoint.Unlock()
+	bucket, _ := GetBucketObject(gocbCluster, bCheckpoint.observer, bCheckpoint.bucketName)
 
-	var err error
-	bCheckpoint.bucket, err = GetBucketObject(gocbCluster, bCheckpoint.observer, bCheckpoint.bucketName)
-	bCheckpoint.keyspaceExist = ((err == nil) || (err != errKeyspaceNotFound))
+	bCheckpoint.bucket.Store(bucket)
+	bCheckpoint.Lock()
+	checkpoints := make([]Checkpoint, 0, len(bCheckpoint.checkpoints))
 	for _, checkpoint := range bCheckpoint.checkpoints {
-		checkpoint.TlsSettingChange(bCheckpoint.bucket)
+		checkpoints = append(checkpoints, checkpoint)
+	}
+	bCheckpoint.Unlock()
+
+	for _, checkpoint := range checkpoints {
+		checkpoint.TlsSettingChange(bCheckpoint.bucket.Load())
 	}
 }
 
-func (bCheckpoint *bucketCheckpoint) CloseID(id uint32) {
+func (bCheckpoint *bucketCheckpoint) CloseBucketManager() {
 	bCheckpoint.Lock()
-	defer bCheckpoint.Unlock()
+	checkpoints := make([]Checkpoint, 0, len(bCheckpoint.checkpoints))
+	for _, checkpoint := range bCheckpoint.checkpoints {
+		checkpoints = append(checkpoints, checkpoint)
+	}
+	bCheckpoint.Unlock()
 
-	delete(bCheckpoint.checkpoints, id)
+	for _, checkpoint := range checkpoints {
+		checkpoint.CloseCheckpointManager()
+	}
+}
+
+func (bCheckpoint *bucketCheckpoint) closeID(id uint32) func() {
+	return func() {
+		bCheckpoint.Lock()
+		defer bCheckpoint.Unlock()
+
+		delete(bCheckpoint.checkpoints, id)
+	}
 }
 
 type checkpointWrapper struct {
-	checkpoint    Checkpoint
-	id            uint32
-	bucketManager func(uint32)
+	checkpoint Checkpoint
+
+	checkpointMgrIdCloser func()
 }
 
 func (cw *checkpointWrapper) OwnershipSnapshot(snapshot *common.AppRebalanceProgress) {
@@ -90,10 +113,6 @@ func (cw *checkpointWrapper) OwnershipSnapshot(snapshot *common.AppRebalanceProg
 
 func (cw *checkpointWrapper) OwnVbCheckpoint(vb uint16) {
 	cw.checkpoint.OwnVbCheckpoint(vb)
-}
-
-func (cw *checkpointWrapper) GetCheckpoint(vb uint16) (VbBlob, error) {
-	return cw.checkpoint.GetCheckpoint(vb)
 }
 
 func (cw *checkpointWrapper) UpdateVal(vb uint16, field checkpointField, value interface{}) {
@@ -109,9 +128,7 @@ func (cw *checkpointWrapper) WaitTillAllGiveUp(numVbs uint16) {
 }
 
 func (cw *checkpointWrapper) CloseCheckpointManager() {
-	id := cw.id
-	cw.bucketManager(id)
-
+	cw.checkpointMgrIdCloser()
 	cw.checkpoint.CloseCheckpointManager()
 }
 
@@ -143,22 +160,14 @@ func (cw *checkpointWrapper) DeleteKeys(deleteKeys []string) {
 	cw.checkpoint.DeleteKeys(deleteKeys)
 }
 
-func (cw *checkpointWrapper) TryTobeLeader(lType leaderType) (bool, error) {
-	return cw.checkpoint.TryTobeLeader(lType)
+func (cw *checkpointWrapper) TryTobeLeader(lType leaderType, seq uint32) (bool, error) {
+	return cw.checkpoint.TryTobeLeader(lType, seq)
 }
 
-func (cw *checkpointWrapper) ReadOnDeployCheckpoint() (nodeLeader string, seq uint32, onDeployStatus string) {
-	return cw.checkpoint.ReadOnDeployCheckpoint()
+func (cw *checkpointWrapper) PollUntilOnDeployCompletes() *OnDeployCheckpoint {
+	return cw.checkpoint.PollUntilOnDeployCompletes()
 }
 
-func (cw *checkpointWrapper) WriteOnDeployCheckpoint(nodeUUID string, seq uint32, appLocation application.AppLocation) bool {
-	return cw.checkpoint.WriteOnDeployCheckpoint(nodeUUID, seq, appLocation)
-}
-
-func (cw *checkpointWrapper) PollUntilOnDeployCompletes() {
-	cw.checkpoint.PollUntilOnDeployCompletes()
-}
-
-func (cw *checkpointWrapper) PublishOnDeployStatus(status string) error {
+func (cw *checkpointWrapper) PublishOnDeployStatus(status OnDeployState) *OnDeployCheckpoint {
 	return cw.checkpoint.PublishOnDeployStatus(status)
 }
