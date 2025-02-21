@@ -49,7 +49,7 @@ func (s *serverConfig) validateConfig(keyspaceInfo application.KeyspaceInfo, con
 			err = typecheck.ValidateInteger[float64](value, lowVal.Set(0), missingOptional, nil)
 
 		case DeploymentModeJSON:
-			err = typecheck.ValidateString(value, nil)
+			err = typecheck.ValidateString[[]fmt.Stringer](value, nil)
 			if err == nil {
 				val := DeploymentMode(value.(string))
 				if val != FunctionGroup && val != IsolateFunction && val != HybridMode {

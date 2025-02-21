@@ -94,7 +94,7 @@ func NewFunctionSet(instanceID string, fType funcSetType, id string, funcSetConf
 		ID:              id,
 		AppLogCallback:  appCallback,
 		NsServerPort:    clusterSettings.RestPort,
-		InstanceID:      id,
+		InstanceID:      instanceID,
 	}
 
 	if fType == SingleFunction {

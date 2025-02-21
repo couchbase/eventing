@@ -54,7 +54,7 @@ func ValidateBoolean(value interface{}) error {
 	return nil
 }
 
-func ValidateString(value interface{}, possibleValues map[string]struct{}) error {
+func ValidateString[T map[string]struct{} | []fmt.Stringer](value interface{}, possibleValues T) error {
 	stringValue, ok := value.(string)
 	if !ok {
 		return fmt.Errorf("expected string value")
@@ -64,10 +64,21 @@ func ValidateString(value interface{}, possibleValues map[string]struct{}) error
 		return nil
 	}
 
-	if _, ok := possibleValues[stringValue]; !ok {
-		return fmt.Errorf("value should be %v", possibleValues)
+	switch v := any(possibleValues).(type) {
+	case map[string]struct{}:
+		if _, ok := v[stringValue]; ok {
+			return nil
+		}
+
+	case []fmt.Stringer:
+		for _, val := range v {
+			if val.String() == stringValue {
+				return nil
+			}
+		}
 	}
-	return nil
+
+	return fmt.Errorf("value should be one of %v", possibleValues)
 }
 
 type checkType int8
@@ -102,7 +113,7 @@ func ValidateArray(val interface{}, valType checkType) error {
 	for _, val := range values {
 		switch valType {
 		case TypeString:
-			err := ValidateString(val, nil)
+			err := ValidateString[[]fmt.Stringer](val, nil)
 			if err != nil {
 				return err
 			}

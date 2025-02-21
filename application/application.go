@@ -534,12 +534,25 @@ const (
 
 type LogLevel string
 
+func (l LogLevel) String() string {
+	return string(l)
+}
+
+const (
+	INFO    = LogLevel("INFO")
+	ERROR   = LogLevel("ERROR")
+	WARNING = LogLevel("WARNING")
+	DEBUG   = LogLevel("DEBUG")
+	TRACE   = LogLevel("TRACE")
+)
+
 var (
-	logLevels = []LogLevel{
-		LogLevel("INFO"),
-		LogLevel("ERROR"),
-		LogLevel("DEBUG"),
-		LogLevel("TRACE"),
+	logLevels = []fmt.Stringer{
+		INFO,
+		ERROR,
+		WARNING,
+		DEBUG,
+		TRACE,
 	}
 )
 
@@ -667,7 +680,7 @@ func DefaultSettings() HandlerSettings {
 	hSettings := HandlerSettings{}
 	hSettings.CppWorkerThread = 2
 	hSettings.DcpStreamBoundary = Everyting
-	hSettings.LogLevel = logLevels[0]
+	hSettings.LogLevel = INFO
 	hSettings.NumTimerPartition = 256
 	hSettings.StatsDuration = 1000
 	hSettings.TimerContextSize = 1024

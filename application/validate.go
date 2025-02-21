@@ -8,13 +8,6 @@ import (
 )
 
 var (
-	logLevelValues = map[string]struct{}{
-		"INFO":  {},
-		"ERROR": {},
-		"DEBUG": {},
-		"TRACE": {},
-	}
-
 	n1qlConsistencyValues = map[string]struct{}{
 		"":        {},
 		"none":    {},
@@ -231,7 +224,7 @@ func ValidateSettings(settings map[string]interface{}) (err error) {
 			err = typecheck.ValidateString(settingValue, streamBoundaryValues)
 
 		case descriptionJSON:
-			err = typecheck.ValidateString(settingValue, nil)
+			err = typecheck.ValidateString[[]fmt.Stringer](settingValue, nil)
 
 		case executionTimeoutJSON:
 			err = typecheck.ValidateInteger[float64](settingValue, lowVal.Set(1), missingOptional, nil)
@@ -255,19 +248,7 @@ func ValidateSettings(settings map[string]interface{}) (err error) {
 			err = typecheck.ValidateInteger[float64](settingValue, lowVal.Set(5), missingOptional, nil)
 
 		case logLevelJSON:
-			err = typecheck.ValidateString(settingValue, logLevelValues)
-			found := false
-			if err == nil {
-				for _, logLevel := range logLevels {
-					if logLevel == LogLevel(settingValue.(string)) {
-						found = true
-						break
-					}
-				}
-				if !found {
-					err = fmt.Errorf("Invalid log level")
-				}
-			}
+			err = typecheck.ValidateString[[]fmt.Stringer](settingValue, logLevels)
 
 		case n1qlConsistencyJSON:
 			err = typecheck.ValidateString(settingValue, n1qlConsistencyValues)
@@ -294,7 +275,7 @@ func ValidateSettings(settings map[string]interface{}) (err error) {
 			err = typecheck.ValidateArray(settingValue, typecheck.TypeString)
 
 		case applogDirJSON:
-			err = typecheck.ValidateString(settingValue, nil)
+			err = typecheck.ValidateString[[]fmt.Stringer](settingValue, nil)
 
 		case enableAppRotationJSON:
 			err = typecheck.ValidateBoolean(settingValue)
