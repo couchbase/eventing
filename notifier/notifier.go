@@ -82,6 +82,31 @@ const (
 	EventTLSChanges
 )
 
+func (e eventType) String() string {
+	switch e {
+	case EventKVTopologyChanges:
+		return "KVTopologyChanges"
+	case EventQueryTopologyChanges:
+		return "QueryTopologyChanges"
+	case EventEventingTopologyChanges:
+		return "EventingTopologyChanges"
+	case EventVbmapChanges:
+		return "VbmapChanges"
+	case EventBucketListChanges:
+		return "BucketListChanges"
+	case EventBucketChanges:
+		return "BucketChanges"
+	case EventScopeOrCollectionChanges:
+		return "ScopeOrCollectionChanges"
+	case EventClusterCompatibilityChanges:
+		return "ClusterCompatibilityChanges"
+	case EventTLSChanges:
+		return "TLSChanges"
+	default:
+		return "Unknown"
+	}
+}
+
 // InterestedEvent is passed to Subscriber for listening changes for events
 // This will be returned in the WaitForEvent to differentiate between different events
 type InterestedEvent struct {
@@ -94,7 +119,7 @@ type InterestedEvent struct {
 }
 
 func (i InterestedEvent) String() string {
-	return fmt.Sprintf("{ \"event\": %d, \"filter\": %s }", i.Event, i.Filter)
+	return fmt.Sprintf("{ \"event\": %s, \"filter\": %s }", i.Event, i.Filter)
 }
 
 type transition uint8
@@ -230,8 +255,12 @@ type VBmap struct {
 func (vm *VBmap) String() string {
 	nodeToVbs := make(map[string][]uint16, len(vm.ServerList))
 	for vb, index := range vm.VbToKv {
-		nodeString := vm.ServerList[index].String()
-		nodeToVbs[nodeString] = append(nodeToVbs[nodeString], vb)
+		if index < 0 || index >= len(vm.ServerList) {
+			nodeToVbs["{}"] = append(nodeToVbs["{}"], vb)
+		} else {
+			nodeString := vm.ServerList[index].String()
+			nodeToVbs[nodeString] = append(nodeToVbs[nodeString], vb)
+		}
 	}
 
 	return utils.CondenseMap(nodeToVbs)
