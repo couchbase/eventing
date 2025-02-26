@@ -400,7 +400,7 @@ func (fm *functionManager) deployFunctionLocked(fd *application.FunctionDetails,
 			}
 
 			initFuncSetID := fmt.Sprintf("%s_%d", fm.id, fm.incrementalFuncSetID)
-			funcSet := NewFunctionSet(instanceID, SingleFunction, initFuncSetID, config{spawnImmediately: true},
+			funcSet := NewFunctionSet(fd.AppInstanceID, SingleFunction, initFuncSetID, config{spawnImmediately: true},
 				fm.clusterSettings, fm.appCallback, fm.systemConfig)
 			// Add it with old instance id since function is in undeploy state and ChangeState will change the function to new instanceID
 			funcSet.AddFunctionHandler(instanceID, fHandler)

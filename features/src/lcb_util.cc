@@ -532,15 +532,7 @@ LogLevel evt_log_map_level(int severity) {
 }
 
 bool evt_should_log(LogLevel allowed_level_, int severity, const char *subsys) {
-  if (strcmp(subsys, "negotiation") == 0) {
-    return false;
-  }
-
-  if (evt_log_map_level(severity) <= allowed_level_) {
-    return true;
-  }
-
-  return false;
+  return (evt_log_map_level(severity) <= allowed_level_);
 }
 
 void evt_log_handler(const lcb_LOGGER *procs, uint64_t iid, const char *subsys,
