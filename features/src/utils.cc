@@ -237,7 +237,8 @@ std::string ExceptionString(v8::Isolate *isolate,
 
 V8ExceptionInfo GetV8ExceptionInfo(v8::Isolate *isolate,
                                    v8::Local<v8::Context> &context,
-                                   v8::TryCatch *try_catch, bool script_timeout) {
+                                   v8::TryCatch *try_catch,
+                                   bool script_timeout) {
 
   V8ExceptionInfo v8exception_info;
   if (script_timeout) {
@@ -531,7 +532,11 @@ ConnStrInfo Utils::GetConnectionString(const std::string &bucket) const {
     return conn_info;
   }
   conn_info.is_valid = true;
-  conn_info.conn_str = GetConnectionStr(nodes_info, bucket, certFile_, client_cert_file_, client_key_file_);
+  conn_info.conn_str = GetConnectionStr(nodes_info, bucket, certFile_,
+                                        client_cert_file_, client_key_file_);
+  if (nodes_info.use_client_cert) {
+    conn_info.client_key_passphrase = nodes_info.client_key_passphrase;
+  }
   return conn_info;
 }
 
@@ -1254,8 +1259,7 @@ std::string GetConnectionStr(const KVNodesInfo &nodes_info,
                << "&keypath=" << client_key_file
                << "&use_credentials_with_client_certificate=true";
     }
-  }
-  else
+  } else
     conn_str << "couchbase://" << nodes_list << '/' << bucket_name
              << "?select_bucket=true&detailed_errcodes=1";
   if (IsIPv6()) {

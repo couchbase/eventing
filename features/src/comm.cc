@@ -30,7 +30,7 @@ Communicator::Communicator(const std::string &host_ip,
   get_creds_url_ = base_url + "/getCreds";
   get_named_params_url_ = base_url + "/getNamedParams";
   write_debugger_url_ = base_url + "/writeDebuggerURL";
-  get_kv_nodes_url_ = base_url + "/getKVNodesAddresses";
+  get_kv_nodes_and_certs_url_ = base_url + "/getKVNodesAndCerts";
   lo_usr_ = usr;
   lo_key_ = key;
 }
@@ -84,7 +84,8 @@ CredsInfo Communicator::GetCreds(const std::string &endpoint) {
 
 KVNodesInfo Communicator::GetKVNodes() {
   // TODO : Use GET here instead of POST
-  auto response = curl_.HTTPPost({}, get_kv_nodes_url_, "", lo_usr_, lo_key_);
+  auto response =
+      curl_.HTTPPost({}, get_kv_nodes_and_certs_url_, "", lo_usr_, lo_key_);
 
   std::stringstream error;
   KVNodesInfo info;
@@ -116,6 +117,8 @@ KVNodesInfo Communicator::GetKVNodes() {
   }
   info.encrypt_data = resp_json["encrypt_data"].get<bool>();
   info.use_client_cert = resp_json["use_client_cert"].get<bool>();
+  info.client_key_passphrase =
+      resp_json["client_key_passphrase"].get<std::string>();
   info.is_valid = true;
   return info;
 }

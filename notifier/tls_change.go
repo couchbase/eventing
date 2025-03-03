@@ -196,6 +196,7 @@ func (tlsOb *tlsObserver) reloadClientCertificate(newConfig *TlsConfig) (bool, e
 		return false, fmt.Errorf("error reading LoadX509KeyPair: %v", err)
 	}
 
+	newConfig.ClientPrivateKeyPassphrase = string(cbauthTLScfg.ClientPrivateKeyPassphrase)
 	newConfig.ClientCertificate = &clientCert
 	return true, nil
 }

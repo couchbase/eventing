@@ -326,8 +326,9 @@ type TlsConfig struct {
 
 type ClientTlsConfig struct {
 	// UseClientCert is true when N2N encryption is all/strict and client auth type is hybrid/mandatory
-	UseClientCert     bool
-	ClientCertificate *tls.Certificate
+	UseClientCert              bool
+	ClientCertificate          *tls.Certificate
+	ClientPrivateKeyPassphrase string
 }
 
 func (t *TlsConfig) String() string {

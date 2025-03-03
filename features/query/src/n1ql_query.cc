@@ -181,7 +181,8 @@ void Query::N1qlController::RowCallback(lcb_INSTANCE *connection, int,
   cursor->is_client_auth_error =
       cursor->is_error &&
       (cursor->client_err_code == LCB_ERR_AUTHENTICATION_FAILURE ||
-       cursor->client_err_code == LCB_ERR_SSL_CANTVERIFY);
+       cursor->client_err_code == LCB_ERR_SSL_CANTVERIFY ||
+       cursor->client_err_code == LCB_ERR_SSL_ERROR);
 
   if (cursor->is_client_error) {
     cursor->client_error = lcb_strerror_short(cursor->client_err_code);
