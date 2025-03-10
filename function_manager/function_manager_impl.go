@@ -342,7 +342,7 @@ func (fm *functionManager) lifeCycleOp(fd *application.FunctionDetails, nextStat
 		config := functionHandler.Config{
 			LeaderHandler: true,
 		}
-		fHandler := functionHandler.NewFunctionHandler(fm.incrementalFuncHandlerCount, fd, config, fd.AppLocation, fm.clusterSettings,
+		fHandler := functionHandler.NewFunctionHandler(fm.incrementalFuncHandlerCount, fd, processManager.NewDummyProcessManager(), config, fd.AppLocation, fm.clusterSettings,
 			fm.interruptForStateChange, fm.systemResourceDetails, fm.observer, fm, fm.pool, fm.serverConfig, fm.cursorCheckpointHandler, fm.utilityWorker, fm.broadcaster)
 
 		fRuntimeDetails = NewFuncRuntimeDetails(fm.incrementalFuncHandlerCount, fm.serverlessFunctionSet)
@@ -394,7 +394,7 @@ func (fm *functionManager) deployFunctionLocked(fd *application.FunctionDetails,
 				config := functionHandler.Config{
 					LeaderHandler: false,
 				}
-				fHandler = functionHandler.NewFunctionHandler(fm.incrementalFuncHandlerCount, fd, config, fd.AppLocation, fm.clusterSettings,
+				fHandler = functionHandler.NewFunctionHandler(fm.incrementalFuncHandlerCount, fd, processManager.NewDummyProcessManager(), config, fd.AppLocation, fm.clusterSettings,
 					fm.interruptForStateChange, fm.systemResourceDetails, fm.observer, fm, fm.pool, fm.serverConfig, fm.cursorCheckpointHandler, fm.utilityWorker, fm.broadcaster)
 				funcID = fm.incrementalFuncHandlerCount
 			}
