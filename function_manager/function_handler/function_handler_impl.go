@@ -104,7 +104,7 @@ type funcHandler struct {
 	runtimeContext *runtimeContext
 }
 
-func NewFunctionHandler(id uint16, fd *application.FunctionDetails, config Config, location application.AppLocation,
+func NewFunctionHandler(id uint16, fd *application.FunctionDetails, re RuntimeEnvironment, config Config, location application.AppLocation,
 	clusterSettings *common.ClusterSettings, interruptHandler InterruptHandler,
 	systemResourceDetails vbhandler.SystemResourceDetails,
 	observer notifier.Observer, ownershipRoutine vbhandler.Ownership,
@@ -140,6 +140,8 @@ func NewFunctionHandler(id uint16, fd *application.FunctionDetails, config Confi
 		// In any situation we will not have more than 3 commands in the channel
 		// TempPause/other lifecycle operations/ rebalance. So 3 is good enough
 		commandChan: make(chan command, 3),
+
+		re: re,
 
 		trapEvent: &atomic.Int32{},
 		runtimeContext: &runtimeContext{
@@ -452,7 +454,6 @@ func (fHandler *funcHandler) changeState(seq uint32, re RuntimeEnvironment, next
 	logPrefix := fmt.Sprintf("funcHandler::changeState[%s]", fHandler.logPrefix)
 
 	currState := fHandler.currState.getCurrState()
-
 	logging.Infof("%s change of state requested: %s -> %s with runtimeEnvironment version: %d", logPrefix, currState, nextState, re.GetProcessDetails().Version)
 	if nextState == TempPause {
 		fHandler.statsHandler.IncrementCountProcessingStats("v8_init", 1)
