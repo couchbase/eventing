@@ -1497,3 +1497,25 @@ func (m *serviceMgr) debuggerOp(runtimeInfo *response.RuntimeInfo, r *http.Reque
 
 	return appLocation, token
 }
+
+func (m *serviceMgr) logFileLocation(w http.ResponseWriter, r *http.Request) {
+	res := response.NewResponseWriter(w, r, response.EventGetLogFileLocation)
+	runtimeInfo := &response.RuntimeInfo{}
+
+	defer res.LogAndSend(runtimeInfo)
+
+	if notAllowed, err := rbac.IsAllowed(r, rbac.EventingPermissionManage, false); err != nil {
+		getAuthErrorInfo(runtimeInfo, notAllowed, false, err)
+		return
+	}
+
+	if r.Method != "GET" {
+		runtimeInfo.ErrCode = response.ErrMethodNotAllowed
+		runtimeInfo.Description = "Method not allowed, Only Get request is allowed"
+		return
+	}
+
+	runtimeInfo.SendRawDescription = true
+	runtimeInfo.Description = fmt.Sprintf(`{"log_dir":"%v"}`, m.config.EventingDir)
+	runtimeInfo.OnlyDescription = true
+}

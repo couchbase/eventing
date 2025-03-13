@@ -27,8 +27,9 @@ func (m *serviceMgr) getServerMux() *http.ServeMux {
 	//expvar REST APIs
 	mux.HandleFunc("/debug/vars", m.expvarHandler) //DONE
 
+	// Internal REST APIs
+	mux.HandleFunc("/logFileLocation", m.logFileLocation)
 	/*
-		   	// Internal REST APIs
 		           mux.HandleFunc("/deleteApplication/", m.deletePrimaryStoreHandler)
 		           mux.HandleFunc("/deleteAppTempStore/", m.deleteTempStoreHandler)
 		           mux.HandleFunc("/getAggEventProcessingStats", m.getAggEventProcessingStats)
@@ -44,7 +45,6 @@ func (m *serviceMgr) getServerMux() *http.ServeMux {
 		           mux.HandleFunc("/getRunningApps", m.getRunningApps)
 		           mux.HandleFunc("/getSeqsProcessed", m.getSeqsProcessed)
 		           mux.HandleFunc("/getLocalDebugUrl/", m.getLocalDebugURL)
-		           mux.HandleFunc("/logFileLocation", m.logFileLocation)
 		           mux.HandleFunc("/saveAppTempStore/", m.saveTempStoreHandler)
 		           mux.HandleFunc("/setApplication/", m.savePrimaryStoreHandler)
 		           mux.HandleFunc("/setSettings/", m.setSettingsHandler)
