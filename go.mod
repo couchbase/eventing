@@ -4,6 +4,8 @@ go 1.21.13
 
 replace golang.org/x/text => golang.org/x/text v0.4.0
 
+replace github.com/couchbase/bhive => ../bhive
+
 replace github.com/couchbase/cbauth => ../cbauth
 
 replace github.com/couchbase/cbft => ../../../../../cbft
