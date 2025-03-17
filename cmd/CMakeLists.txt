@@ -45,19 +45,16 @@ ENDIF()
 
 GoModBuild(TARGET eventing-producer PACKAGE github.com/couchbase/eventing/cmd/producer
   INSTALL_PATH bin OUTPUT eventing-producer
-  DEPENDS sigar Curl::libcurl
-  GEN_DEPENDS eventing-generated
+  DEPENDS sigar Curl::libcurl eventing-generated
   GOTAGS "${TAGS}"
   LDFLAGS "${LDFLAGS}"
   GOVERSION ${GOVERSION})
 
 GoModBuild(TARGET cbevent PACKAGE github.com/couchbase/eventing/cmd/cbevent
   INSTALL_PATH bin
-  DEPENDS sigar Curl::libcurl
-  GEN_DEPENDS eventing-generated
+  DEPENDS sigar Curl::libcurl eventing-generated
   GOTAGS "${TAGS}"
   LDFLAGS "${LDFLAGS}"
   GOVERSION ${GOVERSION})
 
-ADD_DEPENDENCIES(eventing-producer eventing-generated cbq-engine indexer jseval)
-ADD_DEPENDENCIES(cbevent eventing-generated)
+ADD_DEPENDENCIES(eventing-producer cbq-engine indexer jseval)

@@ -8,3 +8,5 @@ ADD_SUBDIRECTORY(cmd)
 ADD_SUBDIRECTORY(v8_consumer)
 ADD_SUBDIRECTORY(third_party/inspector)
 ADD_SUBDIRECTORY(ui)
+
+GoModTidySetup(DEPENDS eventing-generated)
