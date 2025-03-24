@@ -35,6 +35,11 @@ Connection::Info Connection::Pool::CreateConnection() const {
   lcb_createopts_connstr(options, conn_str_info.conn_str.c_str(),
                          strlen(conn_str_info.conn_str.c_str()));
   lcb_createopts_logger(options, logger->base);
+  if (conn_str_info.client_key_passphrase != "") {
+    lcb_createopts_tls_key_password(options,
+                                    conn_str_info.client_key_passphrase.c_str(),
+                                    conn_str_info.client_key_passphrase.size());
+  }
 
   lcb_INSTANCE *connection;
   auto result = lcb_create(&connection, options);

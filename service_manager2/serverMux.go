@@ -19,7 +19,7 @@ func (m *serviceMgr) getServerMux() *http.ServeMux {
 	mux.HandleFunc("/triggerGC", m.triggerGC)
 	mux.HandleFunc("/uuid", m.getNodeUUID)
 	mux.HandleFunc("/version", m.getNodeVersion)
-	mux.HandleFunc("/getKVNodesAddresses", m.getKVNodesAddressesHandler)
+	mux.HandleFunc("/getKVNodesAndCerts", m.getKVNodesAndCertsHandler)
 	mux.HandleFunc("/getUserInfo", m.getUserInfoHandler)
 	mux.HandleFunc("/getCreds", m.getCreds)
 	mux.HandleFunc("/getCpuCount", m.getCPUCount)

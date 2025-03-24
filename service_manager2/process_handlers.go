@@ -275,7 +275,7 @@ func (m *serviceMgr) writeDebuggerURLHandler(w http.ResponseWriter, r *http.Requ
 	runtimeInfo.Description = "Successfully written debugger url"
 }
 
-func (m *serviceMgr) getKVNodesAddressesHandler(w http.ResponseWriter, r *http.Request) {
+func (m *serviceMgr) getKVNodesAndCertsHandler(w http.ResponseWriter, r *http.Request) {
 	res := response.NewResponseWriter(w, r, response.EventGetUserInfo)
 	runtimeInfo := &response.RuntimeInfo{}
 
@@ -307,6 +307,7 @@ func (m *serviceMgr) getKVNodesAddressesHandler(w http.ResponseWriter, r *http.R
 	m.serverConfigMux.RLock()
 	encryptData := m.tlsConfig.EncryptData
 	useClientCert := m.tlsConfig.UseClientCert
+	clientKeyPassphrase := m.tlsConfig.ClientPrivateKeyPassphrase
 	m.serverConfigMux.RUnlock()
 
 	port := notifier.DataService
@@ -322,6 +323,7 @@ func (m *serviceMgr) getKVNodesAddressesHandler(w http.ResponseWriter, r *http.R
 	responseMap["kv_nodes"] = kvNodeHost
 	responseMap["encrypt_data"] = encryptData
 	responseMap["use_client_cert"] = useClientCert
+	responseMap["client_key_passphrase"] = clientKeyPassphrase
 
 	runtimeInfo.OnlyDescription = true
 	runtimeInfo.Description = responseMap

@@ -30,6 +30,7 @@ struct KVNodesInfo {
   std::vector<std::string> kv_nodes;
   bool encrypt_data;
   bool use_client_cert;
+  std::string client_key_passphrase;
   bool is_valid{true};
   std::string msg;
 };
@@ -60,7 +61,7 @@ private:
   std::string scope_;
   std::string get_creds_url_;
   std::string get_named_params_url_;
-  std::string get_kv_nodes_url_;
+  std::string get_kv_nodes_and_certs_url_;
   std::string lo_key_;
   std::string lo_usr_;
   std::string parse_query_url_;

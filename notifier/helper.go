@@ -109,6 +109,7 @@ func (config *TlsConfig) Copy() *TlsConfig {
 	copyConfig.Config = config.Config.Clone()
 	copyConfig.UseClientCert = config.UseClientCert
 	copyConfig.ClientCertificate = config.ClientCertificate
+	copyConfig.ClientPrivateKeyPassphrase = config.ClientPrivateKeyPassphrase
 
 	return copyConfig
 }

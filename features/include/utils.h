@@ -128,6 +128,7 @@ struct ConnStrInfo {
   bool is_valid{true};
   std::string msg;
   std::string conn_str;
+  std::string client_key_passphrase;
 };
 
 struct V8ExceptionInfo {

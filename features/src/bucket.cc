@@ -106,6 +106,11 @@ std::tuple<Error, std::unique_ptr<lcb_STATUS>> Bucket::Connect() {
   lcb_createopts_connstr(options, conn_str_info.conn_str.c_str(),
                          strlen(conn_str_info.conn_str.c_str()));
   lcb_createopts_logger(options, logger->base);
+  if (conn_str_info.client_key_passphrase != "") {
+    lcb_createopts_tls_key_password(options,
+                                    conn_str_info.client_key_passphrase.c_str(),
+                                    conn_str_info.client_key_passphrase.size());
+  }
 
   auto result = lcb_create(&connection_, options);
   if (result != LCB_SUCCESS) {
@@ -205,7 +210,7 @@ bool Bucket::MaybeRecreateConnOnAuthErr(const lcb_STATUS &status,
                                         bool should_check_autherr) {
   lcb_INSTANCE *tmp_instance = nullptr;
   if ((status == LCB_ERR_AUTHENTICATION_FAILURE ||
-       status == LCB_ERR_SSL_CANTVERIFY) &&
+       status == LCB_ERR_SSL_CANTVERIFY || status == LCB_ERR_SSL_ERROR) &&
       should_check_autherr) {
     if (is_connected_) {
       LOG(logError) << "Got " << status << " for bucket: " << bucket_name_
