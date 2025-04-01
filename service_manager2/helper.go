@@ -99,7 +99,7 @@ func (m *serviceMgr) updateLocalState(funcDetails *application.FunctionDetails) 
 		m.bucketGraph.InsertEdges(funcDetails.AppLocation.ToLocationString(), src, dst)
 	}
 
-	m.appState.StartStateChange(funcDetails.MetaInfo.Seq, funcDetails.AppLocation, funcDetails.AppState)
+	m.appState.StartStateChange(funcDetails.MetaInfo.Seq, funcDetails.AppLocation, funcDetails.MetaInfo.PrevState, funcDetails.AppState)
 }
 
 func checkKeyspacePermissions(runtimeInfo *response.RuntimeInfo, nextState application.LifeCycleOp, funcDetails *application.FunctionDetails) {

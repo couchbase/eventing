@@ -79,7 +79,7 @@ func DetermineStatus(state1, state2 AppState) (appState AppState) {
 }
 
 type StateMachine interface {
-	StartStateChange(seq uint32, appLocation application.AppLocation, event application.AppState) (application.LifeCycleOp, error)
+	StartStateChange(seq uint32, appLocation application.AppLocation, initState application.State, event application.AppState) (application.LifeCycleOp, error)
 	DoneStateChange(seq uint32, appLocation application.AppLocation) (application.State, error)
 	FailStateChange(seq uint32, appLocation application.AppLocation) (application.State, error)
 

@@ -357,7 +357,7 @@ func (s *supervisor) recover(ctx context.Context) error {
 		if err := recoverMetakvPaths(common.EventingFunctionPath, functionRecovery); err != nil {
 			return err
 		}
-		logging.Infof("%s successfully recoveres function details", logPrefix)
+		logging.Infof("%s successfully recovered function details", logPrefix)
 	}
 
 	s.stateRecovered.Store(true)
@@ -713,7 +713,7 @@ func (s *supervisor) FunctionChangeCallback(kve metakv.KVEntry) error {
 		}
 
 		// For function coming from older version
-		state, err := s.appState.StartStateChange(function.MetaInfo.Seq, function.AppLocation, function.AppState)
+		state, err := s.appState.StartStateChange(function.MetaInfo.Seq, function.AppLocation, function.MetaInfo.PrevState, function.AppState)
 		if err != nil && !errors.Is(err, stateMachine.ErrAlreadyInGivenState) {
 			logging.Errorf("%s[%s] Error while checking state change %v", function.AppLocation, logPrefix, err)
 			return nil

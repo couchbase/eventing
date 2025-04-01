@@ -1342,6 +1342,7 @@ type MetaInfo struct {
 
 	IsUsingTimer bool
 	Seq          uint32
+	PrevState    State
 	LastPaused   time.Time
 
 	Sboundary streamBoundary
@@ -1359,6 +1360,7 @@ func (mi MetaInfo) Clone() (clone MetaInfo) {
 	clone.MetaID = mi.MetaID
 	clone.IsUsingTimer = mi.IsUsingTimer
 	clone.Seq = mi.Seq
+	clone.PrevState = mi.PrevState
 	clone.LastPaused = mi.LastPaused
 	return
 }

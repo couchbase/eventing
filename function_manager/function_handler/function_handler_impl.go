@@ -370,7 +370,7 @@ func (fHandler *funcHandler) handleOnDeploy(seq uint32, nextState funcHandlerSta
 	// Implies OnDeploy is done for this state change
 	if fHandler.runtimeContext.seq == seq {
 		// OnDeploy finished for this state change, proceed to other state changes normally for the func handler
-		return fHandler.runtimeContext.onDeployStatus == checkpointManager.FinishedOnDeploy
+		return nextState != Deployed || fHandler.runtimeContext.onDeployStatus == checkpointManager.FinishedOnDeploy
 	}
 
 	// Check if operation is Deploy/Resume and code contains OnDeploy function

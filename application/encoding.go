@@ -426,6 +426,7 @@ func encodeMetaInfo(builder *flatbuffers.Builder, metaInfo MetaInfo) flatbuffers
 	if metaInfo.IsUsingTimer {
 		isUsingTimer = trueByte
 	}
+	prevState := builder.CreateString(metaInfo.PrevState.String())
 	lastPaused := builder.CreateString(metaInfo.LastPaused.Format(time.RFC3339))
 
 	cfgv2.KeyspaceInfoStart(builder)
@@ -458,6 +459,7 @@ func encodeMetaInfo(builder *flatbuffers.Builder, metaInfo MetaInfo) flatbuffers
 	cfgv2.MetaInfoAddMetaID(builder, metaOffset)
 	cfgv2.MetaInfoAddIsUsingTimer(builder, isUsingTimer)
 	cfgv2.MetaInfoAddSeq(builder, metaInfo.Seq)
+	cfgv2.MetaInfoAddPrevState(builder, prevState)
 	cfgv2.MetaInfoAddLastPaused(builder, lastPaused)
 
 	cfgv2.MetaInfoAddSboundary(builder, boundaryOffset)
@@ -490,6 +492,7 @@ func decodeMetaInfo(config *cfgv2.Config) (metaInfo MetaInfo) {
 	}
 	metaInfo.Seq = configMetaInfo.Seq()
 	metaInfo.LastPaused, _ = time.Parse(time.RFC3339, string(configMetaInfo.LastPaused()))
+	metaInfo.PrevState = StringToAppState(string(configMetaInfo.PrevState()))
 
 	metaInfo.Sboundary = streamBoundary(configMetaInfo.Sboundary())
 	sourceID := configMetaInfo.SourceID(nil)
