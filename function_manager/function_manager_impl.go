@@ -572,7 +572,6 @@ func (fm *functionManager) GetVbMap(keyspaceInfo *application.KeyspaceInfo, id u
 	ownedVbs := make([]uint16, 0, numVBsToOwn)
 	for _, vb := range vbs {
 		if runtimeDetails.vbsAllocated[vb] == id {
-			numVBsToOwn--
 			ownedVbs = append(ownedVbs, vb)
 		}
 	}
@@ -587,7 +586,6 @@ func (fm *functionManager) GetVbMap(keyspaceInfo *application.KeyspaceInfo, id u
 		vb := timerVbs[index]
 		if owner, ok := runtimeDetails.vbsAllocated[vb]; !ok || owner == id {
 			perHandlerTimerVbs--
-			numVBsToOwn--
 			if !ok {
 				runtimeDetails.vbsAllocated[vb] = id
 				ownedVbs = append(ownedVbs, vb)
@@ -599,7 +597,6 @@ func (fm *functionManager) GetVbMap(keyspaceInfo *application.KeyspaceInfo, id u
 		vb := timerVbs[index]
 		if owner, ok := runtimeDetails.vbsAllocated[vb]; !ok || owner == id {
 			perHandlerTimerVbs--
-			numVBsToOwn--
 			if !ok {
 				runtimeDetails.vbsAllocated[vb] = id
 				ownedVbs = append(ownedVbs, vb)
@@ -608,21 +605,19 @@ func (fm *functionManager) GetVbMap(keyspaceInfo *application.KeyspaceInfo, id u
 	}
 
 	// all the old remainging vbs are allocated
-	for index := handlerPosition; index < len(nonTimerVbs) && numVBsToOwn != 0; index = index + len(funHandlerIDs) {
+	for index := handlerPosition; index < len(nonTimerVbs) && numVBsToOwn > len(ownedVbs); index = index + len(funHandlerIDs) {
 		vb := nonTimerVbs[index]
 		if _, ok := runtimeDetails.vbsAllocated[vb]; !ok {
 			runtimeDetails.vbsAllocated[vb] = id
-			numVBsToOwn--
 			ownedVbs = append(ownedVbs, vb)
 		}
 
 	}
 
-	for index := 0; index < len(nonTimerVbs) && numVBsToOwn != 0; index++ {
+	for index := 0; index < len(nonTimerVbs) && numVBsToOwn > len(ownedVbs); index++ {
 		vb := nonTimerVbs[index]
 		if _, ok := runtimeDetails.vbsAllocated[vb]; !ok {
 			runtimeDetails.vbsAllocated[vb] = id
-			numVBsToOwn--
 			ownedVbs = append(ownedVbs, vb)
 		}
 	}

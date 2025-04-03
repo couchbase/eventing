@@ -530,7 +530,7 @@ func (m *serviceMgr) verifyAndAddMetaDetailsFunction(runtimeInfo *response.Runti
 	// Caller will verify all the fields
 	currAppState, _ := m.appState.GetAppState(funcDetails.AppLocation)
 	state := currAppState.State
-	m.checkAndUpdateSeq(funcDetails, nextState, state)
+	m.updateMetaSeqAndPrevState(funcDetails, nextState, state)
 
 	if nextState == application.Pause && state != application.Paused {
 		funcDetails.MetaInfo.LastPaused = time.Now()
@@ -646,11 +646,17 @@ func (m *serviceMgr) deleteFunction(appLocation application.AppLocation, handler
 }
 
 // Helper function
-func (m *serviceMgr) checkAndUpdateSeq(funcDetails *application.FunctionDetails, op application.LifeCycleOp, currState application.State) {
+func (m *serviceMgr) updateMetaSeqAndPrevState(funcDetails *application.FunctionDetails, op application.LifeCycleOp, currState application.State) {
 	nextState := application.GetStateFromLifeCycle(op)
 
 	// Life cycle operation is performed
 	if (nextState != currState) || (funcDetails.MetaInfo.Seq == 0) {
 		funcDetails.MetaInfo.Seq++
+
+		if currState == application.NoState {
+			funcDetails.MetaInfo.PrevState = application.Undeployed
+		} else {
+			funcDetails.MetaInfo.PrevState = currState
+		}
 	}
 }

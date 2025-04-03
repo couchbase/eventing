@@ -659,6 +659,13 @@ func (cm *checkpointManager) TryTobeLeader(lType leaderType, seq uint32) (bool, 
 			err := insert(cm.getCollectionHandle(), cm.observer, cm.checkpointConfig.Keyspace, key, doc)
 			if err != nil {
 				if errors.Is(err, gocb.ErrDocumentExists) {
+					_, checkpoint := pollAndGetCheckpoint(cm.checkpointConfig.AppLocation, cm.getCollectionHandle(), cm.observer, cm.checkpointConfig.Keyspace)
+					// This case can occur when OnDeploy node leader respawned
+					// and is trying to become leader again
+					if checkpoint.Status == PendingOnDeploy && checkpoint.NodeUUID == cm.checkpointConfig.OwnerNodeUUID {
+						// Fail OnDeploy due to leader node failure
+						cm.PublishOnDeployStatus(FailedStateOnDeploy)
+					}
 					return false, nil
 				}
 
@@ -1070,6 +1077,8 @@ func (cm *checkpointManager) ownershipTakeover() map[string][]uint16 {
 }
 
 func (cm *checkpointManager) PollUntilOnDeployCompletes() *OnDeployCheckpoint {
+	logPrefix := fmt.Sprintf("checkpointManager::PollUntilOnDeployCompletes[%s]", cm.checkpointConfig.AppLocation)
+
 	failoverCheckTicker := time.NewTicker(failoverCheck)
 	defer failoverCheckTicker.Stop()
 	onDeployStatusCheckTicker := time.NewTicker(onDeployStatusCheck)
@@ -1102,6 +1111,7 @@ func (cm *checkpointManager) PollUntilOnDeployCompletes() *OnDeployCheckpoint {
 			}
 
 			// node not healthy. write failed status
+			logging.Errorf("%s Failing OnDeploy since leader node %s is not alive", logPrefix, ownerNode)
 			checkpoint := cm.PublishOnDeployStatus(FailedStateOnDeploy)
 			return checkpoint
 
@@ -1132,7 +1142,7 @@ func (cm *checkpointManager) PollUntilOnDeployCompletes() *OnDeployCheckpoint {
 // PublishOnDeployStatus upserts the status field in the OnDeploy checkpoint
 func (cm *checkpointManager) PublishOnDeployStatus(status OnDeployState) *OnDeployCheckpoint {
 
-	gocbResult, checkpoint := pollAndGetCheckpont(cm.checkpointConfig.AppLocation, cm.getCollectionHandle(), cm.observer, cm.checkpointConfig.Keyspace)
+	gocbResult, checkpoint := pollAndGetCheckpoint(cm.checkpointConfig.AppLocation, cm.getCollectionHandle(), cm.observer, cm.checkpointConfig.Keyspace)
 	// Some other node already written the status
 	if checkpoint.Status != PendingOnDeploy {
 		return checkpoint
@@ -1157,7 +1167,7 @@ func (cm *checkpointManager) PublishOnDeployStatus(status OnDeployState) *OnDepl
 			}
 
 			if errors.Is(err, gocb.ErrCasMismatch) {
-				_, checkpoint = pollAndGetCheckpont(cm.checkpointConfig.AppLocation, cm.getCollectionHandle(), cm.observer, cm.checkpointConfig.Keyspace)
+				_, checkpoint = pollAndGetCheckpoint(cm.checkpointConfig.AppLocation, cm.getCollectionHandle(), cm.observer, cm.checkpointConfig.Keyspace)
 				return checkpoint
 			}
 			continue
@@ -1169,7 +1179,7 @@ func (cm *checkpointManager) PublishOnDeployStatus(status OnDeployState) *OnDepl
 	return checkpoint
 }
 
-func pollAndGetCheckpont(applocation application.AppLocation, collectionHandler *gocb.Collection,
+func pollAndGetCheckpoint(applocation application.AppLocation, collectionHandler *gocb.Collection,
 	observer notifier.Observer, keyspace application.Keyspace) (gocbResult *gocb.GetResult, checkpoint *OnDeployCheckpoint) {
 
 	var err error

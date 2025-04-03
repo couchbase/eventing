@@ -16,10 +16,10 @@ const (
 	initSeq = math.MaxUint32
 )
 
-func NewAppState(presentState application.State) *appState {
+func NewAppState(initState application.State) *appState {
 	return &appState{
 		seq:          initSeq,
-		currentState: presentState,
+		currentState: initState,
 		lifeCycleOp:  application.NoLifeCycleOp,
 	}
 }

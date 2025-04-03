@@ -19,7 +19,7 @@ func NewStateMachine() StateMachine {
 	return sm
 }
 
-func (sm *stateMachine) StartStateChange(seq uint32, appLocation application.AppLocation, event application.AppState) (application.LifeCycleOp, error) {
+func (sm *stateMachine) StartStateChange(seq uint32, appLocation application.AppLocation, initState application.State, event application.AppState) (application.LifeCycleOp, error) {
 	nextState := event.GetLifeCycle()
 
 	sm.Lock()
@@ -27,7 +27,7 @@ func (sm *stateMachine) StartStateChange(seq uint32, appLocation application.App
 
 	app, ok := sm.appState[appLocation]
 	if !ok {
-		app = NewAppState(application.Undeployed)
+		app = NewAppState(initState)
 		sm.appState[appLocation] = app
 	}
 
