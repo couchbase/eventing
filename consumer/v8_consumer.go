@@ -329,7 +329,7 @@ func (c *Consumer) HandleV8Worker() error {
 
 	c.sendLoadV8Worker(c.app.ParsedAppCode, false)
 
-	c.sendFeatureMatrix(atomic.LoadUint32(&c.featureMatrix))
+	c.sendFeatureMatrix(atomic.LoadUint32(&c.featureMatrix), false)
 
 	c.workerExited = false
 

@@ -309,7 +309,7 @@ func (c *Consumer) startDebugger(mKeyspace common.KeyspaceName, e *cb.DcpEvent, 
 		false, c.timerContextSize, c.producer.UsingTimer(), c.producer.SrcMutation())
 
 	c.sendInitV8Worker(payload, true, pBuilder)
-	c.sendFeatureMatrix(atomic.LoadUint32(&c.featureMatrix))
+	c.sendFeatureMatrix(atomic.LoadUint32(&c.featureMatrix), true)
 	c.sendDebuggerStart()
 	c.sendLoadV8Worker(c.app.ParsedAppCode, true)
 	c.sendDcpEvent(mKeyspace, e, nil, e.Cas, true)

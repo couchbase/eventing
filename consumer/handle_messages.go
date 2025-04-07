@@ -126,12 +126,13 @@ func (c *Consumer) sendWorkerThrMap(thrPartitionMap map[int][]uint16, sendToDebu
 	c.sendMessage(m)
 }
 
-func (c *Consumer) sendFeatureMatrix(featureMatrix uint32) {
+func (c *Consumer) sendFeatureMatrix(featureMatrix uint32, sendToDebugger bool) {
 	header, hBuilder := c.makeHeader(configChange, updateFeatureMatrix, 0, strconv.FormatInt(int64(featureMatrix), 10))
 	m := &msgToTransmit{
 		msg: &message{
 			Header: header,
 		},
+		sendToDebugger: sendToDebugger,
 		prioritize:    true,
 		headerBuilder: hBuilder,
 	}
