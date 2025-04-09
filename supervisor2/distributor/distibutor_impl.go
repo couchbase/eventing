@@ -55,17 +55,17 @@ func NewDistributor(uuid string, broadcaster common.Broadcaster, helper distribu
 	return d
 }
 
-func (d *distributor) AddDistribution(path string, payload []byte) (changeId string, rebalanceType rebalanceVersion, requiredRebalanceIDs []*application.KeyspaceInfo) {
+func (d *distributor) AddDistribution(path string, payload []byte) (changeId string, rebalanceType rebalanceVersion, keepNodes []string, requiredRebalanceIDs []*application.KeyspaceInfo) {
 	rebalanceType, extraId := getRebalanceType(path)
 	switch rebalanceType {
 	case VbucketTopologyID, oldRebalanceID:
-		changeId = d.vbdistributor.addDistribution(rebalanceType, extraId, payload)
+		changeId, keepNodes = d.vbdistributor.addDistribution(rebalanceType, extraId, payload)
 		rebalanceType = VbucketTopologyID
 
 	default:
 		changeId, requiredRebalanceIDs = d.functionScopeDistributor.AddDistribution(extraId, payload)
 	}
-	return changeId, rebalanceType, requiredRebalanceIDs
+	return changeId, rebalanceType, keepNodes, requiredRebalanceIDs
 }
 
 func (d *distributor) ReDistribute(changeID string, newUUID []string) error {

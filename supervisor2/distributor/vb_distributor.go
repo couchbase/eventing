@@ -79,7 +79,7 @@ func (vm *vbMapDistributor) getOwnershipDetails() string {
 	return string(data)
 }
 
-func (vm *vbMapDistributor) addDistribution(rebalanceVersion rebalanceVersion, changeID string, topologyBytes []byte) string {
+func (vm *vbMapDistributor) addDistribution(rebalanceVersion rebalanceVersion, changeID string, topologyBytes []byte) (string, []string) {
 	logPrefix := "vbMapDistributor::addDistribution"
 
 	vm.Lock()
@@ -108,7 +108,7 @@ func (vm *vbMapDistributor) addDistribution(rebalanceVersion rebalanceVersion, c
 	}
 	vm.lastChangedToken = rebalanceVersion
 	logging.Infof("%s Done parsing distribution for changeId: %s version: %s leaderNode: %s", logPrefix, vm.changeID, rebalanceVersion, vm.leaderUUID)
-	return vm.changeID
+	return vm.changeID, vm.nodes
 }
 
 // Master node call this vb distribution when start topology is called

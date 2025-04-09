@@ -41,6 +41,7 @@ type Service interface {
 
 	PrepareTopologyChange(change service.TopologyChange) error
 	StartTopologyChange(change service.TopologyChange) error
+	AddBalancedInfo(changeID string, knownNodes []string)
 }
 
 type rebalanceContext struct {
@@ -195,6 +196,18 @@ func NewServiceManager(distributor distributor.Distributor, nodeUUID string) Ser
 	}
 	sm.nodeInfo.Store(nodeInfo)
 	return sm
+}
+
+func (sm *serviceManager) AddBalancedInfo(changeId string, knownNodes []string) {
+	nodeList := make([]service.NodeID, 0, len(knownNodes))
+	for _, nodeID := range knownNodes {
+		nodeList = append(nodeList, service.NodeID(nodeID))
+	}
+
+	sm.updateState(func(s *state) {
+		s.rebalanceService.rebalanceID = changeId
+		s.servers = nodeList
+	})
 }
 
 // setStateIsBalanced sets the m.state.isBalanced flag to the value passed in.
