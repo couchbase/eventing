@@ -39,7 +39,7 @@ type distributionHelper interface {
 
 type Distributor interface {
 	// Called by TopologyChange when this node receives new vbdistribution. It can be old style or new style
-	AddDistribution(path string, payload []byte) (changeId string, rebalanceType rebalanceVersion, requiredRebalanceIDs []*application.KeyspaceInfo)
+	AddDistribution(path string, payload []byte) (changeId string, rebalanceType rebalanceVersion, knownNodes []string, requiredRebalanceIDs []*application.KeyspaceInfo)
 
 	ReDistribute(changeID string, newUUID []string) error
 
