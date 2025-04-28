@@ -67,6 +67,7 @@ public:
 
 private:
   void Connect();
+  void MaybeReconnectOnAuthError(const lcb_STATUS &status);
   std::pair<bool, lcb_STATUS> InitSpan(int partition);
   std::pair<bool, lcb_STATUS> InitSpanLocked(int partition);
 
