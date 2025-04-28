@@ -530,6 +530,7 @@ func (s *supervisor) TopologyChangeCallback(kve metakv.KVEntry) error {
 	changeID, rebalanceType, knownNodes, uuids := s.distributor.AddDistribution(kve.Path, kve.Value)
 	logging.Infof("%s Called by %s, length of value: %d. changeId: %s active eventing nodes: %v uuids: %v", logPrefix, kve.Path, len(kve.Value), changeID, knownNodes, uuids)
 	s.service.AddBalancedInfo(changeID, knownNodes)
+
 	switch rebalanceType {
 	case distributor.VbucketTopologyID:
 		tenents := s.tenents.Load().(map[string]*functionInfo)
@@ -577,25 +578,28 @@ func getSensitivePath(path string) string {
 	return fmt.Sprintf(common.EventingFunctionCredentialTemplate, appLocation)
 }
 
-func (s *supervisor) populateMetaInfo(funcDetails *application.FunctionDetails, populateFuncScope bool) (err error) {
+func (s *supervisor) populateMetaInfo(runtimeInfo *response.RuntimeInfo, funcDetails *application.FunctionDetails, populateFuncScope bool) {
 	if populateFuncScope {
 		funcScope := application.Keyspace{
 			Namespace:      funcDetails.AppLocation.Namespace,
 			CollectionName: application.GlobalValue,
 		}
-		funcDetails.MetaInfo.FunctionScopeID, err = s.PopulateID(funcScope)
-		if err != nil {
+		funcDetails.MetaInfo.FunctionScopeID = s.PopulateID(runtimeInfo, funcScope)
+		if runtimeInfo.ErrCode != response.Ok {
+			runtimeInfo.Description = fmt.Errorf("function scope: %v", runtimeInfo.Description)
 			return
 		}
 	}
 
-	funcDetails.MetaInfo.SourceID, err = s.PopulateID(funcDetails.DeploymentConfig.SourceKeyspace)
-	if err != nil {
+	funcDetails.MetaInfo.SourceID = s.PopulateID(runtimeInfo, funcDetails.DeploymentConfig.SourceKeyspace)
+	if runtimeInfo.ErrCode != response.Ok {
+		runtimeInfo.Description = fmt.Errorf("source collection: %v", runtimeInfo.Description)
 		return
 	}
 
-	funcDetails.MetaInfo.MetaID, err = s.PopulateID(funcDetails.DeploymentConfig.MetaKeyspace)
-	if err != nil {
+	funcDetails.MetaInfo.MetaID = s.PopulateID(runtimeInfo, funcDetails.DeploymentConfig.MetaKeyspace)
+	if runtimeInfo.ErrCode != response.Ok {
+		runtimeInfo.Description = fmt.Errorf("meta collection: %v", runtimeInfo.Description)
 		return
 	}
 
@@ -605,8 +609,6 @@ func (s *supervisor) populateMetaInfo(funcDetails *application.FunctionDetails, 
 	if funcDetails.Settings.NumTimerPartition > numVbs {
 		funcDetails.Settings.NumTimerPartition = numVbs
 	}
-
-	return
 }
 
 // DeleteOnDeployCheckpoint removes the OnDeploy checkpoint from metadata collection.
@@ -634,7 +636,7 @@ func (s *supervisor) DeleteOnDeployCheckpoint(funcDetails *application.FunctionD
 	return err
 }
 
-func (s *supervisor) PopulateID(keyspace application.Keyspace) (keyID application.KeyspaceInfo, err error) {
+func (s *supervisor) PopulateID(res *response.RuntimeInfo, keyspace application.Keyspace) (keyID application.KeyspaceInfo) {
 	keyID = application.NewKeyspaceInfo(application.GlobalValue, application.GlobalValue, application.GlobalValue, application.GlobalValue, 0)
 	if keyspace.BucketName == application.GlobalValue {
 		return
@@ -647,7 +649,8 @@ func (s *supervisor) PopulateID(keyspace application.Keyspace) (keyID applicatio
 
 	bucket, err := s.observer.GetCurrentState(source)
 	if err != nil {
-		err = fmt.Errorf("collection %s doesn't exist", keyspace)
+		res.ErrCode = response.ErrBucketMissing
+		res.Description = fmt.Errorf("keyspace %s doesn't exist", keyspace)
 		return
 	}
 
@@ -662,14 +665,16 @@ func (s *supervisor) PopulateID(keyspace application.Keyspace) (keyID applicatio
 	source.Event = notifier.EventScopeOrCollectionChanges
 	scope, err := s.observer.GetCurrentState(source)
 	if err != nil {
-		err = fmt.Errorf("collection %s doesn't exist", keyspace)
+		res.ErrCode = response.ErrCollectionMissing
+		res.Description = fmt.Errorf("keyspace %s doesn't exist", keyspace)
 		return
 	}
 
 	manifest := scope.(*notifier.CollectionManifest)
 	scopeID, ok := manifest.Scopes[keyspace.ScopeName]
 	if !ok {
-		err = fmt.Errorf("collection %s doesn't exist", keyspace)
+		res.ErrCode = response.ErrCollectionMissing
+		res.Description = fmt.Errorf("keyspace %s doesn't exist", keyspace)
 		return
 	}
 
@@ -682,7 +687,9 @@ func (s *supervisor) PopulateID(keyspace application.Keyspace) (keyID applicatio
 
 	colID, ok := scopeID.Collections[keyspace.CollectionName]
 	if !ok {
-		err = fmt.Errorf("collection %s doesn't exist", keyspace)
+		res.ErrCode = response.ErrCollectionMissing
+		res.Description = fmt.Errorf("keyspace %s doesn't exist", keyspace)
+		return
 	}
 
 	keyID.CollectionID = colID.CID
@@ -725,7 +732,7 @@ func (s *supervisor) FunctionChangeCallback(kve metakv.KVEntry) error {
 			if function.MetaInfo.Seq == application.OldAppSeq {
 				// Old app so populate everything
 				function.MetaInfo.IsUsingTimer = parser.UsingTimer(function.AppCode)
-				s.populateMetaInfo(function, true)
+				s.populateMetaInfo(&response.RuntimeInfo{}, function, true)
 			}
 			s.deployFunction(function)
 
@@ -735,7 +742,7 @@ func (s *supervisor) FunctionChangeCallback(kve metakv.KVEntry) error {
 					Namespace:      function.AppLocation.Namespace,
 					CollectionName: application.GlobalValue,
 				}
-				function.MetaInfo.FunctionScopeID, _ = s.PopulateID(funcScope)
+				function.MetaInfo.FunctionScopeID = s.PopulateID(&response.RuntimeInfo{}, funcScope)
 			}
 			s.undeployFunction(function)
 
@@ -743,7 +750,7 @@ func (s *supervisor) FunctionChangeCallback(kve metakv.KVEntry) error {
 			if function.MetaInfo.Seq == application.OldAppSeq {
 				// Old app so populate everything
 				function.MetaInfo.IsUsingTimer = parser.UsingTimer(function.AppCode)
-				s.populateMetaInfo(function, true)
+				s.populateMetaInfo(&response.RuntimeInfo{}, function, true)
 			}
 			s.pauseFunction(function)
 		}
@@ -1150,15 +1157,15 @@ func (s *supervisor) ClearStats(location application.AppLocation) error {
 }
 
 // this is always called by leader node
-func (s *supervisor) CreateInitCheckpoint(funcDetails *application.FunctionDetails) (bool, error) {
+func (s *supervisor) CreateInitCheckpoint(runtimeInfo *response.RuntimeInfo, funcDetails *application.FunctionDetails) {
 	logPrefix := "supervisor::CreateInitCheckpoint"
-	err := s.populateMetaInfo(funcDetails, false)
-	if err != nil {
-		return false, err
+	s.populateMetaInfo(runtimeInfo, funcDetails, false)
+	if runtimeInfo.ErrCode != response.Ok {
+		return
 	}
 
 	if funcDetails.Settings.DcpStreamBoundary != application.FromNow {
-		return true, nil
+		return
 	}
 
 	event := notifier.InterestedEvent{
@@ -1171,7 +1178,8 @@ func (s *supervisor) CreateInitCheckpoint(funcDetails *application.FunctionDetai
 	// let the tenant manager handle this
 	if err != nil {
 		logging.Errorf("%s Unable to get the current state of the bucket: %s. err: %v", logPrefix, funcDetails.DeploymentConfig.SourceKeyspace.BucketName, err)
-		return false, nil
+		runtimeInfo.ErrCode = response.ErrInternalServer
+		return
 	}
 	numVbs := uint16(bucket.(*notifier.Bucket).NumVbucket)
 	vbs := make([]uint16, 0, numVbs)
@@ -1184,7 +1192,8 @@ func (s *supervisor) CreateInitCheckpoint(funcDetails *application.FunctionDetai
 	col, err := s.observer.GetCurrentState(event)
 	if err != nil {
 		logging.Errorf("%s Unable to get the current collections for the bucket: %s. err: %v", logPrefix, funcDetails.DeploymentConfig.SourceKeyspace.BucketName, err)
-		return false, nil
+		runtimeInfo.ErrCode = response.ErrInternalServer
+		return
 	}
 
 	colManifest := col.(*notifier.CollectionManifest)
@@ -1208,14 +1217,16 @@ func (s *supervisor) CreateInitCheckpoint(funcDetails *application.FunctionDetai
 	fLogMap, err := manager.GetFailoverLog(vbs)
 	if err != nil {
 		logging.Errorf("%s Unable to get the failover log for the bucket: %s. err: %v", logPrefix, funcDetails.DeploymentConfig.SourceKeyspace.BucketName, err)
-		return false, nil
+		runtimeInfo.ErrCode = response.ErrInternalServer
+		return
 	}
 
 	// Need high seq number of the bucket
 	seqMap, err := manager.GetSeqNumber(vbs, "")
 	if err != nil {
 		logging.Errorf("%s Unable to get the seq number for the bucket: %s. err: %v", logPrefix, funcDetails.DeploymentConfig.SourceKeyspace.BucketName, err)
-		return false, nil
+		runtimeInfo.ErrCode = response.ErrInternalServer
+		return
 	}
 
 	vbBlob := &checkpointManager.VbBlob{ManifestID: manifestID}
@@ -1229,11 +1240,11 @@ func (s *supervisor) CreateInitCheckpoint(funcDetails *application.FunctionDetai
 		err := cpManager.SyncUpsertCheckpoint(vb, vbBlob)
 		if err != nil {
 			logging.Errorf("%s Unable to write checkpoint blob to the collection: %s. err: %v", logPrefix, funcDetails.DeploymentConfig.MetaKeyspace, err)
-			return false, nil
+			runtimeInfo.ErrCode = response.ErrInternalServer
+			return
 		}
 	}
-
-	return true, nil
+	return
 }
 
 func (s *supervisor) AssignOwnership(funcDetails *application.FunctionDetails) error {

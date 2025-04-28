@@ -470,10 +470,8 @@ func (m *serviceMgr) verifyAndCreateFunction(cred cbauth.Creds, fDetails *applic
 			CollectionName: "*",
 		}
 
-		fDetails.MetaInfo.FunctionScopeID, err = m.superSup.PopulateID(funcScope)
-		if err != nil {
-			runtimeInfo.ErrCode = response.ErrInvalidRequest
-			runtimeInfo.Description = fmt.Sprintf("%v", err)
+		fDetails.MetaInfo.FunctionScopeID = m.superSup.PopulateID(runtimeInfo, funcScope)
+		if runtimeInfo.ErrCode != response.Ok {
 			return
 		}
 
@@ -576,15 +574,8 @@ func (m *serviceMgr) verifyAndAddMetaDetailsFunction(runtimeInfo *response.Runti
 
 		funcDetails.MetaInfo.IsUsingTimer = parser.UsingTimer(funcDetails.AppCode)
 
-		ok, err := m.superSup.CreateInitCheckpoint(funcDetails)
-		if err != nil {
-			runtimeInfo.ErrCode = response.ErrInvalidRequest
-			runtimeInfo.Description = fmt.Sprintf("%v", err)
-			return
-		}
-
-		if !ok {
-			runtimeInfo.ErrCode = response.ErrInternalServer
+		m.superSup.CreateInitCheckpoint(runtimeInfo, funcDetails)
+		if runtimeInfo.ErrCode != response.Ok {
 			return
 		}
 	}
