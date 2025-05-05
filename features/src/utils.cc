@@ -975,7 +975,7 @@ void Base64EncodeFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
   std::string base64;
   try {
-    base64 = cb::base64::encode(base64_string, false);
+    base64 = cb::base64::encode(base64_string);
   } catch (const std::invalid_argument &i) {
     js_exception->ThrowEventingError("Invalid input");
     return;
@@ -1149,7 +1149,7 @@ void base64FloatArrayEncode(const v8::FunctionCallbackInfo<v8::Value> &args,
 
   std::string base64;
   try {
-    base64 = cb::base64::encode(bytes, false);
+    base64 = cb::base64::encode(bytes);
   } catch (const std::invalid_argument &i) {
     js_exception->ThrowEventingError("Invalid input");
     return;
