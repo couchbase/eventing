@@ -316,7 +316,7 @@ int main(int argc, char **argv) {
   }
 
   std::string host_addr_ = Localhost(ip_mode);
-  auto cluster = std::make_shared<settings::cluster>(
+  auto cluster = std::make_shared<settings::cluster>(IsIpv6(ip_mode),
       host_addr_, eventing_dir, ns_server_port, eventing_port, debugger_port,
       cert_file, client_cert_file, client_key_file, single_function_mode_);
   client_ = new UDSClient(ipc_type, ip_mode, port, feedback_sock_path,

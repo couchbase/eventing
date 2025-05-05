@@ -143,7 +143,7 @@ struct V8ExceptionInfo {
 class Utils {
 public:
   Utils(v8::Isolate *isolate, const v8::Local<v8::Context> &context,
-        std::string certFile, std::string clientCertFile,
+        bool isIpv6, std::string certFile, std::string clientCertFile,
         std::string clientKeyFile);
 
   virtual ~Utils();
@@ -199,6 +199,7 @@ private:
   ExtractPathAndQueryParamsFromURL(const std::string &encoded_url);
 
   v8::Isolate *isolate_;
+  bool isIpv6_;
   CURL *curl_handle_; // Used only to perform url encode/decode
   v8::Persistent<v8::Context> context_;
   v8::Persistent<v8::Object> global_;
@@ -274,9 +275,6 @@ std::string CompileInfoToString(CompilationInfo info);
 
 std::vector<std::string> split(const std::string &s, char delimiter);
 
-std::string Localhost(bool isUrl);
-void SetIPv6(bool is6);
-bool IsIPv6();
 std::string JoinHostPort(const std::string &host, const std::string &port);
 std::pair<std::string, std::string> GetLocalKey();
 std::string GetTimestampNow();
@@ -304,7 +302,7 @@ void Base64Float32EncodeFunction(
 void Base64Float32DecodeFunction(
     const v8::FunctionCallbackInfo<v8::Value> &args);
 
-std::string GetConnectionStr(const KVNodesInfo &node_info,
+std::string GetConnectionStr(bool isIpv6, const KVNodesInfo &node_info,
                              const std::string &bucket_name,
                              const std::string certFile,
                              const std::string client_cert_file,

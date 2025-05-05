@@ -531,7 +531,8 @@ void V8Worker2::InitializeIsolateData() {
   data_.single_function_mode_ = cluster_details_->single_function_mode_;
 
   auto key = GetLocalKey();
-  data_.utils = new Utils(isolate_, context, cluster_details_->cert_file_,
+  data_.utils = new Utils(isolate_, context, cluster_details_->isIPv6_,
+                          cluster_details_->cert_file_,
                           cluster_details_->client_cert_file_,
                           cluster_details_->client_key_file_);
   data_.comm = new Communicator(
