@@ -10,6 +10,8 @@ import (
 	"github.com/couchbase/eventing/common"
 	processManager "github.com/couchbase/eventing/process_manager"
 
+	"slices"
+
 	eventPool "github.com/couchbase/eventing/event_pool"
 	functionHandler "github.com/couchbase/eventing/function_manager/function_handler"
 	vbDistribution "github.com/couchbase/eventing/function_manager/function_handler/vb_handler"
@@ -26,13 +28,13 @@ const (
 type funcRuntimeDetails struct {
 	sync.RWMutex
 
+	funcDetails       *application.FunctionDetails
 	state             application.LifeCycleOp
 	funcHandlerIDList []uint16
 	vbsAllocated      map[uint16]uint16
 	vbsVersion        string
 	statusChanged     map[uint16]bool
 	funcSetList       []functionSet
-	seq               uint32
 }
 
 func NewFuncRuntimeDetails(id uint16, funcSet functionSet) *funcRuntimeDetails {
@@ -41,21 +43,20 @@ func NewFuncRuntimeDetails(id uint16, funcSet functionSet) *funcRuntimeDetails {
 		statusChanged:     make(map[uint16]bool),
 		funcSetList:       make([]functionSet, 0, 1),
 		vbsAllocated:      make(map[uint16]uint16),
-		seq:               0,
 	}
 	fdetails.state = application.Undeploy
 	fdetails.addFuncDetails(id, funcSet)
 	return fdetails
 }
 
-func (fdetails *funcRuntimeDetails) initFuncDetails(seq uint32) {
+func (fdetails *funcRuntimeDetails) initFuncDetails(funcDetails *application.FunctionDetails) {
 	fdetails.Lock()
 	defer fdetails.Unlock()
 
 	for id := range fdetails.statusChanged {
 		fdetails.statusChanged[id] = false
 	}
-	fdetails.seq = seq
+	fdetails.funcDetails = funcDetails
 }
 
 // remove everything and returns first id
@@ -100,7 +101,7 @@ func (fdetails *funcRuntimeDetails) notifyStateChange(id uint16, seq uint32) boo
 	fdetails.Lock()
 	defer fdetails.Unlock()
 
-	if fdetails.seq != seq {
+	if fdetails.funcDetails.MetaInfo.Seq != seq {
 		return false
 	}
 
@@ -235,10 +236,22 @@ func (fm *functionManager) PauseFunction(fd *application.FunctionDetails) {
 }
 
 // Notify all the ownership changes to all the function set
-func (fm *functionManager) NotifyOwnershipChange() {
-	fSetList := fm.getAllFunctionSet()
-	for _, funcSet := range fSetList {
-		funcSet.NotifyOwnershipChange()
+func (fm *functionManager) NotifyOwnershipChange(version string) {
+	runtimeDetails := fm.funcCache.GetAllFunctionRuntimeDetails()
+	for _, funcHandler := range runtimeDetails {
+		for _, funcSet := range funcHandler.getFunctionSet() {
+			if funcSet.GetID() != IdealFunction {
+				funcSet.NotifyOwnershipChange(version)
+			} else {
+				if funcHandler.state == application.Deploy {
+					ok, _ := fm.ownershipRoutine.IsFunctionOwnedByThisNode(&funcHandler.funcDetails.MetaInfo.FunctionScopeID)
+					if ok {
+						fm.lifeCycleOp(funcHandler.funcDetails, funcHandler.state)
+					}
+				}
+				break
+			}
+		}
 	}
 }
 
@@ -350,7 +363,7 @@ func (fm *functionManager) lifeCycleOp(fd *application.FunctionDetails, nextStat
 		instanceID = fd.AppInstanceID
 	}
 	fm.funcCache.AddToFuncCache(fd, fRuntimeDetails, nextState)
-	fRuntimeDetails.initFuncDetails(fd.MetaInfo.Seq)
+	fRuntimeDetails.initFuncDetails(fd)
 
 	switch fRuntimeDetails.state {
 	case application.Undeploy, application.Pause:
@@ -361,6 +374,10 @@ func (fm *functionManager) lifeCycleOp(fd *application.FunctionDetails, nextStat
 
 	case application.Deploy:
 		// Already in deployed state. Change the state of the function
+		funcSet := fRuntimeDetails.funcSetList[0]
+		if funcSet.GetID() == IdealFunction && nextState == application.Deploy {
+			fm.deployFunctionLocked(fd, instanceID, fRuntimeDetails)
+		}
 	}
 
 	fRuntimeDetails.state = nextState
@@ -372,6 +389,31 @@ func (fm *functionManager) lifeCycleOp(fd *application.FunctionDetails, nextStat
 func (fm *functionManager) deployFunctionLocked(fd *application.FunctionDetails, instanceID string, fdetails *funcRuntimeDetails) {
 	logPrefix := fmt.Sprintf("functionManager::deployFunctionLocked[%s]", fm.id)
 	_, namespaceConfig := fm.serverConfig.GetServerConfig(fd.MetaInfo.FunctionScopeID)
+
+	// TODO: check if function needs to be deployed on this node or not
+	ok, _ := fm.ownershipRoutine.IsFunctionOwnedByThisNode(&fdetails.funcDetails.MetaInfo.FunctionScopeID)
+	if ok {
+		// if should own then check if function is in correct function set
+		funcSet := fdetails.funcSetList[0]
+		if funcSet.GetID() == IdealFunction {
+			// Get the first func set and put it into serverless mode
+			fHandler, _ := funcSet.DeleteFunctionHandler(instanceID)
+			id := fdetails.funcHandlerIDList[0]
+			funcSet.DeleteFunctionSet()
+			fm.serverlessFunctionSet.AddFunctionHandler(instanceID, fHandler)
+			fdetails.resetTo(id, fm.serverlessFunctionSet)
+		}
+	} else {
+		funcSet := fdetails.funcSetList[0]
+		if funcSet.GetID() != IdealFunction {
+			fHandler, _ := funcSet.DeleteFunctionHandler(instanceID)
+			id := fdetails.funcHandlerIDList[0]
+			funcSet.DeleteFunctionSet()
+			funcSet = NewIdealFunctionSet(id, fm.interruptForStateChange, fHandler)
+			fdetails.resetTo(id, funcSet)
+		}
+		return
+	}
 
 	logging.Infof("%s deploying function %s in %s mode function: %s", logPrefix, fd.AppLocation, namespaceConfig.DeploymentMode, logging.TagUD(fd.String()))
 	switch namespaceConfig.DeploymentMode {
@@ -504,6 +546,37 @@ func (fm *functionManager) interruptForStateChange(id uint16, seq uint32, appLoc
 
 	case application.Deploy:
 		// No need to take any action
+		ok, _ := fm.ownershipRoutine.IsFunctionOwnedByThisNode(&runtimeDetails.funcDetails.MetaInfo.FunctionScopeID)
+		if !ok {
+			// Move it to ideal functionset if not already done
+			index := 1
+			for index := 1; index < len(runtimeDetails.funcHandlerIDList); index++ {
+				if runtimeDetails.funcHandlerIDList[index] == id {
+					break
+				}
+			}
+
+			if index >= len(runtimeDetails.funcHandlerIDList) {
+				break
+			}
+			funcSet := runtimeDetails.funcSetList[index]
+			if funcSet.GetID() == IdealFunction {
+				break
+			}
+
+			funcID := runtimeDetails.funcHandlerIDList[0]
+			if id == funcID {
+				fHandler, _ := funcSet.DeleteFunctionHandler(instanceID)
+				funcSet.DeleteFunctionSet()
+				fHandler.ChangeState(processManager.NewDummyProcessManager(), functionHandler.TempPause)
+				funcSet = NewIdealFunctionSet(id, fm.interruptForStateChange, fHandler)
+				runtimeDetails.resetTo(id, funcSet)
+			} else {
+				fHandler, _ := funcSet.DeleteFunctionHandler(instanceID)
+				fHandler.CloseFunctionHandler()
+				funcSet.DeleteFunctionSet()
+			}
+		}
 	}
 
 	if err != nil {
@@ -523,12 +596,15 @@ func (fm *functionManager) interruptForStateChange(id uint16, seq uint32, appLoc
 	fm.interrupt.StateChangeInterupt(seq, appLocation)
 }
 
-func (fm *functionManager) GetVbMap(keyspaceInfo *application.KeyspaceInfo, id uint16, numVb, timerPartitions uint16, appLocation application.AppLocation) (string, []uint16, error) {
+func (fm *functionManager) GetVbMap(version string, keyspaceInfo *application.KeyspaceInfo, id uint16, numVb, timerPartitions uint16, appLocation application.AppLocation) (string, []uint16, error) {
 	// This is called sequentially so no need to store latest vbMapVersion for a single funcHandler.
 	// Guranteed to have latest one once notifyOwnership is called
 	vbMapVersion, vbs, err := fm.ownershipRoutine.GetVbMap(keyspaceInfo, numVb)
 	if err != nil {
 		return "", nil, err
+	}
+	if version != "" && version != vbMapVersion {
+		return vbMapVersion, nil, fmt.Errorf("vb map sync error for %s. have: %s", version, vbMapVersion)
 	}
 
 	_, runtimeDetails, ok := fm.funcCache.GetFunctionRuntimeDetails(appLocation)
@@ -549,13 +625,7 @@ func (fm *functionManager) GetVbMap(keyspaceInfo *application.KeyspaceInfo, id u
 	}
 	if runtimeDetails.vbsVersion != vbMapVersion {
 		for vb, _ := range runtimeDetails.vbsAllocated {
-			found := false
-			for _, newVb := range vbs {
-				if newVb == vb {
-					found = true
-					break
-				}
-			}
+			found := slices.Contains(vbs, vb)
 			if !found {
 				delete(runtimeDetails.vbsAllocated, vb)
 			}

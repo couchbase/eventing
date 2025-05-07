@@ -535,7 +535,7 @@ func (s *supervisor) TopologyChangeCallback(kve metakv.KVEntry) error {
 	case distributor.VbucketTopologyID:
 		tenents := s.tenents.Load().(map[string]*functionInfo)
 		for _, tenant := range tenents {
-			tenant.manager.NotifyOwnershipChange()
+			tenant.manager.NotifyOwnershipChange(changeID)
 		}
 		s.topologyChangeID.Store(changeID)
 
@@ -545,11 +545,19 @@ func (s *supervisor) TopologyChangeCallback(kve metakv.KVEntry) error {
 		bucketList := bucketListInterface.(map[string]string)
 		// User observer buckets to get the tenents info
 		for _, uuid := range uuids {
+			if uuid.BucketID == application.GlobalValue {
+				tenant, ok := tenents[application.GlobalValue]
+				if ok {
+					tenant.manager.NotifyOwnershipChange(changeID)
+				}
+				continue
+			}
+
 			for bucketName, bucketUuid := range bucketList {
 				if bucketUuid == uuid.BucketID {
 					tenant, ok := tenents[bucketName]
 					if ok {
-						tenant.manager.NotifyOwnershipChange()
+						tenant.manager.NotifyOwnershipChange(changeID)
 					}
 				}
 			}
@@ -1537,7 +1545,10 @@ func (s *supervisor) GetGarbagedFunction(namespaces map[application.KeyspaceInfo
 	// check all the function that belongs to these namespace and filter it based on undeployed/paused value
 	reverseLookup := make(map[application.Namespace]application.KeyspaceInfo)
 	apps := s.appManager.ListApplication()
+	garbageNamespace := make([]*application.KeyspaceInfo, 0, len(namespaces))
 	neededCheck := make([]string, 0, len(apps))
+	deployedMap := make(map[application.KeyspaceInfo]struct{})
+
 	for _, appLocation := range apps {
 		funcDetails, ok := s.appManager.GetApplication(appLocation, false)
 		if !ok {
@@ -1550,11 +1561,15 @@ func (s *supervisor) GetGarbagedFunction(namespaces map[application.KeyspaceInfo
 
 		appState, err := s.appState.GetAppState(appLocation)
 		if err != nil || !(appState.State == application.Paused || appState.State == application.Undeployed) {
+			deployedMap[funcDetails.MetaInfo.FunctionScopeID] = struct{}{}
 			continue
 		}
 
 		reverseLookup[appLocation.Namespace] = funcDetails.MetaInfo.FunctionScopeID
 		neededCheck = append(neededCheck, appLocation.ToLocationString())
+	}
+	if len(neededCheck) == 0 {
+		return garbageNamespace
 	}
 
 	// check with all the nodes whether function done paused/undeployed
@@ -1564,7 +1579,6 @@ func (s *supervisor) GetGarbagedFunction(namespaces map[application.KeyspaceInfo
 		Timeout: time.Duration(10 * time.Second),
 	}
 
-	garbageNamespace := make([]*application.KeyspaceInfo, 0, len(namespaces))
 	statusBytes, _, err := s.broadcaster.Request(true, "/api/v1/status", req)
 	if err != nil {
 		logging.Errorf("%s Error broadcasting status request: %v", logPrefix, err)
@@ -1579,7 +1593,6 @@ func (s *supervisor) GetGarbagedFunction(namespaces map[application.KeyspaceInfo
 		return garbageNamespace
 	}
 
-	deployedMap := make(map[application.KeyspaceInfo]struct{})
 	for _, appState := range appStatus.Apps {
 		state := application.StringToAppState(appState.CompositeStatus)
 		if !(state == application.Paused || state == application.Undeployed) {

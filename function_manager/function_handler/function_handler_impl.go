@@ -52,6 +52,7 @@ type command struct {
 	nextState funcHandlerState
 	re        RuntimeEnvironment
 	seq       uint32
+	version   string
 }
 
 type runtimeContext struct {
@@ -350,7 +351,7 @@ func (fHandler *funcHandler) commandReceiver() {
 				fHandler.runtimeContext.seq = msg.seq
 
 			case vbChangeNotifier:
-				fHandler.notifyOwnershipChange()
+				fHandler.notifyOwnershipChange(msg.version)
 			}
 
 		case <-fHandler.configSignal.Wait():
@@ -685,24 +686,25 @@ func (fHandler *funcHandler) spawnFunction(re RuntimeEnvironment) {
 	oldVbHandler.Close()
 	go fHandler.statsHandler.start(ctx, fHandler.version, fHandler.instanceID, re, vbHandler, time.Duration(fHandler.fd.Settings.StatsDuration))
 
-	fHandler.notifyOwnershipChange()
+	fHandler.notifyOwnershipChange("")
 	logging.Infof("%s successfully spawned function..", fHandler.logPrefix)
 }
 
-func (fHandler *funcHandler) NotifyOwnershipChange() {
+func (fHandler *funcHandler) NotifyOwnershipChange(version string) {
 	fHandler.commandChan <- command{
 		command: vbChangeNotifier,
+		version: version,
 	}
 }
 
-func (fHandler *funcHandler) notifyOwnershipChange() {
+func (fHandler *funcHandler) notifyOwnershipChange(version string) {
 	logPrefix := fmt.Sprintf("functionHandler::notifyOwnershipChange[%s]", fHandler.logPrefix)
 	if !fHandler.currState.isRunning() {
 		logging.Infof("%s function not in running state: %v. Skipping...", logPrefix, fHandler.currState.isRunning())
 		return
 	}
 
-	vbMapVersion, toOwn, toClose, notFullyOwned, err := fHandler.vbHandler.Load().NotifyOwnershipChange()
+	vbMapVersion, toOwn, toClose, notFullyOwned, err := fHandler.vbHandler.Load().NotifyOwnershipChange(version)
 	if err != nil {
 		// Possible that ownership info not yet receieved. Wait for second notifyownership change
 		logging.Errorf("%s error allocating ownership %v", logPrefix, err)

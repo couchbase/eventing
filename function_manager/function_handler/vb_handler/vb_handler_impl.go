@@ -230,8 +230,8 @@ func (handler *vbHandler) GetRuntimeStats() common.StatsInterface {
 }
 
 // Notify that vb map is changed. Returns new vb map, added vbs and closed vbs
-func (handler *vbHandler) NotifyOwnershipChange() (string, []uint16, []uint16, []uint16, error) {
-	distributedVbsBytes, vbMapVersion, toOwn, toClose, notFullyOwned, err := handler.allocator.VbDistribution()
+func (handler *vbHandler) NotifyOwnershipChange(version string) (string, []uint16, []uint16, []uint16, error) {
+	distributedVbsBytes, vbMapVersion, toOwn, toClose, notFullyOwned, err := handler.allocator.VbDistribution(version)
 	if err != nil {
 		return vbMapVersion, toOwn, toClose, notFullyOwned, err
 	}

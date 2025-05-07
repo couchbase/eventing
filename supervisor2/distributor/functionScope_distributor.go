@@ -33,6 +33,28 @@ func newFsDistributor(numNodes int) *fsDistribution {
 	}
 }
 
+func (fs *fsDistribution) equals(other *fsDistribution) bool {
+	if fs.changeId != other.changeId {
+		return false
+	}
+
+	if len(fs.allNodes) != len(other.allNodes) {
+		return false
+	}
+
+	if len(fs.nodeIndexes) != len(other.nodeIndexes) {
+		return false
+	}
+
+	for i := 0; i < len(fs.nodeIndexes); i++ {
+		if fs.allNodes[fs.nodeIndexes[i]] != other.allNodes[other.nodeIndexes[i]] {
+			return false
+		}
+	}
+
+	return true
+}
+
 func (fs *fsDistribution) addNodeIndexes(nodeDetails []nodeCount) {
 	nodes := make([]uint16, len(fs.nodeIndexes))
 	for _, nodeDetail := range nodeDetails {
@@ -70,7 +92,7 @@ func NewFunctionScopeDistributor(uuid string, helper distributionHelper) *functi
 	}
 }
 
-func (fd *functionScopeDistributor) AddDistribution(bucketId string, payload []byte) (string, []*application.KeyspaceInfo) {
+func (fd *functionScopeDistributor) AddDistribution(bucketId string, payload []byte) (string, []string, []*application.KeyspaceInfo) {
 	logPrefix := "functionScopeDistributor::addDistribution"
 
 	fd.Lock()
@@ -79,38 +101,23 @@ func (fd *functionScopeDistributor) AddDistribution(bucketId string, payload []b
 	if len(payload) == 0 {
 		// path gets deleted due to undeploy of all functions
 		delete(fd.distribution, bucketId)
-		return "", nil
+		return "", nil, nil
 	}
 
 	changeID, _, payload := getTopologyMessageConvert(payload)
 	fd.changeId = changeID
 	nodes, distribution := decodeStorageBytes(changeID, payload)
-	oldScopeMap, ok := fd.distribution[bucketId]
 	fd.nodes = nodes
 
 	// Find the new function thats distributed
-	newFunctionScopeDistributed := make([]*application.KeyspaceInfo, 0, len(distribution))
-	for newScopeId := range distribution {
-		if !ok {
-			info := &application.KeyspaceInfo{
-				BucketID: bucketId,
-				ScopeID:  newScopeId,
-			}
-			newFunctionScopeDistributed = append(newFunctionScopeDistributed, info)
-			continue
-		}
-		if _, ok := oldScopeMap[newScopeId]; !ok {
-			info := &application.KeyspaceInfo{
-				BucketID: bucketId,
-				ScopeID:  newScopeId,
-			}
-			newFunctionScopeDistributed = append(newFunctionScopeDistributed, info)
-		}
-	}
-
+	newFunctionScopeDistributed := make([]*application.KeyspaceInfo, 0, 1)
 	fd.distribution[bucketId] = distribution
+	info := &application.KeyspaceInfo{
+		BucketID: bucketId,
+	}
+	newFunctionScopeDistributed = append(newFunctionScopeDistributed, info)
 	logging.Infof("%s Done adding plans for: %s changeId: %s -> %s", logPrefix, bucketId, changeID, distribution)
-	return changeID, newFunctionScopeDistributed
+	return changeID, nodes, newFunctionScopeDistributed
 }
 
 func (fd *functionScopeDistributor) ReDistribute(changeID string, newUUIDs []string) ([]*rewrittenBytes, []*rewrittenBytes) {
@@ -336,16 +343,15 @@ func (fd *functionScopeDistributor) tryWithNotAssginedNodes(namespace *applicati
 		nodeScore := nodeLoads[notIncludedNodeDetails.nodeIndex]
 
 		replaceableNode := 0
-		for ; replaceableNode < len(containedIndex)-1; replaceableNode++ {
+		for ; replaceableNode < len(containedIndex); replaceableNode++ {
 			replaceableNodeIndex := containedIndex[replaceableNode].nodeIndex
 			reducedScore := nodeLoads[replaceableNodeIndex] - len(containedIndex[replaceableNode].nodePosition)
 			addedScore := nodeScore + len(containedIndex[replaceableNode].nodePosition)
 			// If by moving this instance to other node causes overall reduction in score then only do it
 			// Otherwise keep it as it is
-			if reducedScore-addedScore > nodeLoads[replaceableNodeIndex]-nodeScore {
+			if nodeScore+addedScore > nodeLoads[replaceableNodeIndex]-reducedScore {
 				continue
 			}
-
 			// swap it and decrement the score
 			numPositionSwaped := len(containedIndex[replaceableNode].nodePosition)
 			notIncludedNodeDetails.nodePosition, containedIndex[replaceableNode].nodePosition = containedIndex[replaceableNode].nodePosition, notIncludedNodeDetails.nodePosition
@@ -361,7 +367,6 @@ func (fd *functionScopeDistributor) tryWithNotAssginedNodes(namespace *applicati
 		}
 	}
 	distribution.addNodeIndexes(containedIndex)
-	return
 }
 
 func (fd *functionScopeDistributor) Distribute(namespace *application.KeyspaceInfo, numNodes int) ([]byte, []*rewrittenBytes) {
@@ -573,10 +578,7 @@ func (fd *functionScopeDistributor) reDistributeLocked(ejectedNodes, addedNodes 
 		}
 		newNodes = append(newNodes, node)
 	}
-
-	for addedNodeIndex := 0; addedNodeIndex < len(addedNodes); addedNodeIndex++ {
-		newNodes = append(newNodes, addedNodes[addedNodeIndex])
-	}
+	newNodes = append(newNodes, addedNodes...)
 
 	fd.adjustFunctionsLocked(fd.changeId, newNodes, fd.nodes)
 	fd.nodes = newNodes
