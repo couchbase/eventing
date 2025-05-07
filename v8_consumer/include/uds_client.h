@@ -14,10 +14,10 @@
 const size_t MAX_BUF_SIZE = 65536;
 const int META_DATA_SIZE = 8;
 
-inline bool IsIpv6(std::string ip_mode) { return (ip_mode == "ipv6"); }
+inline bool IsIpv6(const std::string ip_mode) { return (ip_mode == "ipv6"); }
 
-inline std::string Localhost(std::string ip_mode) {
-  return IsIpv6(ip_mode) ? "[::1]" : "127.0.0.1";
+inline std::string Localhost(const std::string ip_mode) {
+  return IsIpv6(ip_mode) ? "::1" : "127.0.0.1";
 }
 
 typedef union {

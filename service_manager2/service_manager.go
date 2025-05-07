@@ -3,6 +3,7 @@ package servicemanager2
 import (
 	"github.com/couchbase/eventing/application"
 	"github.com/couchbase/eventing/common"
+	"github.com/couchbase/eventing/service_manager2/response"
 	"github.com/couchbase/gocb/v2"
 )
 
@@ -15,7 +16,6 @@ type CursorRegister interface {
 type Supervisor2 interface {
 	GetStats(application.AppLocation, common.StatsType) (*common.Stats, error)
 	ClearStats(application.AppLocation) error
-	CreateInitCheckpoint(funcDetails *application.FunctionDetails) (bool, error)
 	CompileHandler(*application.FunctionDetails) (*common.CompileStatus, error)
 	DebuggerOp(op common.DebuggerOp, funcDetails *application.FunctionDetails, value interface{}) (string, error)
 
@@ -25,13 +25,15 @@ type Supervisor2 interface {
 	GetGlobalRebalanceProgress(changeId string) (float64, error)
 	GetOwnershipDetails() string
 
-	PopulateID(keyspace application.Keyspace) (keyID application.KeyspaceInfo, err error)
 	LifeCycleOperationAllowed() bool
 	AssignOwnership(funcDetails *application.FunctionDetails) error
 	GetLeaderNode() string
 
 	GetCollectionObject(keyspace application.Keyspace) (*gocb.Collection, error)
 	DeleteOnDeployCheckpoint(funcDetails *application.FunctionDetails, forceDelete bool) error
+
+	CreateInitCheckpoint(*response.RuntimeInfo, *application.FunctionDetails)
+	PopulateID(response *response.RuntimeInfo, keyspace application.Keyspace) application.KeyspaceInfo
 }
 
 type Config struct {

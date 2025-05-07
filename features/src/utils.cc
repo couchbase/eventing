@@ -322,14 +322,6 @@ std::vector<std::string> split(const std::string &s, char delim) {
   return elems;
 }
 
-void SetIPv6(bool is6) { ipv6 = is6; }
-
-std::string Localhost(bool isUrl) {
-  return ipv6 ? (isUrl ? "[::1]" : "::1") : "127.0.0.1";
-}
-
-bool IsIPv6() { return ipv6; }
-
 std::string JoinHostPort(const std::string &host, const std::string &port) {
   static std::regex ipv6re("^[0-9a-fA-F:]*:[0-9a-fA-F:]+$");
   return std::regex_match(host, ipv6re) ? "[" + host + "]:" + port
@@ -368,9 +360,9 @@ bool IsExecutionTerminating(v8::Isolate *isolate) {
 }
 
 Utils::Utils(v8::Isolate *isolate, const v8::Local<v8::Context> &context,
-             std::string certFile, std::string clientCertFile,
+             bool isIpv6, std::string certFile, std::string clientCertFile,
              std::string clientKeyFile)
-    : certFile_(certFile), client_cert_file_(clientCertFile),
+    : isIpv6_(isIpv6), certFile_(certFile), client_cert_file_(clientCertFile),
       client_key_file_(clientKeyFile), isolate_(isolate),
       curl_handle_(curl_easy_init()) {
   v8::HandleScope handle_scope(isolate_);
@@ -532,7 +524,7 @@ ConnStrInfo Utils::GetConnectionString(const std::string &bucket) const {
     return conn_info;
   }
   conn_info.is_valid = true;
-  conn_info.conn_str = GetConnectionStr(nodes_info, bucket, certFile_,
+  conn_info.conn_str = GetConnectionStr(isIpv6_, nodes_info, bucket, certFile_,
                                         client_cert_file_, client_key_file_);
   if (nodes_info.use_client_cert) {
     conn_info.client_key_passphrase = nodes_info.client_key_passphrase;
@@ -983,7 +975,7 @@ void Base64EncodeFunction(const v8::FunctionCallbackInfo<v8::Value> &args) {
 
   std::string base64;
   try {
-    base64 = cb::base64::encode(base64_string, false);
+    base64 = cb::base64::encode(base64_string);
   } catch (const std::invalid_argument &i) {
     js_exception->ThrowEventingError("Invalid input");
     return;
@@ -1157,7 +1149,7 @@ void base64FloatArrayEncode(const v8::FunctionCallbackInfo<v8::Value> &args,
 
   std::string base64;
   try {
-    base64 = cb::base64::encode(bytes, false);
+    base64 = cb::base64::encode(bytes);
   } catch (const std::invalid_argument &i) {
     js_exception->ThrowEventingError("Invalid input");
     return;
@@ -1234,7 +1226,7 @@ void Base64Float32DecodeFunction(
   base64FloatArrayDecode(args, arrayEncoding::Float32Encoding);
 }
 
-std::string GetConnectionStr(const KVNodesInfo &nodes_info,
+std::string GetConnectionStr(bool isIpv6, const KVNodesInfo &nodes_info,
                              const std::string &bucket_name,
                              const std::string certFile,
                              const std::string client_cert_file,
@@ -1262,7 +1254,7 @@ std::string GetConnectionStr(const KVNodesInfo &nodes_info,
   } else
     conn_str << "couchbase://" << nodes_list << '/' << bucket_name
              << "?select_bucket=true&detailed_errcodes=1";
-  if (IsIPv6()) {
+  if(isIpv6) {
     conn_str << "&ipv6=allow";
   }
   return conn_str.str();

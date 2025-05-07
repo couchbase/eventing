@@ -24,8 +24,9 @@ Communicator::Communicator(const std::string &host_ip,
                            v8::Isolate *isolate)
     : isolate_(isolate), curl_(false), app_name_(app_name), bucket_(bucket),
       scope_(scope) {
-  std::string base_url = (ssl ? "https://" : "http://") +
-                         JoinHostPort(Localhost(false), host_port);
+
+  std::string base_url =
+      (ssl ? "https://" : "http://") + JoinHostPort(host_ip, host_port);
   parse_query_url_ = base_url + "/parseQuery";
   get_creds_url_ = base_url + "/getCreds";
   get_named_params_url_ = base_url + "/getNamedParams";
