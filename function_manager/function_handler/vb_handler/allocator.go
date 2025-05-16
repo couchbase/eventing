@@ -214,10 +214,10 @@ func (al *allocator) GetHighSeqNum() map[uint16]uint64 {
 }
 
 // Don't change the order
-func (al *allocator) VbDistribution() (distributedVbsBytes []byte, vbMapVersion string, toOwn, toClose, notFullyOwned []uint16, err error) {
+func (al *allocator) VbDistribution(version string) (distributedVbsBytes []byte, vbMapVersion string, toOwn, toClose, notFullyOwned []uint16, err error) {
 	logPrefix := fmt.Sprintf("allocator::VbDistribution[%s]", al.logPrefix)
 
-	vbMapVersion, vbs, err := al.getVbOwnershipMap()
+	vbMapVersion, vbs, err := al.getVbOwnershipMap(version)
 	if err != nil {
 		return nil, vbMapVersion, nil, nil, nil, fmt.Errorf("error getting vbownership map: %v", err)
 	}
@@ -532,8 +532,8 @@ func (al *allocator) Close() []uint16 {
 }
 
 // Internal Functions
-func (al *allocator) getVbOwnershipMap() (string, []uint16, error) {
-	vbMapVersion, vbSlice, err := al.config.OwnershipRoutine.GetVbMap(&al.config.MetaInfo.FunctionScopeID, al.config.FuncID, al.config.ConfiguredVbs, al.config.HandlerSettings.NumTimerPartition, al.config.AppLocation)
+func (al *allocator) getVbOwnershipMap(version string) (string, []uint16, error) {
+	vbMapVersion, vbSlice, err := al.config.OwnershipRoutine.GetVbMap(version, &al.config.MetaInfo.FunctionScopeID, al.config.FuncID, al.config.ConfiguredVbs, al.config.HandlerSettings.NumTimerPartition, al.config.AppLocation)
 	return vbMapVersion, vbSlice, err
 }
 

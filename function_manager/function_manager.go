@@ -34,7 +34,7 @@ type FunctionManager interface {
 	RemoveFunction(fd *application.FunctionDetails) int
 
 	// Notification for changes
-	NotifyOwnershipChange()
+	NotifyOwnershipChange(version string)
 	NotifyGlobalConfigChange()
 	NotifyTlsChanges(cluster *gocb.Cluster)
 

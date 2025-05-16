@@ -63,7 +63,7 @@ func (d *distributor) AddDistribution(path string, payload []byte) (changeId str
 		rebalanceType = VbucketTopologyID
 
 	default:
-		changeId, requiredRebalanceIDs = d.functionScopeDistributor.AddDistribution(extraId, payload)
+		changeId, keepNodes, requiredRebalanceIDs = d.functionScopeDistributor.AddDistribution(extraId, payload)
 	}
 	return changeId, rebalanceType, keepNodes, requiredRebalanceIDs
 }

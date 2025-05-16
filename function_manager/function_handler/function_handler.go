@@ -134,7 +134,7 @@ type FunctionHandler interface {
 	ApplicationLog(msg string)
 
 	// NotifyOwnershipChange will be called when new vbs need to be acquired or givenup
-	NotifyOwnershipChange()
+	NotifyOwnershipChange(version string)
 
 	// NotifyGlobalConfigChange will be called when global config is changed
 	NotifyGlobalConfigChange()
@@ -183,7 +183,7 @@ func (d dummy) ResetStats() {
 func (d dummy) ApplicationLog(msg string) {
 }
 
-func (d dummy) NotifyOwnershipChange() {
+func (d dummy) NotifyOwnershipChange(version string) {
 }
 
 func (d dummy) NotifyGlobalConfigChange() {

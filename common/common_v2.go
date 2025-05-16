@@ -754,6 +754,7 @@ func (s *Stats) String() string {
 
 type OwnershipRoutine interface {
 	GetVbMap(namespace *application.KeyspaceInfo, numVb uint16) (string, []uint16, error)
+	IsFunctionOwnedByThisNode(namespace *application.KeyspaceInfo) (bool, error)
 }
 
 type LifecycleMsg struct {

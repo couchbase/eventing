@@ -20,6 +20,7 @@ const (
 	// FunctionSetType is the type of function set
 	GroupOfFunctions funcSetType = iota
 	SingleFunction
+	IdealFunction
 )
 
 // This manages multiple fuction in one single executor
@@ -41,10 +42,110 @@ type functionSet interface {
 
 	GetRebalanceProgress(instanceID string, version string, appProgress *common.AppRebalanceProgress) bool
 
-	NotifyOwnershipChange()
+	NotifyOwnershipChange(version string)
 	NotifyGlobalConfigChange()
 
 	DeleteFunctionSet()
+}
+
+type idealFunctionSet struct {
+	id               uint16
+	close            func()
+	interruptHandler functionHandler.InterruptHandler
+	funcHandler      functionHandler.FunctionHandler
+	appLocation      application.AppLocation
+	ch               chan struct {
+		seq         uint32
+		appLocation application.AppLocation
+	}
+}
+
+func NewIdealFunctionSet(id uint16, interruptHandler functionHandler.InterruptHandler, funcHandler functionHandler.FunctionHandler) functionSet {
+	ctx, close := context.WithCancel(context.Background())
+	ifs := &idealFunctionSet{
+		id:               id,
+		interruptHandler: interruptHandler,
+		funcHandler:      funcHandler,
+		ch: make(chan struct {
+			seq         uint32
+			appLocation application.AppLocation
+		}, 3),
+	}
+
+	go ifs.backgroundThread(ctx)
+	ifs.close = close
+	return ifs
+}
+
+func (ifs *idealFunctionSet) backgroundThread(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case msg := <-ifs.ch:
+			ifs.interruptHandler(ifs.id, msg.seq, msg.appLocation, nil)
+		}
+	}
+}
+
+func (ifs *idealFunctionSet) GetID() funcSetType {
+	return IdealFunction
+}
+
+func (ifs *idealFunctionSet) AddFunctionHandler(instanceID string, fhHandler functionHandler.FunctionHandler) {
+}
+
+func (ifs *idealFunctionSet) DeleteFunctionHandler(instanceID string) (functionHandler.FunctionHandler, int) {
+	return ifs.funcHandler, 0
+}
+
+func (ifs *idealFunctionSet) ChangeState(instanceID string, funcDetails *application.FunctionDetails, nextState application.LifeCycleOp) (application.LifeCycleOp, bool) {
+	ifs.ch <- struct {
+		seq         uint32
+		appLocation application.AppLocation
+	}{
+		seq:         funcDetails.MetaInfo.Seq,
+		appLocation: funcDetails.AppLocation,
+	}
+	return application.NoLifeCycleOp, true
+}
+
+func (ifs *idealFunctionSet) Stats(instanceID string, statsType common.StatsType) *common.Stats {
+	return common.NewStats(true, ifs.appLocation.Namespace, ifs.appLocation.Appname, statsType)
+}
+
+func (ifs *idealFunctionSet) ApplicationLog(instanceID, msg string) {
+}
+
+func (ifs *idealFunctionSet) GetInsight(instanceID string) *common.Insight {
+	return common.NewInsight()
+}
+
+func (ifs *idealFunctionSet) GetApplicationLog(instanceID string, size int64) ([]string, error) {
+	return []string{}, nil
+}
+
+// ResetStats will reset all the stats
+func (ifs *idealFunctionSet) ResetStats(instanceID string) {
+	return
+}
+
+func (ifs *idealFunctionSet) TrapEvent(instanceID string, trapEvent functionHandler.TrapEventOp, value interface{}) error {
+	return nil
+}
+
+func (ifs *idealFunctionSet) GetRebalanceProgress(instanceID string, version string, appProgress *common.AppRebalanceProgress) bool {
+	return false
+}
+
+func (ifs *idealFunctionSet) NotifyOwnershipChange(string) {
+}
+
+func (ifs *idealFunctionSet) NotifyGlobalConfigChange() {
+}
+
+func (ifs *idealFunctionSet) DeleteFunctionSet() {
+	ifs.close()
 }
 
 type funcHandlerDetails struct {
@@ -226,11 +327,11 @@ func (fs *funcSet) GetRebalanceProgress(instanceID string, version string, appPr
 	return fHandler.funcHandler.GetRebalanceProgress(version, appProgress)
 }
 
-func (fs *funcSet) NotifyOwnershipChange() {
+func (fs *funcSet) NotifyOwnershipChange(version string) {
 	funcHandlerList := fs.getFunctionHandlerList()
 
 	for _, fHandler := range funcHandlerList {
-		fHandler.funcHandler.NotifyOwnershipChange()
+		fHandler.funcHandler.NotifyOwnershipChange(version)
 	}
 }
 

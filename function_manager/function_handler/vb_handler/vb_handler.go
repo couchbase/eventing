@@ -17,7 +17,7 @@ type StatsHandler interface {
 }
 
 type Ownership interface {
-	GetVbMap(keyspaceInfo *application.KeyspaceInfo, id uint16, numVb, timerVbs uint16, appLocation application.AppLocation) (string, []uint16, error)
+	GetVbMap(version string, keyspaceInfo *application.KeyspaceInfo, id uint16, numVb, timerVbs uint16, appLocation application.AppLocation) (string, []uint16, error)
 }
 
 type SystemResourceDetails interface {
@@ -69,7 +69,7 @@ type VbHandler interface {
 	GetRuntimeStats() common.StatsInterface
 
 	// NotifyOwnershipChange notifies the new vb map. Returns newly added and closed vbs
-	NotifyOwnershipChange() (vbMapVersion string, newVbs []uint16, closedVbs []uint16, notFullyOwned []uint16, err error)
+	NotifyOwnershipChange(version string) (vbMapVersion string, newVbs []uint16, closedVbs []uint16, notFullyOwned []uint16, err error)
 
 	// VbHandlerSnapshot returns the still to be owned and closed vbs
 	VbHandlerSnapshot(appProgress *common.AppRebalanceProgress)
@@ -111,7 +111,7 @@ func (_ dummy) GetHighSeqNum() map[uint16]uint64 {
 	return nil
 }
 
-func (_ dummy) NotifyOwnershipChange() (vbMapVersion string, newVbs []uint16, closedVbs []uint16, notFullyOwned []uint16, err error) {
+func (_ dummy) NotifyOwnershipChange(string) (vbMapVersion string, newVbs []uint16, closedVbs []uint16, notFullyOwned []uint16, err error) {
 	return "", nil, nil, nil, nil
 }
 
