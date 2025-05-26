@@ -735,31 +735,15 @@ func (s *supervisor) FunctionChangeCallback(kve metakv.KVEntry) error {
 			return nil
 		}
 
+		s.prepareBeforeStateChange(state, function)
 		switch state {
 		case application.Deploy:
-			if function.MetaInfo.Seq == application.OldAppSeq {
-				// Old app so populate everything
-				function.MetaInfo.IsUsingTimer = parser.UsingTimer(function.AppCode)
-				s.populateMetaInfo(&response.RuntimeInfo{}, function, true)
-			}
 			s.deployFunction(function)
 
 		case application.Undeploy:
-			if function.MetaInfo.Seq == application.OldAppSeq {
-				funcScope := application.Keyspace{
-					Namespace:      function.AppLocation.Namespace,
-					CollectionName: application.GlobalValue,
-				}
-				function.MetaInfo.FunctionScopeID = s.PopulateID(&response.RuntimeInfo{}, funcScope)
-			}
 			s.undeployFunction(function)
 
 		case application.Pause:
-			if function.MetaInfo.Seq == application.OldAppSeq {
-				// Old app so populate everything
-				function.MetaInfo.IsUsingTimer = parser.UsingTimer(function.AppCode)
-				s.populateMetaInfo(&response.RuntimeInfo{}, function, true)
-			}
 			s.pauseFunction(function)
 		}
 
@@ -1010,7 +994,7 @@ func (s *supervisor) deleteFunction(appLocation application.AppLocation) {
 		return
 	}
 
-	logfileDir, logfileName := application.GetLogDirectoryAndFileName(funcDetails, s.clusterSetting.EventingDir)
+	logfileDir, logfileName := application.GetLogDirectoryAndFileName(false, funcDetails, s.clusterSetting.EventingDir)
 	logging.Infof("%s Deleting log files for function: dir: %s, filename %s", logPrefix, logfileDir, logfileName)
 	d, err := os.Open(logfileDir)
 	if err == nil {
@@ -1029,7 +1013,35 @@ func (s *supervisor) deleteFunction(appLocation application.AppLocation) {
 				}
 			}
 		}
+
 		d.Close()
+		eventingDir := application.GetEventingDir(funcDetails, s.clusterSetting.EventingDir)
+		eventingDir, err = filepath.Abs(eventingDir)
+		if err != nil {
+			return
+		}
+
+		logfileDir, err = filepath.Abs(logfileDir)
+		if err != nil {
+			return
+		}
+		for logfileDir != eventingDir {
+			d, err := os.Open(logfileDir)
+			if err != nil {
+				break
+			}
+			names, err := d.Readdirnames(-1)
+			d.Close()
+			if err != nil {
+				break
+			}
+
+			if len(names) == 0 {
+				os.Remove(logfileDir)
+			}
+
+			logfileDir = filepath.Dir(logfileDir)
+		}
 	} else {
 		logging.Errorf("%s Error opening log directory %s to delete: %v", logPrefix, logfileDir, err)
 	}
@@ -1052,6 +1064,38 @@ func (s *supervisor) deleteFunction(appLocation application.AppLocation) {
 	tenant.manager.CloseFunctionManager()
 }
 
+func (s *supervisor) prepareBeforeStateChange(lifecycle application.LifeCycleOp, function *application.FunctionDetails) {
+	switch lifecycle {
+	case application.Deploy:
+		if function.MetaInfo.Seq == application.OldAppSeq {
+			// Old app so populate everything
+			function.MetaInfo.IsUsingTimer = parser.UsingTimer(function.AppCode)
+			s.populateMetaInfo(&response.RuntimeInfo{}, function, true)
+			function.MetaInfo.LogFileName = function.AppInstanceID
+		}
+
+	case application.Undeploy:
+		if function.MetaInfo.Seq == application.OldAppSeq {
+			funcScope := application.Keyspace{
+				Namespace:      function.AppLocation.Namespace,
+				CollectionName: application.GlobalValue,
+			}
+			function.MetaInfo.LogFileName = function.AppInstanceID
+			function.MetaInfo.FunctionScopeID = s.PopulateID(&response.RuntimeInfo{}, funcScope)
+		}
+
+	case application.Pause:
+		if function.MetaInfo.Seq == application.OldAppSeq {
+			// Old app so populate everything
+			function.MetaInfo.IsUsingTimer = parser.UsingTimer(function.AppCode)
+			function.MetaInfo.LogFileName = function.AppInstanceID
+			s.populateMetaInfo(&response.RuntimeInfo{}, function, true)
+		}
+	}
+
+	renameLogFile(function, s.clusterSetting.EventingDir)
+}
+
 func (s *supervisor) deployFunction(function *application.FunctionDetails) {
 	// Front end verified the app so there won't be any source interbucket recursion
 	src, dst, _ := function.GetSourceAndDestinations(true)
@@ -1072,8 +1116,6 @@ func (s *supervisor) deployFunction(function *application.FunctionDetails) {
 		tInfo = s.spawnTenantManagerLocked(function)
 	}
 
-	logFileDir, _ := application.GetLogDirectoryAndFileName(function, s.clusterSetting.EventingDir)
-	os.MkdirAll(logFileDir, 0755)
 	tInfo.manager.DeployFunction(function)
 	extraAttributes := map[string]interface{}{common.AppLocationTag: function.AppLocation}
 	common.LogSystemEvent(common.EVENTID_DEPLOY_FUNCTION, systemeventlog.SEInfo, extraAttributes)

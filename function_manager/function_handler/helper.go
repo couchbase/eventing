@@ -516,7 +516,7 @@ func (fHandler *funcHandler) createRuntimeSystem(event spawnType, funcDetails *a
 				break
 			}
 		}
-		dirName, _ := application.GetLogDirectoryAndFileName(fHandler.fd, fHandler.clusterSettings.EventingDir)
+		dirName, _ := application.GetLogDirectoryAndFileName(false, fHandler.fd, fHandler.clusterSettings.EventingDir)
 		value := map[string]interface{}{
 			"isIpv4":    (fHandler.clusterSettings.IpMode == common.Ipv4),
 			"host_addr": externalHostName,

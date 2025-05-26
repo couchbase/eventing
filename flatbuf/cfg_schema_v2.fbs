@@ -105,6 +105,7 @@ table MetaInfo {
 
   sboundary:string;
   SourceID:KeyspaceInfo;
+  LogFileName:string;
 }
 
 table Owner {

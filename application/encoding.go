@@ -428,6 +428,7 @@ func encodeMetaInfo(builder *flatbuffers.Builder, metaInfo MetaInfo) flatbuffers
 	}
 	prevState := builder.CreateString(metaInfo.PrevState.String())
 	lastPaused := builder.CreateString(metaInfo.LastPaused.Format(time.RFC3339))
+	logFileName := builder.CreateString(metaInfo.LogFileName)
 
 	cfgv2.KeyspaceInfoStart(builder)
 	cfgv2.KeyspaceInfoAddUID(builder, funcID)
@@ -464,6 +465,7 @@ func encodeMetaInfo(builder *flatbuffers.Builder, metaInfo MetaInfo) flatbuffers
 
 	cfgv2.MetaInfoAddSboundary(builder, boundaryOffset)
 	cfgv2.MetaInfoAddSourceID(builder, sourceOffset)
+	cfgv2.MetaInfoAddLogFileName(builder, logFileName)
 
 	return cfgv2.MetaInfoEnd(builder)
 }
@@ -501,6 +503,7 @@ func decodeMetaInfo(config *cfgv2.Config) (metaInfo MetaInfo) {
 	metaInfo.SourceID.ScopeID = string(sourceID.ScopeID())
 	metaInfo.SourceID.BucketID = string(sourceID.UUID())
 	metaInfo.SourceID.NumVbuckets = sourceID.NumVbs()
+	metaInfo.LogFileName = string(configMetaInfo.LogFileName())
 	return
 }
 
