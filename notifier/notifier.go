@@ -237,7 +237,7 @@ type NodeAddress struct {
 }
 
 func (na *NodeAddress) String() string {
-	return fmt.Sprintf("{ \"NodeAddress\": %s, \"sslAddress\": %s }", na.NonSSLAddress, na.NonSSLAddress)
+	return fmt.Sprintf("{ \"Non-SSL Address\": %s, \"SSL Address\": %s }", na.NonSSLAddress, na.SSLAddress)
 }
 
 // VBmap represents vbucket to kv mapping
