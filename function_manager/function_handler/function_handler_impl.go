@@ -430,7 +430,7 @@ func (fHandler *funcHandler) initOnDeploy() {
 	logPrefix := fmt.Sprintf("funcHandler::initOnDeploy[%s]", fHandler.logPrefix)
 
 	if fHandler.funcHandlerConfig.LeaderHandler {
-		_, logFileLocation := application.GetLogDirectoryAndFileName(fHandler.fd, fHandler.clusterSettings.EventingDir)
+		_, logFileLocation := application.GetLogDirectoryAndFileName(false, fHandler.fd, fHandler.clusterSettings.EventingDir)
 		appLogWriter, err := openAppLog(logFileLocation, 0640, int64(fHandler.fd.Settings.AppLogMaxSize), int64(fHandler.fd.Settings.AppLogMaxFiles))
 		if err != nil {
 			logging.Errorf("%s Error in opening file: %s, err: %v", logPrefix, err)
@@ -650,7 +650,7 @@ func (fHandler *funcHandler) spawnFunction(re RuntimeEnvironment) {
 	checkpointMgr.CloseCheckpointManager()
 
 	if fHandler.funcHandlerConfig.LeaderHandler {
-		_, logFileLocation := application.GetLogDirectoryAndFileName(fHandler.fd, fHandler.clusterSettings.EventingDir)
+		_, logFileLocation := application.GetLogDirectoryAndFileName(false, fHandler.fd, fHandler.clusterSettings.EventingDir)
 		var err error
 		appLogWriter, err := openAppLog(logFileLocation, 0640, int64(fHandler.fd.Settings.AppLogMaxSize), int64(fHandler.fd.Settings.AppLogMaxFiles))
 		if err != nil {

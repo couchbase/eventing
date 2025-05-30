@@ -45,16 +45,16 @@ const (
 )
 
 type Config struct {
-	Mode       Mode   `json:"mode"`
-	ClientName string `json:"client_name"`
-	BucketName string `json:"bucket_name"`
-	KvAddress  string `json:"kv_address"`
+	Mode            Mode                  `json:"mode"`
+	ClientName      string                `json:"client_name"`
+	BucketName      string                `json:"bucket_name"`
+	KvAddressStruct *notifier.NodeAddress `json:"kv_address"`
 
 	DcpConfig map[ConfigKey]interface{} `json:"dcp_config"`
 }
 
 func (c Config) String() string {
-	return fmt.Sprintf("{ clientName: %s, bucketName: %s, kvAddress: %s, mode: %v }", c.ClientName, c.BucketName, c.KvAddress, c.Mode)
+	return fmt.Sprintf("{ clientName: %s, bucketName: %s, kvAddressStruct: %v, mode: %v }", c.ClientName, c.BucketName, c.KvAddressStruct, c.Mode)
 }
 
 var (

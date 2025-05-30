@@ -474,7 +474,7 @@ func (m *serviceMgr) verifyAndCreateFunction(cred cbauth.Creds, fDetails *applic
 		if runtimeInfo.ErrCode != response.Ok {
 			return
 		}
-
+		fDetails.MetaInfo.LogFileName = generateRandomNameSuffix()
 	} else {
 		// Check for status on all the eventing nodes
 		aggStatus, _ := m.getAggAppsStatus(runtimeInfo, []application.AppLocation{fDetails.AppLocation})

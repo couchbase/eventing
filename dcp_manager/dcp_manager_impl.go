@@ -359,11 +359,11 @@ func (m *manager) getDcpConsumerForVb(vb uint16) (notifier.NodeAddress, dcpConn.
 			clientName := fmt.Sprintf("%s:%s_%s%d", prefix, m.id, hostKvAddress, val)
 
 			config := dcpConn.Config{
-				Mode:       m.mode,
-				ClientName: clientName,
-				BucketName: m.bucketName,
-				KvAddress:  hostKvAddress,
-				DcpConfig:  m.dcpConnConfig,
+				Mode:            m.mode,
+				ClientName:      clientName,
+				BucketName:      m.bucketName,
+				KvAddressStruct: &kvAddressStruct,
+				DcpConfig:       m.dcpConnConfig,
 			}
 
 			dcpConsumer = dcpConn.GetDcpConsumer(config, tlsConfig, m.eventReceiveChan, m.dcpEventPool)

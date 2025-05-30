@@ -695,12 +695,13 @@ func (c *client) startConnection(parent context.Context) (conn net.Conn, err err
 		}
 	}()
 
-	conn, err = makeConn(parent, c.config.KvAddress, tlsConfig)
+	var kvAddress string
+	kvAddress, conn, err = makeConn(parent, c.config.KvAddressStruct, tlsConfig)
 	if err != nil {
 		return
 	}
 
-	userName, password, _ := authenticator.GetMemcachedServiceAuth(c.config.KvAddress)
+	userName, password, _ := authenticator.GetMemcachedServiceAuth(kvAddress)
 	if err = c.saslAuth(conn, userName, password); err != nil {
 		return
 	}
@@ -744,7 +745,7 @@ func (c *client) startConnection(parent context.Context) (conn net.Conn, err err
 	return
 }
 
-func makeConn(parent context.Context, address string, tlsConfig *notifier.TlsConfig) (conn net.Conn, err error) {
+func makeConn(parent context.Context, KVAddressStruct *notifier.NodeAddress, tlsConfig *notifier.TlsConfig) (kvAddress string, conn net.Conn, err error) {
 	ctx, _ := context.WithCancel(parent)
 
 	if tlsConfig.EncryptData {
@@ -753,10 +754,12 @@ func makeConn(parent context.Context, address string, tlsConfig *notifier.TlsCon
 		if tlsConfig.UseClientCert {
 			t.Config.Certificates = []tls.Certificate{*tlsConfig.ClientCertificate}
 		}
-		conn, err = t.DialContext(ctx, "tcp", address)
+		kvAddress = KVAddressStruct.SSLAddress
+		conn, err = t.DialContext(ctx, "tcp", kvAddress)
 	} else {
 		var d net.Dialer
-		conn, err = d.DialContext(ctx, "tcp", address)
+		kvAddress = KVAddressStruct.NonSSLAddress
+		conn, err = d.DialContext(ctx, "tcp", kvAddress)
 	}
 
 	if err != nil {

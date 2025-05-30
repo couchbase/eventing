@@ -402,18 +402,26 @@ func AppLocationInQuery(params map[string][]string) bool {
 	return NamespaceInQuery(params)
 }
 
-func GetLogDirectoryAndFileName(funcDetails *FunctionDetails, eventingDir string) (dirName, fileName string) {
+func GetEventingDir(funcDetails *FunctionDetails, eventingDir string) string {
+	if funcDetails.Settings.AppLogDir != "" {
+		eventingDir = funcDetails.Settings.AppLogDir
+	}
+	return eventingDir
+}
+
+func GetLogDirectoryAndFileName(old bool, funcDetails *FunctionDetails, eventingDir string) (dirName, fileName string) {
 	separator := string(os.PathSeparator)
 	namespace := funcDetails.AppLocation.Namespace.String()
-	dirName = funcDetails.Settings.AppLogDir
+	dirName = GetEventingDir(funcDetails, eventingDir)
 	filename := fmt.Sprintf("%s.log", funcDetails.AppLocation.Appname)
 
-	if dirName == "" {
-		dirName = eventingDir
+	b, s := funcDetails.AppLocation.Namespace.BucketName, funcDetails.AppLocation.Namespace.ScopeName
+	if !old {
+		b, s = funcDetails.MetaInfo.FunctionScopeID.BucketID, funcDetails.MetaInfo.FunctionScopeID.ScopeID
+		filename = fmt.Sprintf("%s.log", funcDetails.MetaInfo.LogFileName)
 	}
 	if namespace != GlobalValue {
-		dirName = fmt.Sprintf("%s%sb_%s%ss_%s", dirName, separator,
-			funcDetails.AppLocation.Namespace.BucketName, separator, funcDetails.AppLocation.Namespace.ScopeName)
+		dirName = fmt.Sprintf("%s%sb_%s%ss_%s", dirName, separator, b, separator, s)
 	}
 
 	fileName = filepath.Join(dirName, filename)
@@ -1344,6 +1352,7 @@ type MetaInfo struct {
 	Seq          uint32
 	PrevState    State
 	LastPaused   time.Time
+	LogFileName  string
 
 	Sboundary streamBoundary
 }
@@ -1362,6 +1371,7 @@ func (mi MetaInfo) Clone() (clone MetaInfo) {
 	clone.Seq = mi.Seq
 	clone.PrevState = mi.PrevState
 	clone.LastPaused = mi.LastPaused
+	clone.LogFileName = mi.LogFileName
 	return
 }
 
