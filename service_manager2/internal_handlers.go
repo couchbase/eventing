@@ -901,48 +901,15 @@ func (m *serviceMgr) getUserInfoHandler(w http.ResponseWriter, r *http.Request) 
 		u.FuncScope = append(u.FuncScope, k)
 	}
 
+	// bucket.*.*
 	for bucketName, _ := range bucketList {
-		k, _ = application.NewKeyspace("*", "*", "*", true)
-		k.BucketName = bucketName
-
-		manage = rbac.GetPermissions(k, rbac.EventingManage)
-		if _, err := rbac.IsAllowedCreds(cred, manage, false); err == nil {
-			u.FuncScope = append(u.FuncScope, k)
-		}
-
-		manage = rbac.GetPermissions(k, rbac.BucketDcp)
-		if _, err := rbac.IsAllowedCreds(cred, manage, true); err == nil {
-			u.DcpStreamPerm = append(u.DcpStreamPerm, k)
-		}
-
-		manage = rbac.GetPermissions(k, rbac.BucketRead)
-		read := false
-		if _, err := rbac.IsAllowedCreds(cred, manage, true); err == nil {
-			u.ReadPerm = append(u.ReadPerm, k)
-			read = true
-		}
-
-		manage = rbac.GetPermissions(k, rbac.BucketWrite)
-		if _, err := rbac.IsAllowedCreds(cred, manage, true); err == nil && read {
-			u.WritePerm = append(u.WritePerm, k)
-			if read {
-				u.ReadWritePerm = append(u.ReadWritePerm, k)
-			}
-		}
-
-		ie.Filter = bucketName
-		manifestInterface, err := m.observer.GetCurrentState(ie)
-		if err != nil {
-			continue
-		}
-		manifests := manifestInterface.(*notifier.CollectionManifest)
-
-		for scopeName, scopes := range manifests.Scopes {
-			k.ScopeName = scopeName
-
-			manage = rbac.GetPermissions(k, rbac.EventingManage)
-			if _, err := rbac.IsAllowedCreds(cred, manage, false); err == nil {
-				u.FuncScope = append(u.FuncScope, k)
+		// checkAndAppendPermissions is a helper to check and add permissions for a given keyspace.
+		checkAndAppendPermissions := func(k application.Keyspace, checkManage bool) {
+			if checkManage {
+				manage = rbac.GetPermissions(k, rbac.EventingManage)
+				if _, err := rbac.IsAllowedCreds(cred, manage, false); err == nil {
+					u.FuncScope = append(u.FuncScope, k)
+				}
 			}
 
 			manage = rbac.GetPermissions(k, rbac.BucketDcp)
@@ -960,36 +927,41 @@ func (m *serviceMgr) getUserInfoHandler(w http.ResponseWriter, r *http.Request) 
 			manage = rbac.GetPermissions(k, rbac.BucketWrite)
 			if _, err := rbac.IsAllowedCreds(cred, manage, true); err == nil && read {
 				u.WritePerm = append(u.WritePerm, k)
-				if read {
-					u.ReadWritePerm = append(u.ReadWritePerm, k)
-				}
+				u.ReadWritePerm = append(u.ReadWritePerm, k)
 			}
+		}
 
+		k, _ = application.NewKeyspace("*", "*", "*", true)
+		k.BucketName = bucketName
+		checkAndAppendPermissions(k, true)
+
+		ie.Filter = bucketName
+		manifestInterface, err := m.observer.GetCurrentState(ie)
+		if err != nil {
+			continue
+		}
+		manifests := manifestInterface.(*notifier.CollectionManifest)
+
+		// bucket.scope.*
+		for scopeName, scopes := range manifests.Scopes {
+			k.ScopeName = scopeName
+			k.CollectionName = application.GlobalValue
+			checkAndAppendPermissions(k, true)
+
+			// bucket.scope.collection
 			for collName, _ := range scopes.Collections {
 				k.CollectionName = collName
-
-				manage = rbac.GetPermissions(k, rbac.BucketDcp)
-				if _, err := rbac.IsAllowedCreds(cred, manage, true); err == nil {
-					u.DcpStreamPerm = append(u.DcpStreamPerm, k)
-				}
-
-				manage = rbac.GetPermissions(k, rbac.BucketRead)
-				read := false
-				if _, err := rbac.IsAllowedCreds(cred, manage, true); err == nil {
-					u.ReadPerm = append(u.ReadPerm, k)
-					read = true
-				}
-
-				manage = rbac.GetPermissions(k, rbac.BucketWrite)
-				if _, err := rbac.IsAllowedCreds(cred, manage, true); err == nil && read {
-					u.WritePerm = append(u.WritePerm, k)
-					if read {
-						u.ReadWritePerm = append(u.ReadWritePerm, k)
-					}
-				}
+				checkAndAppendPermissions(k, false)
 			}
 		}
 	}
+
+	application.SortKeyspaces(u.FuncScope)
+	application.SortKeyspaces(u.ReadPerm)
+	application.SortKeyspaces(u.WritePerm)
+	application.SortKeyspaces(u.ReadWritePerm)
+	application.SortKeyspaces(u.DcpStreamPerm)
+
 	runtimeInfo.Description = u
 	runtimeInfo.OnlyDescription = true
 }

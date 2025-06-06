@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 )
@@ -251,6 +252,40 @@ func NewKeyspace(bucketName, scopeName, collectionName string, wildcardAllowed b
 	}
 
 	return
+}
+
+func SortKeyspaces(keyspaces []Keyspace) {
+	sort.Slice(keyspaces, func(i, j int) bool {
+		// The GlobalValue "*" should always be sorted first.
+		if keyspaces[i].BucketName != keyspaces[j].BucketName {
+			if keyspaces[i].BucketName == GlobalValue {
+				return true
+			}
+			if keyspaces[j].BucketName == GlobalValue {
+				return false
+			}
+			return keyspaces[i].BucketName < keyspaces[j].BucketName
+		}
+		if keyspaces[i].ScopeName != keyspaces[j].ScopeName {
+			if keyspaces[i].ScopeName == GlobalValue {
+				return true
+			}
+			if keyspaces[j].ScopeName == GlobalValue {
+				return false
+			}
+			return keyspaces[i].ScopeName < keyspaces[j].ScopeName
+		}
+		if keyspaces[i].CollectionName != keyspaces[j].CollectionName {
+			if keyspaces[i].CollectionName == GlobalValue {
+				return true
+			}
+			if keyspaces[j].CollectionName == GlobalValue {
+				return false
+			}
+			return keyspaces[i].CollectionName < keyspaces[j].CollectionName
+		}
+		return false
+	})
 }
 
 func trim(right string, i int) (string, string) {
