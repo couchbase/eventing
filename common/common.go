@@ -332,6 +332,7 @@ type EventingProducer interface {
 	MetadataBucket() string
 	MetadataScope() string
 	MetadataCollection() string
+	MetadataKeyspace() *Keyspace
 	NotifyInit()
 	NotifyPrepareTopologyChange(ejectNodes, keepNodes []string, changeType service.TopologyChangeType)
 	NotifySettingsChange()

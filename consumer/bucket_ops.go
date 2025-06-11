@@ -3,6 +3,7 @@ package consumer
 import (
 	"errors"
 	"fmt"
+	"net"
 	"runtime/debug"
 	"strconv"
 	"strings"
@@ -67,6 +68,13 @@ var setOpCallback = func(args ...interface{}) error {
 	defer c.gocbMetaHandleMutex.RUnlock()
 	_, err := c.gocbMetaHandle.Upsert(vbKey.Raw(), vbBlob, nil)
 	if err != nil {
+		hostAddress := net.JoinHostPort(util.Localhost(), c.producer.GetNsServerPort())
+		if util.CheckKeyspaceExist(c.producer.MetadataKeyspace(), hostAddress) {
+			logging.Errorf("%s [%s:%s:%d] Metadata collection doesn't exist",
+				logPrefix, c.workerName, c.tcpPort, c.Pid())
+			return nil
+		}
+
 		logging.Errorf("%s [%s:%s:%d] Key: %s Bucket set failed, err: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbKey.Raw(), err)
 		if c.encryptionChangedDuringLifecycle() {
@@ -146,6 +154,13 @@ var getOpCallback = func(args ...interface{}) error {
 	}
 
 	if err != nil {
+		hostAddress := net.JoinHostPort(util.Localhost(), c.producer.GetNsServerPort())
+		if util.CheckKeyspaceExist(c.producer.MetadataKeyspace(), hostAddress) {
+			logging.Errorf("%s [%s:%s:%d] Metadata collection doesn't exist",
+				logPrefix, c.workerName, c.tcpPort, c.Pid())
+			return nil
+		}
+
 		logging.Errorf("%s [%s:%s:%d] Bucket fetch failed for key: %s, err: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbKey.Raw(), err)
 		return err
@@ -338,6 +353,13 @@ var periodicCheckpointCallback = func(args ...interface{}) error {
 	}
 
 	if err != nil {
+		hostAddress := net.JoinHostPort(util.Localhost(), c.producer.GetNsServerPort())
+		if util.CheckKeyspaceExist(c.producer.MetadataKeyspace(), hostAddress) {
+			logging.Errorf("%s [%s:%s:%d] Metadata collection doesn't exist",
+				logPrefix, c.workerName, c.tcpPort, c.Pid())
+			return nil
+		}
+
 		logging.Errorf("%s [%s:%s:%d] Key: %s, subdoc operation failed while performing periodic checkpoint update, err: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbKey.Raw(), err)
 	}
@@ -402,6 +424,13 @@ retryUpdateCheckpoint:
 	}
 
 	if err != nil {
+		hostAddress := net.JoinHostPort(util.Localhost(), c.producer.GetNsServerPort())
+		if util.CheckKeyspaceExist(c.producer.MetadataKeyspace(), hostAddress) {
+			logging.Errorf("%s [%s:%s:%d] Metadata collection doesn't exist",
+				logPrefix, c.workerName, c.tcpPort, c.Pid())
+			return nil
+		}
+
 		logging.Errorf("%s [%s:%s:%d] Key: %rm, subdoc operation failed while performing checkpoint update post dcp stop stream, err: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbKey.Raw(), err)
 	}
@@ -454,6 +483,13 @@ retryMetadataCorrection:
 	}
 
 	if err != nil {
+		hostAddress := net.JoinHostPort(util.Localhost(), c.producer.GetNsServerPort())
+		if util.CheckKeyspaceExist(c.producer.MetadataKeyspace(), hostAddress) {
+			logging.Errorf("%s [%s:%s:%d] Metadata collection doesn't exist",
+				logPrefix, c.workerName, c.tcpPort, c.Pid())
+			return nil
+		}
+
 		logging.Errorf("%s [%s:%s:%d] Key: %rm, subdoc operation failed while trying to update metadata, err: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbKey.Raw(), err)
 	}
@@ -505,6 +541,13 @@ retryUndoMetadataCorrection:
 	}
 
 	if err != nil {
+		hostAddress := net.JoinHostPort(util.Localhost(), c.producer.GetNsServerPort())
+		if util.CheckKeyspaceExist(c.producer.MetadataKeyspace(), hostAddress) {
+			logging.Errorf("%s [%s:%s:%d] Metadata collection doesn't exist",
+				logPrefix, c.workerName, c.tcpPort, c.Pid())
+			return nil
+		}
+
 		logging.Errorf("%s [%s:%s:%d] Key: %rm, subdoc operation failed while trying to update metadata, err: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbKey.Raw(), err)
 	}
@@ -567,6 +610,13 @@ retrySRRUpdate:
 	}
 
 	if err != nil {
+		hostAddress := net.JoinHostPort(util.Localhost(), c.producer.GetNsServerPort())
+		if util.CheckKeyspaceExist(c.producer.MetadataKeyspace(), hostAddress) {
+			logging.Errorf("%s [%s:%s:%d] Metadata collection doesn't exist",
+				logPrefix, c.workerName, c.tcpPort, c.Pid())
+			return nil
+		}
+
 		logging.Errorf("%s [%s:%s:%d] Key: %rm, subdoc operation failed post STREAMREQ from Consumer, err: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbKey.Raw(), err)
 	}
@@ -621,6 +671,13 @@ retrySRFUpdate:
 	}
 
 	if err != nil {
+		hostAddress := net.JoinHostPort(util.Localhost(), c.producer.GetNsServerPort())
+		if util.CheckKeyspaceExist(c.producer.MetadataKeyspace(), hostAddress) {
+			logging.Errorf("%s [%s:%s:%d] Metadata collection doesn't exist",
+				logPrefix, c.workerName, c.tcpPort, c.Pid())
+			return nil
+		}
+
 		logging.Errorf("%s [%s:%s:%d] Key: %rm, subdoc operation failed post unsuccessful STREAMREQ from Consumer, err: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbKey.Raw(), err)
 	}
@@ -681,6 +738,13 @@ retrySRSUpdate:
 	}
 
 	if err != nil {
+		hostAddress := net.JoinHostPort(util.Localhost(), c.producer.GetNsServerPort())
+		if util.CheckKeyspaceExist(c.producer.MetadataKeyspace(), hostAddress) {
+			logging.Errorf("%s [%s:%s:%d] Metadata collection doesn't exist",
+				logPrefix, c.workerName, c.tcpPort, c.Pid())
+			return nil
+		}
+
 		logging.Errorf("%s [%s:%s:%d] Key: %rm, subdoc operation failed post STREAMREQ SUCCESS from Producer, err: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbKey.Raw(), err)
 	}
@@ -731,6 +795,13 @@ retrySEUpdate:
 	}
 
 	if err != nil {
+		hostAddress := net.JoinHostPort(util.Localhost(), c.producer.GetNsServerPort())
+		if util.CheckKeyspaceExist(c.producer.MetadataKeyspace(), hostAddress) {
+			logging.Errorf("%s [%s:%s:%d] Metadata collection doesn't exist",
+				logPrefix, c.workerName, c.tcpPort, c.Pid())
+			return nil
+		}
+
 		logging.Errorf("%s [%s:%s:%d] Key: %rm, subdoc operation failed while performing ownership entry app post STREAMEND, err: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), vbKey.Raw(), err)
 	}
@@ -934,9 +1005,16 @@ var acquireDebuggerTokenCallback = func(args ...interface{}) error {
 	}
 
 	if err != nil {
+		*success = false
+		hostAddress := net.JoinHostPort(util.Localhost(), c.producer.GetNsServerPort())
+		if util.CheckKeyspaceExist(c.producer.MetadataKeyspace(), hostAddress) {
+			logging.Errorf("%s [%s:%s:%d] Metadata collection doesn't exist",
+				logPrefix, c.workerName, c.tcpPort, c.Pid())
+			return nil
+		}
+
 		logging.Errorf("%s [%s:%s:%d] Key: %s, failed to get debugger token from metadata bucket, err: %v",
 			logPrefix, c.workerName, c.tcpPort, c.Pid(), key, err)
-		*success = false
 		return err // Retry until timeout or until we get a relatable error
 	}
 
@@ -970,6 +1048,13 @@ var acquireDebuggerTokenCallback = func(args ...interface{}) error {
 	if errors.Is(err, gocb.ErrCasMismatch) {
 		*success = false
 		logging.Infof("%s [%s:%s:%d] Some other consumer acquired the debugger token",
+			logPrefix, c.workerName, c.tcpPort, c.Pid())
+		return nil
+	}
+
+	hostAddress := net.JoinHostPort(util.Localhost(), c.producer.GetNsServerPort())
+	if util.CheckKeyspaceExist(c.producer.MetadataKeyspace(), hostAddress) {
+		logging.Errorf("%s [%s:%s:%d] Metadata collection doesn't exist",
 			logPrefix, c.workerName, c.tcpPort, c.Pid())
 		return nil
 	}
