@@ -468,6 +468,11 @@ func ValidateAndCheckKeyspaceExist(bucket, scope, collection, hostaddress string
 	return err
 }
 
+func CheckKeyspaceExist(keyspace *common.Keyspace, hostaddress string) bool {
+	err := ValidateAndCheckKeyspaceExist(keyspace.BucketName, keyspace.ScopeName, keyspace.CollectionName, hostaddress, false)
+	return (err == couchbase.ErrBucketNotFound || err == collections.SCOPE_NOT_FOUND || err == collections.COLLECTION_NOT_FOUND)
+}
+
 func CheckBucketExist(bucket, hostaddress string) bool {
 	cic, err := FetchClusterInfoClient(hostaddress)
 	if err != nil {

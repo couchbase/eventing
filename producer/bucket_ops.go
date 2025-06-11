@@ -95,6 +95,14 @@ var clearDebuggerInstanceCallback = func(args ...interface{}) error {
 		Expiry: 0}
 	_, err = p.metadataHandle.Replace(key, instance, replaceOptions)
 	if err != nil {
+		hostAddress := net.JoinHostPort(util.Localhost(), p.GetNsServerPort())
+
+		if util.CheckKeyspaceExist(p.metadataKeyspace, hostAddress) {
+			logging.Infof("%s [%s:%d] Meta collection doesn't exist",
+				logPrefix, p.appName, p.LenRunningConsumers())
+			return nil
+		}
+
 		logging.Errorf("%s [%s:%d] Unable to clear debugger instance, err: %v",
 			logPrefix, p.appName, p.LenRunningConsumers(), err)
 		return err
@@ -137,6 +145,14 @@ var writeDebuggerURLCallback = func(args ...interface{}) error {
 		Expiry: 0}
 	_, err = p.metadataHandle.Replace(key, instance, replaceOptions)
 	if err != nil {
+		hostAddress := net.JoinHostPort(util.Localhost(), p.GetNsServerPort())
+
+		if util.CheckKeyspaceExist(p.metadataKeyspace, hostAddress) {
+			logging.Infof("%s [%s:%d] Meta collection doesn't exist",
+				logPrefix, p.appName, p.LenRunningConsumers())
+			return nil
+		}
+
 		logging.Errorf("%s [%s:%d] Unable to write debugger URL, err: %v",
 			logPrefix, p.appName, p.LenRunningConsumers(), err)
 		return err
@@ -179,6 +195,13 @@ var setOpCallback = func(args ...interface{}) error {
 	}
 
 	if err != nil {
+		hostAddress := net.JoinHostPort(util.Localhost(), p.GetNsServerPort())
+		if util.CheckKeyspaceExist(p.metadataKeyspace, hostAddress) {
+			logging.Infof("%s [%s:%d] Meta collection doesn't exist",
+				logPrefix, p.appName, p.LenRunningConsumers())
+			return nil
+		}
+
 		logging.Errorf("%s [%s:%d] Bucket set failed for key: %s, err: %v",
 			logPrefix, p.appName, p.LenRunningConsumers(), key.Raw(), err)
 	}
@@ -258,6 +281,12 @@ var getOpCallback = func(args ...interface{}) error {
 		return nil
 	}
 	if err != nil {
+		hostAddress := net.JoinHostPort(util.Localhost(), p.GetNsServerPort())
+		if util.CheckKeyspaceExist(p.metadataKeyspace, hostAddress) {
+			logging.Infof("%s [%s:%d] Meta collection doesn't exist",
+				logPrefix, p.appName, p.LenRunningConsumers())
+			return nil
+		}
 		logging.Errorf("%s [%s:%d] Bucket get failed for key: %s , err: %v",
 			logPrefix, p.appName, p.LenRunningConsumers(), key.Raw(), err)
 		return err
@@ -285,19 +314,17 @@ var deleteOpCallback = func(args ...interface{}) error {
 	}
 
 	if err != nil {
-		logging.Errorf("%s [%s:%d] Bucket delete failed for key: %s, err: %v",
-			logPrefix, p.appName, p.LenRunningConsumers(), key, err)
-
 		// Bucket op fail with generic timeout error even in case of bucket being dropped/deleted.
 		// Hence checking for it during routines called during undeploy
 		hostAddress := net.JoinHostPort(util.Localhost(), p.GetNsServerPort())
 
-		metaBucketNodeCount := util.CountActiveKVNodes(p.metadataKeyspace.BucketName, hostAddress)
-		if metaBucketNodeCount == 0 {
-			logging.Infof("%s [%s:%d] MetaBucketNodeCount: %d returning",
-				logPrefix, p.appName, p.LenRunningConsumers(), metaBucketNodeCount)
+		if util.CheckKeyspaceExist(p.metadataKeyspace, hostAddress) {
+			logging.Infof("%s [%s:%d] Meta collection doesn't exist",
+				logPrefix, p.appName, p.LenRunningConsumers())
 			return nil
 		}
+		logging.Errorf("%s [%s:%d] Bucket delete failed for key: %s, err: %v",
+			logPrefix, p.appName, p.LenRunningConsumers(), key, err)
 	}
 	return err
 }
