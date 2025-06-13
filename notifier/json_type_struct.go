@@ -112,7 +112,7 @@ func (sResult *streamingResult) mergeAndCreateNodes(nServices *nodeServices, isI
 
 	servicesIndex := 0
 	for _, node := range sResult.Nodes {
-		if node.ClusterMembership == "active" {
+		if node.ClusterMembership == "active" && node.Status == "healthy" {
 			if servicesIndex >= len(nServices.Services) {
 				return nodes, fmt.Errorf("possible sync error: %s nodeServices: %s", sResult, nServices)
 			}
