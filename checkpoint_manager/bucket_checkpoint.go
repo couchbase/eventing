@@ -148,8 +148,8 @@ func (cw *checkpointWrapper) GetKeyPrefix() string {
 	return cw.checkpoint.GetKeyPrefix()
 }
 
-func (cw *checkpointWrapper) GetTimerCheckpoints(appId uint32) (*gocb.ScanResult, error) {
-	return cw.checkpoint.GetTimerCheckpoints(appId)
+func (cw *checkpointWrapper) GetAllCheckpoints(appId uint32) (*gocb.ScanResult, error) {
+	return cw.checkpoint.GetAllCheckpoints(appId)
 }
 
 func (cw *checkpointWrapper) GetRuntimeStats() common.StatsInterface {

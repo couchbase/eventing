@@ -28,10 +28,9 @@ const (
 )
 
 const (
-	checkpointBlobTemplate          = "eventing::%d:"
-	timerKeyCheckpointTemplate      = "eventing::%d:"
-	timerStartKeyCheckpointTemplate = timerKeyCheckpointTemplate + "a"
-	timerEndKeyCheckpointTemplate   = timerKeyCheckpointTemplate + "z"
+	checkpointBlobTemplate     = "eventing::%d:"
+	startKeyCheckpointTemplate = checkpointBlobTemplate + ":"
+	endKeyCheckpointTemplate   = checkpointBlobTemplate + "z"
 )
 
 var (
@@ -582,10 +581,10 @@ func (cm *checkpointManager) OwnershipSnapshot(snapshot *common.AppRebalanceProg
 	}
 }
 
-func (cm *checkpointManager) GetTimerCheckpoints(appId uint32) (*gocb.ScanResult, error) {
-	startTimerKey := fmt.Sprintf(timerStartKeyCheckpointTemplate, appId)
-	endTimerKey := fmt.Sprintf(timerEndKeyCheckpointTemplate, appId)
-	return scan(cm.getCollectionHandle(), cm.observer, cm.checkpointConfig.Keyspace, startTimerKey, endTimerKey, true)
+func (cm *checkpointManager) GetAllCheckpoints(appId uint32) (*gocb.ScanResult, error) {
+	startKey := fmt.Sprintf(startKeyCheckpointTemplate, appId)
+	endKey := fmt.Sprintf(endKeyCheckpointTemplate, appId)
+	return scan(cm.getCollectionHandle(), cm.observer, cm.checkpointConfig.Keyspace, startKey, endKey, true)
 }
 
 func (cm *checkpointManager) DeleteKeys(deleteKeys []string) {

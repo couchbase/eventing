@@ -60,15 +60,16 @@ func (fHandler *funcHandler) deleteAllCheckpoint() {
 	logging.Infof("%s Using timers. Deleting all the checkpoint...", logPrefix)
 	// Possible that some timer function still running so wait till all nodes gave up the vbucket
 	fHandler.checkpointManager.Load().WaitTillAllGiveUp(fHandler.fd.MetaInfo.SourceID.NumVbuckets)
-	parallism := int(runtime.NumCPU())
+	parallelism := runtime.NumCPU()
 
-	logging.Infof("%s all nodes given up owned vbs. Continue deleting remaining checkpoints documents with parallism: %d", logPrefix, parallism)
+	logging.Infof("%s all nodes given up owned vbs. Continue deleting remaining checkpoints documents with parallelism: %d", logPrefix, parallelism)
 	function, err := initialiseScanner(fHandler.fd.AppID, fHandler.checkpointManager.Load())
 	if err != nil {
 		logging.Infof("%s range scan deletion not possible error: %v. Proceeding with dcp stream deletion...", logPrefix, err)
-		common.DistributeAndWaitWork[uint16](parallism, len(vbsToDelete), initDcpDeletion(vbsToDelete), fHandler.deleteCheckpointsUsingDcp)
+		common.DistributeAndWaitWork[uint16](parallelism, len(vbsToDelete), initDcpDeletion(vbsToDelete), fHandler.deleteCheckpointsUsingDcp)
 	} else {
-		common.DistributeAndWaitWork[string](parallism, parallism*batchDelete, function, fHandler.deleteCheckpointsUsingRangeScan)
+		// Delete metadata checkpoints using range scan
+		common.DistributeAndWaitWork[string](parallelism, parallelism*batchDelete, function, fHandler.deleteCheckpointsUsingRangeScan)
 	}
 	logging.Infof("%s successfully deleted all checkpoint blobs", logPrefix)
 }
@@ -79,7 +80,7 @@ func initialiseScanner(appId uint32, checkpointManager checkpointManager.Checkpo
 	// TODO: Find effective way to distribute the load to all nodes
 	// Currently all nodes will start range scan for all keys
 	// Need to distribute range to all the nodes
-	scanner, err := checkpointManager.GetTimerCheckpoints(appId)
+	scanner, err := checkpointManager.GetAllCheckpoints(appId)
 	if err != nil {
 		return nil, err
 	}

@@ -115,7 +115,7 @@ type Checkpoint interface {
 	WaitTillAllGiveUp(vbs uint16)
 	GetKeyPrefix() string
 
-	GetTimerCheckpoints(appId uint32) (*gocb.ScanResult, error)
+	GetAllCheckpoints(appId uint32) (*gocb.ScanResult, error)
 	GetRuntimeStats() common.StatsInterface
 
 	TryTobeLeader(leaderType leaderType, seq uint32) (bool, error)
@@ -173,8 +173,8 @@ func (d *dummyCheckpointManager) GetKeyPrefix() string {
 	return ""
 }
 
-func (d *dummyCheckpointManager) GetTimerCheckpoints(appId uint32) (*gocb.ScanResult, error) {
-	return nil, fmt.Errorf("dummyCheckpointManager.GetTimerCheckpoints not implemented")
+func (d *dummyCheckpointManager) GetAllCheckpoints(appId uint32) (*gocb.ScanResult, error) {
+	return nil, fmt.Errorf("dummyCheckpointManager.GetAllCheckpoints not implemented")
 }
 
 func (d *dummyCheckpointManager) GetRuntimeStats() common.StatsInterface {
