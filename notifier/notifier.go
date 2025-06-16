@@ -149,6 +149,10 @@ func (t *TransitionEvent) String() string {
 	return fmt.Sprintf("changed event: %s new State: %s", t.Event, t.CurrentState)
 }
 
+const (
+	NodeStatusHealthy = "healthy"
+)
+
 // Node specifies details of the node
 type Node struct {
 	ThisNode             bool

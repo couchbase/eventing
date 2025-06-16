@@ -827,12 +827,32 @@ func (cm *checkpointManager) getOwnershipVbs(uuid string) (*common.AppRebalanceP
 	}
 
 	if len(responseBytes) == 0 {
-		return nil, fmt.Errorf("got empty response")
+		// Check if node is healthy or not
+		return nil, cm.healthCheck(uuid)
 	}
 
 	rebalanceProgress := &common.AppRebalanceProgress{}
-	json.Unmarshal(responseBytes[0], &rebalanceProgress)
+	_ = json.Unmarshal(responseBytes[0], &rebalanceProgress)
 	return rebalanceProgress, nil
+}
+
+func (cm *checkpointManager) healthCheck(uuid string) error {
+	nodesInterface, err := cm.observer.GetCurrentState(notifier.InterestedEvent{
+		Event: notifier.EventEventingTopologyChanges,
+	})
+
+	if err != nil {
+		return err
+	}
+
+	nodes := nodesInterface.([]*notifier.Node)
+	for _, node := range nodes {
+		if node.NodeUUID == uuid && node.Status == notifier.NodeStatusHealthy {
+			return nil
+		}
+	}
+
+	return common.ErrNodeNotAvailable
 }
 
 func (cm *checkpointManager) updateCheckpoint() {
@@ -1091,28 +1111,11 @@ func (cm *checkpointManager) PollUntilOnDeployCompletes() *OnDeployCheckpoint {
 				continue
 			}
 
-			// get all active eventing node
-			nodesInterface, _ := cm.observer.GetCurrentState(notifier.InterestedEvent{
-				Event: notifier.EventEventingTopologyChanges,
-			})
-
-			ownerAlive := false
-			nodes := nodesInterface.([]*notifier.Node)
-			for _, node := range nodes {
-				if node.NodeUUID == ownerNode {
-					ownerAlive = true
-					break
-				}
+			if err := cm.healthCheck(ownerNode); err != nil {
+				logging.Errorf("%s Failing OnDeploy since leader node %s is not alive", logPrefix, ownerNode)
+				checkpoint := cm.PublishOnDeployStatus(FailedStateOnDeploy)
+				return checkpoint
 			}
-
-			if ownerAlive {
-				continue
-			}
-
-			// node not healthy. write failed status
-			logging.Errorf("%s Failing OnDeploy since leader node %s is not alive", logPrefix, ownerNode)
-			checkpoint := cm.PublishOnDeployStatus(FailedStateOnDeploy)
-			return checkpoint
 
 		case <-onDeployStatusCheckTicker.C:
 			_, checkpoint, err := readOnDeployCheckpoint(cm.checkpointConfig.AppLocation, cm.getCollectionHandle(), cm.observer, cm.checkpointConfig.Keyspace)
