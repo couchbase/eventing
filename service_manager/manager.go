@@ -279,6 +279,7 @@ func (m *ServiceMgr) initService() {
 				}
 				logging.Infof("Successfully stopped running HTTP server")
 			}
+			var refreshN2N bool
 			if (configChange & cbauth.CFG_CHANGE_CLUSTER_ENCRYPTION) != 0 {
 				logging.Infof("Cluster Encryption Settings have been changed by ns server.\n")
 				// Stop any ongoing rebalances
@@ -323,38 +324,7 @@ func (m *ServiceMgr) initService() {
 						listenOnLoopback = false
 					}
 					m.httpServerMutex.Unlock()
-
-					//---------- Check and configure N2N encryption settings ----------
-
-					m.configMutex.RLock()
-					encryptOn := m.clusterEncryptionConfig != nil && m.clusterEncryptionConfig.EncryptData
-					m.configMutex.RUnlock()
-					if encryptOn {
-						// notify utils to use TLS for eventing2eventing communication
-						util.SetUseTLS(true)
-
-						// notify dcp package to use TLS for memcached communication
-						couchbase.SetCAFile(m.caFile)
-						couchbase.SetCertFile(m.certFile)
-						couchbase.SetKeyFile(m.keyFile)
-						couchbase.SetUseTLS(true)
-					} else {
-						// notify utils to use plain text for eventing2eventing communication
-						couchbase.SetUseTLS(false)
-
-						// notify dcp package to use plain text for memcached communication
-						// existing TLS connections remain unchanged. New connections will be plain text
-						util.SetUseTLS(false)
-					}
-					// Wait for the supervisor's scn before we go ahead and refresh
-					<-m.supWaitCh
-					// refresh vb map, nodes list and connection pool for each bucket with current encryption level
-					util.SingletonServicesContainer.Lock()
-					notiferInstance, ok := util.SingletonServicesContainer.Notifiers[m.superSup.GetRegisteredPool()]
-					util.SingletonServicesContainer.Unlock()
-					if ok {
-						notiferInstance.NotifyEncryptionLevelChange(true)
-					}
+					refreshN2N = true
 				}
 			}
 
@@ -366,6 +336,40 @@ func (m *ServiceMgr) initService() {
 						stopserver(&m.tlsServer)
 					}
 					m.tlsServerMutex.Unlock()
+					refreshN2N = true
+				}
+			}
+
+			if refreshN2N {
+				//---------- Check and configure N2N encryption settings ----------
+				m.configMutex.RLock()
+				encryptOn := m.clusterEncryptionConfig != nil && m.clusterEncryptionConfig.EncryptData
+				m.configMutex.RUnlock()
+				if encryptOn {
+					// notify utils to use TLS for eventing2eventing communication
+					util.SetUseTLS(true)
+
+					// notify dcp package to use TLS for memcached communication
+					couchbase.SetCAFile(m.caFile)
+					couchbase.SetCertFile(m.certFile)
+					couchbase.SetKeyFile(m.keyFile)
+					couchbase.SetUseTLS(true)
+				} else {
+					// notify utils to use plain text for eventing2eventing communication
+					util.SetUseTLS(false)
+
+					// notify dcp package to use plain text for memcached communication
+					// existing TLS connections remain unchanged. New connections will be plain text
+					couchbase.SetUseTLS(false)
+				}
+				// Wait for the supervisor's scn before we go ahead and refresh
+				<-m.supWaitCh
+				// refresh vb map, nodes list and connection pool for each bucket with current encryption level
+				util.SingletonServicesContainer.Lock()
+				notiferInstance, ok := util.SingletonServicesContainer.Notifiers[m.superSup.GetRegisteredPool()]
+				util.SingletonServicesContainer.Unlock()
+				if ok {
+					notiferInstance.NotifyEncryptionLevelChange(true)
 				}
 			}
 
