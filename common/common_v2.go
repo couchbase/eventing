@@ -911,12 +911,12 @@ func HexLittleEndianToUint64(hexLE []byte) uint64 {
 	return res
 }
 
-func DistributeAndWaitWork[T comparable](parallism int, batchSize int, initialiser func(chan<- T) error, cb func(waitGroup *sync.WaitGroup, workerChan <-chan T)) {
+func DistributeAndWaitWork[T comparable](parallelism int, batchSize int, initialiser func(chan<- T) error, cb func(waitGroup *sync.WaitGroup, workerChan <-chan T)) {
 	workerChan := make(chan T, batchSize)
 	waitGroup := sync.WaitGroup{}
-	waitGroup.Add(parallism)
+	waitGroup.Add(parallelism)
 
-	for i := 0; i < parallism; i++ {
+	for i := 0; i < parallelism; i++ {
 		go cb(&waitGroup, workerChan)
 	}
 
