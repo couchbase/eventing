@@ -880,11 +880,6 @@ func (m *serviceMgr) functionName(w http.ResponseWriter, r *http.Request,
 	}
 
 	perms := rbac.HandlerManagePermissions(application.Keyspace{Namespace: appLocation.Namespace})
-	if notAllowed, err := rbac.IsAllowedCreds(cred, perms, false); err != nil {
-		getAuthErrorInfo(runtimeInfo, notAllowed, false, err)
-		return
-	}
-
 	if r.Method != http.MethodGet {
 		allowed := m.superSup.LifeCycleOperationAllowed()
 		if !allowed {
@@ -896,6 +891,10 @@ func (m *serviceMgr) functionName(w http.ResponseWriter, r *http.Request,
 
 	switch r.Method {
 	case http.MethodGet:
+		if notAllowed, err := rbac.IsAllowedCreds(cred, perms, false); err != nil {
+			getAuthErrorInfo(runtimeInfo, notAllowed, false, err)
+			return
+		}
 		res.SetRequestEvent(response.EventGetFunctionDraft)
 		application, err := m.appManager.GetAppMarshaler(appLocation, application.Version1)
 		if err != nil {
@@ -931,6 +930,11 @@ func (m *serviceMgr) functionName(w http.ResponseWriter, r *http.Request,
 			funcDetails.AppLocation = appLocation
 		}
 
+		perms = rbac.HandlerManagePermissions(application.Keyspace{Namespace: funcDetails.AppLocation.Namespace})
+		if notAllowed, err := rbac.IsAllowedCreds(cred, perms, false); err != nil {
+			getAuthErrorInfo(runtimeInfo, notAllowed, false, err)
+			return
+		}
 		rInfo := m.storeFunction(cred, funcDetails)
 		if rInfo.ErrCode != response.Ok {
 			runtimeInfo = rInfo
@@ -940,6 +944,10 @@ func (m *serviceMgr) functionName(w http.ResponseWriter, r *http.Request,
 		runtimeInfo.Description = "Successfully stored"
 
 	case http.MethodDelete:
+		if notAllowed, err := rbac.IsAllowedCreds(cred, perms, false); err != nil {
+			getAuthErrorInfo(runtimeInfo, notAllowed, false, err)
+			return
+		}
 		params := r.URL.Query()
 
 		handlerID := uint32(0)
