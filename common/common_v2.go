@@ -52,14 +52,16 @@ type KeyspaceConvertor[T any] interface {
 }
 
 const (
-	dict = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+	RandomNameDict = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+	InstanceIDDict = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ*&"
 )
 
 func RandomID() (string, error) {
-	return RandomIDFromDict(dict)
+	return RandomIDFromDict(RandomNameDict)
 }
 
 func RandomIDFromDict(dict string) (string, error) {
+	dictLength := uint32(len(dict))
 	instanceId, err := GetRand16Byte()
 	if err != nil {
 		return "", err
@@ -71,9 +73,9 @@ func RandomIDFromDict(dict string) (string, error) {
 
 	instanceIdStr := make([]byte, 0, 8)
 	for instanceId > 0 {
-		ch := dict[instanceId%64]
+		ch := dict[instanceId%dictLength]
 		instanceIdStr = append(instanceIdStr, byte(ch))
-		instanceId /= 64
+		instanceId /= dictLength
 	}
 	return string(instanceIdStr), nil
 }
