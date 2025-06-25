@@ -58,10 +58,12 @@ type vbBlobInternal struct {
 	observer          notifier.Observer
 
 	// These have single writer single reader
-	vbBlob     *VbBlob
-	dirty      bool
-	dirtyField []interface{}
-	ownedTime  time.Time
+	vbBlob       *VbBlob
+	dirty        bool
+	dirtyField   []interface{}
+	dirtyVersion uint64
+
+	ownedTime time.Time
 }
 
 func (vbi *vbBlobInternal) MarshalJSON() ([]byte, error) {
@@ -116,7 +118,7 @@ func (vbi *vbBlobInternal) close() (*VbBlob, error) {
 
 	// Capacity of the slice will be enough to put all so new list won't be created
 	gocbMutateIn = append(gocbMutateIn, gocb.UpsertSpec("node_uuid", "", upsertOptions))
-	gocbMutateIn, _ = vbi.getDirtyUpdates(gocbMutateIn)
+	gocbMutateIn, _, _ = vbi.getDirtyUpdates(gocbMutateIn)
 
 	err := subdocUpdate(vbi.collectionHandler.GetCollectionHandle(), vbi.observer, vbi.checkpointConfig.Keyspace, vbi.key, gocbMutateIn)
 	if errors.Is(err, ErrDocumentNotFound) {
@@ -135,9 +137,10 @@ func (vbi *vbBlobInternal) unsetVbBlobLocked() *VbBlob {
 }
 
 func (vbi *vbBlobInternal) syncCheckpointBlob() error {
-	dirty := false
+	dirty, version := false, uint64(0)
+
 	gocbMutateIn := vbi.collectionHandler.GetGocbMutateIn()
-	gocbMutateIn, dirty = vbi.getDirtyUpdates(gocbMutateIn)
+	gocbMutateIn, dirty, version = vbi.getDirtyUpdates(gocbMutateIn)
 	if !dirty {
 		return nil
 	}
@@ -148,21 +151,24 @@ func (vbi *vbBlobInternal) syncCheckpointBlob() error {
 	}
 
 	vbi.Lock()
-	for index := range vbi.dirtyField {
-		vbi.dirtyField[index] = nil
+	defer vbi.Unlock()
+	if version == vbi.dirtyVersion {
+		for index := range vbi.dirtyField {
+			vbi.dirtyField[index] = nil
+		}
+
+		vbi.dirty = false
 	}
 
-	vbi.dirty = false
-	vbi.Unlock()
 	return nil
 }
 
-func (vbi *vbBlobInternal) getDirtyUpdates(mutateIn []gocb.MutateInSpec) ([]gocb.MutateInSpec, bool) {
+func (vbi *vbBlobInternal) getDirtyUpdates(mutateIn []gocb.MutateInSpec) ([]gocb.MutateInSpec, bool, uint64) {
 	vbi.RLock()
 	defer vbi.RUnlock()
 
 	if !vbi.dirty {
-		return mutateIn, false
+		return mutateIn, false, vbi.dirtyVersion
 	}
 
 	uuid, ok := vbi.dirtyField[0].(uint64)
@@ -185,7 +191,7 @@ func (vbi *vbBlobInternal) getDirtyUpdates(mutateIn []gocb.MutateInSpec) ([]gocb
 		mutateIn = append(mutateIn, gocb.UpsertSpec("last_processed_seq_no", seqNo, upsertOptions))
 	}
 
-	return mutateIn, true
+	return mutateIn, true, vbi.dirtyVersion
 }
 
 func (vbi *vbBlobInternal) updateCheckpointBlob(field checkpointField, value interface{}) {
@@ -223,6 +229,7 @@ func (vbi *vbBlobInternal) updateCheckpointBlob(field checkpointField, value int
 	}
 
 	vbi.dirty = true
+	vbi.dirtyVersion++
 }
 
 func (vbi *vbBlobInternal) getVbBlob() VbBlob {

@@ -22,7 +22,7 @@ const (
 func NewApplicationList(sb StorageBytes, byteSource source) (funcList []*FunctionDetails, err error) {
 	switch byteSource {
 	case RestApi:
-		data := bytes.Trim(sb.Body, "[]\n ")
+		data := bytes.Trim(sb.Body, "[]\n \t\r\f\v")
 		data = append([]byte("["), data...)
 		data = append(data, []byte("]")...)
 

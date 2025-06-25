@@ -429,22 +429,31 @@ type filterFunction struct {
 	deployedFunc   bool
 }
 
+func getValues(query url.Values, key string, defaultVal []string) (values []string) {
+	values, ok := query[key]
+	if !ok {
+		return defaultVal
+	}
+
+	return values
+}
+
 func getFilterFunc(query url.Values) (fFunction filterFunction, err error) {
-	buckets, ok := query["source_bucket"]
-	if ok && len(buckets) > 1 {
+	buckets := getValues(query, "source_bucket", nil)
+	if len(buckets) > 1 {
 		return fFunction, fmt.Errorf("more than one bucket name present in function list query")
 	}
-	scopes, ok := query["source_scope"]
-	if ok && len(scopes) > 1 {
+	scopes := getValues(query, "source_scope", []string{application.GlobalValue})
+	if len(scopes) > 1 {
 		return fFunction, fmt.Errorf("more than one scope name present in function list query")
 	}
 
-	collections, ok := query["source_collection"]
-	if ok && len(collections) > 1 {
+	collections := getValues(query, "source_collection", []string{application.GlobalValue})
+	if len(collections) > 1 {
 		return fFunction, fmt.Errorf("more than one collection name present in function list query")
 	}
 
-	if buckets[0] != "" {
+	if len(buckets) == 1 {
 		sourceKeyspace, err := application.NewKeyspace(buckets[0], scopes[0], collections[0], true)
 		if err != nil {
 			return fFunction, err

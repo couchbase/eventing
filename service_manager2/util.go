@@ -316,21 +316,16 @@ func getAuthErrorInfo(runtimeInfo *response.RuntimeInfo, notAllowed []string, al
 	}
 }
 
-const (
-	dict     = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ*&"
-	nameDict = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
-)
-
 func getFunctionID() (uint32, error) {
 	return common.GetRand16Byte()
 }
 
 func getFunctionInstanceID() (string, error) {
-	return common.RandomIDFromDict(dict)
+	return common.RandomIDFromDict(common.InstanceIDDict)
 }
 
 func generateRandomNameSuffix() string {
-	id, err := common.RandomIDFromDict(nameDict)
+	id, err := common.RandomIDFromDict(common.RandomNameDict)
 	if err != nil {
 		return "000000"
 	}
