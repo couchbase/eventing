@@ -20,6 +20,7 @@ import (
 
 	stateMachine "github.com/couchbase/eventing/app_manager/app_state_machine"
 	"github.com/couchbase/eventing/application"
+	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/notifier"
 )
 
@@ -914,6 +915,8 @@ func HexLittleEndianToUint64(hexLE []byte) uint64 {
 }
 
 func DistributeAndWaitWork[T comparable](parallelism int, batchSize int, initialiser func(chan<- T) error, cb func(waitGroup *sync.WaitGroup, workerChan <-chan T)) {
+	logPrefix := "common::DistributeAndWaitWork"
+
 	workerChan := make(chan T, batchSize)
 	waitGroup := sync.WaitGroup{}
 	waitGroup.Add(parallelism)
@@ -924,7 +927,7 @@ func DistributeAndWaitWork[T comparable](parallelism int, batchSize int, initial
 
 	err := initialiser(workerChan)
 	if err != nil {
-		// Log it
+		logging.Errorf("%s: Error in initialising worker channel: %v", logPrefix, err)
 	}
 	close(workerChan)
 	waitGroup.Wait()
