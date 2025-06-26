@@ -98,17 +98,20 @@ func initialiseScanner(appId uint32, checkpointManager checkpointManager.Checkpo
 }
 
 func (fHandler *funcHandler) deleteCheckpointsUsingRangeScan(waitGroup *sync.WaitGroup, workerChan <-chan string) {
-	//logPrefix := "funcHandler::deleteCheckpointsUsingRangeScan"
+	logPrefix := fmt.Sprintf("funcHandler::deleteCheckpointsUsingRangeScan[%s]", fHandler.logPrefix)
 
-	deleteKey := make([]string, 0, batchDelete)
+	deleteKeys := make([]string, 0, batchDelete)
 	defer func() {
-		fHandler.tryDeleteKeys(true, deleteKey)
+		deleteKeys = fHandler.tryDeleteKeys(true, deleteKeys)
+		if len(deleteKeys) != 0 {
+			logging.Warnf("%s some keys are not cleared: %d", logPrefix, len(deleteKeys))
+		}
 		defer waitGroup.Done()
 	}()
 
 	for key, ok := <-workerChan; ok; key, ok = <-workerChan {
-		deleteKey = append(deleteKey, key)
-		fHandler.tryDeleteKeys(false, deleteKey)
+		deleteKeys = append(deleteKeys, key)
+		deleteKeys = fHandler.tryDeleteKeys(false, deleteKeys)
 	}
 }
 

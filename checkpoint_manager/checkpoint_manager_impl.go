@@ -588,6 +588,7 @@ func (cm *checkpointManager) OwnershipSnapshot(snapshot *common.AppRebalanceProg
 	}
 }
 
+// GetAllCheckpoints returns all the metadata checkpoints (vb and timer) for the app
 func (cm *checkpointManager) GetAllCheckpoints(appId uint32) (*gocb.ScanResult, error) {
 	startKey := fmt.Sprintf(startKeyCheckpointTemplate, appId)
 	endKey := fmt.Sprintf(endKeyCheckpointTemplate, appId)

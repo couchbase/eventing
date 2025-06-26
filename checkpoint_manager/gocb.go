@@ -212,7 +212,7 @@ func deleteBulk(collection *gocb.Collection, observer notifier.Observer, keyspac
 	}
 
 	err := collection.Do(items, bulkOptions)
-	if err != nil && common.CheckKeyspaceExist(observer, keyspace) {
+	if err != nil && !common.CheckKeyspaceExist(observer, keyspace) {
 		return errKeyspaceNotFound
 	}
 	return err
@@ -234,7 +234,7 @@ func scan(collection *gocb.Collection, observer notifier.Observer, keyspace appl
 
 	// Perform the range scan request
 	scanR, err := collection.Scan(scan, opts)
-	if err != nil && common.CheckKeyspaceExist(observer, keyspace) {
+	if err != nil && !common.CheckKeyspaceExist(observer, keyspace) {
 		return scanR, errKeyspaceNotFound
 	}
 	return scanR, err
