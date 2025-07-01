@@ -165,7 +165,7 @@ func (fd *FunctionDetails) Clone(redact bool) *FunctionDetails {
 }
 
 // addSensitiveFields will add the masked sensitive fields to currDetails
-func (fd *FunctionDetails) addSensitiveFields(bindings []Bindings) {
+func (fd *FunctionDetails) addSensitiveFields(bindings []Bindings) []Bindings {
 	// add it for curl
 	for _, binding := range fd.Bindings {
 		if binding.BindingType == Curl {
@@ -175,13 +175,13 @@ func (fd *FunctionDetails) addSensitiveFields(bindings []Bindings) {
 				if currBind.BindingType == Curl {
 					currCurlBinding := currBind.CurlBinding
 
-					if currCurlBinding.Alias == curlBinding.Alias {
-						if curlBinding.BearerKey == PasswordMask {
-							curlBinding.BearerKey = currCurlBinding.BearerKey
+					if curlBinding.isSame(currCurlBinding) {
+						if currCurlBinding.BearerKey == PasswordMask {
+							currCurlBinding.BearerKey = curlBinding.BearerKey
 						}
 
-						if curlBinding.Password == PasswordMask {
-							curlBinding.Password = currCurlBinding.Password
+						if currCurlBinding.Password == PasswordMask {
+							currCurlBinding.Password = curlBinding.Password
 						}
 						break
 					}
@@ -189,10 +189,11 @@ func (fd *FunctionDetails) addSensitiveFields(bindings []Bindings) {
 			}
 		}
 	}
+	return bindings
 }
 
 func (fd *FunctionDetails) VerifyAndMergeDepCfg(allowedFields map[string]struct{}, newDepcfg DepCfg, bindings []Bindings) (bool, error) {
-	fd.addSensitiveFields(bindings)
+	bindings = fd.addSensitiveFields(bindings)
 	dChanged, err := fd.DeploymentConfig.ValidateDeploymentConfig(allowedFields, newDepcfg)
 	if err != nil {
 		return false, err
