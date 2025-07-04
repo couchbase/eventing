@@ -1096,14 +1096,18 @@ func NewCurlBinding(curlBinding *CurlBinding) (Bindings, error) {
 }
 
 func (cb *CurlBinding) ExactEquals(ocb *CurlBinding) bool {
+	return cb.isSame(ocb) &&
+		cb.AllowCookie == ocb.AllowCookie &&
+		cb.ValidateSSL == ocb.ValidateSSL &&
+		cb.Password == ocb.Password &&
+		cb.BearerKey == ocb.BearerKey
+}
+
+func (cb *CurlBinding) isSame(ocb *CurlBinding) bool {
 	return cb.HostName == ocb.HostName &&
 		cb.Alias == ocb.Alias &&
 		cb.AuthType == ocb.AuthType &&
-		cb.AllowCookie == ocb.AllowCookie &&
-		cb.ValidateSSL == ocb.ValidateSSL &&
-		cb.UserName == ocb.UserName &&
-		cb.Password == ocb.Password &&
-		cb.BearerKey == ocb.BearerKey
+		cb.UserName == ocb.UserName
 }
 
 func (cb *CurlBinding) Clone(redact bool) (clone *CurlBinding) {
@@ -1115,10 +1119,10 @@ func (cb *CurlBinding) Clone(redact bool) (clone *CurlBinding) {
 	clone.ValidateSSL = cb.ValidateSSL
 	clone.BearerKey = PasswordMask
 	clone.Password = PasswordMask
+	clone.AuthType = cb.AuthType
+	clone.UserName = cb.UserName
 
 	if !redact {
-		clone.AuthType = cb.AuthType
-		clone.UserName = cb.UserName
 		clone.Password = cb.Password
 		clone.BearerKey = cb.BearerKey
 	}
