@@ -180,11 +180,25 @@ func (m *serviceMgr) statusImpl(runtimeInfo *response.RuntimeInfo,
 	}
 
 	statusList := make([]*common.AppStatus, 0, len(appLocation))
+	if len(appLocation) == 0 {
+		resp = common.AppStatusResponse{
+			Apps:             statusList,
+			NumEventingNodes: numEventingNode,
+		}
+		return
+	}
+
 	for _, appStatus := range aggStatus {
 		statusList = append(statusList, appStatus)
 	}
 
-	if isSingleAppStatus && len(statusList) == 1 {
+	if isSingleAppStatus {
+		if len(statusList) == 0 {
+			// Singleton list of appLocation passed, but status map is empty
+			runtimeInfo.ErrCode = response.ErrAppNotFound
+			runtimeInfo.Description = fmt.Sprintf("%s not found", appLocation[0])
+			return
+		}
 		resp = common.SingleAppStatusResponse{
 			App:              statusList[0],
 			NumEventingNodes: numEventingNode,
@@ -196,7 +210,6 @@ func (m *serviceMgr) statusImpl(runtimeInfo *response.RuntimeInfo,
 		Apps:             statusList,
 		NumEventingNodes: numEventingNode,
 	}
-
 	return
 }
 
