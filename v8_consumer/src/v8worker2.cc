@@ -1091,7 +1091,7 @@ void V8Worker2::HandleDeleteEvent(
   stats_->IncrementExecutionStat("messages_parsed");
   SendDelete(payload);
   add_dcp_mutation_done();
-  f_map_->reset_current_vb();
+  f_map_->done_current_vb();
 
   if (debugger_started_) {
     comm_->send_message(msg, "", "", "");
@@ -1140,7 +1140,7 @@ void V8Worker2::HandleMutationEvent(
   stats_->IncrementExecutionStat("messages_parsed");
   SendUpdate(payload, cas, meta_info.expiry, meta_info.datatype);
   add_dcp_mutation_done();
-  f_map_->reset_current_vb();
+  f_map_->done_current_vb();
 
   if (debugger_started_) {
     comm_->send_message(msg, "", "", "");
@@ -1637,18 +1637,26 @@ V8Worker2::vb_handler::AddFilterEvent(const uint16_t &vb) {
   auto executing = false;
   uint64_t processed_seq = 0;
   uint64_t vbuuid = 0;
+  auto found = true;
 
   mutex_.lock();
-  vbfilter_map_[vb]++;
-  processed_seq = processed_seq_[vb];
-  vbuuid = vbuuid_[vb];
   if (current_executing_vb_ == vb) {
+    vbuuid = current_executing_vbuuid_;
+    processed_seq = current_executing_seq_;
     executing = true;
+  } else if (vb_details_.find(vb) != vb_details_.end()) {
+      vbuuid = vb_details_[vb].first;
+      processed_seq = vb_details_[vb].second;
+  } else {
+    found = false;
   }
-  processed_seq_.erase(vb);
-  vbuuid_.erase(vb);
 
+  if(found) {
+    vbfilter_map_[vb]++;
+    vb_details_.erase(vb);
+  }
   mutex_.unlock();
+
   return {processed_seq, vbuuid, executing};
 }
 
@@ -1701,10 +1709,9 @@ bool V8Worker2::vb_handler::CheckAndUpdateFilter(const uint32_t &cid,
     return true;
   }
 
-  processed_seq_[vb] = seq_num;
-  vbuuid_[vb] = vbuuid;
   // This is for noop event
   if (skip_cid_check) {
+    vb_details_[vb] = {vbuuid, seq_num};
     return false;
   }
 
@@ -1714,30 +1721,43 @@ bool V8Worker2::vb_handler::CheckAndUpdateFilter(const uint32_t &cid,
   }
 
   current_executing_vb_ = vb;
+  current_executing_seq_ = seq_num;
+  current_executing_vbuuid_ = vbuuid;
   return false;
 }
 
 void V8Worker2::vb_handler::update_seq(uint16_t vb, uint64_t vbuuid,
                                        uint64_t seq) {
   mutex_.lock();
-  processed_seq_[vb] = seq;
-  vbuuid_[vb] = vbuuid;
+  vb_details_[vb] = {vbuuid, seq};
   mutex_.unlock();
 }
 
-void V8Worker2::vb_handler::reset_current_vb() {
+void V8Worker2::vb_handler::done_current_vb() {
   mutex_.lock();
+  // If vb is present then commit the current executing vb details
+  if (vb_details_.find(current_executing_vb_) != vb_details_.end()) {
+    auto vbdetails = vb_details_[current_executing_vb_];
+    vbdetails.first = current_executing_vbuuid_;
+    vbdetails.second = current_executing_seq_;
+    vb_details_[current_executing_vb_] = vbdetails;
+  }
+
   current_executing_vb_ = 0xffff;
+  current_executing_seq_ = 0;
+  current_executing_vbuuid_ = 0;
   mutex_.unlock();
 }
 
 std::string V8Worker2::vb_handler::get_vb_details_seq() {
   mutex_.lock();
   std::ostringstream oss;
-  for (auto it = processed_seq_.begin(); it != processed_seq_.end(); it++) {
+  for (auto it = vb_details_.begin(); it != vb_details_.end(); it++) {
     uint16_t vb = it->first;
-    uint64_t seq = it->second;
-    auto vbuuid = vbuuid_[vb];
+    std::pair<uint64_t, uint64_t> seq_pair = it->second;
+
+    uint64_t vbuuid = seq_pair.first;
+    uint64_t seq = seq_pair.second;
     oss << static_cast<uint8_t>(vb >> 8) << static_cast<uint8_t>(vb);
     oss << static_cast<uint8_t>(seq >> 56) << static_cast<uint8_t>(seq >> 48)
         << static_cast<uint8_t>(seq >> 40) << static_cast<uint8_t>(seq >> 32)
