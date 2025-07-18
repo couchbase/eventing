@@ -142,7 +142,6 @@ private:
     std::tuple<uint64_t, uint64_t, bool> AddFilterEvent(const uint16_t &vb);
 
     void RemoveFilterEvent(const uint16_t &vb);
-
     void AddCidFilterEvent(const uint32_t &cid);
     void RemoveCidFilter(const uint32_t &cid);
 
@@ -150,11 +149,11 @@ private:
                               const uint64_t &vbuuid, const uint64_t &seq,
                               bool skip_cid_check);
     std::string get_vb_details_seq();
-    void reset_current_vb();
+    void done_current_vb();
     void update_seq(uint16_t vb, uint64_t vbuuid, uint64_t seq);
     inline uint64_t processing_seq_num() {
       mutex_.lock();
-      auto seq = processed_seq_[current_executing_vb_];
+      auto seq = current_executing_seq_;
       mutex_.unlock();
       return seq;
     }
@@ -163,9 +162,10 @@ private:
     std::mutex mutex_;
     std::unordered_map<uint16_t, int32_t> vbfilter_map_;
     std::unordered_map<uint32_t, int32_t> vbfilter_map_for_cid_;
-    std::unordered_map<uint16_t, uint64_t> processed_seq_;
-    std::unordered_map<uint16_t, uint64_t> vbuuid_;
+    std::unordered_map<uint16_t, std::pair<uint64_t, uint64_t>> vb_details_;
     uint16_t current_executing_vb_;
+    uint64_t current_executing_seq_;
+    uint64_t current_executing_vbuuid_;
 
     std::pair<uint16_t, bool> GetVbFilterLocked(uint16_t vb);
   };
