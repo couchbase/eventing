@@ -1339,6 +1339,7 @@ func (m *serviceMgr) prometheusLow(w http.ResponseWriter, r *http.Request) {
 	out := make([]byte, 0)
 	out = append(out, []byte(fmt.Sprintf("eventing_worker_restart_count %v\n", 0))...)
 
+	runtimeInfo.ContentType = "text/plain"
 	runtimeInfo.SendRawDescription = true
 	runtimeInfo.Description = string(out)
 	runtimeInfo.OnlyDescription = true
@@ -1399,6 +1400,7 @@ func (m *serviceMgr) prometheusHigh(w http.ResponseWriter, r *http.Request) {
 		stats = populate[interface{}](location, "checkpoint_failure_count", stats, stat.FailureStats)
 	}
 
+	runtimeInfo.ContentType = "text/plain"
 	runtimeInfo.SendRawDescription = true
 	runtimeInfo.Description = string(stats)
 	runtimeInfo.OnlyDescription = true
