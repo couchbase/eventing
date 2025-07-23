@@ -55,6 +55,10 @@ func NewDistributor(uuid string, broadcaster common.Broadcaster, helper distribu
 	return d
 }
 
+func (d *distributor) Initialise() {
+	d.vbdistributor.initialise("")
+}
+
 func (d *distributor) AddDistribution(path string, payload []byte) (changeId string, rebalanceType rebalanceVersion, keepNodes []string, requiredRebalanceIDs []*application.KeyspaceInfo) {
 	rebalanceType, extraId := getRebalanceType(path)
 	switch rebalanceType {

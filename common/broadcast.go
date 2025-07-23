@@ -17,7 +17,7 @@ var (
 )
 
 type Broadcaster interface {
-	Request(onlyThisNode bool, path string, request *pc.Request) ([][]byte, *pc.Response, error)
+	Request(onlyThisNode bool, dontSkipOthersOnError bool, path string, request *pc.Request) ([][]byte, *pc.Response, error)
 	RequestFor(nodeUUID string, path string, request *pc.Request) ([][]byte, *pc.Response, error)
 
 	CloseBroadcaster()
@@ -52,7 +52,7 @@ func NewBroadcaster(observer notifier.Observer) (Broadcaster, error) {
 	return b, nil
 }
 
-func (b *broadcaster) Request(onlyThisNode bool, path string, request *pc.Request) ([][]byte, *pc.Response, error) {
+func (b *broadcaster) Request(onlyThisNode bool, dontSkipOthersOnError bool, path string, request *pc.Request) ([][]byte, *pc.Response, error) {
 	eventingNode := b.eventingNodes.Load().([]*notifier.Node)
 	lengthOfHostNames := len(eventingNode)
 	if onlyThisNode {
@@ -72,7 +72,7 @@ func (b *broadcaster) Request(onlyThisNode bool, path string, request *pc.Reques
 		nodes = append(nodes, node)
 	}
 
-	return b.request(nodes, path, request)
+	return b.request(nodes, dontSkipOthersOnError, path, request)
 }
 
 func (b *broadcaster) RequestFor(nodeUUID string, path string, request *pc.Request) ([][]byte, *pc.Response, error) {
@@ -90,10 +90,10 @@ func (b *broadcaster) RequestFor(nodeUUID string, path string, request *pc.Reque
 		return nil, nil, ErrNodeNotAvailable
 	}
 
-	return b.request(nodes, path, request)
+	return b.request(nodes, false, path, request)
 }
 
-func (b *broadcaster) request(nodes []*notifier.Node, path string, request *pc.Request) ([][]byte, *pc.Response, error) {
+func (b *broadcaster) request(nodes []*notifier.Node, dontSkipOthersOnError bool, path string, request *pc.Request) ([][]byte, *pc.Response, error) {
 	if request.GetAuth == nil {
 		request.GetAuth = authenticator.DefaultAuthHandler
 	}
@@ -115,10 +115,18 @@ func (b *broadcaster) request(nodes []*notifier.Node, path string, request *pc.R
 		request.URL = fmt.Sprintf("%s://%s:%d%s", schema, node.HostName, node.Services[eventingPort], path)
 		res, err := b.pointConn.SyncSend(request)
 		if err != nil {
+			if dontSkipOthersOnError {
+				logging.Errorf("broadcaster::request error making request to %s, path: %s, err: %v", request.URL, path, err)
+				continue
+			}
 			return response, res, err
 		}
 
 		if res.StatusCode != 200 {
+			if dontSkipOthersOnError {
+				logging.Errorf("broadcaster::request non success status code: %v err: %v", res.StatusCode, res.Err)
+				continue
+			}
 			return response, res, fmt.Errorf("non success status code: %v err: %v", res.StatusCode, res.Err)
 		}
 		response = append(response, res.Body)
@@ -127,7 +135,6 @@ func (b *broadcaster) request(nodes []*notifier.Node, path string, request *pc.R
 }
 
 func (b *broadcaster) CloseBroadcaster() {
-	return
 }
 
 func (b *broadcaster) initPointConnection() error {

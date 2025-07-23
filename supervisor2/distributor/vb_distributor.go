@@ -79,6 +79,24 @@ func (vm *vbMapDistributor) getOwnershipDetails() string {
 	return string(data)
 }
 
+func (vm *vbMapDistributor) initialise(changeID string) {
+	keepNodesData, _, err := metakv.Get(common.EventingMetakvConfigKeepNodes)
+	if err != nil {
+		// Do nothing lets continue. This node won't own anything and won't process
+		// until next rebalance or eventing nodes updated to new version
+		return
+	}
+
+	var keepNodes []string
+	json.Unmarshal(keepNodesData, &keepNodes)
+	if len(keepNodes) == 0 {
+		keepNodes = []string{vm.uuid}
+	}
+
+	vm.addVbVersion1Locked(changeID, keepNodes)
+	vm.changeID = changeID
+}
+
 func (vm *vbMapDistributor) addDistribution(rebalanceVersion rebalanceVersion, changeID string, topologyBytes []byte) (string, []string) {
 	logPrefix := "vbMapDistributor::addDistribution"
 
@@ -90,21 +108,11 @@ func (vm *vbMapDistributor) addDistribution(rebalanceVersion rebalanceVersion, c
 		vm.changeID = vm.addVbVersion2Locked(topologyBytes)
 
 	case oldRebalanceID:
-		keepNodesData, _, err := metakv.Get(common.EventingMetakvConfigKeepNodes)
-		if err != nil {
-			// Do nothing lets continue. This node won't own anything and won't process
-			// until next rebalance or eventing nodes updated to new version
-			break
+		// eventing already moved to new version. Old version of topology still on metakv. Skip it.
+		if vm.lastChangedToken == VbucketTopologyID {
+			return vm.changeID, vm.nodes
 		}
-
-		var keepNodes []string
-		json.Unmarshal(keepNodesData, &keepNodes)
-		if len(keepNodes) == 0 {
-			keepNodes = []string{vm.uuid}
-		}
-
-		vm.addVbVersion1Locked(changeID, keepNodes)
-		vm.changeID = changeID
+		vm.initialise(changeID)
 	}
 	vm.lastChangedToken = rebalanceVersion
 	logging.Infof("%s Done parsing distribution for changeId: %s version: %s leaderNode: %s", logPrefix, vm.changeID, rebalanceVersion, vm.leaderUUID)
@@ -259,24 +267,44 @@ func (vm *vbMapDistributor) addVbVersion2Locked(topologyBytes []byte) string {
 	return changeId
 }
 
+// This function is called when last old version node is out and 8.0.0 eventing nodes are only remaining nodes
 func (vm *vbMapDistributor) syncvbMap() {
+	logPrefix := "vbMapDistributor::syncvbMap"
+
 	req := &pc.Request{
 		Method:  http.MethodPost,
 		Timeout: common.HttpCallWaitTime,
 	}
 
-	responseList, _, err := vm.broadcaster.Request(false, requestVbOwnershipMap, req)
-	if err != nil {
-		logging.Errorf("Error getting vb map: %v", err)
-		return
-	}
-
+	responseList, _, _ := vm.broadcaster.Request(false, true, requestVbOwnershipMap, req)
+	vm.nodes = make([]string, 0, len(responseList))
 	for _, ownershipBytes := range responseList {
 		ownership := ownershipStruct{}
 		_ = json.Unmarshal(ownershipBytes, &ownership)
+		vm.nodes = append(vm.nodes, ownership.UUID)
 		for numVbs, vbsList := range ownership.OwnedVbs {
 			vm.vbs[numVbs][ownership.UUID] = vbsList
 		}
+	}
+
+	for _, numVb := range vbsList {
+		ownershipMap := vm.vbs[numVb]
+		logging.Infof("%s ownership map for vb: %d -> %s", logPrefix, numVb, utils.CondenseMap(ownershipMap))
+		ownedVbs := make(map[uint16]struct{})
+		for _, vbs := range ownershipMap {
+			for _, vb := range vbs {
+				ownedVbs[vb] = struct{}{}
+			}
+		}
+		index := 0
+		for vb := range numVb {
+			if _, ok := ownedVbs[vb]; !ok {
+				nextUUID := vm.nodes[index%len(vm.nodes)]
+				vm.vbs[numVb][nextUUID] = append(vm.vbs[numVb][nextUUID], vb)
+				index++
+			}
+		}
+		logging.Infof("%s After assigning unassigned vbs for %d: -> %s", logPrefix, numVb, utils.CondenseMap(vm.vbs[numVb]))
 	}
 }
 
