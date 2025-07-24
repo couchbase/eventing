@@ -288,5 +288,5 @@ func (m *serviceMgr) broadcastRequest(namespace application.Namespace, path stri
 	}
 	_, config := m.serverConfig.GetServerConfig(keyspaceInfo)
 	request.Timeout = config.HttpRequestTimeout
-	return m.broadcaster.Request(false, path, request)
+	return m.broadcaster.Request(false, false, path, request)
 }

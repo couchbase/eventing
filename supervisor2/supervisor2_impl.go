@@ -292,6 +292,16 @@ func (s *supervisor) recover(ctx context.Context) error {
 
 	// recover topology path
 	s.distributor = distributor.NewDistributor(s.clusterSetting.UUID, s.broadcaster, s)
+	s.service = NewServiceManager(s.distributor, s.clusterSetting.UUID)
+	s.service.InitServiceManagerWithSup(s)
+
+	// Wait for the observer to start
+	s.observer.WaitForConnect(ctx)
+	logging.Infof("%s successfully connected to observer pool", logPrefix)
+
+	// Pre 8.0.0 we used to delete the rebalance token. So in mixed mode new 8.0.0 won't have anything to get the
+	// initialise data from. This will force it to create the initial vb map from keep nodes endpoint
+	s.distributor.Initialise()
 	topologyRecovery := func(path string, payload []byte) error {
 		s.distributor.AddDistribution(path, payload)
 		return nil
@@ -301,13 +311,6 @@ func (s *supervisor) recover(ctx context.Context) error {
 		return err
 	}
 	logging.Infof("%s successfully recovered topology path", logPrefix)
-
-	s.service = NewServiceManager(s.distributor, s.clusterSetting.UUID)
-	s.service.InitServiceManagerWithSup(s)
-
-	// Wait for the observer to start
-	s.observer.WaitForConnect(ctx)
-	logging.Infof("%s successfully connected to observer pool", logPrefix)
 
 	cluster := checkpointManager.GetGocbClusterObject(s.clusterSetting, s.observer, s.globalStatsCounter)
 	s.createGocbClusterObjectLocked(cluster)
@@ -959,7 +962,7 @@ func (s *supervisor) requestStopFunction(msg stopMsg) (functionDeleted bool, err
 		functionDeleted = true
 	}
 
-	responseBytes, res, err := s.broadcaster.Request(true, path, req)
+	responseBytes, res, err := s.broadcaster.Request(true, false, path, req)
 	if err != nil {
 		if res.StatusCode == http.StatusNotFound {
 			// Function already deleted
@@ -1484,7 +1487,7 @@ func (s *supervisor) getRebalanceProgress(req *pc.Request) (map[string]float64, 
 	logPrefix := "supervisor::getRebalanceProgress"
 
 	progressMap := make(map[string]float64)
-	response, _, err := s.broadcaster.Request(true, "/getAggRebalanceProgress", req)
+	response, _, err := s.broadcaster.Request(true, false, "/getAggRebalanceProgress", req)
 	if err != nil {
 		logging.Errorf("%s Error broadcasting agg rebalance progress request: %v", logPrefix, err)
 		return progressMap, err
@@ -1538,7 +1541,7 @@ func (s *supervisor) SyncPhaseDone() bool {
 		Timeout: common.HttpCallWaitTime,
 	}
 
-	statusResponseBytes, _, err := s.broadcaster.Request(true, "/api/v1/status", req)
+	statusResponseBytes, _, err := s.broadcaster.Request(true, false, "/api/v1/status", req)
 	if err != nil {
 		logging.Errorf("%s Error broadcasting status request: %v", logPrefix, err)
 		return false
@@ -1621,7 +1624,7 @@ func (s *supervisor) GetGarbagedFunction(namespaces map[application.KeyspaceInfo
 		Timeout: time.Duration(10 * time.Second),
 	}
 
-	statusBytes, _, err := s.broadcaster.Request(true, "/api/v1/status", req)
+	statusBytes, _, err := s.broadcaster.Request(true, false, "/api/v1/status", req)
 	if err != nil {
 		logging.Errorf("%s Error broadcasting status request: %v", logPrefix, err)
 		return garbageNamespace

@@ -425,7 +425,7 @@ func (d debuggerMessageReceiver) ReceiveMessage(msg *processManager.ResponseMess
 			Method: pc.POST,
 		}
 
-		d.broadcaster.Request(true, "/stopDebugger", req)
+		d.broadcaster.Request(true, false, "/stopDebugger", req)
 		return
 	}
 
@@ -435,7 +435,7 @@ func (d debuggerMessageReceiver) ReceiveMessage(msg *processManager.ResponseMess
 			Query:  application.QueryMap(d.appLocation),
 			Method: pc.POST,
 		}
-		d.broadcaster.Request(true, "/stopDebugger", req)
+		d.broadcaster.Request(true, false, "/stopDebugger", req)
 	}
 }
 
