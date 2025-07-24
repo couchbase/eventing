@@ -364,7 +364,7 @@ func (fHandler *funcHandler) CheckAndGetEventsInternalDetails(msg *dcpMessage.Dc
 		return nil, false
 	}
 
-	if !fHandler.isSrcMutationPossible {
+	if !fHandler.isSrcMutationPossible && !fHandler.fd.Settings.CursorAware {
 		return nil, false
 	}
 
