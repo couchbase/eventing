@@ -255,7 +255,7 @@ func (m *serviceMgr) writeDebuggerURLHandler(w http.ResponseWriter, r *http.Requ
 
 	funcDetails, ok := m.appManager.GetApplication(appLocation, false)
 	if !ok {
-		runtimeInfo.ErrCode = response.ErrAppNotFound
+		runtimeInfo.ErrCode = response.ErrAppNotFoundTs
 		runtimeInfo.Description = fmt.Sprintf("%s not found", appLocation)
 		return
 	}
