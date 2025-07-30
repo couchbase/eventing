@@ -195,8 +195,8 @@ func (m *serviceMgr) statusImpl(runtimeInfo *response.RuntimeInfo,
 	if isSingleAppStatus {
 		if len(statusList) == 0 {
 			// Singleton list of appLocation passed, but status map is empty
-			runtimeInfo.ErrCode = response.ErrAppNotFound
-			runtimeInfo.Description = fmt.Sprintf("%s not found", appLocation[0])
+			runtimeInfo.ErrCode = response.ErrAppNotFoundTs
+			runtimeInfo.Description = fmt.Sprintf("Function: %s not found", appLocation[0])
 			return
 		}
 		resp = common.SingleAppStatusResponse{
@@ -1497,7 +1497,7 @@ func (m *serviceMgr) debuggerOp(runtimeInfo *response.RuntimeInfo, r *http.Reque
 	}
 
 	if status, ok := aggStatus[appLocation.String()]; !ok {
-		runtimeInfo.ErrCode = response.ErrAppNotFound
+		runtimeInfo.ErrCode = response.ErrAppNotFoundTs
 		runtimeInfo.Description = fmt.Sprintf("%s not found", appLocation)
 		return
 	} else if application.StringToAppState(status.CompositeStatus) != application.Deployed {
@@ -1508,7 +1508,7 @@ func (m *serviceMgr) debuggerOp(runtimeInfo *response.RuntimeInfo, r *http.Reque
 
 	funcDetails, ok := m.appManager.GetApplication(appLocation, false)
 	if !ok {
-		runtimeInfo.ErrCode = response.ErrAppNotFound
+		runtimeInfo.ErrCode = response.ErrAppNotFoundTs
 		runtimeInfo.Description = fmt.Sprintf("%s not found", appLocation)
 		return
 	}
