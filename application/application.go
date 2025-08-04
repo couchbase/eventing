@@ -570,9 +570,9 @@ func (settings *HandlerSettings) populateDerivedSettings() {
 type streamBoundary string
 
 const (
-	Everyting = streamBoundary("everyting")
-	FromNow   = streamBoundary("from_now")
-	FromPrior = streamBoundary("from_prior")
+	Everything = streamBoundary("everything")
+	FromNow    = streamBoundary("from_now")
+	FromPrior  = streamBoundary("from_prior")
 )
 
 type LogLevel string
@@ -722,7 +722,7 @@ func (hs HandlerSettings) Clone() HandlerSettings {
 func DefaultSettings() HandlerSettings {
 	hSettings := HandlerSettings{}
 	hSettings.CppWorkerThread = 2
-	hSettings.DcpStreamBoundary = Everyting
+	hSettings.DcpStreamBoundary = Everything
 	hSettings.LogLevel = INFO
 	hSettings.NumTimerPartition = 256
 	hSettings.StatsDuration = 1000
