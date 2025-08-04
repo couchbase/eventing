@@ -127,11 +127,15 @@ func (c *Consumer) processDCPEvents() {
 				c.vbProcessingStats.updateVbStat(e.VBucket, "seq_no_at_stream_end", lastReadSeqNo)
 				c.vbProcessingStats.updateVbStat(e.VBucket, "timestamp", time.Now().Format(time.RFC3339))
 				lastSentSeqNo := c.vbProcessingStats.getVbStat(e.VBucket, "last_sent_seq_no").(uint64)
-				if lastSentSeqNo == 0 {
-					logging.Infof("STREAMEND without streaming any mutation last_read_seqno: %d last_sent_seqno: %d", lastReadSeqNo, lastSentSeqNo)
+				if lastSentSeqNo != 0 {
+					c.sendVbFilterData(e.VBucket, lastSentSeqNo, false)
+				} else if c.producer.UsingTimer() {
+					logging.Infof("%s [%s:%s:%d] STREAMEND vb: %d.. removing timer partition", logPrefix, c.workerName, c.tcpPort, c.Pid(), e.VBucket)
+					c.sendVbFilterData(e.VBucket, lastSentSeqNo, true)
 					c.handleStreamEnd(e.VBucket, lastReadSeqNo)
 				} else {
-					c.sendVbFilterData(e.VBucket, lastSentSeqNo, false)
+					logging.Infof("%s [%s:%s:%d] STREAMEND without streaming any mutation last_read_seqno: %d last_sent_seqno: %d vb: %d", logPrefix, c.workerName, c.tcpPort, c.Pid(), lastReadSeqNo, lastSentSeqNo, e.VBucket)
+					c.handleStreamEnd(e.VBucket, lastReadSeqNo)
 				}
 
 			case mcd.DCP_SYSTEM_EVENT:
