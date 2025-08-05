@@ -15,8 +15,8 @@ var (
 	}
 
 	streamBoundaryValues = map[string]struct{}{
-		"everything": {},
-		"from_now":   {},
+		string(Everything): {},
+		string(FromNow):    {},
 	}
 
 	langCompatibilityValues = map[string]struct{}{
