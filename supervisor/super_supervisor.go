@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"net"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -110,7 +111,72 @@ func NewSuperSupervisor(adminPort AdminPortConfig, eventingDir, kvPort, restPort
 		logging.Errorf("%s Terminating due to not being able to initialise gocb config after %v retries error: %v", logPrefix, s.retryCount, err)
 		os.Exit(1)
 	}
+
+	s.waitForRecovery()
 	return s
+}
+
+func (s *SuperSupervisor) waitForRecovery() {
+	logPrefix := "SuperSupervisor::WaitForRecovery"
+	for {
+		nsServerEndpoint := net.JoinHostPort(util.Localhost(), s.restPort)
+		cic, err := util.FetchClusterInfoClient(nsServerEndpoint)
+		if err != nil {
+			logging.Errorf("%s Failed to get cluster info client, err: %v", logPrefix, err)
+			time.Sleep(10 * time.Millisecond)
+			continue
+		}
+		clusterInfo := cic.GetClusterInfoCache()
+		clusterInfo.RLock()
+		nodes := clusterInfo.GetActiveEventingNodes()
+		if len(nodes) == 0 {
+			logging.Errorf("%s No active Eventing nodes found, waiting for recovery", logPrefix)
+			clusterInfo.RUnlock()
+			time.Sleep(10 * time.Millisecond)
+			continue
+		}
+
+		for _, node := range nodes {
+			_, err = common.FrameCouchbaseVerFromNsServerStreamingRestApi(node.Version)
+			if err != nil {
+				logging.Errorf("%s Failed to frame Couchbase version from ns server streaming rest api, err: %v", logPrefix, err)
+				clusterInfo.RUnlock()
+				time.Sleep(10 * time.Millisecond)
+				continue
+			}
+		}
+		clusterInfo.RUnlock()
+		break
+	}
+
+	logging.Infof("%s Recovery of version completed, all nodes are up and running", logPrefix)
+	for {
+		pool := &gocbPool{
+			bucketHandle: make(map[string]*gocbBucketInstance),
+		}
+		settings := s.GetSecuritySetting()
+		if settings != nil {
+			s.initEncryptDataMutex.Lock()
+			s.initLifecycleEncryptData = settings.EncryptData
+			s.initEncryptDataMutex.Unlock()
+		}
+
+		var operr error
+		err := gocbConnectCluster(s, &pool.cluster, s.restPort, settings, &operr)
+		if err != nil || operr != nil {
+			logging.Errorf("%s [%d] Failed to connect to cluster, err: %v operror: %v", logPrefix, s.runningFnsCount(), err, operr)
+			time.Sleep(10 * time.Millisecond)
+			continue
+		}
+
+		if settings != nil && settings.EncryptData {
+			s.gocbGlobalConfigHandle.encryptedgocbPool = pool
+		} else {
+			s.gocbGlobalConfigHandle.plaingocbPool = pool
+		}
+		break
+	}
+	logging.Infof("%s Recovery completed. gocb handle created, encryption=%v, all nodes operational.", logPrefix, s.initLifecycleEncryptData)
 }
 
 func (s *SuperSupervisor) checkIfNodeInCluster() bool {
