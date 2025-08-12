@@ -583,8 +583,15 @@ func (p *Producer) handleV8Consumer(workerName string, vbnos []uint16, index int
 		p.processConfig.IPCType = "af_inet"
 
 	} else {
-		os.Remove(udsSockPath)
-		os.Remove(feedbackSockPath)
+		err := os.Remove(udsSockPath)
+		if err != nil && !os.IsNotExist(err) {
+			logging.Errorf("%s [%s:%d] Failed to remove old unix domain socket, err: %v", logPrefix, p.appName, p.LenRunningConsumers(), err)
+		}
+
+		err = os.Remove(feedbackSockPath)
+		if err != nil && !os.IsNotExist(err) {
+			logging.Errorf("%s [%s:%d] Failed to remove old feedback unix domain socket, err: %v", logPrefix, p.appName, p.LenRunningConsumers(), err)
+		}
 
 		feedbackListener, err = net.Listen("unix", feedbackSockPath)
 		if err != nil {
