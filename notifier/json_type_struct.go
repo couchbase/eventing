@@ -14,6 +14,11 @@ var (
 	localhostIpv6 = "[::1]"
 )
 
+const (
+	// NOT_OWNED is used to indicate that the vbucket is not owned by any node
+	NOT_OWNED = -1
+)
+
 // poolsDetails is for pools endpoint
 type poolsDetails struct {
 	Pools []pool `json:"pools"`
@@ -300,7 +305,11 @@ func (t *terseBucketResponse) getVbMap(isIpv4 bool) *VBmap {
 	vm.ServerList = serverList
 	vm.VbToKv = make(map[uint16]int)
 	for vb, hostMap := range t.VbucketMap.VbucketMap {
-		vm.VbToKv[uint16(vb)] = hostMap[0]
+		activeKvIndex := hostMap[0]
+		if activeKvIndex == NOT_OWNED || activeKvIndex >= len(serverList) {
+			continue
+		}
+		vm.VbToKv[uint16(vb)] = activeKvIndex
 	}
 
 	return vm
