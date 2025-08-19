@@ -136,8 +136,25 @@ func (fDetails *FunctionDetails) validate() error {
 	return nil
 }
 
+func checkSrcMatchesMetaKeyspace(depCfg *DepCfg) error {
+	if depCfg.SourceKeyspace.Match(depCfg.MetaKeyspace) {
+		return fmt.Errorf("source keyspace same as metadata keyspace. source : %s metadata : %s",
+			depCfg.SourceKeyspace, depCfg.MetaKeyspace)
+	}
+	return nil
+}
+
 func (nDepCfg *DepCfg) ValidateDeploymentConfig(possibleChanges map[string]struct{},
-	deploymentConfig DepCfg) (changed bool, err error) {
+	deploymentConfig *DepCfg) (changed bool, err error) {
+
+	// Return error if source keyspace matches meta keyspace
+	if err = checkSrcMatchesMetaKeyspace(deploymentConfig); err != nil {
+		return
+	}
+
+	if possibleChanges == nil {
+		return
+	}
 
 	_, canChange := possibleChanges["*"]
 

@@ -81,7 +81,6 @@ func extractFromRestApi(fBytes []byte) (funcDetails *FunctionDetails, err error)
 		if err != nil {
 			return nil, fmt.Errorf("error unmarshalling bytes: %v", err)
 		}
-
 		// Validate all the field and return once validation succeeds
 		err = fDetails.validate()
 		if err != nil {
@@ -119,6 +118,10 @@ func convertToFunctionDetails(oldApp *OldApplication) (*FunctionDetails, error) 
 	funcDetails.DeploymentConfig, funcDetails.Bindings, err = createStructFromDepcfg(oldApp.DeploymentConfig)
 	if err != nil {
 		return nil, err
+	}
+
+	if _, err = funcDetails.DeploymentConfig.ValidateDeploymentConfig(nil, &funcDetails.DeploymentConfig); err != nil {
+		return nil, fmt.Errorf("Function: %s %v", funcDetails.AppLocation.Appname, err)
 	}
 
 	// Create settings and delete map
@@ -194,9 +197,9 @@ func (fd *FunctionDetails) addSensitiveFields(bindings []Bindings) []Bindings {
 
 func (fd *FunctionDetails) VerifyAndMergeDepCfg(allowedFields map[string]struct{}, newDepcfg DepCfg, bindings []Bindings) (bool, error) {
 	bindings = fd.addSensitiveFields(bindings)
-	dChanged, err := fd.DeploymentConfig.ValidateDeploymentConfig(allowedFields, newDepcfg)
+	dChanged, err := fd.DeploymentConfig.ValidateDeploymentConfig(allowedFields, &newDepcfg)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("Function: %s %v", fd.AppLocation.Appname, err)
 	}
 
 	bChanged, err := fd.ValidateBinding(allowedFields, bindings)
