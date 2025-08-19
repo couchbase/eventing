@@ -2,6 +2,10 @@ package notifier
 
 // Caller can use these functions to copy the structures
 
+import (
+	"maps"
+)
+
 // Copy will deep copy the Node struct
 func (n *Node) Copy() *Node {
 	if n == nil {
@@ -48,12 +52,9 @@ func (vbMap *VBmap) Copy() *VBmap {
 		copyVbMap.ServerList[index] = server
 	}
 
-	vbToKv := make(map[uint16]int)
-	for index, nodeIndex := range vbMap.VbToKv {
-		vbToKv[index] = nodeIndex
-	}
+	copyVbMap.VbToKv = make(map[uint16]int)
+	maps.Copy(copyVbMap.VbToKv, vbMap.VbToKv)
 
-	copyVbMap.VbToKv = vbToKv
 	return copyVbMap
 }
 
