@@ -252,21 +252,20 @@ func (m *serviceMgr) checkCursorLimit(runtimeInfo *response.RuntimeInfo, nextSta
 	}
 }
 
-func (m *serviceMgr) checkAndChangeName(app *application.FunctionDetails) {
-	appLocation := app.AppLocation
-	for {
-		state, err := m.appState.GetAppState(app.AppLocation)
-		if err != nil {
-			break
-		}
-
-		if !state.IsDeployed() {
-			break
-		}
-
-		appLocation.Appname = fmt.Sprintf("%s_%s", appLocation.Appname, generateRandomNameSuffix())
+func (m *serviceMgr) checkAndChangeName(app *application.FunctionDetails) error {
+	state, err := m.appState.GetAppState(app.AppLocation)
+	if err == stateMachine.ErrNoApp {
+		return nil
 	}
-	app.AppLocation = appLocation
+
+	if err != nil {
+		return err
+	}
+
+	if !state.IsUndeployed() {
+		app.AppLocation.Appname = fmt.Sprintf("%s_%s", app.AppLocation.Appname, generateRandomNameSuffix())
+	}
+	return nil
 }
 
 func (m *serviceMgr) getApplication(cred cbauth.Creds, filterMap map[string]bool, filterType string) []json.Marshaler {

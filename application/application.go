@@ -895,6 +895,10 @@ func (s State) IsStateTransferDone() bool {
 	return (s == Undeployed || s == Deployed || s == Paused)
 }
 
+func (s State) IsUndeployed() bool {
+	return (s == Undeployed)
+}
+
 func GetStateFromLifeCycle(op LifeCycleOp) State {
 	state := NoState
 	switch op {

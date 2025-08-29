@@ -101,16 +101,20 @@ func filterQueryMap(filterString string, include bool) (map[string]bool, error) 
 	return filterMap, nil
 }
 
-func contains(filterMap map[string]bool, bucket, scope, collection string) (val, ok bool) {
-	if val, ok = filterMap[fmt.Sprintf("%s.%s.%s", bucket, scope, collection)]; ok {
-		return
-	}
-	if val, ok = filterMap[fmt.Sprintf("%s.%s.*", bucket, scope)]; ok {
-		return
+func contains[T any](filterMap map[string]T, bucket, scope, collection string) (val T, len int, ok bool) {
+	keyspace, _ := application.NewKeyspace(bucket, scope, collection, true)
+	if val, ok = filterMap[keyspace.String()]; ok {
+		return val, 3, true
 	}
 
-	if val, ok = filterMap[fmt.Sprintf("%s.*.*", bucket)]; ok {
-		return
+	keyspace.CollectionName = application.GlobalValue
+	if val, ok = filterMap[keyspace.String()]; ok {
+		return val, 2, true
+	}
+
+	keyspace.ScopeName = application.GlobalValue
+	if val, ok = filterMap[keyspace.String()]; ok {
+		return val, 1, true
 	}
 
 	return
@@ -121,23 +125,23 @@ func applyFilter(app *application.FunctionDetails, filterMap map[string]bool, fi
 		return true
 	}
 
-	if val, ok := contains(filterMap, app.AppLocation.Namespace.BucketName, app.AppLocation.Namespace.ScopeName, "*"); ok {
+	if val, _, ok := contains(filterMap, app.AppLocation.Namespace.BucketName, app.AppLocation.Namespace.ScopeName, "*"); ok {
 		return val
 	}
 
 	deploymentConfig := app.DeploymentConfig
-	if val, ok := contains(filterMap, deploymentConfig.SourceKeyspace.BucketName, deploymentConfig.SourceKeyspace.ScopeName, deploymentConfig.SourceKeyspace.CollectionName); ok {
+	if val, _, ok := contains(filterMap, deploymentConfig.SourceKeyspace.BucketName, deploymentConfig.SourceKeyspace.ScopeName, deploymentConfig.SourceKeyspace.CollectionName); ok {
 		return val
 	}
 
-	if val, ok := contains(filterMap, deploymentConfig.MetaKeyspace.BucketName, deploymentConfig.MetaKeyspace.ScopeName, deploymentConfig.MetaKeyspace.CollectionName); ok {
+	if val, _, ok := contains(filterMap, deploymentConfig.MetaKeyspace.BucketName, deploymentConfig.MetaKeyspace.ScopeName, deploymentConfig.MetaKeyspace.CollectionName); ok {
 		return val
 	}
 
 	for _, binding := range app.Bindings {
 		if binding.BindingType == application.Bucket {
 			keyspace := binding.BucketBinding.Keyspace
-			if val, ok := contains(filterMap, keyspace.BucketName, keyspace.ScopeName, keyspace.CollectionName); ok {
+			if val, _, ok := contains(filterMap, keyspace.BucketName, keyspace.ScopeName, keyspace.CollectionName); ok {
 				return val
 			}
 		}
@@ -184,18 +188,7 @@ func getRestoreMap(r *http.Request) (map[string]application.Keyspace, error) {
 }
 
 func remapContains(remap map[string]application.Keyspace, bucket, scope, collection string) (application.Keyspace, int, bool) {
-	if val, ok := remap[fmt.Sprintf("%s.%s.%s", bucket, scope, collection)]; ok {
-		return val, 3, true
-	}
-	if val, ok := remap[fmt.Sprintf("%s.%s.*", bucket, scope)]; ok {
-		return val, 2, true
-	}
-
-	if val, ok := remap[fmt.Sprintf("%s.*.*", bucket)]; ok {
-		return val, 1, true
-	}
-
-	return application.Keyspace{}, 0, false
+	return contains(remap, bucket, scope, collection)
 }
 
 func populate[V any](location application.AppLocation, key string, stats []byte, cStats map[string]V) []byte {

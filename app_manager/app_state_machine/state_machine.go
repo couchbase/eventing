@@ -29,6 +29,10 @@ func (as AppState) IsBootstrapping() bool {
 	return as.State.IsBootstrapping()
 }
 
+func (as AppState) IsUndeployed() bool {
+	return as.State.IsUndeployed()
+}
+
 func (as AppState) String() string {
 	return as.State.String()
 }

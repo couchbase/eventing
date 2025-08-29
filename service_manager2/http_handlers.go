@@ -1069,7 +1069,12 @@ func (m *serviceMgr) extractFunctionList(runtimeInfo *response.RuntimeInfo, cred
 						}
 					}
 				}
-				m.checkAndChangeName(app)
+				err := m.checkAndChangeName(app)
+				if err != nil {
+					runtimeInfo.ErrCode = response.ErrInternalServer
+					runtimeInfo.Description = fmt.Sprintf("Failed to check and change name for app: %v, err: %v", app, err)
+					return
+				}
 				funcList = append(funcList, app)
 			}
 		}
