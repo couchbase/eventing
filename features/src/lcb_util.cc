@@ -477,6 +477,13 @@ std::pair<lcb_STATUS, Result> LcbUnlock(lcb_INSTANCE *instance,
   return {err, result};
 }
 
+bool IsInvalidPacketOrProtocolError(lcb_STATUS error) {
+  // Note (defensive fix): This error should be handled internally either in C SDK or in eventing runtime,
+  // but not to be bubbled up to the caller / user.
+  // Currently, we retry on these errors either until timeout or success.
+  return error == LCB_ERR_PROTOCOL_ERROR || error == LCB_ERR_KVENGINE_INVALID_PACKET;
+}
+
 bool IsErrCodeRetriable(lcb_STATUS error, uint16_t err_code) {
   if (!IsKeyspaceExist(err_code)) {
     return false;

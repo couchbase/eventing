@@ -101,6 +101,7 @@ std::pair<lcb_STATUS, Result> LcbUnlock(lcb_INSTANCE *instance,
 bool IsErrCodeRetriable(lcb_STATUS error, uint16_t err_code);
 bool IsKeyspaceExist(uint16_t err_code);
 bool IsRetriable(lcb_STATUS error);
+bool IsInvalidPacketOrProtocolError(lcb_STATUS error);
 
 template <typename CmdType, typename Callable>
 std::pair<lcb_STATUS, Result>
@@ -111,9 +112,13 @@ RetryLcbCommand(lcb_INSTANCE *instance, CmdType &cmd, int max_retry_count,
   auto start = GetUnixTime();
   while (true) {
     result = callable(instance, cmd);
-    if ((result.first == LCB_SUCCESS && result.second.rc == LCB_SUCCESS) ||
+    if (// 1. Operation succeeded completely
+        (result.first == LCB_SUCCESS && result.second.rc == LCB_SUCCESS) ||
+        // 2. Operation didn't succeed AND non-retriable error occurred
         (!IsRetriable(result.first) &&
-         !IsErrCodeRetriable(result.second.rc, result.second.kv_err_code)) ||
+         !IsErrCodeRetriable(result.second.rc, result.second.kv_err_code) &&
+         !IsInvalidPacketOrProtocolError(result.second.rc)) ||
+        // 3. maximum retry attempts of continuous retriable exception reached
         (max_retry_count && retry_count >= max_retry_count)) {
       break;
     }
