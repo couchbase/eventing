@@ -820,7 +820,7 @@ type ClusterSettings struct {
 	MaxRunningNodes int
 	IpMode          IpMode
 
-	CurrentVersion *notifier.Version
+	NodeCompatVersion *notifier.Version
 }
 
 func (cs *ClusterSettings) ProtocolVer() string {
@@ -832,7 +832,7 @@ func (cs *ClusterSettings) ProtocolVer() string {
 
 func (cs *ClusterSettings) String() string {
 	return fmt.Sprintf("NodeVersion: %s NodeUUID: %s HttpPort: %s HttpSSLPort: %s EventingDir: %s, NodeUUID: %s SSLCaFile: %s SslCertFile: %s SslKeyFile: %s ClientKeyFile: %s, ClientCertFile: %s",
-		cs.CurrentVersion, cs.UUID, cs.AdminHTTPPort, cs.AdminSSLPort, cs.EventingDir, cs.UUID, cs.SslCAFile, cs.SslCertFile, cs.SslKeyFile, cs.ClientKeyFile, cs.ClientCertFile)
+		cs.NodeCompatVersion, cs.UUID, cs.AdminHTTPPort, cs.AdminSSLPort, cs.EventingDir, cs.UUID, cs.SslCAFile, cs.SslCertFile, cs.SslKeyFile, cs.ClientKeyFile, cs.ClientCertFile)
 }
 
 type Signal struct {

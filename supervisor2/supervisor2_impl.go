@@ -404,7 +404,7 @@ func (s *supervisor) observeStateChanges(ctx context.Context) {
 
 	clusterCompat := clusterCompatChange.(*notifier.Version)
 	// Version can contain build number so clurrent version should be greater than or equals to clusterCompat version
-	if s.clusterSetting.CurrentVersion.Compare(*clusterCompat) {
+	if s.clusterSetting.NodeCompatVersion.Compare(*clusterCompat) {
 		logging.Infof("%s All nodes on a cluster is on same compat version %s. this node will accept life cycle ops", logPrefix, clusterCompat)
 		s.lifeCycleAllowed.Store(true)
 		s.observer.DeregisterEvent(sub, compatVersion)
@@ -428,7 +428,7 @@ func (s *supervisor) observeStateChanges(ctx context.Context) {
 
 			case notifier.EventClusterCompatibilityChanges:
 				clusterCompat := msg.CurrentState.(*notifier.Version)
-				if s.clusterSetting.CurrentVersion.Compare(*clusterCompat) {
+				if s.clusterSetting.NodeCompatVersion.Compare(*clusterCompat) {
 					logging.Infof("%s All nodes on a cluster is on same compat version %s. this node will accept life cycle ops", logPrefix, clusterCompat)
 					s.lifeCycleAllowed.Store(true)
 					s.observer.DeregisterEvent(sub, compatVersion)

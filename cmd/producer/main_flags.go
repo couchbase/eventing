@@ -41,7 +41,8 @@ func initFlags() (*common.ClusterSettings, error) {
 		MaxRunningNodes: maxRunningNode,
 	}
 
-	clusterSetting.CurrentVersion = notifier.VersionFromString(version.EventingVer())
+	nodeVersion := notifier.VersionFromString(version.EventingVer())
+	clusterSetting.NodeCompatVersion = nodeVersion.CompatVersion()
 
 	fset := flag.NewFlagSet(os.Args[0], flag.ContinueOnError)
 	fset.StringVar(&clusterSetting.AdminHTTPPort,
