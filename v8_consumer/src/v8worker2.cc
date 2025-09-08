@@ -60,7 +60,7 @@ bool V8Worker2::DebugExecute(const char *func_name, v8::Local<v8::Value> *args,
 
   // Need to construct origin for source-map to apply
   auto origin_v8_str = v8Str(isolate_, app_details_->app_instance_id + ".js");
-  v8::ScriptOrigin origin(isolate_, origin_v8_str);
+  v8::ScriptOrigin origin(origin_v8_str);
 
   v8::Local<v8::Function> console_log_func;
   if (!TO_LOCAL(
@@ -425,7 +425,7 @@ void V8Worker2::SetCouchbaseNamespace() {
   auto wrapper_source2 =
       v8::String::NewFromUtf8(isolate_, wrapper_function2.c_str())
           .ToLocalChecked();
-  v8::ScriptOrigin origin2(isolate_, couchbase_script_name);
+  v8::ScriptOrigin origin2(couchbase_script_name);
   v8::Local<v8::Script> compiled_script2;
   if (!TO_LOCAL(v8::Script::Compile(context, wrapper_source2, &origin2),
                 &compiled_script2)) {
@@ -503,7 +503,7 @@ void V8Worker2::InstallConstantBindings(
   auto injection_source =
       v8::String::NewFromUtf8(isolate_, injection_code.c_str())
           .ToLocalChecked();
-  v8::ScriptOrigin origin(isolate_, script_name);
+  v8::ScriptOrigin origin(script_name);
   v8::Local<v8::Script> compiled_script;
 
   if (!TO_LOCAL(v8::Script::Compile(context, injection_source, &origin),
@@ -818,7 +818,7 @@ int V8Worker2::Start() {
   auto wrapper_source =
       v8::String::NewFromUtf8(isolate_, wrapper_function.c_str())
           .ToLocalChecked();
-  v8::ScriptOrigin origin(isolate_, script_name);
+  v8::ScriptOrigin origin(script_name);
   v8::Local<v8::Script> compiled_script;
 
   if (!TO_LOCAL(v8::Script::Compile(context, wrapper_source, &origin),
@@ -1049,7 +1049,7 @@ bool V8Worker2::ExecuteScript(const v8::Local<v8::String> &script) {
 
   auto context = context_.Get(isolate_);
   auto script_name = v8Str(isolate_, app_details_->app_instance_id + ".js");
-  v8::ScriptOrigin origin(isolate_, script_name);
+  v8::ScriptOrigin origin(script_name);
 
   v8::Local<v8::Script> compiled_script;
   if (!v8::Script::Compile(context, script, &origin)
@@ -1513,7 +1513,7 @@ std::string V8Worker2::CompileHandler(std::string area_name,
   v8::Context::Scope context_scope(context);
 
   auto script_name = v8Str(isolate_, area_name);
-  v8::ScriptOrigin origin(isolate_, script_name);
+  v8::ScriptOrigin origin(script_name);
 
   v8::Local<v8::Script> compiled_script;
 

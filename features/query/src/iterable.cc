@@ -69,7 +69,6 @@ void Query::Iterable::Impl(const v8::FunctionCallbackInfo<v8::Value> &args) {
   v8::HandleScope handle_scope(isolate);
   auto iterable_impl = UnwrapData(isolate)->query_iterable_impl;
   auto js_exception = UnwrapData(isolate)->js_exception;
-  const auto v8worker = UnwrapData(isolate)->v8worker2;
 
   auto iter_val = args.This()->GetInternalField(InternalField::kIterator);
   auto iterator =
@@ -136,7 +135,6 @@ void Query::IterableImpl::Next(
   auto helper = UnwrapData(isolate)->query_helper;
   auto iterable_result = UnwrapData(isolate)->query_iterable_result;
   auto js_exception = UnwrapData(isolate)->js_exception;
-  const auto v8worker = UnwrapData(isolate)->v8worker2;
 
   auto iter_val = args.This()->GetInternalField(InternalField::kIterator);
   auto iterator =

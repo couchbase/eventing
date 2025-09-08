@@ -216,10 +216,10 @@ private:
   void FreeCurlBindings();
 
   BlockingDeque<std::unique_ptr<messages::worker_request>> *worker_queue_;
-  v8::Persistent<v8::Context> context_;
-  v8::Persistent<v8::Function> on_update_;
-  v8::Persistent<v8::Function> on_delete_;
-  v8::Persistent<v8::Function> on_deploy_;
+  v8::Global<v8::Context> context_;
+  v8::Global<v8::Function> on_update_;
+  v8::Global<v8::Function> on_delete_;
+  v8::Global<v8::Function> on_deploy_;
 
   v8::Isolate *isolate_;
 

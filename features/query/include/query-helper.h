@@ -106,7 +106,7 @@ private:
   ErrorCodesInfo GetErrorCodes(const v8::Local<v8::Value> &errors_val);
 
   v8::Isolate *isolate_;
-  v8::Persistent<v8::Context> context_;
+  v8::Global<v8::Context> context_;
 };
 } // namespace Query
 

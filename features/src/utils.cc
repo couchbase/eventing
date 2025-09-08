@@ -362,8 +362,8 @@ bool IsExecutionTerminating(v8::Isolate *isolate) {
 Utils::Utils(v8::Isolate *isolate, const v8::Local<v8::Context> &context,
              bool isIpv6, std::string certFile, std::string clientCertFile,
              std::string clientKeyFile)
-    : isIpv6_(isIpv6), certFile_(certFile), client_cert_file_(clientCertFile),
-      client_key_file_(clientKeyFile), isolate_(isolate),
+    : certFile_(certFile), client_cert_file_(clientCertFile),
+      client_key_file_(clientKeyFile), isolate_(isolate), isIpv6_(isIpv6),
       curl_handle_(curl_easy_init()) {
   v8::HandleScope handle_scope(isolate_);
 
