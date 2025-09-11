@@ -948,15 +948,19 @@ func (m *serviceMgr) functionName(w http.ResponseWriter, r *http.Request,
 			getAuthErrorInfo(runtimeInfo, notAllowed, false, err)
 			return
 		}
-		rInfo := m.storeFunction(cred, funcDetails)
+		rInfo, created := m.storeFunction(cred, funcDetails)
 		if rInfo.ErrCode != response.Ok {
 			runtimeInfo = rInfo
 			return
 		}
 
+		if created {
+			res.SetRequestEvent(response.EventCreateFunction)
+		}
 		runtimeInfo.Description = "Successfully stored"
 
 	case http.MethodDelete:
+		res.SetRequestEvent(response.EventDeleteFunction)
 		if notAllowed, err := rbac.IsAllowedCreds(cred, perms, false); err != nil {
 			getAuthErrorInfo(runtimeInfo, notAllowed, false, err)
 			return
