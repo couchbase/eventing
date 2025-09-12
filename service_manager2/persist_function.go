@@ -130,7 +130,7 @@ func (m *serviceMgr) storeFunctionList(cred cbauth.Creds, runtimeInfo *response.
 	}
 
 	for _, funcDetails := range funcList {
-		rInfo := m.storeFunction(cred, funcDetails)
+		rInfo, _ := m.storeFunction(cred, funcDetails)
 		if rInfo.ErrCode == response.Ok {
 			funcName := funcDetails.AppLocation.String()
 			importedFuncs = append(importedFuncs, funcName)
@@ -146,9 +146,10 @@ func (m *serviceMgr) storeFunctionList(cred cbauth.Creds, runtimeInfo *response.
 // Store entire function
 // Only metadata remain constant if function is upsert
 // If its a insert then create functions
-func (m *serviceMgr) storeFunction(cred cbauth.Creds, funcDetails *application.FunctionDetails) *response.RuntimeInfo {
+func (m *serviceMgr) storeFunction(cred cbauth.Creds, funcDetails *application.FunctionDetails) (*response.RuntimeInfo, bool) {
 	runtimeInfo := &response.RuntimeInfo{}
 
+	created := false
 	leaderNode := m.superSup.GetLeaderNode()
 	if leaderNode != m.config.UUID {
 		body, _ := json.Marshal(funcDetails)
@@ -158,27 +159,27 @@ func (m *serviceMgr) storeFunction(cred cbauth.Creds, funcDetails *application.F
 		}
 		path := fmt.Sprintf("/api/v1/functions/%s", funcDetails.AppLocation.Appname)
 		redirectRequestToLeader[*response.RuntimeInfo](cred, m.broadcaster, leaderNode, runtimeInfo, path, req, runtimeInfo)
-		return runtimeInfo
+		return runtimeInfo, created
 	}
 
 	m.lifeCycleOpSeq.Lock()
 	defer m.lifeCycleOpSeq.Unlock()
 	// Check for status on all the eventing nodes
-	runtimeInfo, changed := m.verifyAndCreateFunction(cred, funcDetails)
+	runtimeInfo, changed, created := m.verifyAndCreateFunction(cred, funcDetails)
 	if runtimeInfo.ErrCode != response.Ok || !changed {
-		return runtimeInfo
+		return runtimeInfo, created
 	}
 
 	_, config := m.serverConfig.GetServerConfig(funcDetails.MetaInfo.FunctionScopeID)
 	WriteToMetakv(runtimeInfo, config, funcDetails)
 	if runtimeInfo.ErrCode != response.Ok {
-		return runtimeInfo
+		return runtimeInfo, created
 	}
 	runtimeInfo.WarningInfo = determineWarnings(funcDetails)
 
 	// Update the local state with this function details
 	m.updateLocalState(funcDetails)
-	return runtimeInfo
+	return runtimeInfo, created
 }
 
 func (m *serviceMgr) storeFunctionCode(cred cbauth.Creds, appLocation application.AppLocation, appCode string) (runtimeInfo *response.RuntimeInfo) {
@@ -420,16 +421,18 @@ func (m *serviceMgr) verifyFunctionAppCode(runtimeInfo *response.RuntimeInfo, fu
 	}
 }
 
-func (m *serviceMgr) verifyAndCreateFunction(cred cbauth.Creds, fDetails *application.FunctionDetails) (runtimeInfo *response.RuntimeInfo, changed bool) {
+func (m *serviceMgr) verifyAndCreateFunction(cred cbauth.Creds, fDetails *application.FunctionDetails) (runtimeInfo *response.RuntimeInfo, changed bool, created bool) {
 	logPrefix := "serviceMgr::verifyAndCreateFunction"
 
 	runtimeInfo = &response.RuntimeInfo{}
 	changed = true
+	created = false
 
 	currState := application.Undeployed
 	// If function doesn't exist then its created for the first time
 	oldApp, ok := m.appManager.GetApplication(fDetails.AppLocation, false)
 	if !ok {
+		created = true
 		instanceID, err := getFunctionInstanceID()
 		if err != nil {
 			logging.Errorf("%s Unable to create instance id for: %s. err: %v", logPrefix, fDetails.AppLocation, err)

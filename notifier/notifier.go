@@ -192,6 +192,14 @@ func FrameCouchbaseVersionShort(ver string) (version *Version) {
 	return
 }
 
+func (v *Version) CompatVersion() *Version {
+	return &Version{
+		Major:        v.Major,
+		Minor:        v.Minor,
+		IsEnterprise: v.IsEnterprise,
+	}
+}
+
 // Required string is evt-[shortversion]-[buildNumber]-[enterprise]
 func VersionFromString(ver string) *Version {
 	segs := strings.Split(ver, "-")
