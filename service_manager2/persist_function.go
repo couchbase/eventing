@@ -26,7 +26,7 @@ func (m *serviceMgr) checkAndSaveConfig(cred cbauth.Creds, runtimeInfo *response
 			Query:  application.QueryMapNamesapce(namespace),
 		}
 
-		redirectRequestToLeader[*response.RuntimeInfo](cred, m.broadcaster, leaderNode, runtimeInfo, "/api/v1/config", req, runtimeInfo)
+		redirectRequestToLeader(cred, m.broadcaster, leaderNode, runtimeInfo, "/api/v1/config", req, runtimeInfo)
 		return
 	}
 
@@ -39,6 +39,7 @@ func (m *serviceMgr) checkAndSaveConfig(cred cbauth.Creds, runtimeInfo *response
 
 	m.lifeCycleOpSeq.Lock()
 	defer m.lifeCycleOpSeq.Unlock()
+
 	changedFields, configBytes, err := m.serverConfig.UpsertServerConfig(serverConfig.RestApi, keyspaceInfo, data)
 	if err != nil {
 		runtimeInfo.ErrCode = response.ErrInvalidRequest
@@ -79,7 +80,7 @@ func (m *serviceMgr) deleteConfig(cred cbauth.Creds, runtimeInfo *response.Runti
 			Query:  application.QueryMapNamesapce(namespace),
 		}
 
-		redirectRequestToLeader[*response.RuntimeInfo](cred, m.broadcaster, leaderNode, runtimeInfo, "/api/v1/config", req, runtimeInfo)
+		redirectRequestToLeader(cred, m.broadcaster, leaderNode, runtimeInfo, "/api/v1/config", req, runtimeInfo)
 		return
 	}
 
@@ -106,39 +107,75 @@ func (m *serviceMgr) deleteConfig(cred cbauth.Creds, runtimeInfo *response.Runti
 }
 
 // eventing function related ops
-func (m *serviceMgr) storeFunctionList(cred cbauth.Creds, runtimeInfo *response.RuntimeInfo, funcList []*application.FunctionDetails) []string {
-	importedFuncs := make([]string, 0, len(funcList))
-	createdFuncs := make([]*response.RuntimeInfo, 0, len(funcList))
+func (m *serviceMgr) storeFunctionList(cred cbauth.Creds, runtimeInfo *response.RuntimeInfo, extractedList []*application.ExtractedFunction) []string {
+	importedFuncs := make([]string, 0, len(extractedList))
+	responseFuncs := make([]*response.RuntimeInfo, 0, len(extractedList))
+
 	leaderNode := m.superSup.GetLeaderNode()
 	if leaderNode != m.config.UUID {
-		body, _ := json.Marshal(funcList)
+		apps := make([]*application.FunctionDetails, 0, len(extractedList))
+		for _, extractedFunc := range extractedList {
+			if extractedFunc.Err != nil {
+				continue
+			}
+			apps = append(apps, extractedFunc.FunctionDetails)
+		}
+		body, _ := json.Marshal(apps)
 		req := &pc.Request{
 			Body:   body,
 			Method: pc.POST,
 		}
-		createdFuncs = redirectRequestToLeader[[]*response.RuntimeInfo](cred, m.broadcaster, leaderNode, runtimeInfo, "/api/v1/import", req, createdFuncs)
+		createdFuncs := make([]*response.RuntimeInfo, 0, len(apps))
+		createdFuncs = redirectRequestToLeader(cred, m.broadcaster, leaderNode, runtimeInfo, "/api/v1/import", req, createdFuncs)
 		if runtimeInfo.ErrCode == response.Ok {
-			for index, individualRuntimeInfo := range createdFuncs {
-				if individualRuntimeInfo.ErrCode == response.Ok {
-					importedFuncs = append(importedFuncs, funcList[index].AppLocation.String())
+			createdFuncIndex := 0
+			for _, extractedDetails := range extractedList {
+				if extractedDetails.Err != nil {
+					responseFuncs = append(responseFuncs, &response.RuntimeInfo{
+						ErrCode:     response.ErrInvalidRequest,
+						Description: fmt.Sprintf("%v", extractedDetails.Err),
+					})
+					continue
+				}
+
+				if createdFuncIndex < len(createdFuncs) {
+					res := createdFuncs[createdFuncIndex]
+					if res.ErrCode == response.Ok {
+						funcName := extractedDetails.FunctionDetails.AppLocation.String()
+						importedFuncs = append(importedFuncs, funcName)
+					}
+					responseFuncs = append(responseFuncs, createdFuncs[createdFuncIndex])
+					createdFuncIndex++
+				} else {
+					responseFuncs = append(responseFuncs, &response.RuntimeInfo{
+						ErrCode: response.ErrInternalServer,
+					})
 				}
 			}
-			runtimeInfo.Description = createdFuncs
+			runtimeInfo.Description = responseFuncs
 			runtimeInfo.OnlyDescription = true
 		}
 		return importedFuncs
 	}
 
-	for _, funcDetails := range funcList {
+	for _, extractedDetails := range extractedList {
+		if extractedDetails.Err != nil {
+			responseFuncs = append(responseFuncs, &response.RuntimeInfo{
+				ErrCode:     response.ErrInvalidRequest,
+				Description: fmt.Sprintf("%v", extractedDetails.Err),
+			})
+			continue
+		}
+		funcDetails := extractedDetails.FunctionDetails
 		rInfo, _ := m.storeFunction(cred, funcDetails)
 		if rInfo.ErrCode == response.Ok {
 			funcName := funcDetails.AppLocation.String()
 			importedFuncs = append(importedFuncs, funcName)
 		}
-		createdFuncs = append(createdFuncs, rInfo)
+		responseFuncs = append(responseFuncs, rInfo)
 	}
 
-	runtimeInfo.Description = createdFuncs
+	runtimeInfo.Description = responseFuncs
 	runtimeInfo.OnlyDescription = true
 	return importedFuncs
 }
@@ -158,7 +195,7 @@ func (m *serviceMgr) storeFunction(cred cbauth.Creds, funcDetails *application.F
 			Method: pc.POST,
 		}
 		path := fmt.Sprintf("/api/v1/functions/%s", funcDetails.AppLocation.Appname)
-		redirectRequestToLeader[*response.RuntimeInfo](cred, m.broadcaster, leaderNode, runtimeInfo, path, req, runtimeInfo)
+		redirectRequestToLeader(cred, m.broadcaster, leaderNode, runtimeInfo, path, req, runtimeInfo)
 		return runtimeInfo, created
 	}
 
@@ -194,7 +231,7 @@ func (m *serviceMgr) storeFunctionCode(cred cbauth.Creds, appLocation applicatio
 		}
 
 		path := fmt.Sprintf("/api/v1/functions/%s/appcode", appLocation.Appname)
-		redirectRequestToLeader[*response.RuntimeInfo](cred, m.broadcaster, leaderNode, runtimeInfo, path, req, runtimeInfo)
+		redirectRequestToLeader(cred, m.broadcaster, leaderNode, runtimeInfo, path, req, runtimeInfo)
 		return runtimeInfo
 	}
 
@@ -220,7 +257,7 @@ func (m *serviceMgr) storeFunctionCode(cred cbauth.Creds, appLocation applicatio
 		return
 	}
 
-	// Now check the entire cluster for the status
+	// Check for status on all the eventing nodes
 	aggStatus, _ := m.getAggAppsStatus(runtimeInfo, []application.AppLocation{appLocation})
 	if runtimeInfo.ErrCode != response.Ok {
 		return
@@ -231,11 +268,21 @@ func (m *serviceMgr) storeFunctionCode(cred cbauth.Creds, appLocation applicatio
 		runtimeInfo.ErrCode = response.ErrInternalServer
 		return
 	}
-
-	appState := application.StringToAppState(appStatus.CompositeStatus)
-	if appState == application.Deployed || appState == application.Deploying {
+	possibleChanges, err := application.PossibleStateChange(appStatus.CompositeStatus, funcDetails.AppState)
+	if err != nil {
 		runtimeInfo.ErrCode = response.ErrInvalidRequest
-		runtimeInfo.Description = fmt.Sprintf("Function %s is already deployed", appLocation)
+		runtimeInfo.Description = fmt.Sprintf("%v", err)
+		return
+	}
+
+	changed, err := funcDetails.VerifyAppCode(possibleChanges, appCode)
+	if err != nil {
+		runtimeInfo.ErrCode = response.ErrInvalidRequest
+		runtimeInfo.Description = fmt.Sprintf("%v", err)
+		return
+	}
+
+	if !changed {
 		return
 	}
 
@@ -269,7 +316,7 @@ func (m *serviceMgr) storeFunctionBinding(cred cbauth.Creds, appLocation applica
 		}
 
 		path := fmt.Sprintf("/api/v1/functions/%s/config", appLocation.Appname)
-		redirectRequestToLeader[*response.RuntimeInfo](cred, m.broadcaster, leaderNode, runtimeInfo, path, req, runtimeInfo)
+		redirectRequestToLeader(cred, m.broadcaster, leaderNode, runtimeInfo, path, req, runtimeInfo)
 		return runtimeInfo
 	}
 
@@ -337,7 +384,7 @@ func (m *serviceMgr) storeFunctionSettings(cred cbauth.Creds, appLocation applic
 		}
 
 		path := fmt.Sprintf("/api/v1/functions/%s/settings", appLocation.Appname)
-		redirectRequestToLeader[*response.RuntimeInfo](cred, m.broadcaster, leaderNode, runtimeInfo, path, req, runtimeInfo)
+		redirectRequestToLeader(cred, m.broadcaster, leaderNode, runtimeInfo, path, req, runtimeInfo)
 		return runtimeInfo
 	}
 
@@ -432,6 +479,13 @@ func (m *serviceMgr) verifyAndCreateFunction(cred cbauth.Creds, fDetails *applic
 	// If function doesn't exist then its created for the first time
 	oldApp, ok := m.appManager.GetApplication(fDetails.AppLocation, false)
 	if !ok {
+		_, err := application.PossibleStateChange("", fDetails.AppState)
+		if err != nil {
+			runtimeInfo.ErrCode = response.ErrInvalidRequest
+			runtimeInfo.Description = fmt.Sprintf("%v", err)
+			return
+		}
+
 		created = true
 		instanceID, err := getFunctionInstanceID()
 		if err != nil {
@@ -502,9 +556,17 @@ func (m *serviceMgr) verifyAndCreateFunction(cred cbauth.Creds, fDetails *applic
 		default:
 			runtimeInfo.ErrCode = response.ErrInvalidRequest
 			logging.Errorf("%s Function %s is in invalid state %s", logPrefix, fDetails.AppLocation, currState)
-			runtimeInfo.Description = fmt.Sprintf("Function %s is in invalid state", fDetails.AppLocation)
+			runtimeInfo.Description = fmt.Sprintf("Function %s is in %s state. Try again later.", fDetails.AppLocation, currState)
 			return
 		}
+
+		err := oldApp.IsPossibleToMerge(currAppStatus.CompositeStatus, fDetails)
+		if err != nil {
+			runtimeInfo.ErrCode = response.ErrInvalidRequest
+			runtimeInfo.Description = fmt.Sprintf("%v", err)
+			return
+		}
+
 	}
 
 	m.verifyFunctionAppCode(runtimeInfo, fDetails)

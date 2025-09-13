@@ -1,7 +1,6 @@
 package servicemanager2
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
@@ -920,40 +919,38 @@ func (m *serviceMgr) functionName(w http.ResponseWriter, r *http.Request,
 		runtimeInfo.OnlyDescription = true
 
 	case http.MethodPost:
-		data, err := io.ReadAll(r.Body)
-		if err != nil {
-			runtimeInfo.ErrCode = response.ErrReadReq
-			runtimeInfo.Description = fmt.Sprintf("Failed to read request body, err: %v", err)
+		extractedList := m.extractFunctionList(runtimeInfo, nil, r, nil, nil, "")
+		if runtimeInfo.ErrCode != response.Ok {
 			return
 		}
-		data = bytes.Trim(data, "[]\n \t\r\f\v")
-
-		res.AddRequestData("body", string(data))
-		sb := application.StorageBytes{
-			Body: data,
-		}
-		funcDetails, err := application.NewApplication(sb, application.RestApi)
-		if err != nil {
+		if len(extractedList) != 1 {
 			runtimeInfo.ErrCode = response.ErrInvalidRequest
-			runtimeInfo.Description = fmt.Sprintf("%v", err)
+			runtimeInfo.Description = "Only one function can be created/updated at a time"
 			return
 		}
+		if extractedList[0].Err != nil {
+			runtimeInfo.ErrCode = response.ErrInvalidRequest
+			runtimeInfo.Description = fmt.Sprintf("%v", extractedList[0].Err)
+			return
+		}
+		funcDetails := extractedList[0].FunctionDetails
+		res.AddRequestData("body", funcDetails)
 
 		if application.AppLocationInQuery(r.URL.Query()) {
 			funcDetails.AppLocation = appLocation
 		}
 
-		perms = rbac.HandlerManagePermissions(application.Keyspace{Namespace: funcDetails.AppLocation.Namespace})
+		perms := rbac.HandlerManagePermissions(application.Keyspace{Namespace: funcDetails.AppLocation.Namespace})
 		if notAllowed, err := rbac.IsAllowedCreds(cred, perms, false); err != nil {
 			getAuthErrorInfo(runtimeInfo, notAllowed, false, err)
 			return
 		}
+
 		rInfo, created := m.storeFunction(cred, funcDetails)
 		if rInfo.ErrCode != response.Ok {
 			runtimeInfo = rInfo
 			return
 		}
-
 		if created {
 			res.SetRequestEvent(response.EventCreateFunction)
 		}
@@ -994,7 +991,7 @@ func (m *serviceMgr) functionName(w http.ResponseWriter, r *http.Request,
 
 func (m *serviceMgr) extractFunctionList(runtimeInfo *response.RuntimeInfo, cred cbauth.Creds, r *http.Request,
 	filterMap map[string]bool, remap map[string]application.Keyspace,
-	filterType string) (funcList []*application.FunctionDetails) {
+	filterType string) (extractedList []*application.ExtractedFunction) {
 
 	data, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -1014,16 +1011,15 @@ func (m *serviceMgr) extractFunctionList(runtimeInfo *response.RuntimeInfo, cred
 		return
 	}
 
-	funcList = make([]*application.FunctionDetails, 0, len(tempFuncList))
-	for _, app := range tempFuncList {
-		perms := rbac.HandlerManagePermissions(application.Keyspace{Namespace: app.AppLocation.Namespace})
-		if _, err := rbac.IsAllowedCreds(cred, perms, false); err != nil {
+	extractedList = make([]*application.ExtractedFunction, 0, len(tempFuncList))
+	for _, extractedDetails := range tempFuncList {
+		if extractedDetails.Err != nil {
+			extractedList = append(extractedList, extractedDetails)
 			continue
 		}
+		app := extractedDetails.FunctionDetails
 
-		if filterType == "" {
-			funcList = append(funcList, app)
-		} else {
+		if filterType != "" {
 			if applyFilter(app, filterMap, filterType) {
 				val, length, ok := remapContains(remap, app.AppLocation.Namespace.BucketName, app.AppLocation.Namespace.ScopeName, "")
 				if ok {
@@ -1075,13 +1071,20 @@ func (m *serviceMgr) extractFunctionList(runtimeInfo *response.RuntimeInfo, cred
 				}
 				err := m.checkAndChangeName(app)
 				if err != nil {
-					runtimeInfo.ErrCode = response.ErrInternalServer
-					runtimeInfo.Description = fmt.Sprintf("Failed to check and change name for app: %v, err: %v", app, err)
-					return
+					extractedList = append(extractedList, &application.ExtractedFunction{Err: err})
+					continue
 				}
-				funcList = append(funcList, app)
 			}
 		}
+
+		if cred != nil {
+			perms := rbac.HandlerManagePermissions(application.Keyspace{Namespace: app.AppLocation.Namespace})
+			if _, err := rbac.IsAllowedCreds(cred, perms, false); err != nil {
+				extractedList = append(extractedList, &application.ExtractedFunction{Err: err})
+				continue
+			}
+		}
+		extractedList = append(extractedList, &application.ExtractedFunction{FunctionDetails: app})
 	}
 
 	return

@@ -1542,6 +1542,7 @@ var (
 			},
 
 			Deploy: {
+				"-app_code":                   {},
 				"settings.deployment_status":  {},
 				"settings.processing_status":  {},
 				"settings.description":        {},
@@ -1602,6 +1603,40 @@ func (fd *FunctionDetails) IsSourceMutationPossible() bool {
 	}
 
 	return false
+}
+
+// TODO: Use simple ways to verify the changes
+func (oldFd *FunctionDetails) IsPossibleToMerge(compositeStatus string, newFd *FunctionDetails) error {
+	possibleChanges, err := PossibleStateChange(compositeStatus, newFd.AppState)
+	if err != nil {
+		return err
+	}
+
+	if len(possibleChanges) == 0 {
+		return nil
+	}
+	// check for and depcfg and binding changes
+	_, err = oldFd.VerifyAndMergeDepCfg(possibleChanges, newFd.DeploymentConfig, newFd.Bindings)
+	if err != nil {
+		return err
+	}
+
+	settingsMap := make(map[string]any)
+	settingsBytes, _ := json.Marshal(newFd.Settings)
+	settingsMap = make(map[string]any)
+	err = json.Unmarshal(settingsBytes, &settingsMap)
+
+	_, err = oldFd.VerifyAndMergeSettings(possibleChanges, settingsMap)
+	if err != nil {
+		return err
+	}
+
+	_, err = oldFd.VerifyAppCode(possibleChanges, newFd.AppCode)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func PossibleStateChange(currState string, event AppState) (map[string]struct{}, error) {
