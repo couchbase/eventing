@@ -17,9 +17,14 @@ const (
 	oldVersionString = "evt-7.0.0-0000-ee"
 )
 
+type ExtractedFunction struct {
+	FunctionDetails *FunctionDetails
+	Err             error
+}
+
 // NewApplicationListb will unmarshal the storageBytes with respect to byteSource and return list of
-// FunctionDetails
-func NewApplicationList(sb StorageBytes, byteSource source) (funcList []*FunctionDetails, err error) {
+// ExtractedFunction and errors encountered during extraction
+func NewApplicationList(sb StorageBytes, byteSource source) (funcList []*ExtractedFunction, err error) {
 	switch byteSource {
 	case RestApi:
 		data := bytes.Trim(sb.Body, "[]\n \t\r\f\v")
@@ -32,13 +37,14 @@ func NewApplicationList(sb StorageBytes, byteSource source) (funcList []*Functio
 			return nil, err
 		}
 
-		funcList = make([]*FunctionDetails, 0, len(appBytes))
+		funcList = make([]*ExtractedFunction, 0, len(appBytes))
 		for _, funcBytes := range appBytes {
 			funcDetails, err := extractFromRestApi(funcBytes)
 			if err != nil {
+				funcList = append(funcList, &ExtractedFunction{Err: err})
 				continue
 			}
-			funcList = append(funcList, funcDetails)
+			funcList = append(funcList, &ExtractedFunction{FunctionDetails: funcDetails})
 		}
 
 	default:
@@ -62,7 +68,7 @@ func NewApplication(sb StorageBytes, byteSource source) (funcDetails *FunctionDe
 }
 
 type versionCheck struct {
-	Version interface{} `json:"version"`
+	Version any `json:"version"`
 }
 
 func extractFromRestApi(fBytes []byte) (funcDetails *FunctionDetails, err error) {
@@ -222,6 +228,13 @@ func (fd *FunctionDetails) VerifyAndMergeSettings(allowedFields map[string]struc
 		fd.marshalled = nil
 	}
 	return
+}
+
+func (fd *FunctionDetails) VerifyAppCode(allowedFields map[string]struct{}, appCode string) (changed bool, err error) {
+	if _, ok := allowedFields["-app_code"]; ok && fd.AppCode != appCode {
+		return false, fmt.Errorf("app_code is not allowed to be changed")
+	}
+	return fd.AppCode != appCode, nil
 }
 
 func (fd *FunctionDetails) GetStorageBytes(sc StorageConfig) StorageBytes {
