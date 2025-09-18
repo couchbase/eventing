@@ -101,10 +101,14 @@ type client struct {
 	requestChannel chan command
 	recvChannel    chan *memcachedCommand
 
-	connVersion          *atomic.Uint32
-	closed               *atomic.Bool
-	requestRoutineClosed *atomic.Bool
+	connVersion *atomic.Uint32
+	closed      *atomic.Bool
+
+	// ReceiveRoutine will wait for gen_server to get closed and then requestRoutine to get closed
+	// CloseDcpConsumer will wait for receiveRoutine to get closed.
+	receiveRoutineClosed *atomic.Bool
 	genServerClosed      *atomic.Bool
+	requestRoutineClosed *atomic.Bool
 	pendingDcpEvents     []*DcpEvent
 	close                func()
 
@@ -154,14 +158,16 @@ func GetDcpConsumerWithContext(ctx context.Context, config Config, tlsConfig *no
 		sendChannel:          sendChannel,
 		hdrBytes:             make([]byte, hdr_len),
 		dcpEventPool:         dcpEventPool,
-		requestRoutineClosed: &atomic.Bool{},
+		receiveRoutineClosed: &atomic.Bool{},
 		genServerClosed:      &atomic.Bool{},
+		requestRoutineClosed: &atomic.Bool{},
 		pendingDcpEvents:     make([]*DcpEvent, 0),
 		stats:                &stats{},
 	}
 
-	c.requestRoutineClosed.Store(false)
+	c.receiveRoutineClosed.Store(false)
 	c.genServerClosed.Store(false)
+	c.requestRoutineClosed.Store(false)
 	c.closed.Store(false)
 
 	ctx, close := context.WithCancel(ctx)
@@ -174,6 +180,7 @@ func GetDcpConsumerWithContext(ctx context.Context, config Config, tlsConfig *no
 		c.seqMapChannel = make(chan map[uint16]uint64, 1)
 		c.seqConnected = make(chan struct{}, 1)
 		c.seqMap.Store(make(map[uint16]uint64))
+		c.requestRoutineClosed.Store(true) // No request routine
 		go c.requestInternalCommands(ctx)
 
 	case StreamRequestMode:
@@ -344,7 +351,7 @@ func (c *client) CloseDcpConsumer() []*DcpEvent {
 
 	c.close()
 	// wait for request routine to get closed
-	for !c.requestRoutineClosed.Load() {
+	for !c.receiveRoutineClosed.Load() {
 		time.Sleep(5 * time.Millisecond)
 	}
 
@@ -405,6 +412,10 @@ func (c *client) requestInternalCommands(ctx context.Context) {
 
 func (c *client) requestRoutine(ctx context.Context) {
 	logPrefix := fmt.Sprintf("dcpConsumer::requestRoutine[%s]", c.config)
+	defer func() {
+		c.requestRoutineClosed.Store(true)
+	}()
+
 	for {
 		select {
 		case cmd := <-c.requestChannel:
@@ -418,11 +429,7 @@ func (c *client) requestRoutine(ctx context.Context) {
 				// generate error message and put it back into genserver response
 				mcCommand := &memcachedCommand{}
 				mcCommand.createErrorMemcachedCommand(req)
-				select {
-				case c.recvChannel <- mcCommand:
-				case <-ctx.Done():
-					return
-				}
+				c.recvChannel <- mcCommand
 			}
 
 		case <-ctx.Done():
@@ -438,7 +445,9 @@ func (c *client) receiveWorker(ctx context.Context) {
 	defer func() {
 		select {
 		case <-ctx.Done():
-			c.requestRoutineClosed.Store(true)
+			// wait till genserver and request routine gets closed
+			c.waitForRoutineClosed()
+			c.receiveRoutineClosed.Store(true)
 			return
 		default:
 		}
@@ -528,6 +537,11 @@ func (c *client) handleDcpRequest(cmd command) (req *StreamReq, err error) {
 		}
 		err = c.streamRequest(req)
 		if err != nil {
+			// Take the ownership away from request manager
+			mcCommand := &memcachedCommand{}
+			mcCommand.createErrorMemcachedCommand(req)
+			dcpEvent := c.getDcpMsgFilled(mcCommand)
+			req, _ = c.requestManager.doneRequest(dcpEvent)
 			return req, err
 		}
 
@@ -596,6 +610,43 @@ func (c *client) handlePacket(res *memcachedCommand) (msg *DcpEvent, send bool) 
 	return
 }
 
+func (c *client) waitForRoutineClosed() {
+	// First wait till genserver gets closed. This will make sure we have inorder execution of events
+	for !c.genServerClosed.Load() {
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	// First wait till genserver gets closed. This will make sure we have inorder execution of events
+	done := false
+	for !done {
+		select {
+		case cmd := <-c.recvChannel:
+			if cmd.resCommand == DCP_STREAMREQ && cmd.vbucket == uint16(UNKNOWN) {
+				c.pendingDcpEvents = append(c.pendingDcpEvents, c.createStreamEnd(cmd.req))
+			}
+		default:
+			done = true
+		}
+	}
+
+	// wait till request routine gets closed
+	for !c.requestRoutineClosed.Load() {
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	done = false
+	for !done {
+		select {
+		case cmd := <-c.recvChannel:
+			if cmd.resCommand == DCP_STREAMREQ && cmd.vbucket == uint16(UNKNOWN) {
+				c.pendingDcpEvents = append(c.pendingDcpEvents, c.createStreamEnd(cmd.req))
+			}
+		default:
+			done = true
+		}
+	}
+}
+
 func (c *client) initConnection(parent context.Context) (err error) {
 	switch c.config.Mode {
 	case StreamRequestMode:
@@ -607,23 +658,7 @@ func (c *client) initConnection(parent context.Context) (err error) {
 			select {
 			case c.recvChannel <- mcCommand:
 			case <-parent.Done():
-				// First wait till genserver gets closed. This will make sure we have inorder execution of events
-				for !c.genServerClosed.Load() {
-					time.Sleep(5 * time.Millisecond)
-				}
-
-				// First wait till genserver gets closed. This will make sure we have inorder execution of events
-				done := false
-				for !done {
-					select {
-					case cmd := <-c.recvChannel:
-						if cmd.resCommand == DCP_STREAMREQ && cmd.vbucket == uint16(UNKNOWN) {
-							c.pendingDcpEvents = append(c.pendingDcpEvents, c.createStreamEnd(cmd.req))
-						}
-					default:
-						done = true
-					}
-				}
+				c.waitForRoutineClosed()
 
 				// closing signal. Just start pushing into final pendingMutations
 				for _, req := range allRequests[index:] {
