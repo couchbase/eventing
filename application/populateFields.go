@@ -157,6 +157,9 @@ func (settings *HandlerSettings) verifyAndMergeSettings(allowedFields map[string
 					}
 				}
 			}
+			if fieldChanged && len(nHeaders) != 0 {
+				settings.HandlerHeader = nHeaders
+			}
 
 		case handlerFooterJSON:
 			footers := settingValue.([]interface{})
@@ -343,7 +346,7 @@ func (fd *FunctionDetails) settingsMap() map[string]interface{} {
 	settingsMap[handlerHeaderJSON] = headers
 
 	footers := make([]interface{}, 0, len(hSettings.HandlerFooter))
-	for _, footer := range hSettings.HandlerHeader {
+	for _, footer := range hSettings.HandlerFooter {
 		footers = append(footers, footer)
 	}
 	settingsMap[handlerFooterJSON] = footers
