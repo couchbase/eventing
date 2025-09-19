@@ -45,7 +45,7 @@ private:
   void FillTimerPartition(timer::TimerInfo &tinfo, const int32_t &num_vbuckets);
 
   v8::Isolate *isolate_;
-  v8::Persistent<v8::Context> context_;
+  v8::Global<v8::Context> context_;
 };
 
 void CreateTimer(const v8::FunctionCallbackInfo<v8::Value> &args);

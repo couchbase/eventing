@@ -196,8 +196,8 @@ private:
 
   v8::Isolate *isolate_;
   CURL *curl_handle_; // Used only to perform url encode/decode
-  v8::Persistent<v8::Context> context_;
-  v8::Persistent<v8::Object> global_;
+  v8::Global<v8::Context> context_;
+  v8::Global<v8::Object> global_;
   static std::unordered_map<std::string, std::string> enc_to_dec_map;
   static const char *QUESTION_MARK;
   static const char *EQ;

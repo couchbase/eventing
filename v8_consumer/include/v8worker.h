@@ -344,9 +344,9 @@ public:
   inline std::string GetFunctionInstanceID() { return function_instance_id_; }
 
   v8::Isolate *GetIsolate() { return isolate_; }
-  v8::Persistent<v8::Context> context_;
-  v8::Persistent<v8::Function> on_update_;
-  v8::Persistent<v8::Function> on_delete_;
+  v8::Global<v8::Context> context_;
+  v8::Global<v8::Function> on_update_;
+  v8::Global<v8::Function> on_delete_;
 
   std::string app_name_;
   std::string bucket_;
