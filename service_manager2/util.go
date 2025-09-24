@@ -309,6 +309,20 @@ func getAuthErrorInfo(runtimeInfo *response.RuntimeInfo, notAllowed []string, al
 	}
 }
 
+func populateErrorcode(runtimeInfo *response.RuntimeInfo, appLocation application.AppLocation, state application.State) {
+	switch state {
+	case application.Undeployed:
+		runtimeInfo.ErrCode = response.ErrAppNotDeployed
+	case application.Deployed:
+		runtimeInfo.ErrCode = response.ErrAppDeployed
+	case application.Paused:
+		runtimeInfo.ErrCode = response.ErrAppPaused
+	default:
+		runtimeInfo.ErrCode = response.ErrInvalidRequest
+	}
+	runtimeInfo.Description = fmt.Sprintf("Invalid operation. Function: %s already in %s state.", appLocation, state)
+}
+
 func getFunctionID() (uint32, error) {
 	return common.GetRand16Byte()
 }
