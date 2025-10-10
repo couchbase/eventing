@@ -272,7 +272,7 @@ public:
   void TaskDurationWatcher();
 
   int SendUpdate(const std::string &value, const std::string &meta,
-                 const std::string &xattr, bool is_binary);
+                 const uint64_t cas, const std::string &xattr, bool is_binary);
   int SendDelete(const std::string &value, const std::string &meta);
   void SendTimer(std::string callback, std::string timer_ctx);
   std::string Compile(std::string handler);

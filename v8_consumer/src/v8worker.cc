@@ -1086,6 +1086,7 @@ void V8Worker::HandleMutationEvent(const std::unique_ptr<WorkerMessage> &msg) {
 
   const auto doc = flatbuf::payload::GetPayload(
       static_cast<const void *>(msg->payload.payload.c_str()));
+  uint64_t new_cas = 0;
   {
     if (tracker_enabled_) {
       uint64_t cas =
@@ -1097,7 +1098,7 @@ void V8Worker::HandleMutationEvent(const std::unique_ptr<WorkerMessage> &msg) {
       if (cursors.size() > 0) {
         splitString(cursors, cursors_arr, ',');
       }
-      auto [client_err, err_code] = checkpoint_writer_->Write(
+      auto [client_err, err_code, result] = checkpoint_writer_->Write(
           MetaData(parsed_meta->scope, parsed_meta->collection,
                    parsed_meta->key, cas),
           rootcas, cursors_arr);
@@ -1119,11 +1120,12 @@ void V8Worker::HandleMutationEvent(const std::unique_ptr<WorkerMessage> &msg) {
         }
         return;
       }
+      new_cas = result->cas;
     }
   }
 
-  SendUpdate(doc->value()->str(), msg->header.metadata, doc->xattr()->str(),
-             doc->is_binary());
+  SendUpdate(doc->value()->str(), msg->header.metadata, new_cas,
+             doc->xattr()->str(), doc->is_binary());
 }
 
 void V8Worker::HandleNoOpEvent(const std::unique_ptr<WorkerMessage> &msg) {
@@ -1261,7 +1263,8 @@ void V8Worker::UpdateCurlLatencyHistogram(const Time::time_point &start) {
 }
 
 int V8Worker::SendUpdate(const std::string &value, const std::string &meta,
-                         const std::string &xattr, bool is_binary) {
+                         uint64_t new_cas, const std::string &xattr,
+                         bool is_binary) {
   const auto start_time = Time::now();
 
   v8::Locker locker(isolate_);
@@ -1304,6 +1307,13 @@ int V8Worker::SendUpdate(const std::string &value, const std::string &meta,
       if (!r.FromMaybe(true)) {
         LOG(logWarning) << "Create expiry_date failed in OnUpdate" << std::endl;
       }
+    }
+  }
+  if (new_cas != 0) {
+    auto r = js_meta->Set(context, v8Str(isolate_, "cas"),
+                          v8Str(isolate_, std::to_string(new_cas)));
+    if (!r.FromMaybe(true)) {
+      LOG(logWarning) << "Error setting cas in OnUpdate" << std::endl;
     }
   }
 
