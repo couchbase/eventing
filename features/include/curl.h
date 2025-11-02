@@ -163,7 +163,7 @@ private:
 
   CurlClient curl_client_;
   v8::Isolate *isolate_;
-  v8::Persistent<v8::Context> context_;
+  v8::Global<v8::Context> context_;
   std::string user_agent_;
   static CurlStats stats_;
 };
@@ -395,7 +395,7 @@ public:
 private:
   BodyEncoding encoding_;
   v8::Isolate *isolate_;
-  v8::Persistent<v8::Value> body_val_;
+  v8::Global<v8::Value> body_val_;
 };
 
 class CurlRequestBuilder {
@@ -433,7 +433,7 @@ private:
   bool IsCurlLangCompatValid(const std::string &encode);
 
   v8::Isolate *isolate_;
-  v8::Persistent<v8::Context> context_;
+  v8::Global<v8::Context> context_;
   static const char AMP = '&';
   static const char QUESTION_MARK = '?';
   inline static const std::string CURL_LANG_COMPAT[] = {"6.6.2", "7.1.0", "7.2.0"};
@@ -450,8 +450,8 @@ public:
 
 private:
   v8::Isolate *isolate_;
-  v8::Persistent<v8::Context> context_;
-  v8::Persistent<v8::ObjectTemplate> curl_template_;
+  v8::Global<v8::Context> context_;
+  v8::Global<v8::ObjectTemplate> curl_template_;
 };
 
 class CurlResponseBuilder {
@@ -483,7 +483,7 @@ private:
   Info SetBodyAsNull(v8::Local<v8::Object> &response_obj);
 
   v8::Isolate *isolate_;
-  v8::Persistent<v8::Context> context_;
+  v8::Global<v8::Context> context_;
 };
 
 void CurlFunction(const v8::FunctionCallbackInfo<v8::Value> &args);

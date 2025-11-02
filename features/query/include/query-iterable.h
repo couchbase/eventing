@@ -46,8 +46,8 @@ protected:
   };
 
   v8::Isolate *isolate_;
-  v8::Persistent<v8::Context> context_{};
-  v8::Persistent<v8::ObjectTemplate> template_{};
+  v8::Global<v8::Context> context_{};
+  v8::Global<v8::ObjectTemplate> template_{};
 };
 
 class Iterable : public IterableBase {
@@ -105,14 +105,14 @@ public:
 
 private:
   v8::Isolate *isolate_;
-  v8::Persistent<v8::Context> context_{};
-  v8::Persistent<v8::ObjectTemplate> template_{};
+  v8::Global<v8::Context> context_{};
+  v8::Global<v8::ObjectTemplate> template_{};
 };
 
 struct WrapStop {
   explicit WrapStop(v8::Isolate *, std::shared_ptr<Query::Iterator>,
                     v8::Local<v8::Value>);
-  v8::Persistent<v8::Value> value_;
+  v8::Global<v8::Value> value_;
   std::shared_ptr<Query::Iterator> iterator_;
   v8::Isolate *isolate_;
   static void Callback(const v8::WeakCallbackInfo<WrapStop> &);

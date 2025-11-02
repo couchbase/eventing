@@ -26,10 +26,10 @@ constexpr int64_t max_backoff_milliseconds = 30000; // 30 seconds
 template <typename Predicate, typename Callable, typename... Args,
           // figure out what the callable returns
           typename R = typename std::decay<
-              typename std::result_of<Callable &(Args...)>::type>::type,
+              typename std::invoke_result<Callable &, Args...>::type>::type,
           // require that Predicate is actually a Predicate
           typename std::enable_if<
-              std::is_convertible<typename std::result_of<Predicate &(R)>::type,
+              std::is_convertible<typename std::invoke_result<Predicate &, R>::type,
                                   bool>::value,
               int>::type = 0>
 R RetryWithFixedBackoff(int max_retry_count, int64_t initial_delay_milliseconds,
@@ -60,10 +60,10 @@ R RetryWithFixedBackoff(int max_retry_count, int64_t initial_delay_milliseconds,
 template <typename Predicate, typename Callable, typename... Args,
           // figure out what the callable returns
           typename R = typename std::decay<
-              typename std::result_of<Callable &(Args...)>::type>::type,
+              typename std::invoke_result<Callable &, Args...>::type>::type,
           // require that Predicate is actually a Predicate
           typename std::enable_if<
-              std::is_convertible<typename std::result_of<Predicate &(R)>::type,
+              std::is_convertible<typename std::invoke_result<Predicate &, R>::type,
                                   bool>::value,
               int>::type = 0>
 R RetryWithExponentialBackoff(int max_retry_count,

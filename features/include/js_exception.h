@@ -52,7 +52,7 @@ private:
                       const std::string &type_name = "CustomError");
 
   v8::Isolate *isolate_;
-  v8::Persistent<v8::Context> context_;
+  v8::Global<v8::Context> context_;
 };
 
 class JsException {
@@ -61,7 +61,7 @@ public:
   JsException(v8::Isolate *isolate);
   JsException(JsException &&exc_obj);
 
-  // Need to overload '=' as we have members of v8::Persistent type.
+  // Need to overload '=' as we have members of v8::Global type.
   JsException &operator=(JsException &&exc_obj);
 
   void ThrowKVError(const std::string &err_msg);
@@ -83,9 +83,9 @@ private:
   const char *name_str_;
 
   v8::Isolate *isolate_;
-  v8::Persistent<v8::String> code_;
-  v8::Persistent<v8::String> name_;
-  v8::Persistent<v8::String> desc_;
+  v8::Global<v8::String> code_;
+  v8::Global<v8::String> name_;
+  v8::Global<v8::String> desc_;
 };
 
 Info DeriveFromError(v8::Isolate *isolate,

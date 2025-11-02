@@ -115,7 +115,7 @@ private:
                       const char *error_type, bool value);
 
   v8::Isolate *isolate_;
-  v8::Persistent<v8::Context> context_;
+  v8::Global<v8::Context> context_;
 
   const char *cas_str_;
   const char *key_str_;
