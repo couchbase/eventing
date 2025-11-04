@@ -108,7 +108,7 @@ func (wc *appLogCloser) Tail(sz int64) ([]byte, error) {
 	buf := make([]byte, trueSize)
 
 	read, err := fptr.ptr.ReadAt(buf, from)
-	if !errors.Is(err, io.EOF) || read < 0 {
+	if (err != nil && !errors.Is(err, io.EOF)) || read < 0 {
 		return nil, fmt.Errorf("unable to read %v: %v", wc.path, err)
 	}
 	return buf[:read], nil
