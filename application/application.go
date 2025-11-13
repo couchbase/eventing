@@ -724,7 +724,7 @@ func DefaultSettings() HandlerSettings {
 	hSettings.CppWorkerThread = 2
 	hSettings.DcpStreamBoundary = Everything
 	hSettings.LogLevel = INFO
-	hSettings.NumTimerPartition = 256
+	hSettings.NumTimerPartition = 1024
 	hSettings.StatsDuration = 1000
 	hSettings.TimerContextSize = 1024
 	hSettings.WorkerCount = 1
