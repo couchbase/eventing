@@ -275,7 +275,10 @@ func (c *client) Wait() error {
 		return ErrTimeout
 
 	case <-c.seqConnected:
-		c.seqConnected <- struct{}{}
+		select {
+		case c.seqConnected <- struct{}{}:
+		default:
+		}
 	}
 
 	return nil

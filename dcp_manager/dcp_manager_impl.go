@@ -377,7 +377,11 @@ func (m *manager) getDcpConsumerForVb(vb uint16) (notifier.NodeAddress, dcpConn.
 			}
 			consumers3[kvAddress] = dcpConsumer
 			if m.managerConfig.WaitForConnect {
-				dcpConsumer.Wait()
+				err := dcpConsumer.Wait()
+				if err != nil {
+					m.consumersLock.Unlock()
+					return kvAddressStruct, nil, err
+				}
 			}
 			m.consumers.Store(consumers3)
 		}
