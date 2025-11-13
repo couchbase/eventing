@@ -736,7 +736,7 @@ func DefaultSettings() HandlerSettings {
 	hSettings.AllowSyncDocuments = true
 	hSettings.AllowTransactionDocument = false
 	hSettings.CursorAware = false
-	hSettings.CheckInterval = 100
+	hSettings.CheckInterval = 15 * 1000 // 15 seconds
 	hSettings.MaxUnackedBytes = float64(0)
 	hSettings.MaxUnackedCount = float64(100000)
 	hSettings.FlushTimer = 50

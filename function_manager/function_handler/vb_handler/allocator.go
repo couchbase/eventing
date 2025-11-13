@@ -597,10 +597,13 @@ func (al *allocator) GetSeqNumber() {
 
 func (al *allocator) spawnObserver(ctx context.Context) {
 	logPrefix := fmt.Sprintf("allocator::AllocatorDetails[%s]", al.logPrefix)
+	checkInterval := time.NewTicker(100 * time.Millisecond)
 	seqChecker := time.NewTicker(time.Duration(al.config.HandlerSettings.CheckInterval) * time.Millisecond)
 	printLog := time.NewTicker(30 * time.Second)
 
 	defer func() {
+		printLog.Stop()
+		checkInterval.Stop()
 		seqChecker.Stop()
 	}()
 
@@ -608,7 +611,6 @@ func (al *allocator) spawnObserver(ctx context.Context) {
 		select {
 		case <-seqChecker.C:
 			al.GetSeqNumber()
-			al.checkAndMakeRequest()
 
 		case <-al.observerNotifier.Wait():
 			al.observerNotifier.Ready()
@@ -620,6 +622,9 @@ func (al *allocator) spawnObserver(ctx context.Context) {
 				unackedMsg, unackedBytes := worker.unackedDetails.UnackedMessageCount()
 				logging.Infof("%s->%d parallelRequest: %d unackedMsg: %v unackedBytes: %v", logPrefix, index, parallelCount, unackedMsg, unackedBytes)
 			}
+
+		case <-checkInterval.C:
+			al.checkAndMakeRequest()
 
 		case <-ctx.Done():
 			return
