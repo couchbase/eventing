@@ -25,20 +25,6 @@ var (
 		"6.5.0": {},
 		"6.0.0": {},
 	}
-
-	numTimerPartitionValues = map[float64]struct{}{
-		1:    {},
-		2:    {},
-		4:    {},
-		8:    {},
-		16:   {},
-		32:   {},
-		64:   {},
-		128:  {},
-		256:  {},
-		512:  {},
-		1024: {},
-	}
 )
 
 var (
@@ -235,7 +221,7 @@ func ValidateSettings(settings map[string]interface{}) (err error) {
 	for settingField, settingValue := range settings {
 		switch settingField {
 		case cppWorkerThreadJSON:
-			err = typecheck.ValidateInteger[float64](settingValue, lowVal.Set(1), missingOptional, nil)
+			err = typecheck.ValidateInteger(settingValue, lowVal.Set(1), missingOptional, nil)
 
 		case dcpStreamBoundaryJSON:
 			err = typecheck.ValidateString(settingValue, streamBoundaryValues)
@@ -244,43 +230,43 @@ func ValidateSettings(settings map[string]interface{}) (err error) {
 			err = typecheck.ValidateString[[]fmt.Stringer](settingValue, nil)
 
 		case executionTimeoutJSON:
-			err = typecheck.ValidateInteger[float64](settingValue, lowVal.Set(1), missingOptional, nil)
+			err = typecheck.ValidateInteger(settingValue, lowVal.Set(1), missingOptional, nil)
 
 		case cursorCheckpointTimeoutJSON:
-			err = typecheck.ValidateInteger[float64](settingValue, lowVal.Set(1), missingOptional, nil)
+			err = typecheck.ValidateInteger(settingValue, lowVal.Set(1), missingOptional, nil)
 
 		case onDeployTimeoutJSON:
-			err = typecheck.ValidateInteger[float64](settingValue, lowVal.Set(1), missingOptional, nil)
+			err = typecheck.ValidateInteger(settingValue, lowVal.Set(1), missingOptional, nil)
 
 		case langCompatJSON:
 			err = typecheck.ValidateString(settingValue, langCompatibilityValues)
 
 		case lcbInstCapacityJSON:
-			err = typecheck.ValidateInteger[float64](settingValue, lowVal.Set(1), missingOptional, nil)
+			err = typecheck.ValidateInteger(settingValue, lowVal.Set(1), missingOptional, nil)
 
 		case lcbRetryCountJSON:
-			err = typecheck.ValidateInteger[float64](settingValue, lowVal.Set(0), missingOptional, nil)
+			err = typecheck.ValidateInteger(settingValue, lowVal.Set(0), missingOptional, nil)
 
 		case lcbTimeoutJSON:
-			err = typecheck.ValidateInteger[float64](settingValue, lowVal.Set(5), missingOptional, nil)
+			err = typecheck.ValidateInteger(settingValue, lowVal.Set(5), missingOptional, nil)
 
 		case logLevelJSON:
-			err = typecheck.ValidateString[[]fmt.Stringer](settingValue, logLevels)
+			err = typecheck.ValidateString(settingValue, logLevels)
 
 		case n1qlConsistencyJSON:
 			err = typecheck.ValidateString(settingValue, n1qlConsistencyValues)
 
 		case numTimerPartitionJSON:
-			err = typecheck.ValidateInteger[float64](settingValue, missingOptional, missingOptional, numTimerPartitionValues)
+			err = typecheck.ValidateInteger(settingValue, missingOptional, missingOptional, nil)
 
 		case statsDurationJSON:
-			err = typecheck.ValidateInteger[float64](settingValue, lowVal.Set(1), missingOptional, nil)
+			err = typecheck.ValidateInteger(settingValue, lowVal.Set(1), missingOptional, nil)
 
 		case timerContextSizeJSON:
-			err = typecheck.ValidateInteger[float64](settingValue, lowVal.Set(20), highVal.Set(20971520), nil)
+			err = typecheck.ValidateInteger(settingValue, lowVal.Set(20), highVal.Set(20971520), nil)
 
 		case workerCountJSON:
-			err = typecheck.ValidateInteger[float64](settingValue, lowVal.Set(1), missingOptional, nil)
+			err = typecheck.ValidateInteger(settingValue, lowVal.Set(1), missingOptional, nil)
 
 		case n1qlPrepareJSON:
 			err = typecheck.ValidateBoolean(settingValue)
@@ -298,37 +284,37 @@ func ValidateSettings(settings map[string]interface{}) (err error) {
 			err = typecheck.ValidateBoolean(settingValue)
 
 		case appLogMaxSizeJSON:
-			err = typecheck.ValidateInteger[float64](settingValue, lowVal.Set(1024), missingOptional, nil)
+			err = typecheck.ValidateInteger(settingValue, lowVal.Set(1024), missingOptional, nil)
 
 		case appLogMaxFileJSON:
-			err = typecheck.ValidateInteger[float64](settingValue, lowVal.Set(1), missingOptional, nil)
+			err = typecheck.ValidateInteger(settingValue, lowVal.Set(1), missingOptional, nil)
 
 		case checkpointIntervalJSON:
-			err = typecheck.ValidateInteger[float64](settingValue, lowVal.Set(1), missingOptional, nil)
+			err = typecheck.ValidateInteger(settingValue, lowVal.Set(1), missingOptional, nil)
 
 		case bucketCacheSizeJSON:
-			err = typecheck.ValidateInteger[float64](settingValue, lowVal.Set(20971520), missingOptional, nil)
+			err = typecheck.ValidateInteger(settingValue, lowVal.Set(20971520), missingOptional, nil)
 
 		case bucketCacheAgeJSON:
-			err = typecheck.ValidateInteger[float64](settingValue, lowVal.Set(1), missingOptional, nil)
+			err = typecheck.ValidateInteger(settingValue, lowVal.Set(1), missingOptional, nil)
 
 		case curlRespSizeJSON:
-			err = typecheck.ValidateInteger[float64](settingValue, lowVal.Set(0), missingOptional, nil)
+			err = typecheck.ValidateInteger(settingValue, lowVal.Set(0), missingOptional, nil)
 
 		case checkIntervalJSON:
-			err = typecheck.ValidateInteger[float64](settingValue, lowVal.Set(5), missingOptional, nil)
+			err = typecheck.ValidateInteger(settingValue, lowVal.Set(5), missingOptional, nil)
 
 		case maxUnackedBytesJSON:
-			err = typecheck.ValidateInteger[float64](settingValue, lowVal.Set(0), missingOptional, nil)
+			err = typecheck.ValidateInteger(settingValue, lowVal.Set(0), missingOptional, nil)
 
 		case maxUnackedCountJSON:
-			err = typecheck.ValidateInteger[float64](settingValue, lowVal.Set(100), missingOptional, nil)
+			err = typecheck.ValidateInteger(settingValue, lowVal.Set(100), missingOptional, nil)
 
 		case flushTimerJSON:
-			err = typecheck.ValidateInteger[float64](settingValue, lowVal.Set(10), missingOptional, nil)
+			err = typecheck.ValidateInteger(settingValue, lowVal.Set(10), missingOptional, nil)
 
 		case maxParallelVbJSON:
-			err = typecheck.ValidateInteger[float64](settingValue, lowVal.Set(1), missingOptional, nil)
+			err = typecheck.ValidateInteger(settingValue, lowVal.Set(1), missingOptional, nil)
 
 		case allowTransactionDocumentJSON:
 			err = typecheck.ValidateBoolean(settingValue)

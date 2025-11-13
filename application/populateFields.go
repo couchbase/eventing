@@ -2,7 +2,13 @@ package application
 
 import (
 	"fmt"
+	"math"
 )
+
+func adjustNumTimerPartitions(numTimerPartition float64) uint16 {
+	nearestPowerOf2 := 1 << uint16(math.Ceil(math.Log2(numTimerPartition)))
+	return uint16(math.Min(float64(nearestPowerOf2), 1024))
+}
 
 // checkAndPopulateFromSettings will merge field if all the provided settings are as expected
 // allowedFields check which all fields are allowed. If "*" is present then all fields are allowed
@@ -110,9 +116,11 @@ func (settings *HandlerSettings) verifyAndMergeSettings(allowedFields map[string
 			}
 
 		case numTimerPartitionJSON:
-			if nTimerPartition := uint16(settingValue.(float64)); nTimerPartition != settings.NumTimerPartition {
+			providedNumTimerPartition := settingValue.(float64)
+			numTimerPartition := adjustNumTimerPartitions(providedNumTimerPartition)
+			if numTimerPartition != settings.NumTimerPartition {
 				fieldChanged = true
-				settings.NumTimerPartition = nTimerPartition
+				settings.NumTimerPartition = numTimerPartition
 			}
 
 		case statsDurationJSON:
