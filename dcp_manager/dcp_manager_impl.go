@@ -30,7 +30,7 @@ const (
 // lazily open the connection
 type manager struct {
 	id            string
-	mode          dcpConn.Mode
+	managerConfig ManagerType
 	notif         notifier.Observer
 	bucketName    string
 	dcpConnConfig map[dcpConn.ConfigKey]interface{}
@@ -58,18 +58,18 @@ type manager struct {
 	close  func()
 }
 
-func NewDcpManager(mode dcpConn.Mode, id string, bucketName string, notif notifier.Observer, dcpConnConfig map[dcpConn.ConfigKey]interface{}) DcpManager {
-	return NewDcpManagerWithContext(context.Background(), mode, id, bucketName, notif, dcpConnConfig)
+func NewDcpManager(managerConfig ManagerType, id string, bucketName string, notif notifier.Observer, dcpConnConfig map[dcpConn.ConfigKey]interface{}) DcpManager {
+	return NewDcpManagerWithContext(context.Background(), managerConfig, id, bucketName, notif, dcpConnConfig)
 }
 
-func NewDcpManagerWithContext(ctx context.Context, mode dcpConn.Mode, id string, bucketName string, notif notifier.Observer, dcpConnConfig map[dcpConn.ConfigKey]interface{}) DcpManager {
+func NewDcpManagerWithContext(ctx context.Context, managerConfig ManagerType, id string, bucketName string, notif notifier.Observer, dcpConnConfig map[dcpConn.ConfigKey]interface{}) DcpManager {
 	logPrefix := "DcpManager::NewDcpManager"
 
 	m := &manager{
 		id:            id,
 		notif:         notif,
 		bucketName:    bucketName,
-		mode:          mode,
+		managerConfig: managerConfig,
 		dcpConnConfig: dcpConnConfig,
 
 		consumersLock:    &sync.Mutex{},
@@ -124,7 +124,7 @@ func NewDcpManagerWithContext(ctx context.Context, mode dcpConn.Mode, id string,
 	ctx, close := context.WithCancel(ctx)
 	m.close = close
 
-	logging.Infof("%s DcpManager started id: %s for bucketname: %s mode: %v", logPrefix, m.id, m.bucketName, m.mode)
+	logging.Infof("%s DcpManager started id: %s for bucketname: %s mode: %s", logPrefix, m.id, m.bucketName, m.managerConfig)
 	go m.waitForConfigChanges(ctx)
 	go m.receiveChan(ctx)
 	return m
@@ -233,7 +233,10 @@ func (m *manager) GetSeqNumber(vbs []uint16, collectionID string) (map[uint16]ui
 	}
 
 	for _, dcpConsumer := range nodeLists {
-		seqMap := dcpConsumer.GetSeqNumber(collectionID)
+		seqMap, err := dcpConsumer.GetSeqNumber(collectionID)
+		if err != nil {
+			return nil, err
+		}
 		for vb, seq := range seqMap {
 			if _, ok := returnMap[vb]; ok {
 				returnMap[vb] = seq
@@ -343,7 +346,7 @@ func (m *manager) getDcpConsumerForVb(vb uint16) (notifier.NodeAddress, dcpConn.
 			val := r.Intn(100000)
 
 			prefix := eventingPrefix
-			switch m.mode {
+			switch m.managerConfig.Mode {
 			case dcpConn.StreamRequestMode:
 				prefix = eventingStreamPrefix
 
@@ -359,11 +362,12 @@ func (m *manager) getDcpConsumerForVb(vb uint16) (notifier.NodeAddress, dcpConn.
 			clientName := fmt.Sprintf("%s:%s_%s%d", prefix, m.id, hostKvAddress, val)
 
 			config := dcpConn.Config{
-				Mode:            m.mode,
+				Mode:            m.managerConfig.Mode,
 				ClientName:      clientName,
 				BucketName:      m.bucketName,
 				KvAddressStruct: &kvAddressStruct,
 				DcpConfig:       m.dcpConnConfig,
+				SeqChecker:      m.managerConfig.SeqInterval,
 			}
 
 			dcpConsumer = dcpConn.GetDcpConsumer(config, tlsConfig, m.eventReceiveChan, m.dcpEventPool)
@@ -372,7 +376,7 @@ func (m *manager) getDcpConsumerForVb(vb uint16) (notifier.NodeAddress, dcpConn.
 				consumers3[kvAddress] = consumer
 			}
 			consumers3[kvAddress] = dcpConsumer
-			if m.mode != dcpConn.StreamRequestMode {
+			if m.managerConfig.WaitForConnect {
 				dcpConsumer.Wait()
 			}
 			m.consumers.Store(consumers3)

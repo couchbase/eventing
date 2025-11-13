@@ -43,6 +43,7 @@ import (
 const (
 	undeployCheck        = time.Second * 30
 	garbageCollectConfig = time.Minute * 1
+	seqFetchInterval     = time.Millisecond * 100
 )
 
 type stage uint8
@@ -1253,7 +1254,12 @@ func (s *supervisor) CreateInitCheckpoint(runtimeInfo *response.RuntimeInfo, fun
 	manifestID := colManifest.MID
 
 	tmpID := fmt.Sprintf("%s_seq_%s", s.clusterSetting.UUID, funcDetails.AppLocation.Appname)
-	manager := dcpManager.NewDcpManager(dcpMessage.InfoMode, tmpID, funcDetails.DeploymentConfig.SourceKeyspace.BucketName, s.observer, nil)
+	managerConfig := dcpManager.ManagerType{
+		Mode:           dcpMessage.InfoMode,
+		SeqInterval:    seqFetchInterval,
+		WaitForConnect: true,
+	}
+	manager := dcpManager.NewDcpManager(managerConfig, tmpID, funcDetails.DeploymentConfig.SourceKeyspace.BucketName, s.observer, nil)
 	defer manager.CloseManager()
 
 	cc := checkpointManager.CheckpointConfig{

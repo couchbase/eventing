@@ -57,6 +57,7 @@ type allocator struct {
 
 	ownedVbSlice   atomic.Value
 	lastSeqFetched time.Time
+	highSeqNumFor  string
 	highSeqNum     atomic.Value
 
 	observerNotifier  *common.Signal
@@ -118,6 +119,7 @@ func NewAllocatorWithContext(ctx context.Context, logPrefix string, keyspace app
 		al.requestType = dcpMessage.Request_Scope
 
 	case application.RequestCollection:
+		al.highSeqNumFor = config.MetaInfo.SourceID.CollectionID
 		al.requestType = dcpMessage.Request_Collections
 	}
 	ctx2, closeContext := context.WithCancel(ctx)
@@ -585,7 +587,7 @@ func (al *allocator) updateNewOwnership(vbToWorker map[uint16]int) (toOwn, toClo
 }
 
 func (al *allocator) GetSeqNumber() {
-	vbToSeq, err := al.seqManager.GetSeqNumber(al.ownedVbSlice.Load().([]uint16), "")
+	vbToSeq, err := al.seqManager.GetSeqNumber(al.ownedVbSlice.Load().([]uint16), al.highSeqNumFor)
 	if err != nil {
 		return
 	}

@@ -31,7 +31,7 @@ var (
 )
 
 const (
-	seqFetchInterval = 100 * time.Millisecond
+	seqFetchInterval = 5 * time.Second
 )
 
 // Constant values for starting request
@@ -58,6 +58,7 @@ const (
 const (
 	randomVB      = uint16(1024)
 	failoverLogID = uint32(math.MaxUint32)
+	seqNumberID   = uint32(math.MaxUint32 - 1)
 )
 
 type stats struct {
@@ -84,6 +85,11 @@ type stats struct {
 func (s *stats) Copy() *stats {
 	copyStats := *s
 	return &copyStats
+}
+
+type seqResponse struct {
+	collectionID uint32
+	seqMap       map[uint16]uint64
 }
 
 type client struct {
@@ -114,7 +120,7 @@ type client struct {
 
 	// internal request response like GetSeqNumber
 	seqMap                 atomic.Value
-	seqMapChannel          chan map[uint16]uint64
+	seqMapChannel          chan *seqResponse
 	seqConnected           chan struct{}
 	internalCommandChannel map[uint32]map[uint16][]chan interface{}
 
@@ -177,11 +183,12 @@ func GetDcpConsumerWithContext(ctx context.Context, config Config, tlsConfig *no
 	case InfoMode:
 		c.internalCommandChannel = make(map[uint32]map[uint16][]chan interface{})
 		c.internalCommandChannel[failoverLogID] = make(map[uint16][]chan interface{})
-		c.seqMapChannel = make(chan map[uint16]uint64, 1)
+		c.internalCommandChannel[seqNumberID] = make(map[uint16][]chan interface{})
+		c.seqMapChannel = make(chan *seqResponse, 1)
 		c.seqConnected = make(chan struct{}, 1)
 		c.seqMap.Store(make(map[uint16]uint64))
 		c.requestRoutineClosed.Store(true) // No request routine
-		go c.requestInternalCommands(ctx)
+		go c.requestInternalCommands(ctx, config.SeqChecker)
 
 	case StreamRequestMode:
 		c.requestChannel = make(chan command, requestThreshold)
@@ -191,12 +198,13 @@ func GetDcpConsumerWithContext(ctx context.Context, config Config, tlsConfig *no
 	case MixedMode:
 		c.internalCommandChannel = make(map[uint32]map[uint16][]chan interface{})
 		c.internalCommandChannel[failoverLogID] = make(map[uint16][]chan interface{})
-		c.seqMapChannel = make(chan map[uint16]uint64, 1)
+		c.internalCommandChannel[seqNumberID] = make(map[uint16][]chan interface{})
+		c.seqMapChannel = make(chan *seqResponse, 1)
 		c.seqConnected = make(chan struct{}, 1)
 		c.seqMap.Store(make(map[uint16]uint64))
 		c.requestChannel = make(chan command, requestThreshold)
 		c.requestManager = newRequestManager(c.requestChannel)
-		go c.requestInternalCommands(ctx)
+		go c.requestInternalCommands(ctx, config.SeqChecker)
 		go c.requestRoutine(ctx)
 	}
 
@@ -273,8 +281,37 @@ func (c *client) Wait() error {
 	return nil
 }
 
-func (c *client) GetSeqNumber(collectionID string) map[uint16]uint64 {
-	return c.seqMap.Load().(map[uint16]uint64)
+func (c *client) GetSeqNumber(collectionID string) (map[uint16]uint64, error) {
+	if collectionID == "" {
+		return c.seqMap.Load().(map[uint16]uint64), nil
+	}
+
+	seqNumChannel := make(chan interface{}, 1)
+	c.Lock()
+	colMap := c.internalCommandChannel[seqNumberID]
+	collUint32, err := common.GetHexToUint32(collectionID)
+	if err != nil {
+		c.Unlock()
+		return nil, ErrFetchingSeqNum
+	}
+
+	colChan, ok := colMap[uint16(collUint32)]
+	if !ok {
+		colChan = make([]chan any, 1)
+		c.highSeqno(collUint32, uint32(collUint32))
+	}
+	colMap[uint16(collUint32)] = append(colChan, seqNumChannel)
+	c.Unlock()
+
+	t := time.NewTicker(maxInternalCommandWait)
+	defer t.Stop()
+	select {
+	case <-t.C:
+		break
+	case seqMapInterface := <-seqNumChannel:
+		return seqMapInterface.(map[uint16]uint64), nil
+	}
+	return nil, ErrTimeout
 }
 
 func (c *client) GetFailoverLog(vbs []uint16) (failoverLogMap map[uint16]FailoverLog, err error) {
@@ -369,8 +406,11 @@ func (c *client) CloseDcpConsumer() []*DcpEvent {
 }
 
 // Internal functions
-func (c *client) requestInternalCommands(ctx context.Context) {
-	t := time.NewTicker(seqFetchInterval)
+func (c *client) requestInternalCommands(ctx context.Context, seqChecker time.Duration) {
+	if seqChecker <= 0 {
+		seqChecker = seqFetchInterval
+	}
+	t := time.NewTicker(seqChecker)
 	requested := false
 	connected := false
 
@@ -393,16 +433,36 @@ func (c *client) requestInternalCommands(ctx context.Context) {
 			requested = true
 
 		case seqMap := <-c.seqMapChannel:
-			requested = false
 			if seqMap == nil {
+				requested = false
 				continue
 			}
 
+			collectionID := seqMap.collectionID
+			if collectionID != bucketSeq {
+				c.Lock()
+				colMap := c.internalCommandChannel[seqNumberID]
+				recvChannels, ok := colMap[uint16(collectionID)]
+				delete(colMap, uint16(collectionID))
+				c.Unlock()
+				if ok {
+					for _, ch := range recvChannels {
+						select {
+						case ch <- seqMap.seqMap:
+						default:
+						}
+					}
+				}
+				continue
+			}
+
+			requested = false
+			// store it first then do the connection notification
+			c.seqMap.Store(seqMap.seqMap)
 			if !connected {
 				c.seqConnected <- struct{}{}
 				connected = true
 			}
-			c.seqMap.Store(seqMap)
 
 		case <-ctx.Done():
 			return
@@ -713,6 +773,9 @@ func (c *client) requestInternalCommand() {
 		opaque := composeOpaque(vb, vb)
 		c.failoverlog(opaque, vb)
 	}
+	// Since connection is restarted request seqnumber again. Others will be
+	// requested when GetSeqNumber API is called
+	c.internalCommandChannel[seqNumberID] = make(map[uint16][]chan any)
 }
 
 // start the connection and
@@ -1028,7 +1091,10 @@ func (c *client) handleSeqNumber(res *memcachedCommand) {
 		c.seqMapChannel <- nil
 		return
 	}
-	c.seqMapChannel <- seqMap
+	c.seqMapChannel <- &seqResponse{
+		collectionID: res.opaque,
+		seqMap:       seqMap,
+	}
 }
 
 func (c *client) createStreamEnd(req *StreamReq) *DcpEvent {
