@@ -708,6 +708,11 @@ func (m *serviceMgr) functionPause(w http.ResponseWriter, r *http.Request,
 
 	switch r.Method {
 	case http.MethodPost:
+		m.initialChecksforStateChange(runtimeInfo, appLocation, application.Pause)
+		if runtimeInfo.ErrCode != response.Ok {
+			return
+		}
+
 		settings := map[string]interface{}{
 			"deployment_status": true,
 			"processing_status": false,
@@ -758,6 +763,11 @@ func (m *serviceMgr) functionResume(w http.ResponseWriter, r *http.Request,
 
 	switch r.Method {
 	case http.MethodPost:
+		m.initialChecksforStateChange(runtimeInfo, appLocation, application.Deploy)
+		if runtimeInfo.ErrCode != response.Ok {
+			return
+		}
+
 		settings := map[string]interface{}{
 			"deployment_status": true,
 			"processing_status": true,
@@ -808,6 +818,11 @@ func (m *serviceMgr) functionDeploy(w http.ResponseWriter, r *http.Request,
 
 	switch r.Method {
 	case http.MethodPost:
+		m.initialChecksforStateChange(runtimeInfo, appLocation, application.Deploy)
+		if runtimeInfo.ErrCode != response.Ok {
+			return
+		}
+
 		settings := map[string]interface{}{
 			"deployment_status": true,
 			"processing_status": true,
@@ -857,6 +872,11 @@ func (m *serviceMgr) functionUndeploy(w http.ResponseWriter, r *http.Request,
 
 	switch r.Method {
 	case http.MethodPost:
+		m.initialChecksforStateChange(runtimeInfo, appLocation, application.Undeploy)
+		if runtimeInfo.ErrCode != response.Ok {
+			return
+		}
+
 		settings := map[string]interface{}{
 			"deployment_status": false,
 			"processing_status": false,

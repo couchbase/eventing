@@ -57,6 +57,7 @@ type allocator struct {
 
 	ownedVbSlice   atomic.Value
 	lastSeqFetched time.Time
+	highSeqNumFor  string
 	highSeqNum     atomic.Value
 
 	observerNotifier  *common.Signal
@@ -118,6 +119,7 @@ func NewAllocatorWithContext(ctx context.Context, logPrefix string, keyspace app
 		al.requestType = dcpMessage.Request_Scope
 
 	case application.RequestCollection:
+		al.highSeqNumFor = config.MetaInfo.SourceID.CollectionID
 		al.requestType = dcpMessage.Request_Collections
 	}
 	ctx2, closeContext := context.WithCancel(ctx)
@@ -585,7 +587,7 @@ func (al *allocator) updateNewOwnership(vbToWorker map[uint16]int) (toOwn, toClo
 }
 
 func (al *allocator) GetSeqNumber() {
-	vbToSeq, err := al.seqManager.GetSeqNumber(al.ownedVbSlice.Load().([]uint16), "")
+	vbToSeq, err := al.seqManager.GetSeqNumber(al.ownedVbSlice.Load().([]uint16), al.highSeqNumFor)
 	if err != nil {
 		return
 	}
@@ -595,10 +597,13 @@ func (al *allocator) GetSeqNumber() {
 
 func (al *allocator) spawnObserver(ctx context.Context) {
 	logPrefix := fmt.Sprintf("allocator::AllocatorDetails[%s]", al.logPrefix)
+	checkInterval := time.NewTicker(100 * time.Millisecond)
 	seqChecker := time.NewTicker(time.Duration(al.config.HandlerSettings.CheckInterval) * time.Millisecond)
 	printLog := time.NewTicker(30 * time.Second)
 
 	defer func() {
+		printLog.Stop()
+		checkInterval.Stop()
 		seqChecker.Stop()
 	}()
 
@@ -606,7 +611,6 @@ func (al *allocator) spawnObserver(ctx context.Context) {
 		select {
 		case <-seqChecker.C:
 			al.GetSeqNumber()
-			al.checkAndMakeRequest()
 
 		case <-al.observerNotifier.Wait():
 			al.observerNotifier.Ready()
@@ -618,6 +622,9 @@ func (al *allocator) spawnObserver(ctx context.Context) {
 				unackedMsg, unackedBytes := worker.unackedDetails.UnackedMessageCount()
 				logging.Infof("%s->%d parallelRequest: %d unackedMsg: %v unackedBytes: %v", logPrefix, index, parallelCount, unackedMsg, unackedBytes)
 			}
+
+		case <-checkInterval.C:
+			al.checkAndMakeRequest()
 
 		case <-ctx.Done():
 			return

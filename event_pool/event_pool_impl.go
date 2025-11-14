@@ -184,7 +184,11 @@ func (pool *managerPool) GetSeqManager(bucketName string) SeqNumerInterface {
 
 	manager, ok := pool.dcpSeqNumberManager[bucketName]
 	if !ok {
-		manager = dcpManager.NewDcpManager(dcpConn.InfoMode, pool.poolID, bucketName, pool.notif, nil)
+		managerConfig := dcpManager.ManagerType{
+			Mode:        dcpConn.InfoMode,
+			SeqInterval: 0,
+		}
+		manager = dcpManager.NewDcpManager(managerConfig, pool.poolID, bucketName, pool.notif, nil)
 		pool.dcpSeqNumberManager[bucketName] = manager
 	}
 	seqNum := pool.seqNumID
@@ -203,7 +207,11 @@ func (pool *managerPool) GetDcpManagerPool(dcpManagerType DcpManagerType, identi
 
 	switch dcpManagerType {
 	case DedicatedConn:
-		manager = dcpManager.NewDcpManager(dcpConn.StreamRequestMode, identifier, bucketName, pool.notif, nil)
+		managerConfig := dcpManager.ManagerType{
+			Mode:        dcpConn.StreamRequestMode,
+			SeqInterval: 0,
+		}
+		manager = dcpManager.NewDcpManager(managerConfig, identifier, bucketName, pool.notif, nil)
 
 	case CommonConn:
 		var ok bool
@@ -212,7 +220,11 @@ func (pool *managerPool) GetDcpManagerPool(dcpManagerType DcpManagerType, identi
 		defer pool.Unlock()
 		manager, ok = pool.dcpManagers[bucketName]
 		if !ok {
-			manager = dcpManager.NewDcpManager(dcpConn.StreamRequestMode, fmt.Sprintf(commonIdentifier, pool.poolID), bucketName, pool.notif, nil)
+			managerConfig := dcpManager.ManagerType{
+				Mode:        dcpConn.StreamRequestMode,
+				SeqInterval: 0,
+			}
+			manager = dcpManager.NewDcpManager(managerConfig, fmt.Sprintf(commonIdentifier, pool.poolID), bucketName, pool.notif, nil)
 			pool.dcpManagers[bucketName] = manager
 		}
 		managerId = pool.managerID

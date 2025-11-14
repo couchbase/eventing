@@ -102,6 +102,26 @@ func (m *serviceMgr) updateLocalState(funcDetails *application.FunctionDetails) 
 	m.appState.StartStateChange(funcDetails.MetaInfo.Seq, funcDetails.AppLocation, funcDetails.MetaInfo.PrevState, funcDetails.AppState)
 }
 
+func (m *serviceMgr) initialChecksforStateChange(runtimeInfo *response.RuntimeInfo, appLocation application.AppLocation, lifecycleOp application.LifeCycleOp) {
+	state, err := m.appState.GetAppState(appLocation)
+	if err == stateMachine.ErrNoApp {
+		runtimeInfo.ErrCode = response.ErrAppNotFound
+		runtimeInfo.Description = fmt.Sprintf("Function: %s not found", appLocation)
+		return
+	}
+
+	if err != nil {
+		runtimeInfo.ErrCode = response.ErrInternalServer
+		return
+	}
+
+	nextState := application.GetStateFromLifeCycle(lifecycleOp)
+	if nextState == state.State {
+		populateErrorcode(runtimeInfo, appLocation, nextState)
+		return
+	}
+}
+
 func checkKeyspacePermissions(runtimeInfo *response.RuntimeInfo, nextState application.LifeCycleOp, funcDetails *application.FunctionDetails) {
 	if nextState != application.Deploy {
 		return

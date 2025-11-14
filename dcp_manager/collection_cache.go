@@ -84,11 +84,11 @@ func (c *cidToKeyspaceNameCache) refreshManifest(notif notifier.Observer) {
 func (c *cidToKeyspaceNameCache) updateManifestFromServer(manifest *notifier.CollectionManifest) {
 	scopes := make(map[uint32]string)
 	for scopeName, scope := range manifest.Scopes {
-		scopeID, _ := dcpMessage.GetHexToUint32(scope.SID)
+		scopeID, _ := common.GetHexToUint32(scope.SID)
 		scopes[scopeID] = scopeName
 
 		for colName, collection := range scope.Collections {
-			collectionID, _ := dcpMessage.GetHexToUint32(collection.CID)
+			collectionID, _ := common.GetHexToUint32(collection.CID)
 			if _, ok := c.cidToKeyspaceName[collectionID]; ok {
 				continue
 			}

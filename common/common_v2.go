@@ -24,6 +24,18 @@ import (
 	"github.com/couchbase/eventing/notifier"
 )
 
+var (
+	ErrDecodingComponentID = errors.New("error decoding keyspaceComponentId")
+)
+
+func GetHexToUint32(keyspaceComponentHexId string) (uint32, error) {
+	keyspaceComponentId, err := strconv.ParseUint(keyspaceComponentHexId, 16, 32)
+	if err != nil {
+		return 0, ErrDecodingComponentID
+	}
+	return uint32(keyspaceComponentId), nil
+}
+
 type DebuggerOp uint8
 
 const (

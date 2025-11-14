@@ -1,9 +1,22 @@
 package dcpManager
 
 import (
+	"fmt"
+	"time"
+
 	"github.com/couchbase/eventing/common"
 	dcpConn "github.com/couchbase/eventing/dcp_connection"
 )
+
+type ManagerType struct {
+	Mode           dcpConn.Mode
+	SeqInterval    time.Duration
+	WaitForConnect bool
+}
+
+func (mt ManagerType) String() string {
+	return fmt.Sprintf(`{ "mode": %v, "seqInterval": %v }`, mt.Mode, mt.SeqInterval)
+}
 
 // DcpManager manages dcp connection
 // It will send the dcp messages to the receiver

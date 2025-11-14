@@ -3,7 +3,6 @@ package dcpConn
 import (
 	"errors"
 	"fmt"
-	"strconv"
 	"time"
 
 	"github.com/couchbase/eventing/application"
@@ -27,7 +26,7 @@ type DcpConsumer interface {
 	PauseStreamReq(id uint16, vbno uint16)
 	StopStreamReq(id uint16, vbno uint16)
 
-	GetSeqNumber(collectionID string) map[uint16]uint64
+	GetSeqNumber(collectionID string) (map[uint16]uint64, error)
 	GetFailoverLog(vbs []uint16) (map[uint16]FailoverLog, error)
 
 	TlsSettingsChange(config *notifier.TlsConfig)
@@ -50,7 +49,8 @@ type Config struct {
 	BucketName      string                `json:"bucket_name"`
 	KvAddressStruct *notifier.NodeAddress `json:"kv_address"`
 
-	DcpConfig map[ConfigKey]interface{} `json:"dcp_config"`
+	DcpConfig  map[ConfigKey]interface{} `json:"dcp_config"`
+	SeqChecker time.Duration             `json:"seq_checker"`
 }
 
 func (c Config) String() string {
@@ -329,11 +329,3 @@ const (
 	SNAPPY = 0x02
 	XATTR  = 0x04
 )
-
-func GetHexToUint32(keyspaceComponentHexId string) (uint32, error) {
-	keyspaceComponentId, err := strconv.ParseUint(keyspaceComponentHexId, 16, 32)
-	if err != nil {
-		return 0, ErrDecodingComponentID
-	}
-	return uint32(keyspaceComponentId), nil
-}

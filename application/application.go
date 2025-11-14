@@ -724,7 +724,7 @@ func DefaultSettings() HandlerSettings {
 	hSettings.CppWorkerThread = 2
 	hSettings.DcpStreamBoundary = Everything
 	hSettings.LogLevel = INFO
-	hSettings.NumTimerPartition = 256
+	hSettings.NumTimerPartition = 1024
 	hSettings.StatsDuration = 1000
 	hSettings.TimerContextSize = 1024
 	hSettings.WorkerCount = 1
@@ -736,7 +736,7 @@ func DefaultSettings() HandlerSettings {
 	hSettings.AllowSyncDocuments = true
 	hSettings.AllowTransactionDocument = false
 	hSettings.CursorAware = false
-	hSettings.CheckInterval = 50
+	hSettings.CheckInterval = 15 * 1000 // 15 seconds
 	hSettings.MaxUnackedBytes = float64(0)
 	hSettings.MaxUnackedCount = float64(100000)
 	hSettings.FlushTimer = 50
