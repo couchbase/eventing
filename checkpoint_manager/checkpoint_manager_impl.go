@@ -27,12 +27,6 @@ const (
 	updateInterval         = 20 * time.Second
 )
 
-const (
-	checkpointBlobTemplate     = "eventing::%d:"
-	startKeyCheckpointTemplate = checkpointBlobTemplate + ":"
-	endKeyCheckpointTemplate   = checkpointBlobTemplate + "z"
-)
-
 var (
 	errKeyspaceNotFound = errors.New("keyspace not found")
 	errOwnerNotGivenUp  = errors.New("some other node owns this")
@@ -120,7 +114,7 @@ func (vbi *vbBlobInternal) close() (*VbBlob, error) {
 	gocbMutateIn = append(gocbMutateIn, gocb.UpsertSpec("node_uuid", "", upsertOptions))
 	gocbMutateIn, _, _ = vbi.getDirtyUpdates(gocbMutateIn)
 
-	err := subdocUpdate(vbi.collectionHandler.GetCollectionHandle(), vbi.observer, vbi.checkpointConfig.Keyspace, vbi.key, gocbMutateIn)
+	err := subdocUpdate(vbi.collectionHandler.GetCollectionHandle(), vbi.observer, vbi.checkpointConfig.Keyspace, vbi.key, noCas, gocbMutateIn)
 	if errors.Is(err, ErrDocumentNotFound) {
 		return vbi.unsetVbBlobLocked(), nil
 	}
@@ -145,7 +139,7 @@ func (vbi *vbBlobInternal) syncCheckpointBlob() error {
 		return nil
 	}
 
-	err := subdocUpdate(vbi.collectionHandler.GetCollectionHandle(), vbi.observer, vbi.checkpointConfig.Keyspace, vbi.key, gocbMutateIn)
+	err := subdocUpdate(vbi.collectionHandler.GetCollectionHandle(), vbi.observer, vbi.checkpointConfig.Keyspace, vbi.key, noCas, gocbMutateIn)
 	if err != nil {
 		return err
 	}
@@ -273,7 +267,7 @@ func (vbi *vbBlobInternal) syncFromServerAndOwnTheKey(forced bool) (string, erro
 
 	gocbMutateIn := vbi.collectionHandler.GetGocbMutateIn()
 	gocbMutateIn = append(gocbMutateIn, gocb.UpsertSpec("node_uuid", vbi.checkpointConfig.OwnerNodeUUID, upsertOptions))
-	err = subdocUpdate(vbi.collectionHandler.GetCollectionHandle(), vbi.observer, vbi.checkpointConfig.Keyspace, vbi.key, gocbMutateIn)
+	err = subdocUpdate(vbi.collectionHandler.GetCollectionHandle(), vbi.observer, vbi.checkpointConfig.Keyspace, vbi.key, noCas, gocbMutateIn)
 	if err != nil {
 		vbi.vbBlob = nil
 		return "", fmt.Errorf("error updating node_uuid: %v", err)
@@ -311,7 +305,7 @@ type stats struct {
 type checkpointManager struct {
 	sync.RWMutex
 
-	prefix            string
+	prefixTemplate    string
 	checkpointConfig  CheckpointConfig
 	observer          notifier.Observer
 	interruptCallback InterruptFunction
@@ -351,7 +345,7 @@ func NewCheckpointManagerForKeyspaceWithContext(ctx context.Context, cc Checkpoi
 	logPrefix := "checkpointManager::NewCheckpointManager"
 	cm := &checkpointManager{
 		checkpointConfig:  cc,
-		prefix:            getCheckpointKeyTemplate(cc.AppID),
+		prefixTemplate:    getCheckpointKeyTemplate(cc.AppID, cc.AppInstance, cc.AppLocation),
 		interruptCallback: interruptCallback,
 		observer:          observer,
 		broadcaster:       broadcaster,
@@ -524,10 +518,6 @@ func (cm *checkpointManager) WaitTillAllGiveUp(numVbs uint16) {
 	}
 }
 
-func (cm *checkpointManager) GetKeyPrefix() string {
-	return cm.prefix
-}
-
 func (cm *checkpointManager) CloseCheckpointManager() {
 	cm.close()
 
@@ -590,8 +580,8 @@ func (cm *checkpointManager) OwnershipSnapshot(snapshot *common.AppRebalanceProg
 
 // GetAllCheckpoints returns all the metadata checkpoints (vb and timer) for the app
 func (cm *checkpointManager) GetAllCheckpoints(appId uint32) (*gocb.ScanResult, error) {
-	startKey := fmt.Sprintf(startKeyCheckpointTemplate, appId)
-	endKey := fmt.Sprintf(endKeyCheckpointTemplate, appId)
+	startKey := fmt.Sprintf(checkpointTemplatePrefix, appId) + ":"
+	endKey := fmt.Sprintf(checkpointTemplatePrefix, appId) + "z"
 	return scan(cm.getCollectionHandle(), cm.observer, cm.checkpointConfig.Keyspace, startKey, endKey, true)
 }
 
@@ -633,7 +623,8 @@ func (cm *checkpointManager) GetRuntimeStats() common.StatsInterface {
 func (cm *checkpointManager) TryTobeLeader(lType leaderType, seq uint32) (bool, error) {
 	switch lType {
 	case DebuggerLeader:
-		result, checkpoint, err := getDebuggerCheckpoint(cm.getCollectionHandle(), cm.observer, cm.checkpointConfig.Keyspace, cm.checkpointConfig.AppID)
+		result, checkpoint, err := getDebuggerCheckpoint(cm.getCollectionHandle(), cm.observer, cm.checkpointConfig.Keyspace,
+			cm.checkpointConfig.AppID, cm.checkpointConfig.AppInstance, cm.checkpointConfig.AppLocation)
 		// Already someone deleted the file. Maybe someone stopped the debugger
 		if errors.Is(err, ErrDocumentNotFound) {
 			return false, nil
@@ -644,7 +635,7 @@ func (cm *checkpointManager) TryTobeLeader(lType leaderType, seq uint32) (bool, 
 		}
 
 		checkpoint.LeaderElected = true
-		key := getDebuggerKey(cm.checkpointConfig.AppID)
+		key := getDebuggerKey(cm.checkpointConfig.AppID, cm.checkpointConfig.AppInstance, cm.checkpointConfig.AppLocation)
 		err = replace(cm.getCollectionHandle(), cm.observer, cm.checkpointConfig.Keyspace, key, checkpoint, result.Result.Cas())
 		if errors.Is(err, gocb.ErrCasMismatch) || errors.Is(err, ErrDocumentNotFound) {
 			return false, nil
@@ -960,7 +951,7 @@ func (cm *checkpointManager) closeOwnership(vb uint16, vbi *vbBlobInternal) (*Vb
 }
 
 func (cm *checkpointManager) getKey(vb uint16) string {
-	return cm.prefix + fmt.Sprintf(":%d", vb)
+	return fmt.Sprintf("%s%d", cm.prefixTemplate, vb)
 }
 
 func (cm *checkpointManager) ownershipTakeover() map[string][]uint16 {
@@ -1163,7 +1154,7 @@ func (cm *checkpointManager) PublishOnDeployStatus(status OnDeployState) *OnDepl
 	key := getOnDeployKey(cm.checkpointConfig.AppLocation)
 
 	for {
-		err := subdocUpdateUsingCas(cm.getCollectionHandle(), cm.observer, cm.checkpointConfig.Keyspace, key, cas, mutateIn)
+		err := subdocUpdate(cm.getCollectionHandle(), cm.observer, cm.checkpointConfig.Keyspace, key, cas, mutateIn)
 		if err != nil {
 			if errors.Is(err, ErrDocumentNotFound) {
 				checkpoint.Status = FailedStateOnDeploy

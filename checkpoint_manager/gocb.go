@@ -16,6 +16,10 @@ import (
 
 type GocbLogger struct{}
 
+const (
+	noCas = gocb.Cas(0)
+)
+
 func (r *GocbLogger) Log(level gocb.LogLevel, offset int, format string, v ...interface{}) error {
 	// TODO: Add logging for gocb based on level
 	// logging.Infof(format, v...)
@@ -304,25 +308,7 @@ func replace(collection *gocb.Collection, observer notifier.Observer, keyspace a
 	return err
 }
 
-func subdocUpdate(collection *gocb.Collection, observer notifier.Observer, keyspace application.Keyspace, key string, mutateSpec []gocb.MutateInSpec) error {
-	mutateInOption := &gocb.MutateInOptions{
-		Timeout: opsTimeout,
-	}
-
-	_, err := collection.MutateIn(key, mutateSpec, mutateInOption)
-	if err != nil {
-		if errors.Is(err, gocb.ErrDocumentNotFound) {
-			return ErrDocumentNotFound
-		}
-
-		if !common.CheckKeyspaceExist(observer, keyspace) {
-			return errKeyspaceNotFound
-		}
-	}
-	return err
-}
-
-func subdocUpdateUsingCas(collection *gocb.Collection, observer notifier.Observer, keyspace application.Keyspace, key string, cas gocb.Cas, mutateSpec []gocb.MutateInSpec) error {
+func subdocUpdate(collection *gocb.Collection, observer notifier.Observer, keyspace application.Keyspace, key string, cas gocb.Cas, mutateSpec []gocb.MutateInSpec) error {
 	mutateInOption := &gocb.MutateInOptions{
 		Timeout: opsTimeout,
 		Cas:     cas,
