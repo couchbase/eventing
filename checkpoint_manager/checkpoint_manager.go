@@ -36,6 +36,7 @@ var (
 type CheckpointConfig struct {
 	AppLocation  application.AppLocation
 	Keyspace     application.Keyspace
+	AppInstance  string
 	AppID        uint32
 	LocalAddress string
 	KvPort       string
@@ -85,7 +86,7 @@ const (
 type InterruptFunction func(msg OwnMsg, vb uint16, vbBlob *VbBlob)
 
 type BucketCheckpoint interface {
-	GetCheckpointManager(appId uint32, interruptCallback InterruptFunction, appLocation application.AppLocation, keyspace application.Keyspace) Checkpoint
+	GetCheckpointManager(appId uint32, appInstanceID string, interruptCallback InterruptFunction, appLocation application.AppLocation, keyspace application.Keyspace) Checkpoint
 	TlsSettingChange(gocbCluster *gocb.Cluster)
 	CloseBucketManager()
 }
@@ -113,7 +114,6 @@ type Checkpoint interface {
 
 	TlsSettingChange(*gocb.Bucket)
 	WaitTillAllGiveUp(vbs uint16)
-	GetKeyPrefix() string
 
 	GetAllCheckpoints(appId uint32) (*gocb.ScanResult, error)
 	GetRuntimeStats() common.StatsInterface

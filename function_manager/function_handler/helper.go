@@ -28,10 +28,9 @@ const (
 )
 
 const (
-	eventingXattr    = "_eventing"
-	syncgatewayXattr = "_sync"
-	mouXattr         = "_mou"
-	checkpointXattr  = "_checkpoints"
+	eventingXattr   = "_eventing"
+	mouXattr        = "_mou"
+	checkpointXattr = "_checkpoints"
 )
 
 // Sequential event processing

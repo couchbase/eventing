@@ -37,8 +37,9 @@ func NewBucketCheckpointManager(clusterSettings *common.ClusterSettings, bucketN
 	return bCheckpoint
 }
 
-func (bCheckpoint *bucketCheckpoint) GetCheckpointManager(appID uint32, interruptCallback InterruptFunction, appLocation application.AppLocation, keyspace application.Keyspace) Checkpoint {
+func (bCheckpoint *bucketCheckpoint) GetCheckpointManager(appID uint32, appInstanceID string, interruptCallback InterruptFunction, appLocation application.AppLocation, keyspace application.Keyspace) Checkpoint {
 	cc := CheckpointConfig{
+		AppInstance:   appInstanceID,
 		AppLocation:   appLocation,
 		Keyspace:      keyspace,
 		AppID:         appID,
@@ -142,10 +143,6 @@ func (cw *checkpointWrapper) SyncUpsertCheckpoint(vb uint16, vbBlob *VbBlob) err
 
 func (cw *checkpointWrapper) TlsSettingChange(bucket *gocb.Bucket) {
 	cw.checkpoint.TlsSettingChange(bucket)
-}
-
-func (cw *checkpointWrapper) GetKeyPrefix() string {
-	return cw.checkpoint.GetKeyPrefix()
 }
 
 func (cw *checkpointWrapper) GetAllCheckpoints(appId uint32) (*gocb.ScanResult, error) {

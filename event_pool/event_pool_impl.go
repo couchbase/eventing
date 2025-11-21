@@ -225,7 +225,7 @@ func (pool *managerPool) GetDcpManagerPool(dcpManagerType DcpManagerType, identi
 	return m
 }
 
-func (pool *managerPool) GetCheckpointManager(appId uint32, interruptCallback checkpointManager.InterruptFunction, appLocation application.AppLocation, keyspace application.Keyspace) checkpointManager.Checkpoint {
+func (pool *managerPool) GetCheckpointManager(appId uint32, appInstanceID string, interruptCallback checkpointManager.InterruptFunction, appLocation application.AppLocation, keyspace application.Keyspace) checkpointManager.Checkpoint {
 	pool.Lock()
 	manager, ok := pool.checkpointManagers[keyspace.BucketName]
 	if !ok {
@@ -235,7 +235,7 @@ func (pool *managerPool) GetCheckpointManager(appId uint32, interruptCallback ch
 	pool.Unlock()
 
 	manager.TlsSettingChange(pool.gocbCluster.Load())
-	return manager.GetCheckpointManager(appId, interruptCallback, appLocation, keyspace)
+	return manager.GetCheckpointManager(appId, appInstanceID, interruptCallback, appLocation, keyspace)
 }
 
 func (pool *managerPool) CloseConditional() {

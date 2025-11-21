@@ -440,7 +440,7 @@ func (fHandler *funcHandler) initOnDeploy() {
 	}
 
 	fHandler.instanceID = []byte(fHandler.fd.AppInstanceID)
-	fHandler.checkpointManager.Store(fHandler.pool.GetCheckpointManager(fHandler.fd.AppID, fHandler.interrupt, fHandler.fd.AppLocation, fHandler.fd.DeploymentConfig.MetaKeyspace))
+	fHandler.checkpointManager.Store(fHandler.pool.GetCheckpointManager(fHandler.fd.AppID, fHandler.fd.AppInstanceID, fHandler.interrupt, fHandler.fd.AppLocation, fHandler.fd.DeploymentConfig.MetaKeyspace))
 	fHandler.isSrcMutationPossible = fHandler.fd.IsSourceMutationPossible()
 }
 
@@ -471,7 +471,7 @@ func (fHandler *funcHandler) changeState(seq uint32, re RuntimeEnvironment, next
 			// Delete all the checkpoints along with normal checkpoints
 			// Delete everything no need to wait for c++ response
 			// Initilise checkpoint mgr
-			newCheckpointMgr := fHandler.pool.GetCheckpointManager(fHandler.fd.AppID, fHandler.interrupt, fHandler.fd.AppLocation, fHandler.fd.DeploymentConfig.MetaKeyspace)
+			newCheckpointMgr := fHandler.pool.GetCheckpointManager(fHandler.fd.AppID, fHandler.fd.AppInstanceID, fHandler.interrupt, fHandler.fd.AppLocation, fHandler.fd.DeploymentConfig.MetaKeyspace)
 			oldCheckpointMgr := fHandler.checkpointManager.Swap(newCheckpointMgr)
 			fHandler.currState.changeStateTo(seq, undeploying)
 			oldCheckpointMgr.CloseCheckpointManager()
@@ -646,7 +646,7 @@ func (fHandler *funcHandler) spawnFunction(re RuntimeEnvironment) {
 	// This will make sure we get recent config
 	fHandler.config = nil
 	fHandler.notifyGlobalConfigChange()
-	checkpointMgr := fHandler.checkpointManager.Swap(fHandler.pool.GetCheckpointManager(fHandler.fd.AppID, fHandler.interrupt, fHandler.fd.AppLocation, fHandler.fd.DeploymentConfig.MetaKeyspace))
+	checkpointMgr := fHandler.checkpointManager.Swap(fHandler.pool.GetCheckpointManager(fHandler.fd.AppID, fHandler.fd.AppInstanceID, fHandler.interrupt, fHandler.fd.AppLocation, fHandler.fd.DeploymentConfig.MetaKeyspace))
 	checkpointMgr.CloseCheckpointManager()
 
 	if fHandler.funcHandlerConfig.LeaderHandler {

@@ -11,18 +11,30 @@ import (
 )
 
 const (
-	checkpointPrefixTemplate  = "eventing::%d::"
-	debuggerKeyTemplate       = checkpointPrefixTemplate + "debugger"
+	checkpointTemplatePrefix  = "eventing::%d:"
+	checkpointTemplate        = checkpointTemplatePrefix + ":%s::"
+	checkpointBlobTemplate    = checkpointTemplate + "vb::"
+	debuggerKeyTemplate       = checkpointTemplate + "debugger"
 	onDeployLeaderKeyTemplate = "%s::onDeployLeader"
 )
 
 // GetCheckpointKeyTemplate returns checkpoint blob key
 func GetCheckpointKeyTemplate(appId uint32) string {
-	return getCheckpointKeyTemplate(appId)
+	return fmt.Sprintf(checkpointTemplatePrefix, appId)
 }
 
-func getCheckpointKeyTemplate(appId uint32) string {
-	return fmt.Sprintf(checkpointBlobTemplate, appId)
+func getCheckpointKeyTemplate(appId uint32, prefix string, appLocation application.AppLocation) string {
+	if appLocation.Namespace.BucketName == application.GlobalValue {
+		prefix = appLocation.Appname
+	}
+	return fmt.Sprintf(checkpointBlobTemplate, appId, prefix)
+}
+
+func getDebuggerKey(appId uint32, prefix string, appLocation application.AppLocation) string {
+	if appLocation.Namespace.BucketName == application.GlobalValue {
+		prefix = appLocation.Appname
+	}
+	return fmt.Sprintf(debuggerKeyTemplate, appId, prefix)
 }
 
 // For debugger checkpointing
@@ -32,7 +44,8 @@ type debuggerCheckpoint struct {
 	Url           string `json:"url"`
 }
 
-func WriteDebuggerCheckpoint(collectionHandle *gocb.Collection, observer notifier.Observer, keyspace application.Keyspace, id uint32) (string, error) {
+func WriteDebuggerCheckpoint(collectionHandle *gocb.Collection, observer notifier.Observer,
+	keyspace application.Keyspace, id uint32, instanceID string, appLocation application.AppLocation) (string, error) {
 	token, err := common.RandomID()
 	if err != nil {
 		return "", err
@@ -42,18 +55,20 @@ func WriteDebuggerCheckpoint(collectionHandle *gocb.Collection, observer notifie
 		Token: token,
 	}
 
-	key := fmt.Sprintf(debuggerKeyTemplate, id)
+	key := getDebuggerKey(id, instanceID, appLocation)
 	err = upsert(collectionHandle, observer, keyspace, key, dCheckpoint)
 	return token, err
 }
 
-func DeleteDebuggerCheckpoint(collectionHandle *gocb.Collection, observer notifier.Observer, keyspace application.Keyspace, id uint32) error {
-	key := fmt.Sprintf(debuggerKeyTemplate, id)
+func DeleteDebuggerCheckpoint(collectionHandle *gocb.Collection, observer notifier.Observer,
+	keyspace application.Keyspace, id uint32, instanceID string, appLocation application.AppLocation) error {
+	key := getDebuggerKey(id, instanceID, appLocation)
 	return remove(collectionHandle, observer, keyspace, key)
 }
 
-func GetDebuggerURL(collectionHandle *gocb.Collection, observer notifier.Observer, keyspace application.Keyspace, id uint32) (string, error) {
-	_, checkpoint, err := getDebuggerCheckpoint(collectionHandle, observer, keyspace, id)
+func GetDebuggerURL(collectionHandle *gocb.Collection, observer notifier.Observer,
+	keyspace application.Keyspace, id uint32, instanceID string, appLocation application.AppLocation) (string, error) {
+	_, checkpoint, err := getDebuggerCheckpoint(collectionHandle, observer, keyspace, id, instanceID, appLocation)
 	if err != nil {
 		return "", err
 	}
@@ -61,26 +76,24 @@ func GetDebuggerURL(collectionHandle *gocb.Collection, observer notifier.Observe
 	return checkpoint.Url, nil
 }
 
-func WriteDebuggerUrl(collectionHandle *gocb.Collection, observer notifier.Observer, keyspace application.Keyspace, id uint32, url string) error {
-	result, checkpoint, err := getDebuggerCheckpoint(collectionHandle, observer, keyspace, id)
+func WriteDebuggerUrl(collectionHandle *gocb.Collection, observer notifier.Observer, keyspace application.Keyspace, id uint32,
+	instanceID string, appLocation application.AppLocation, url string) error {
+	result, checkpoint, err := getDebuggerCheckpoint(collectionHandle, observer, keyspace, id, instanceID, appLocation)
 	if err != nil {
 		return err
 	}
 	checkpoint.Url = url
 
-	key := fmt.Sprintf(debuggerKeyTemplate, id)
+	key := getDebuggerKey(id, instanceID, appLocation)
 	return replace(collectionHandle, observer, keyspace, key, checkpoint, result.Result.Cas())
 }
 
-func getDebuggerCheckpoint(collectionHandle *gocb.Collection, observer notifier.Observer, keyspace application.Keyspace, id uint32) (*gocb.GetResult, *debuggerCheckpoint, error) {
-	prefix := getDebuggerKey(id)
+func getDebuggerCheckpoint(collectionHandle *gocb.Collection, observer notifier.Observer, keyspace application.Keyspace, id uint32,
+	instanceID string, appLocation application.AppLocation) (*gocb.GetResult, *debuggerCheckpoint, error) {
+	prefix := getDebuggerKey(id, instanceID, appLocation)
 	checkpoint := &debuggerCheckpoint{}
 	result, err := get(collectionHandle, observer, keyspace, prefix, checkpoint)
 	return result, checkpoint, err
-}
-
-func getDebuggerKey(appId uint32) string {
-	return fmt.Sprintf(debuggerKeyTemplate, appId)
 }
 
 func SetDebuggerCallback(appLocation application.AppLocation, value []byte) error {
