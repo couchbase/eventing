@@ -97,9 +97,9 @@ func (m *serviceMgr) getServerMux() *http.ServeMux {
 	mux.HandleFunc("/resetStatsCounters", m.clearEventStats)
 	mux.HandleFunc("/resetNodeStatsCounters", m.clearNodeEventStats)
 	mux.HandleFunc("/cleanupEventing", m.cleanupEventing)
-	mux.HandleFunc("/startDebugger", m.startDebugger)
-	mux.HandleFunc("/getDebuggerUrl", m.getDebuugerUrl)
-	mux.HandleFunc("/stopDebugger", m.stopDebugger)
+	mux.HandleFunc("/startDebugger/", m.startDebugger)
+	mux.HandleFunc("/getDebuggerUrl/", m.getDebuugerUrl)
+	mux.HandleFunc("/stopDebugger/", m.stopDebugger)
 	mux.HandleFunc("/writeDebuggerURL", m.writeDebuggerURLHandler)
 
 	mux.HandleFunc("/api/v1/list/functions", m.listFunctions)

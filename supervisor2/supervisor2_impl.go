@@ -1263,6 +1263,7 @@ func (s *supervisor) CreateInitCheckpoint(runtimeInfo *response.RuntimeInfo, fun
 	defer manager.CloseManager()
 
 	cc := checkpointManager.CheckpointConfig{
+		AppInstance:   funcDetails.AppInstanceID,
 		AppLocation:   funcDetails.AppLocation,
 		Keyspace:      funcDetails.DeploymentConfig.MetaKeyspace,
 		AppID:         funcDetails.AppID,
@@ -1391,7 +1392,7 @@ func (s *supervisor) DebuggerOp(op common.DebuggerOp, funcDetails *application.F
 
 	switch op {
 	case common.StartDebuggerOp:
-		token, err := checkpointManager.WriteDebuggerCheckpoint(collectionHandler, s.observer, metadataKeyspace, funcDetails.AppID)
+		token, err := checkpointManager.WriteDebuggerCheckpoint(collectionHandler, s.observer, metadataKeyspace, funcDetails.AppID, funcDetails.AppInstanceID, funcDetails.AppLocation)
 		if err != nil {
 			logging.Errorf("%s Error writing debugger checkpoint: %v", logPrefix, err)
 			return "", err
@@ -1401,13 +1402,13 @@ func (s *supervisor) DebuggerOp(op common.DebuggerOp, funcDetails *application.F
 		if err != nil {
 			logging.Errorf("%s Error setting debugger callback: %v", logPrefix, err)
 			// Try it once and leave it
-			checkpointManager.DeleteDebuggerCheckpoint(collectionHandler, s.observer, metadataKeyspace, funcDetails.AppID)
+			checkpointManager.DeleteDebuggerCheckpoint(collectionHandler, s.observer, metadataKeyspace, funcDetails.AppID, funcDetails.AppInstanceID, funcDetails.AppLocation)
 			return "", err
 		}
 		return token, nil
 
 	case common.StopDebuggerOp:
-		err := checkpointManager.DeleteDebuggerCheckpoint(collectionHandler, s.observer, metadataKeyspace, funcDetails.AppID)
+		err := checkpointManager.DeleteDebuggerCheckpoint(collectionHandler, s.observer, metadataKeyspace, funcDetails.AppID, funcDetails.AppInstanceID, funcDetails.AppLocation)
 		if err != nil {
 			logging.Errorf("%s Error deleting debugger checkpoint: %v", logPrefix, err)
 			return "", err
@@ -1420,7 +1421,7 @@ func (s *supervisor) DebuggerOp(op common.DebuggerOp, funcDetails *application.F
 		return "", nil
 
 	case common.GetDebuggerURl:
-		url, err := checkpointManager.GetDebuggerURL(collectionHandler, s.observer, metadataKeyspace, funcDetails.AppID)
+		url, err := checkpointManager.GetDebuggerURL(collectionHandler, s.observer, metadataKeyspace, funcDetails.AppID, funcDetails.AppInstanceID, funcDetails.AppLocation)
 		if err != nil {
 			return "", err
 		}
@@ -1428,7 +1429,7 @@ func (s *supervisor) DebuggerOp(op common.DebuggerOp, funcDetails *application.F
 
 	case common.WriteDebuggerURL:
 		url := value.(string)
-		return "", checkpointManager.WriteDebuggerUrl(collectionHandler, s.observer, metadataKeyspace, funcDetails.AppID, url)
+		return "", checkpointManager.WriteDebuggerUrl(collectionHandler, s.observer, metadataKeyspace, funcDetails.AppID, funcDetails.AppInstanceID, funcDetails.AppLocation, url)
 	}
 	panic(fmt.Sprintf("Unknown code path %v", op))
 }

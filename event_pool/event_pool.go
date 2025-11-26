@@ -29,7 +29,7 @@ type SeqNumerInterface interface {
 type ManagerPool interface {
 	GetDcpManagerPool(dcpManagerType DcpManagerType, identifier string, bucketName string, sendChannel chan<- *dcpConn.DcpEvent) dcpManager.DcpManager
 	GetSeqManager(bucketName string) SeqNumerInterface
-	GetCheckpointManager(appId uint32, interruptCallback checkpointManager.InterruptFunction, appLocation application.AppLocation, keyspace application.Keyspace) checkpointManager.Checkpoint
+	GetCheckpointManager(appId uint32, instanceID string, interruptCallback checkpointManager.InterruptFunction, appLocation application.AppLocation, keyspace application.Keyspace) checkpointManager.Checkpoint
 
 	TlsSettingsChanged(gocbCluster *gocb.Cluster)
 
