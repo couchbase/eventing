@@ -214,8 +214,8 @@ public:
 
 private:
   v8::Isolate *isolate_;
-  v8::Persistent<v8::Context> context_;
-  v8::Persistent<v8::ObjectTemplate> bucket_template_;
+  v8::Global<v8::Context> context_;
+  v8::Global<v8::ObjectTemplate> bucket_template_;
 };
 
 class Bucket {
@@ -237,7 +237,7 @@ public:
   }
   ~Bucket();
 
-  Bucket(const Bucket &) = default;
+  Bucket(const Bucket &) = delete;
   Bucket(Bucket &&) = delete;
   Bucket &operator=(const Bucket &) = delete;
   Bucket &operator=(Bucket &&) = delete;
@@ -415,7 +415,7 @@ private:
   }
 
   v8::Isolate *isolate_{nullptr};
-  v8::Persistent<v8::Function> invalidate_cache_func_;
+  v8::Global<v8::Function> invalidate_cache_func_;
   std::string bucket_name_;
   std::string scope_name_;
   std::string collection_name_;
@@ -428,6 +428,13 @@ private:
 class BucketBinding {
   friend BucketFactory;
   friend BucketOps;
+  // Make our global handler functions friends of the class
+  friend v8::Intercepted NamedPropertyGetter(v8::Local<v8::Name> name, const v8::PropertyCallbackInfo<v8::Value> &info);
+  friend v8::Intercepted NamedPropertySetter(v8::Local<v8::Name> name, v8::Local<v8::Value> value_obj, const v8::PropertyCallbackInfo<void> &info);
+  friend v8::Intercepted NamedPropertyDeleter(v8::Local<v8::Name> name, const v8::PropertyCallbackInfo<v8::Boolean> &info);
+  friend v8::Intercepted IndexedPropertyGetter(uint32_t index, const v8::PropertyCallbackInfo<v8::Value> &info);
+  friend v8::Intercepted IndexedPropertySetter(uint32_t index, v8::Local<v8::Value> value, const v8::PropertyCallbackInfo<void> &info);
+  friend v8::Intercepted IndexedPropertyDeleter(uint32_t index, const v8::PropertyCallbackInfo<v8::Boolean> &info);
 
 public:
   BucketBinding(v8::Isolate *isolate, std::shared_ptr<BucketFactory> factory,
@@ -453,13 +460,35 @@ public:
   IsSourceMutation(v8::Isolate *isolate, const v8::Local<v8::Value> obj,
                    const MetaData &meta);
 
-private:
+  // Move these methods to public for use by our global functions
   static void HandleBucketOpFailure(v8::Isolate *isolate,
-                                    lcb_INSTANCE *connection, lcb_STATUS error);
+                                  lcb_INSTANCE *connection, lcb_STATUS error);
   static Info ValidateKey(const v8::Local<v8::Name> &arg);
   static Info ValidateValue(const v8::Local<v8::Value> &arg);
   static Info ValidateKeyValue(const v8::Local<v8::Name> &key,
-                               const v8::Local<v8::Value> &value);
+                             const v8::Local<v8::Value> &value);
+  static void HandleEnoEnt(v8::Isolate *isolate,
+                         const v8::PropertyCallbackInfo<v8::Value> &info,
+                         lcb_INSTANCE *instance);
+  static void HandleEnoEnt(v8::Isolate *isolate, lcb_INSTANCE *instance);
+
+  static std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
+  BucketSet(MetaData &metadata, const std::string &value, bool is_source_bucket,
+            Bucket *bucket);
+
+  static std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
+  BucketDelete(MetaData &meta, bool is_source_bucket, Bucket *bucket);
+
+  // Make the enum public
+  enum InternalFields {
+    kBucketInstance,
+    kBlockMutation,
+    kIsSourceBucket,
+    kBucketBindingId,
+    kInternalFieldsCount
+  };
+
+private:
   template <typename T> static Info Validate(const v8::Local<T> &arg);
 
   // Delegate is used to multiplex alphanumeric and numeric accesses on bucket
@@ -495,19 +524,12 @@ private:
   static void BucketSet(uint32_t key, const v8::Local<v8::Value> &value,
                         const v8::PropertyCallbackInfo<v8::Value> &info);
 
-  static std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
-  BucketSet(MetaData &metadata, const std::string &value, bool is_source_bucket,
-            Bucket *bucket);
-
   template <typename>
   static void BucketDelete(const v8::Local<v8::Name> &key,
                            const v8::PropertyCallbackInfo<v8::Boolean> &info);
   template <typename>
   static void BucketDelete(uint32_t key,
                            const v8::PropertyCallbackInfo<v8::Boolean> &info);
-
-  static std::tuple<Error, std::unique_ptr<lcb_STATUS>, std::unique_ptr<Result>>
-  BucketDelete(MetaData &meta, bool is_source_bucket, Bucket *bucket);
 
   static void
   BucketDeleteWithXattr(const v8::Local<v8::Name> &key,
@@ -517,11 +539,7 @@ private:
   BucketDeleteWithoutXattr(const v8::Local<v8::Name> &key,
                            const v8::PropertyCallbackInfo<v8::Boolean> &info);
 
-  static void HandleEnoEnt(v8::Isolate *isolate,
-                           const v8::PropertyCallbackInfo<v8::Value> &info,
-                           lcb_INSTANCE *instance);
 
-  static void HandleEnoEnt(v8::Isolate *isolate, lcb_INSTANCE *instance);
 
   bool block_mutation_;
   bool is_source_bucket_;
@@ -529,14 +547,6 @@ private:
   std::string bucket_alias_;
   std::shared_ptr<BucketFactory> factory_;
   Bucket bucket_;
-
-  enum InternalFields {
-    kBucketInstance,
-    kBlockMutation,
-    kIsSourceBucket,
-    kBucketBindingId,
-    kInternalFieldsCount
-  };
 };
 
 // TODO : Must be implemented by the component that wants to use Bucket

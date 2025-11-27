@@ -55,11 +55,11 @@ struct Options {
                        std::unique_ptr<std::string> &client_ctx_id_out) const;
 
     v8::Isolate *isolate_;
-    v8::Persistent<v8::Context> context_;
+    v8::Global<v8::Context> context_;
     const std::unordered_set<std::string> consistencies_{"none", "request"};
-    v8::Persistent<v8::String> client_ctx_id_property_;
-    v8::Persistent<v8::String> consistency_property_;
-    v8::Persistent<v8::String> is_prepared_property_;
+    v8::Global<v8::String> client_ctx_id_property_;
+    v8::Global<v8::String> consistency_property_;
+    v8::Global<v8::String> is_prepared_property_;
   };
 
   bool GetOrDefaultN1qlIsPrepared(v8::Isolate *isolate) const;
