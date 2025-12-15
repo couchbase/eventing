@@ -9,6 +9,7 @@ import (
 	"github.com/couchbase/eventing/application"
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/logging"
+	"github.com/couchbase/eventing/notifier"
 )
 
 const (
@@ -45,10 +46,10 @@ type distributor struct {
 	functionScopeDistributor *functionScopeDistributor
 }
 
-func NewDistributor(uuid string, broadcaster common.Broadcaster, helper distributionHelper) *distributor {
+func NewDistributor(uuid string, broadcaster common.Broadcaster, helper distributionHelper, observer notifier.Observer) *distributor {
 	d := &distributor{
 		helper:                   helper,
-		vbdistributor:            NewVbMapDistributor(uuid, broadcaster),
+		vbdistributor:            NewVbMapDistributor(uuid, broadcaster, observer),
 		functionScopeDistributor: NewFunctionScopeDistributor(uuid, helper),
 	}
 	d.leaderNode.Store("")
