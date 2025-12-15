@@ -11,11 +11,12 @@ import (
 )
 
 const (
-	checkpointTemplatePrefix  = "eventing::%d:"
-	checkpointTemplate        = checkpointTemplatePrefix + ":%s::"
-	checkpointBlobTemplate    = checkpointTemplate + "vb::"
-	debuggerKeyTemplate       = checkpointTemplate + "debugger"
-	onDeployLeaderKeyTemplate = "%s::onDeployLeader"
+	mismtachedCheckpointTemplate = "eventing::%d::%d"
+	checkpointTemplatePrefix     = "eventing::%d:"
+	checkpointTemplate           = checkpointTemplatePrefix + ":%s::"
+	checkpointBlobTemplate       = checkpointTemplate + "vb::"
+	debuggerKeyTemplate          = checkpointTemplate + "debugger"
+	onDeployLeaderKeyTemplate    = "%s::onDeployLeader"
 )
 
 // GetCheckpointKeyTemplate returns checkpoint blob key
