@@ -46,6 +46,7 @@ type collectionHandle interface {
 type vbBlobInternal struct {
 	sync.RWMutex
 
+	vb                uint16
 	key               string
 	collectionHandler collectionHandle
 	checkpointConfig  *CheckpointConfig
@@ -68,6 +69,7 @@ func (vbi *vbBlobInternal) MarshalJSON() ([]byte, error) {
 func (vbi *vbBlobInternal) Copy() *vbBlobInternal {
 	vbBlob := vbi.vbBlob.Copy()
 	return &vbBlobInternal{
+		vb:                vbi.vb,
 		key:               vbi.key,
 		vbBlob:            &vbBlob,
 		ownedTime:         vbi.ownedTime,
@@ -78,8 +80,9 @@ func (vbi *vbBlobInternal) Copy() *vbBlobInternal {
 }
 
 // Get the ownership of the blob
-func NewVbBlobInternal(key string, observer notifier.Observer, checkpointConfig *CheckpointConfig, collectionHandler collectionHandle, forced bool) (*vbBlobInternal, string, error) {
+func NewVbBlobInternal(key string, vb uint16, observer notifier.Observer, checkpointConfig *CheckpointConfig, collectionHandler collectionHandle, forced bool) (*vbBlobInternal, string, error) {
 	vbblob := &vbBlobInternal{
+		vb:                vb,
 		key:               key,
 		checkpointConfig:  checkpointConfig,
 		vbBlob:            nil,
@@ -237,19 +240,26 @@ func (vbi *vbBlobInternal) getVbBlob() VbBlob {
 // and make the owner
 func (vbi *vbBlobInternal) syncFromServerAndOwnTheKey(forced bool) (string, error) {
 	vbBlob := &VbBlob{}
+	oldKey := ""
 	_, err := get(vbi.collectionHandler.GetCollectionHandle(), vbi.observer, vbi.checkpointConfig.Keyspace, vbi.key, vbBlob)
 	if errors.Is(err, ErrDocumentNotFound) {
-		vbi.vbBlob = &VbBlob{
-			NodeUUID: vbi.checkpointConfig.OwnerNodeUUID,
-		}
+		oldKey = fmt.Sprintf(mismtachedCheckpointTemplate, vbi.checkpointConfig.AppID, vbi.vb)
+		_, err = get(vbi.collectionHandler.GetCollectionHandle(), vbi.observer, vbi.checkpointConfig.Keyspace, oldKey, vbBlob)
+		if errors.Is(err, ErrDocumentNotFound) {
+			vbi.vbBlob = &VbBlob{
+				NodeUUID: vbi.checkpointConfig.OwnerNodeUUID,
+			}
 
-		err := vbi.createCheckpointBlob()
-		if err != nil {
-			vbi.vbBlob = nil
-			return "", fmt.Errorf("error in creating checkpoint: %v", err)
-		}
+			// Eventing 8.0.0 uses a different checkpoint key format (MB-69494).
+			// Detect the 8.0.0 format and update it accordingly.
+			err = vbi.createCheckpointBlob()
+			if err != nil {
+				vbi.vbBlob = nil
+				return "", fmt.Errorf("error in creating checkpoint: %v", err)
+			}
 
-		return vbi.checkpointConfig.OwnerNodeUUID, nil
+			return vbi.checkpointConfig.OwnerNodeUUID, nil
+		}
 	}
 
 	if err != nil {
@@ -262,15 +272,33 @@ func (vbi *vbBlobInternal) syncFromServerAndOwnTheKey(forced bool) (string, erro
 
 	vbi.vbBlob = vbBlob
 	if vbBlob.NodeUUID == vbi.checkpointConfig.OwnerNodeUUID {
+		// Already in the required format
 		return vbBlob.NodeUUID, nil
 	}
 
-	gocbMutateIn := vbi.collectionHandler.GetGocbMutateIn()
-	gocbMutateIn = append(gocbMutateIn, gocb.UpsertSpec("node_uuid", vbi.checkpointConfig.OwnerNodeUUID, upsertOptions))
-	err = subdocUpdate(vbi.collectionHandler.GetCollectionHandle(), vbi.observer, vbi.checkpointConfig.Keyspace, vbi.key, noCas, gocbMutateIn)
-	if err != nil {
-		vbi.vbBlob = nil
-		return "", fmt.Errorf("error updating node_uuid: %v", err)
+	// If key is empty that means we already have correct key format so just update the node uuid
+	if oldKey == "" {
+		gocbMutateIn := vbi.collectionHandler.GetGocbMutateIn()
+		gocbMutateIn = append(gocbMutateIn, gocb.UpsertSpec("node_uuid", vbi.checkpointConfig.OwnerNodeUUID, upsertOptions))
+		err = subdocUpdate(vbi.collectionHandler.GetCollectionHandle(), vbi.observer, vbi.checkpointConfig.Keyspace, vbi.key, noCas, gocbMutateIn)
+		if err != nil {
+			vbi.vbBlob = nil
+			return "", fmt.Errorf("error updating node_uuid: %v", err)
+		}
+	} else {
+		// Migrate it to new one and delete old key
+		vbBlob.NodeUUID = vbi.checkpointConfig.OwnerNodeUUID
+		err = insert(vbi.collectionHandler.GetCollectionHandle(), vbi.observer, vbi.checkpointConfig.Keyspace, vbi.key, vbBlob)
+		if err != nil {
+			return "", fmt.Errorf("error updating node_uuid: %v", err)
+		}
+
+		// Delete the 8.0.0 key format. No need to ensure successful deletion.
+		// If deletion fails, the only impact is an orphaned key.
+		err = remove(vbi.collectionHandler.GetCollectionHandle(), vbi.observer, vbi.checkpointConfig.Keyspace, oldKey)
+		if err != nil {
+			logging.Warnf("vbBlobInternal::syncFromServerAndOwnTheKey[%s] Error deleting mismatched checkpoint key: %s err: %v", vbi.checkpointConfig.AppLocation, oldKey, err)
+		}
 	}
 
 	vbi.ownedTime = time.Now()
@@ -926,7 +954,7 @@ func (cm *checkpointManager) GetGocbMutateIn() []gocb.MutateInSpec {
 
 func (cm *checkpointManager) getOwnership(vb uint16, forced bool) (*VbBlob, string, error) {
 	key := cm.getKey(vb)
-	vbi, uuid, err := NewVbBlobInternal(key, cm.observer, &cm.checkpointConfig, cm, forced)
+	vbi, uuid, err := NewVbBlobInternal(key, vb, cm.observer, &cm.checkpointConfig, cm, forced)
 	if err != nil {
 		return nil, uuid, err
 	}
