@@ -3,14 +3,18 @@ package distributor
 import (
 	"encoding/binary"
 	"encoding/json"
+	"net"
 	"net/http"
 	"sort"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/couchbase/cbauth/metakv"
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/common/utils"
 	"github.com/couchbase/eventing/logging"
+	"github.com/couchbase/eventing/notifier"
 	pc "github.com/couchbase/eventing/point_connection"
 )
 
@@ -30,9 +34,10 @@ type vbMapDistributor struct {
 
 	uuid        string
 	broadcaster common.Broadcaster
+	observer    notifier.Observer
 }
 
-func NewVbMapDistributor(uuid string, broadcaster common.Broadcaster) *vbMapDistributor {
+func NewVbMapDistributor(uuid string, broadcaster common.Broadcaster, observer notifier.Observer) *vbMapDistributor {
 	vbMap := &vbMapDistributor{
 		nodes:            make([]string, 0, 1),
 		vbs:              make(map[uint16]map[string][]uint16),
@@ -40,6 +45,7 @@ func NewVbMapDistributor(uuid string, broadcaster common.Broadcaster) *vbMapDist
 		leaderUUID:       uuid,
 		broadcaster:      broadcaster,
 		lastChangedToken: oldRebalanceID,
+		observer:         observer,
 	}
 
 	// Initially own everything
@@ -80,20 +86,78 @@ func (vm *vbMapDistributor) getOwnershipDetails() string {
 }
 
 func (vm *vbMapDistributor) initialise(changeID string) {
-	keepNodesData, _, err := metakv.Get(common.EventingMetakvConfigKeepNodes)
-	if err != nil {
-		// Do nothing lets continue. This node won't own anything and won't process
-		// until next rebalance or eventing nodes updated to new version
-		return
+	nodes := make([]struct {
+		nodeID  string
+		address string
+	}, 0)
+
+	for {
+		nodes = nodes[:0]
+		keepNodesData, _, err := metakv.Get(common.EventingMetakvConfigKeepNodes)
+		if err != nil {
+			// Do nothing lets continue. This node won't own anything and won't process
+			// until next rebalance or eventing nodes updated to new version
+			return
+		}
+
+		var keepNodes []string
+		json.Unmarshal(keepNodesData, &keepNodes)
+		if len(keepNodes) == 0 {
+			keepNodes = []string{vm.uuid}
+		}
+
+		currState, err := vm.observer.GetCurrentState(notifier.InterestedEvent{
+			Event: notifier.EventEventingTopologyChanges,
+		})
+		if err != nil {
+			time.Sleep(100 * time.Millisecond)
+			continue
+		}
+
+		eventingNodes := currState.([]*notifier.Node)
+		currState, err = vm.observer.GetCurrentState(notifier.InterestedEvent{Event: notifier.EventTLSChanges})
+		if err != nil {
+			time.Sleep(100 * time.Millisecond)
+			continue
+		}
+		tlsConfig := currState.(*notifier.TlsConfig)
+
+		eventingPort := notifier.EventingAdminService
+		if tlsConfig.EncryptData {
+			eventingPort = notifier.EventingAdminSSL
+		}
+
+		for _, node := range eventingNodes {
+			for _, keepNode := range keepNodes {
+				if node.NodeUUID == keepNode {
+					ip := net.ParseIP(node.HostName)
+					thisNodePort := eventingPort
+					if strings.EqualFold(node.HostName, "localhost") || (ip != nil && ip.IsLoopback()) {
+						thisNodePort = notifier.EventingAdminService
+					}
+					address := net.JoinHostPort(node.HostName, thisNodePort)
+
+					nodes = append(nodes, struct {
+						nodeID  string
+						address string
+					}{
+						nodeID:  node.NodeUUID,
+						address: address,
+					})
+					break
+				}
+			}
+		}
+
+		if len(nodes) != len(keepNodes) {
+			time.Sleep(100 * time.Millisecond)
+			continue
+		}
+		break
+
 	}
 
-	var keepNodes []string
-	json.Unmarshal(keepNodesData, &keepNodes)
-	if len(keepNodes) == 0 {
-		keepNodes = []string{vm.uuid}
-	}
-
-	vm.addVbVersion1Locked(changeID, keepNodes)
+	vm.addVbVersion1Locked(changeID, nodes)
 	vm.changeID = changeID
 }
 
@@ -189,13 +253,21 @@ func (vm *vbMapDistributor) emptyEventingNodes() {
 
 // Just distribute vbs of this node in old way
 // sort and based on index put the vb
-func (vm *vbMapDistributor) addVbVersion1Locked(changeID string, keepNodes []string) {
+func (vm *vbMapDistributor) addVbVersion1Locked(changeID string, keepNodes []struct {
+	nodeID  string
+	address string
+}) {
 	logPrefix := "vbMapDistributor::addVbVersion1Locked"
 
-	sort.Strings(keepNodes)
+	sort.Slice(keepNodes, func(i, j int) bool {
+		return keepNodes[i].address < keepNodes[j].address
+	})
+
 	nodeIndex := -1
-	for index, nodeUUID := range keepNodes {
-		if nodeUUID == vm.uuid {
+	nodeUUIDs := make([]string, 0, len(keepNodes))
+	for index, node := range keepNodes {
+		nodeUUIDs = append(nodeUUIDs, node.nodeID)
+		if node.nodeID == vm.uuid {
 			nodeIndex = index
 			break
 		}
@@ -207,7 +279,7 @@ func (vm *vbMapDistributor) addVbVersion1Locked(changeID string, keepNodes []str
 		return
 	}
 
-	vm.nodes = keepNodes
+	vm.nodes = nodeUUIDs
 	for _, numVbs := range vbsList {
 		startVb, vbCountPerNode := getStartVb(numVbs, uint16(len(keepNodes)), uint16(nodeIndex))
 

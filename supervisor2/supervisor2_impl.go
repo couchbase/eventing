@@ -291,7 +291,7 @@ func (s *supervisor) recover(ctx context.Context) error {
 	logPrefix := "supervisor::recover"
 
 	// recover topology path
-	s.distributor = distributor.NewDistributor(s.clusterSetting.UUID, s.broadcaster, s)
+	s.distributor = distributor.NewDistributor(s.clusterSetting.UUID, s.broadcaster, s, s.observer)
 	s.service = NewServiceManager(s.distributor, s.clusterSetting.UUID)
 	s.service.InitServiceManagerWithSup(s)
 
