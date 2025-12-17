@@ -1426,6 +1426,8 @@ func (m *serviceMgr) prometheusHigh(w http.ResponseWriter, r *http.Request) {
 		stats = populate[interface{}](location, "bucket_op_exception_count", stats, stat.FailureStats)
 		stats = populate[interface{}](location, "timeout_count", stats, stat.FailureStats)
 		stats = populate[interface{}](location, "n1ql_op_exception_count", stats, stat.FailureStats)
+		stats = populate[interface{}](location, "analytics_op_exception_count", stats, stat.FailureStats)
+		stats = populate[interface{}](location, "search_op_exception_count", stats, stat.FailureStats)
 		stats = populate[interface{}](location, "timer_context_size_exception_counter", stats, stat.FailureStats)
 		stats = populate[interface{}](location, "timer_callback_missing_counter", stats, stat.FailureStats)
 		stats = populate[interface{}](location, "bkt_ops_cas_mismatch_count", stats, stat.FailureStats)

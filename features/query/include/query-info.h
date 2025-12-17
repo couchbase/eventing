@@ -23,7 +23,6 @@
 #include "info.h"
 
 namespace Query {
-
 struct Options {
   class Extractor {
   public:

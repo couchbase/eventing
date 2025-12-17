@@ -132,6 +132,21 @@ void JsException::ThrowAnalyticsError(const std::string &err_msg) {
   isolate_->ThrowException(error_obj);
 }
 
+void JsException::ThrowSearchError(const std::string &err_msg) {
+  v8::HandleScope handle_scope(isolate_);
+  auto custom_error = UnwrapData(isolate_)->custom_error;
+
+  v8::Local<v8::Object> error_obj;
+  auto info = custom_error->NewSearchError(v8Str(isolate_, err_msg), error_obj);
+  if (info.is_fatal) {
+    LOG(logError) << "Unable to construct SearchError : " << info.msg
+                  << std::endl;
+    isolate_->ThrowException(v8Str(isolate_, err_msg));
+    return;
+  }
+  isolate_->ThrowException(error_obj);
+}
+
 void JsException::ThrowEventingError(const std::string &err_msg) {
   v8::HandleScope handle_scope(isolate_);
   auto custom_error = UnwrapData(isolate_)->custom_error;

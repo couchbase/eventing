@@ -57,7 +57,6 @@ private:
   std::unordered_map<lcb_INSTANCE *, std::shared_ptr<Iterator>> iterators_;
   std::string on_behalf_of_;
 };
-
 } // namespace Query
 
 #endif
