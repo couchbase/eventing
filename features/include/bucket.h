@@ -430,12 +430,12 @@ class BucketBinding {
   friend BucketFactory;
   friend BucketOps;
   // Make our global handler functions friends of the class
-  friend void NamedPropertyGetter(v8::Local<v8::Name> name, const v8::PropertyCallbackInfo<v8::Value> &info);
-  friend void NamedPropertySetter(v8::Local<v8::Name> name, v8::Local<v8::Value> value_obj, const v8::PropertyCallbackInfo<v8::Value> &info);
-  friend void NamedPropertyDeleter(v8::Local<v8::Name> name, const v8::PropertyCallbackInfo<v8::Boolean> &info);
-  friend void IndexedPropertyGetter(uint32_t index, const v8::PropertyCallbackInfo<v8::Value> &info);
-  friend void IndexedPropertySetter(uint32_t index, v8::Local<v8::Value> value, const v8::PropertyCallbackInfo<v8::Value> &info);
-  friend void IndexedPropertyDeleter(uint32_t index, const v8::PropertyCallbackInfo<v8::Boolean> &info);
+  friend v8::Intercepted NamedPropertyGetter(v8::Local<v8::Name> name, const v8::PropertyCallbackInfo<v8::Value> &info);
+  friend v8::Intercepted NamedPropertySetter(v8::Local<v8::Name> name, v8::Local<v8::Value> value_obj, const v8::PropertyCallbackInfo<v8::Value> &info);
+  friend v8::Intercepted NamedPropertyDeleter(v8::Local<v8::Name> name, const v8::PropertyCallbackInfo<v8::Boolean> &info);
+  friend v8::Intercepted IndexedPropertyGetter(uint32_t index, const v8::PropertyCallbackInfo<v8::Value> &info);
+  friend v8::Intercepted IndexedPropertySetter(uint32_t index, v8::Local<v8::Value> value, const v8::PropertyCallbackInfo<v8::Value> &info);
+  friend v8::Intercepted IndexedPropertyDeleter(uint32_t index, const v8::PropertyCallbackInfo<v8::Boolean> &info);
 
 public:
   BucketBinding(v8::Isolate *isolate, std::shared_ptr<BucketFactory> factory,

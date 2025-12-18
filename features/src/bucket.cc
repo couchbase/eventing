@@ -27,19 +27,19 @@
 #include "v8worker.h"
 
 // Forward declarations for the standalone handlers
-void NamedPropertyGetter(v8::Local<v8::Name> name,
+v8::Intercepted NamedPropertyGetter(v8::Local<v8::Name> name,
                          const v8::PropertyCallbackInfo<v8::Value> &info);
-void NamedPropertySetter(v8::Local<v8::Name> name,
+v8::Intercepted NamedPropertySetter(v8::Local<v8::Name> name,
                          v8::Local<v8::Value> value_obj,
                          const v8::PropertyCallbackInfo<v8::Value> &info);
-void NamedPropertyDeleter(v8::Local<v8::Name> name,
+v8::Intercepted NamedPropertyDeleter(v8::Local<v8::Name> name,
                           const v8::PropertyCallbackInfo<v8::Boolean> &info);
-void IndexedPropertyGetter(uint32_t index,
+v8::Intercepted IndexedPropertyGetter(uint32_t index,
                           const v8::PropertyCallbackInfo<v8::Value> &info);
-void IndexedPropertySetter(uint32_t index,
+v8::Intercepted IndexedPropertySetter(uint32_t index,
                           v8::Local<v8::Value> value,
                           const v8::PropertyCallbackInfo<v8::Value> &info);
-void IndexedPropertyDeleter(uint32_t index,
+v8::Intercepted IndexedPropertyDeleter(uint32_t index,
                            const v8::PropertyCallbackInfo<v8::Boolean> &info);
 
 std::atomic<int64_t> bucket_op_exception_count = {0};
@@ -86,7 +86,7 @@ BucketFactory::~BucketFactory() {
 }
 
 // Standalone callback functions for V8 13.4.115 compatibility
-void NamedPropertyGetter(v8::Local<v8::Name> name,
+v8::Intercepted NamedPropertyGetter(v8::Local<v8::Name> name,
                         const v8::PropertyCallbackInfo<v8::Value> &info) {
   auto isolate = info.GetIsolate();
   auto isolate_data = UnwrapData(isolate);
@@ -95,7 +95,7 @@ void NamedPropertyGetter(v8::Local<v8::Name> name,
 
   std::lock_guard<std::mutex> guard(isolate_data->termination_lock_);
   if (!isolate_data->is_executing_) {
-    return;
+    return v8::Intercepted::kYes;
   }
 
   MetaData metadata(true);
@@ -103,7 +103,7 @@ void NamedPropertyGetter(v8::Local<v8::Name> name,
   if (validate_info.is_fatal) {
     js_exception->ThrowEventingError(validate_info.msg);
     ++bucket_op_exception_count;
-    return;
+    return v8::Intercepted::kYes;
   }
 
   v8::HandleScope handle_scope(isolate);
@@ -121,25 +121,25 @@ void NamedPropertyGetter(v8::Local<v8::Name> name,
     js_exception->ThrowEventingError(
         "Map accessor is not allowed for wild card keyspace binding. Please "
         "use advance keyspace accessor");
-    return;
+    return v8::Intercepted::kYes;
   }
 
   auto [error, err_code, result] = bucket->Get(metadata);
   if (error != nullptr) {
     js_exception->ThrowEventingError(*error);
-    return;
+    return v8::Intercepted::kYes;
   }
   if (*err_code != LCB_SUCCESS) {
     BucketBinding::HandleBucketOpFailure(isolate, bucket->GetConnection(), *err_code);
-    return;
+    return v8::Intercepted::kYes;
   }
   if (result->rc == LCB_ERR_DOCUMENT_NOT_FOUND) {
     BucketBinding::HandleEnoEnt(isolate, info, bucket->GetConnection());
-    return;
+    return v8::Intercepted::kYes;
   }
   if (result->rc != LCB_SUCCESS) {
     BucketBinding::HandleBucketOpFailure(isolate, bucket->GetConnection(), result->rc);
-    return;
+    return v8::Intercepted::kYes;
   }
 
   v8::Local<v8::Value> doc;
@@ -148,7 +148,7 @@ void NamedPropertyGetter(v8::Local<v8::Name> name,
     if (!(TO_LOCAL(v8::JSON::Parse(context, v8Str(isolate, result->value)),
                    &doc))) {
       js_exception->ThrowEventingError("Unable to parse response body as JSON");
-      return;
+      return v8::Intercepted::kYes;
     }
   } else {
     doc = utils->ToArrayBuffer(static_cast<void *>(result->value.data()),
@@ -158,7 +158,7 @@ void NamedPropertyGetter(v8::Local<v8::Name> name,
   info.GetReturnValue().Set(doc);
 }
 
-void NamedPropertySetter(v8::Local<v8::Name> name,
+v8::Intercepted NamedPropertySetter(v8::Local<v8::Name> name,
                         v8::Local<v8::Value> value_obj,
                         const v8::PropertyCallbackInfo<v8::Value> &info) {
   auto isolate = info.GetIsolate();
@@ -168,7 +168,7 @@ void NamedPropertySetter(v8::Local<v8::Name> name,
   v8::Local<v8::ArrayBuffer> array_buf;
   std::lock_guard<std::mutex> guard(UnwrapData(isolate)->termination_lock_);
   if (!UnwrapData(isolate)->is_executing_) {
-    return;
+    return v8::Intercepted::kYes;
   }
 
   MetaData metadata(true);
@@ -176,7 +176,7 @@ void NamedPropertySetter(v8::Local<v8::Name> name,
   if (validate_info.is_fatal) {
     js_exception->ThrowEventingError(validate_info.msg);
     ++bucket_op_exception_count;
-    return;
+    return v8::Intercepted::kYes;
   }
 
   auto block_mutation =
@@ -184,7 +184,7 @@ void NamedPropertySetter(v8::Local<v8::Name> name,
   if (*block_mutation) {
     ++bucket_op_exception_count;
     js_exception->ThrowEventingError("Writing to source bucket is forbidden");
-    return;
+    return v8::Intercepted::kYes;
   }
 
   // TODO : Do not cast to v8::String, just use name directly
@@ -207,7 +207,7 @@ void NamedPropertySetter(v8::Local<v8::Name> name,
     js_exception->ThrowEventingError(
         "Map accessor is not allowed for wild card keyspace binding. Please "
         "use advance keyspace accessor");
-    return;
+    return v8::Intercepted::kYes;
   }
 
   metadata.key = key;
@@ -215,26 +215,26 @@ void NamedPropertySetter(v8::Local<v8::Name> name,
       BucketBinding::BucketSet(metadata, value_str, is_source_mutation, bucket);
   if (error != nullptr) {
     js_exception->ThrowEventingError(*error);
-    return;
+    return v8::Intercepted::kYes;
   }
   if (*err_code != LCB_SUCCESS) {
     BucketBinding::HandleBucketOpFailure(isolate, bucket->GetConnection(), *err_code);
-    return;
+    return v8::Intercepted::kYes;
   }
   if (result->rc != LCB_SUCCESS) {
     BucketBinding::HandleBucketOpFailure(isolate, bucket->GetConnection(), result->rc);
-    return;
+    return v8::Intercepted::kYes;
   }
   info.GetReturnValue().Set(value_obj);
 }
 
-void NamedPropertyDeleter(v8::Local<v8::Name> name,
+v8::Intercepted NamedPropertyDeleter(v8::Local<v8::Name> name,
                          const v8::PropertyCallbackInfo<v8::Boolean> &info) {
   auto isolate = info.GetIsolate();
   auto js_exception = UnwrapData(isolate)->js_exception;
   std::lock_guard<std::mutex> guard(UnwrapData(isolate)->termination_lock_);
   if (!UnwrapData(isolate)->is_executing_) {
-    return;
+    return v8::Intercepted::kYes;
   }
 
   MetaData metadata(true);
@@ -242,7 +242,7 @@ void NamedPropertyDeleter(v8::Local<v8::Name> name,
   if (validate_info.is_fatal) {
     js_exception->ThrowKVError(validate_info.msg);
     ++bucket_op_exception_count;
-    return;
+    return v8::Intercepted::kYes;
   }
 
   auto block_mutation = UnwrapInternalField<bool>(
@@ -250,7 +250,7 @@ void NamedPropertyDeleter(v8::Local<v8::Name> name,
   if (*block_mutation) {
     js_exception->ThrowEventingError("Delete from source bucket is forbidden");
     ++bucket_op_exception_count;
-    return;
+    return v8::Intercepted::kYes;
   }
 
   v8::String::Utf8Value utf8_key(isolate, name.As<v8::String>());
@@ -262,7 +262,7 @@ void NamedPropertyDeleter(v8::Local<v8::Name> name,
     js_exception->ThrowEventingError(
         "Map accessor is not allowed for wild card keyspace binding. Please "
         "use advance keyspace accessor");
-    return;
+    return v8::Intercepted::kYes;
   }
 
   auto bucket = UnwrapInternalField<Bucket>(info.Holder(),
@@ -272,46 +272,46 @@ void NamedPropertyDeleter(v8::Local<v8::Name> name,
       BucketBinding::BucketDelete(metadata, is_source_mutation, bucket);
   if (error != nullptr) {
     js_exception->ThrowEventingError(*error);
-    return;
+    return v8::Intercepted::kYes;
   }
   if (*err_code != LCB_SUCCESS) {
     BucketBinding::HandleBucketOpFailure(isolate, bucket->GetConnection(), *err_code);
-    return;
+    return v8::Intercepted::kYes;
   }
   if (result->rc == LCB_ERR_DOCUMENT_NOT_FOUND) {
     BucketBinding::HandleEnoEnt(isolate, bucket->GetConnection());
-    return;
+    return v8::Intercepted::kYes;
   }
   if (result->rc != LCB_SUCCESS) {
     BucketBinding::HandleBucketOpFailure(isolate, bucket->GetConnection(), result->rc);
-    return;
+    return v8::Intercepted::kYes;
   }
   info.GetReturnValue().Set(true);
 }
 
-void IndexedPropertyGetter(uint32_t index,
+v8::Intercepted IndexedPropertyGetter(uint32_t index,
                           const v8::PropertyCallbackInfo<v8::Value> &info) {
   auto isolate = info.GetIsolate();
   v8::HandleScope handle_scope(isolate);
   auto name = v8Name(isolate, index);
-  NamedPropertyGetter(name, info);
+  return NamedPropertyGetter(name, info);
 }
 
-void IndexedPropertySetter(uint32_t index,
+v8::Intercepted IndexedPropertySetter(uint32_t index,
                           v8::Local<v8::Value> value,
                           const v8::PropertyCallbackInfo<v8::Value> &info) {
   auto isolate = info.GetIsolate();
   v8::HandleScope handle_scope(isolate);
   auto name = v8Name(isolate, index);
-  NamedPropertySetter(name, value, info);
+  return NamedPropertySetter(name, value, info);
 }
 
-void IndexedPropertyDeleter(uint32_t index,
+v8::Intercepted IndexedPropertyDeleter(uint32_t index,
                            const v8::PropertyCallbackInfo<v8::Boolean> &info) {
   auto isolate = info.GetIsolate();
   v8::HandleScope handle_scope(isolate);
   auto name = v8Name(isolate, index);
-  NamedPropertyDeleter(name, info);
+  return NamedPropertyDeleter(name, info);
 }
 
 std::pair<Error, std::unique_ptr<v8::Local<v8::Object>>>
