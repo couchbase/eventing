@@ -279,9 +279,9 @@ void V8Worker2::SetCouchbaseNamespace() {
         options = {};
       }
       return couchbase.replaceInternal(bucket, meta, doc, options);
-    };
+    };)"
 
-    couchbase.MutateInSpec = {};
+    R"(couchbase.MutateInSpec = {};
 
     Object.defineProperty(couchbase.MutateInSpec, "create", {
         enumerable: false,
@@ -412,9 +412,9 @@ void V8Worker2::SetCouchbaseNamespace() {
       var size = result.data.res_size;
       couchbase.mapkeys.delete(key);
       couchbase.map_key_size = couchbase.map_key_size - size;
-    };
+    };)"
 
-    couchbase.SearchQuery = {
+    R"(couchbase.SearchQuery = {
       match: function(match) {
         return new couchbase.SearchQuery.matchObject(match);
       },
@@ -499,9 +499,9 @@ void V8Worker2::SetCouchbaseNamespace() {
         // [longitude, latitude, longitude, latitude....]
         return new couchbase.SearchQuery.geoPolygonObject(points);
       }
-    };
+    };)"
 
-    couchbase.SearchQuery.matchObject = (function(match) {
+    R"(couchbase.SearchQuery.matchObject = (function(match) {
       this._data = { match: match };
 
       this.operator = function(op) {
@@ -545,9 +545,9 @@ void V8Worker2::SetCouchbaseNamespace() {
       this.toJson = function() {
         return this._data;
       };
-    });
+    });)"
 
-    couchbase.SearchQuery.regexpObject = (function(regexp) {
+    R"(couchbase.SearchQuery.regexpObject = (function(regexp) {
       this._data = { regexp: regexp };
 
       this.field = function(field) {
@@ -614,9 +614,9 @@ void V8Worker2::SetCouchbaseNamespace() {
       this.toJson = function() {
         return this._data;
       };
-    });
+    });)"
 
-    couchbase.SearchQuery.dateRangeObject = (function() {
+    R"(couchbase.SearchQuery.dateRangeObject = (function() {
       this._data = {};
 
       this.field = function(field) {
@@ -667,9 +667,9 @@ void V8Worker2::SetCouchbaseNamespace() {
       this.toJson = function() {
         return this._data;
       };
-    });
+    });)"
 
-    couchbase.SearchQuery.conjunctsObject = (function(...queries) {
+    R"(couchbase.SearchQuery.conjunctsObject = (function(...queries) {
       this._data = { conjuncts: [] };
 
       this.and = function(...queries) {
@@ -711,9 +711,9 @@ void V8Worker2::SetCouchbaseNamespace() {
       this.toJson = function() {
         return this._data;
       };
-    });
+    });)"
 
-    couchbase.SearchQuery.booleanObject = (function() {
+    R"(couchbase.SearchQuery.booleanObject = (function() {
       this._data = {};
 
       this.must = function(query) {
@@ -762,9 +762,9 @@ void V8Worker2::SetCouchbaseNamespace() {
       this.toJson = function() {
         return this._data;
       };
-    });
+    });)"
 
-    couchbase.SearchQuery.docIdsObject = (function(...args) {
+    R"(couchbase.SearchQuery.docIdsObject = (function(...args) {
       this._data = { ids: [] };
 
       this.addDocIds = function(...args) {
@@ -857,9 +857,9 @@ void V8Worker2::SetCouchbaseNamespace() {
       this.toJson = function() {
         return this._data;
       };
-    });
+    });)"
 
-    couchbase.SearchQuery.prefixObject = (function(terms) {
+    R"(couchbase.SearchQuery.prefixObject = (function(terms) {
       this._data = { prefix: terms };
 
       this.field = function(field) {
@@ -988,9 +988,9 @@ void V8Worker2::SetCouchbaseNamespace() {
 
       var queryJsonString = JSON.stringify(queryJson);
       return couchbase.searchQueryInternal(queryJsonString);
-    };
+    };)"
 
-    couchbase.getCachedKey = function(id, details) {
+    R"(couchbase.getCachedKey = function(id, details) {
       return details.keyspace.bucket + "/" + details.keyspace.scope + "/" + details.keyspace.collection + "/" + id;
     };)"
                                   R"(couchbase.max_expiry=)";
