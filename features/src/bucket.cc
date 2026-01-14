@@ -156,6 +156,7 @@ v8::Intercepted NamedPropertyGetter(v8::Local<v8::Name> name,
   }
 
   info.GetReturnValue().Set(doc);
+  return v8::Intercepted::kYes;
 }
 
 v8::Intercepted NamedPropertySetter(v8::Local<v8::Name> name,
@@ -226,6 +227,7 @@ v8::Intercepted NamedPropertySetter(v8::Local<v8::Name> name,
     return v8::Intercepted::kYes;
   }
   info.GetReturnValue().Set(value_obj);
+  return v8::Intercepted::kYes;
 }
 
 v8::Intercepted NamedPropertyDeleter(v8::Local<v8::Name> name,
@@ -287,6 +289,7 @@ v8::Intercepted NamedPropertyDeleter(v8::Local<v8::Name> name,
     return v8::Intercepted::kYes;
   }
   info.GetReturnValue().Set(true);
+  return v8::Intercepted::kYes;
 }
 
 v8::Intercepted IndexedPropertyGetter(uint32_t index,
