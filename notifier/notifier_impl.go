@@ -230,34 +230,9 @@ func (ob *observer) BucketChangeCallback(bucket *Bucket, co []*TransitionEvent, 
 			// no subscriber for it
 			return
 		}
-
-		ob.bucketDetailsMutex.RLock()
-		eventsList, ok := ob.bucketDetails[bucket.UUID]
-		ob.bucketDetailsMutex.RUnlock()
-		if !ok {
-			return
-		}
-
-		for _, event := range eventsList {
-			event.close()
-		}
-
 		ob.bucketDetailsMutex.Lock()
-		delete(ob.bucketNameToUUID, bucket.Name)
-		delete(ob.bucketDetails, bucket.UUID)
-
-		bucketMap := make(map[string]string)
-		for name, uuid := range ob.bucketNameToUUID {
-			bucketMap[name] = uuid
-		}
-		event := &TransitionEvent{
-			Event:        InterestedEvent{Event: EventBucketListChanges},
-			CurrentState: bucketMap,
-			Transition:   map[transition]interface{}{EventChangeRemoved: bucket.Name},
-		}
+		ob.deleteSignalLocked(bucket.UUID, bucket.Name)
 		ob.bucketDetailsMutex.Unlock()
-		ob.bucketListChanges.send(event)
-
 		return
 	}
 
@@ -267,6 +242,16 @@ func (ob *observer) BucketChangeCallback(bucket *Bucket, co []*TransitionEvent, 
 
 	if !ok {
 		ob.bucketDetailsMutex.Lock()
+		// check if bucket exist with different uuid
+		// This might be due to quick succession delete and add
+		uuid, ok := ob.bucketNameToUUID[bucket.Name]
+		if ok {
+			// quick succession delete and add
+			logging.Infof("%s bucket re-added after deletion: %s", logPrefix, bucket)
+			ob.deleteSignalLocked(uuid, bucket.Name)
+		}
+
+		// add new bucket
 		ob.bucketNameToUUID[bucket.Name] = bucket.UUID
 		eventList = make(map[InterestedEvent]*subscriberList)
 		iE := InterestedEvent{
@@ -290,13 +275,12 @@ func (ob *observer) BucketChangeCallback(bucket *Bucket, co []*TransitionEvent, 
 		eventList[iE] = newSubscriberList(iE, bucket)
 
 		bucketMap := make(map[string]string)
-		for name, uuid := range ob.bucketNameToUUID {
-			bucketMap[name] = uuid
-		}
+		maps.Copy(bucketMap, ob.bucketNameToUUID)
+
 		event := &TransitionEvent{
 			Event:        InterestedEvent{Event: EventBucketListChanges},
 			CurrentState: bucketMap,
-			Transition:   map[transition]interface{}{EventChangeAdded: bucket.Name},
+			Transition:   map[transition]any{EventChangeAdded: bucket.Name},
 		}
 		ob.bucketDetailsMutex.Unlock()
 		ob.bucketListChanges.send(event)
@@ -309,6 +293,29 @@ func (ob *observer) BucketChangeCallback(bucket *Bucket, co []*TransitionEvent, 
 		subscribers := eventList[event.Event]
 		subscribers.send(event)
 	}
+}
+
+func (ob *observer) deleteSignalLocked(uuid, name string) {
+	eventsList, ok := ob.bucketDetails[uuid]
+	if !ok {
+		return
+	}
+
+	for _, event := range eventsList {
+		event.close()
+	}
+
+	delete(ob.bucketNameToUUID, name)
+	delete(ob.bucketDetails, uuid)
+
+	bucketMap := make(map[string]string)
+	maps.Copy(bucketMap, ob.bucketNameToUUID)
+	event := &TransitionEvent{
+		Event:        InterestedEvent{Event: EventBucketListChanges},
+		CurrentState: bucketMap,
+		Transition:   map[transition]any{EventChangeRemoved: name},
+	}
+	ob.bucketListChanges.send(event)
 }
 
 func (ob *observer) TLSChangesCallback(event *TransitionEvent, err error) {

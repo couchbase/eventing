@@ -977,14 +977,31 @@ func (s *supervisor) requestStopFunction(msg stopMsg) (functionDeleted bool, err
 	}
 
 	runtimeInfo := &response.RuntimeInfo{}
-	json.Unmarshal(responseBytes[0], &runtimeInfo)
-	if runtimeInfo.ErrCode != response.Ok && runtimeInfo.ErrCode != response.ErrAppNotFoundTs {
-		return false, fmt.Errorf("response not expected %v for: %s", runtimeInfo.ErrCode, path)
+	err = json.Unmarshal(responseBytes[0], &runtimeInfo)
+	if err != nil {
+		return false, fmt.Errorf("error unmarshalling response for %s: %v", path, err)
 	}
 
-	if runtimeInfo.ErrCode == response.ErrAppNotFoundTs {
-		// No need to delete
-		return true, nil
+	if runtimeInfo.ErrCode != response.Ok {
+		switch msg.stage {
+		case pauseStage:
+			if runtimeInfo.ErrCode == response.ErrAppPaused ||
+				runtimeInfo.ErrCode == response.ErrAppNotDeployed ||
+				runtimeInfo.ErrCode == response.ErrAppNotFoundTs {
+				return runtimeInfo.ErrCode == response.ErrAppNotFoundTs, nil
+			}
+
+		case undeployStage:
+			if runtimeInfo.ErrCode == response.ErrAppNotDeployed || runtimeInfo.ErrCode == response.ErrAppNotFoundTs {
+				return runtimeInfo.ErrCode == response.ErrAppNotFoundTs, nil
+			}
+
+		case deleteStage:
+			if runtimeInfo.ErrCode == response.ErrAppNotFound {
+				return true, nil
+			}
+		}
+		return false, fmt.Errorf("response not expected %v for: %s", runtimeInfo.ErrCode, path)
 	}
 
 	return

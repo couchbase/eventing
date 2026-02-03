@@ -360,7 +360,7 @@ func (p *poolObserver) startNewBuckets(buckets []*bucketInfo) error {
 		observer, err := newBucketObserver(p.restPoint, p.responseCallback, bucket, p.isIpv4)
 		if err != nil {
 			logging.Errorf("%s Unable to start bucket observer for: %s err: %v", logPrefix, bucket, err)
-			continue
+			return err
 		}
 
 		p.bucketObserverMap[bucket.UUID] = observer
