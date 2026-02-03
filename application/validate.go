@@ -187,7 +187,32 @@ func (nFuncDetails *FunctionDetails) ValidateBinding(possibleChanges map[string]
 		}
 	}
 
+	presentAlias := make(map[string]Bindings)
+	err = validateDuplicateBindings(nBindings, presentAlias)
+	if err != nil {
+		return false, err
+	}
+
 	return
+}
+
+func validateDuplicateBindings(bindings []Bindings, presentAlias map[string]Bindings) error {
+	for _, b := range bindings {
+		askedAlias := ""
+		switch b.BindingType {
+		case Bucket:
+			askedAlias = b.BucketBinding.Alias
+		case Curl:
+			askedAlias = b.CurlBinding.Alias
+		case Constant:
+			askedAlias = b.ConstantBinding.Alias
+		}
+		if oldBinding, ok := presentAlias[askedAlias]; ok && !oldBinding.ExactEquals(b) {
+			return fmt.Errorf("Duplicate alias names found in bindings %s", askedAlias)
+		}
+		presentAlias[askedAlias] = b
+	}
+	return nil
 }
 
 func validateAppState(appState map[string]interface{}) error {
