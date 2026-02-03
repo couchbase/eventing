@@ -94,7 +94,7 @@ func extractFromRestApi(fBytes []byte) (funcDetails *FunctionDetails, err error)
 		}
 		return fDetails, nil
 	default:
-		funcDetails, err = extractOldBytes(fBytes)
+		funcDetails, err = extractOldBytes(fBytes, RestApi)
 		if err != nil {
 			return
 		}
@@ -104,7 +104,7 @@ func extractFromRestApi(fBytes []byte) (funcDetails *FunctionDetails, err error)
 	return
 }
 
-func convertToFunctionDetails(oldApp *OldApplication) (*FunctionDetails, error) {
+func convertToFunctionDetails(oldApp *OldApplication, byteSource source) (*FunctionDetails, error) {
 	funcDetails := &FunctionDetails{}
 
 	funcDetails.Version = 0
@@ -126,8 +126,14 @@ func convertToFunctionDetails(oldApp *OldApplication) (*FunctionDetails, error) 
 		return nil, err
 	}
 
-	if _, err = funcDetails.DeploymentConfig.ValidateDeploymentConfig(nil, &funcDetails.DeploymentConfig); err != nil {
-		return nil, fmt.Errorf("Function: %s %v", funcDetails.AppLocation.Appname, err)
+	if byteSource == RestApi {
+		if _, err = funcDetails.DeploymentConfig.ValidateDeploymentConfig(nil, &funcDetails.DeploymentConfig); err != nil {
+			return nil, fmt.Errorf("Function: %s %v", funcDetails.AppLocation.Appname, err)
+		}
+
+		if _, err := funcDetails.ValidateBinding(nil, funcDetails.Bindings); err != nil {
+			return nil, fmt.Errorf("Function: %s %v", funcDetails.AppLocation.Appname, err)
+		}
 	}
 
 	// Create settings and delete map
