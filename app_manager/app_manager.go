@@ -30,4 +30,7 @@ type AppManager interface {
 
 	// Returns all the available application
 	ListApplication() []application.AppLocation
+
+	// IsAppPresent checks if the application is present in cache
+	IsAppPresent(appLocation application.AppLocation) bool
 }

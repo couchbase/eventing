@@ -386,6 +386,10 @@ func (appLocation AppLocation) ToLocationString() string {
 	return fmt.Sprintf("%s/%s", namespaceString, appLocation.Appname)
 }
 
+func (a1 AppLocation) Equals(a2 AppLocation) bool {
+	return a1.Namespace.ExactEquals(a2.Namespace) && (a1.Appname == a2.Appname)
+}
+
 func (appLocation AppLocation) String() string {
 	return appLocation.ToLocationString()
 }
