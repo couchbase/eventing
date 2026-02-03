@@ -440,6 +440,11 @@ func (m *serviceMgr) getAppLog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !m.appManager.IsAppPresent(appLocation) {
+		runtimeInfo.ErrCode = response.ErrAppNotFoundTs
+		runtimeInfo.Description = fmt.Sprintf("Function: %s not found", appLocation)
+		return
+	}
 	sz := defaultLogSize
 
 	sv := params["size"]
