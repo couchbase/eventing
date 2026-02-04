@@ -116,7 +116,7 @@ func decodeBytes(sb StorageBytes) (*FunctionDetails, error) {
 			return nil, err
 		}
 
-		fd, err = extractOldBytes(data)
+		fd, err = extractOldBytes(data, MetaKvStore)
 		if err != nil {
 			return nil, err
 		}
@@ -709,14 +709,14 @@ func decodeBindings(config *cfgv2.Config, sb StorageBytes) ([]Bindings, error) {
 	return bindings, nil
 }
 
-func extractOldBytes(fBytes []byte) (funcDetails *FunctionDetails, err error) {
+func extractOldBytes(fBytes []byte, byteSource source) (funcDetails *FunctionDetails, err error) {
 	oldApp := &OldApplication{}
 	err = json.Unmarshal(fBytes, oldApp)
 	if err != nil {
 		return
 	}
 
-	funcDetails, err = convertToFunctionDetails(oldApp)
+	funcDetails, err = convertToFunctionDetails(oldApp, byteSource)
 	if err != nil {
 		return
 	}

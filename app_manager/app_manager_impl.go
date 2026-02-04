@@ -81,6 +81,14 @@ func (ac *appCache) DeleteApplication(appLocation application.AppLocation) (*app
 	return app, true
 }
 
+func (ac *appCache) IsAppPresent(appLocation application.AppLocation) bool {
+	ac.RLock()
+	_, present := ac.cache[appLocation]
+	ac.RUnlock()
+
+	return present
+}
+
 func (ac *appCache) ListApplication() []application.AppLocation {
 	ac.RLock()
 	defer ac.RUnlock()
