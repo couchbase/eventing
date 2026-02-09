@@ -5,15 +5,17 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/couchbase/cbauth"
 	"github.com/couchbase/eventing/application"
 )
 
 var (
-	ErrAuthorisation  = errors.New("one or more requested permissions missing")
-	ErrUserDeleted    = errors.New("user deleted")
-	ErrAuthentication = errors.New("unauthenticated User")
+	ErrAuthorisation      = errors.New("one or more requested permissions missing")
+	ErrUserDeleted        = errors.New("user deleted")
+	ErrAuthentication     = errors.New("unauthenticated User")
+	ErrJWTJitNotSupported = errors.New("JWT authentication with JIT provisioning is not supported")
 )
 
 var (
@@ -121,6 +123,32 @@ func encodeCbOnBehalfOfHeader(owner *application.Owner) (header string) {
 func encodeCbOnBehalfOfHeaderWithUser(user, domain string) (header string) {
 	header = base64.StdEncoding.EncodeToString([]byte(user + ":" + domain))
 	return
+}
+
+func getExtrasFromCreds(cred cbauth.Creds) string {
+	if cred == nil {
+		return ""
+	}
+	return cred.Extras()
+}
+
+func IsCredsJWTWithJitProvisioning(cred cbauth.Creds) error {
+	extras := getExtrasFromCreds(cred)
+	if extras == "" {
+		return nil
+	}
+	domain := ""
+	if cred != nil {
+		domain = cred.Domain()
+	}
+
+	// JIT provisioning is indicated by
+	// domain = "external"
+	// and presence of "roles=" or "groups=" in extras
+	if domain == "external" && (strings.Contains(extras, "roles=") || strings.Contains(extras, "groups=")) {
+		return ErrJWTJitNotSupported
+	}
+	return nil
 }
 
 // Exported functions

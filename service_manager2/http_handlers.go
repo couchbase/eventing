@@ -932,6 +932,11 @@ func (m *serviceMgr) functionName(w http.ResponseWriter, r *http.Request,
 		runtimeInfo.OnlyDescription = true
 
 	case http.MethodPost:
+		if err := rbac.IsCredsJWTWithJitProvisioning(cred); err != nil {
+			getAuthErrorInfo(runtimeInfo, nil, false, err)
+			return
+		}
+
 		extractedList := m.extractFunctionList(runtimeInfo, nil, r, nil, nil, "")
 		if runtimeInfo.ErrCode != response.Ok {
 			return
@@ -970,6 +975,10 @@ func (m *serviceMgr) functionName(w http.ResponseWriter, r *http.Request,
 		runtimeInfo.Description = "Successfully stored"
 
 	case http.MethodDelete:
+		if err := rbac.IsCredsJWTWithJitProvisioning(cred); err != nil {
+			getAuthErrorInfo(runtimeInfo, nil, false, err)
+			return
+		}
 		res.SetRequestEvent(response.EventDeleteFunction)
 		if notAllowed, err := rbac.IsAllowedCreds(cred, perms, false); err != nil {
 			getAuthErrorInfo(runtimeInfo, notAllowed, false, err)
@@ -1134,6 +1143,11 @@ func (m *serviceMgr) functions(w http.ResponseWriter, r *http.Request) {
 		runtimeInfo.OnlyDescription = true
 
 	case http.MethodPost:
+		if err := rbac.IsCredsJWTWithJitProvisioning(cred); err != nil {
+			getAuthErrorInfo(runtimeInfo, nil, false, err)
+			return
+		}
+
 		res.SetRequestEvent(response.EventImportFunctions)
 		funcList := m.extractFunctionList(runtimeInfo, cred, r, nil, nil, "")
 		if runtimeInfo.ErrCode != response.Ok {
@@ -1145,6 +1159,10 @@ func (m *serviceMgr) functions(w http.ResponseWriter, r *http.Request) {
 		runtimeInfo.ExtraAttributes = map[string]interface{}{common.AppLocationsTag: importedFuncs}
 
 	case http.MethodDelete:
+		if err := rbac.IsCredsJWTWithJitProvisioning(cred); err != nil {
+			getAuthErrorInfo(runtimeInfo, nil, false, err)
+			return
+		}
 		res.SetRequestEvent(response.EventDeleteFunction)
 		listApps := m.appManager.ListApplication()
 		for _, appLocation := range listApps {
@@ -1203,6 +1221,11 @@ func (m *serviceMgr) importHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
 		runtimeInfo.ErrCode = response.ErrMethodNotAllowed
 		runtimeInfo.Description = "Method not allowed. Only POST is allowed"
+		return
+	}
+
+	if err := rbac.IsCredsJWTWithJitProvisioning(cred); err != nil {
+		getAuthErrorInfo(runtimeInfo, nil, false, err)
 		return
 	}
 
@@ -1288,6 +1311,11 @@ func (m *serviceMgr) backupHandler(w http.ResponseWriter, r *http.Request) {
 		runtimeInfo.OnlyDescription = true
 
 	case http.MethodPost:
+		if err := rbac.IsCredsJWTWithJitProvisioning(cred); err != nil {
+			getAuthErrorInfo(runtimeInfo, nil, false, err)
+			return
+		}
+
 		// call restore handler
 		res.SetRequestEvent(response.EventRestoreFunctions)
 

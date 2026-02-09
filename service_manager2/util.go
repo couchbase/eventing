@@ -303,6 +303,10 @@ func getAuthErrorInfo(runtimeInfo *response.RuntimeInfo, notAllowed []string, al
 		runtimeInfo.ErrCode = response.ErrForbidden
 		runtimeInfo.Description = "Owner of the function doesn't exist"
 
+	case rbac.ErrJWTJitNotSupported:
+		runtimeInfo.ErrCode = response.ErrJWTJitNotSupported
+		runtimeInfo.Description = "JWT authentication with JIT provisioning is not supported in Eventing"
+
 	default:
 		runtimeInfo.ErrCode = response.ErrInternalServer
 
