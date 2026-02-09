@@ -98,15 +98,15 @@ func (wc *appLogCloser) Tail(sz int64) ([]byte, error) {
 		return nil, errApplogFileAlreadyClosed
 	}
 
-	buf := make([]byte, sz)
 	stat, err := os.Stat(wc.path)
 	if err != nil {
 		return nil, fmt.Errorf("unable to stat %v: %v", wc.path, err)
 	}
-	from := stat.Size() - sz
-	if from < 0 {
-		from = 0
-	}
+	pathSize := stat.Size()
+	trueSize := min(pathSize, sz)
+	from := pathSize - trueSize
+	buf := make([]byte, trueSize)
+
 	read, err := fptr.ptr.ReadAt(buf, from)
 	if (err != nil && !errors.Is(err, io.EOF)) || read < 0 {
 		return nil, fmt.Errorf("unable to read %v: %v", wc.path, err)
