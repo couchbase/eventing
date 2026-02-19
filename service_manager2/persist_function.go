@@ -303,14 +303,12 @@ func (m *serviceMgr) storeFunctionCode(cred cbauth.Creds, appLocation applicatio
 	return
 }
 
-func (m *serviceMgr) storeFunctionBinding(cred cbauth.Creds, appLocation application.AppLocation, depcfg application.DepCfg, bindings []application.Bindings) (runtimeInfo *response.RuntimeInfo) {
+func (m *serviceMgr) storeFunctionBinding(cred cbauth.Creds, appLocation application.AppLocation, data []byte) (runtimeInfo *response.RuntimeInfo) {
 	runtimeInfo = &response.RuntimeInfo{}
-
 	leaderNode := m.superSup.GetLeaderNode()
 	if leaderNode != m.config.UUID {
-		depCfgBytes, _ := json.Marshal(depcfg)
 		req := &pc.Request{
-			Body:   depCfgBytes,
+			Body:   data,
 			Method: pc.POST,
 			Query:  application.QueryMap(appLocation),
 		}
@@ -318,6 +316,13 @@ func (m *serviceMgr) storeFunctionBinding(cred cbauth.Creds, appLocation applica
 		path := fmt.Sprintf("/api/v1/functions/%s/config", appLocation.Appname)
 		redirectRequestToLeader(cred, m.broadcaster, leaderNode, runtimeInfo, path, req, runtimeInfo)
 		return runtimeInfo
+	}
+
+	depcfg, bindings, err := application.GetDeploymentConfig(data)
+	if err != nil {
+		runtimeInfo.ErrCode = response.ErrInvalidRequest
+		runtimeInfo.Description = fmt.Sprintf("%v", err)
+		return
 	}
 
 	m.lifeCycleOpSeq.Lock()
