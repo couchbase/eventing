@@ -655,14 +655,7 @@ func (m *serviceMgr) functionConfig(w http.ResponseWriter, r *http.Request,
 		}
 
 		res.AddRequestData("body", string(data))
-		depcfg, bindings, err := application.GetDeploymentConfig(data)
-		if err != nil {
-			runtimeInfo.ErrCode = response.ErrInvalidRequest
-			runtimeInfo.Description = fmt.Sprintf("%v", err)
-			return
-		}
-
-		runtimeInfo = m.storeFunctionBinding(cred, appLocation, depcfg, bindings)
+		runtimeInfo = m.storeFunctionBinding(cred, appLocation, data)
 		if runtimeInfo.ErrCode != response.Ok {
 			return
 		}
