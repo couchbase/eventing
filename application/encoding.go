@@ -85,13 +85,13 @@ func (fd *FunctionDetails) encodeBytes(compress bool) StorageBytes {
 
 func decodeBytes(sb StorageBytes) (*FunctionDetails, error) {
 	fd := &FunctionDetails{}
-	switch sb.Body[0] {
-	case version1Identifier:
-		data, err := maybeDecompress(sb.Body[1:])
-		if err != nil {
-			return nil, err
-		}
 
+	version, data, err := maybeDecompress(sb.Body)
+	if err != nil {
+		return nil, err
+	}
+	switch version {
+	case version1Identifier:
 		config := cfgv2.GetRootAsConfig(data, 0)
 		fd.Version = config.Version()
 		fd.AppCode = string(config.AppCode())
@@ -111,11 +111,6 @@ func decodeBytes(sb StorageBytes) (*FunctionDetails, error) {
 		fd.Owner = decodeOwner(config)
 
 	default:
-		data, err := maybeDecompress(sb.Body)
-		if err != nil {
-			return nil, err
-		}
-
 		fd, err = extractOldBytes(data, MetaKvStore)
 		if err != nil {
 			return nil, err
@@ -620,7 +615,7 @@ func decodeCredentials(credentialBytes []byte) []credential {
 
 	switch credentialBytes[0] {
 	case version1Identifier:
-		sensitiveData, err := maybeDecompress(credentialBytes[1:])
+		_, sensitiveData, err := maybeDecompress(credentialBytes)
 		if err != nil {
 			return nil
 		}
@@ -723,19 +718,29 @@ func extractOldBytes(fBytes []byte, byteSource source) (funcDetails *FunctionDet
 	return
 }
 
-var emptyBytes = make([]byte, 0)
+func maybeDecompress(payload []byte) (byte, []byte, error) {
+	version := payload[0]
+	switch version {
+	case version1Identifier:
+		payload = payload[1:]
 
-func maybeDecompress(payload []byte) ([]byte, error) {
+	default:
+		// old version if first byte is 0 then compressed else do json unmarshal
+		if payload[0] != compressedPayload {
+			return version, payload, nil
+		}
+	}
+
 	if payload[0] == compressedPayload {
 		r := flate.NewReader(bytes.NewReader(payload[2:]))
 		defer r.Close()
 		payload2, err := ioutil.ReadAll(r)
 		if err != nil {
-			return nil, err
+			return version, nil, err
 		}
-		return payload2, nil
+		return version, payload2, nil
 	}
-	return payload[2:], nil
+	return version, payload[2:], nil
 }
 
 func maybeCompress(payload []byte) ([]byte, bool) {
