@@ -1117,6 +1117,7 @@ func (dcpMsg *DcpEvent) fillDcpstreamEnd(req *StreamReq) {
 	dcpMsg.Version = req.Version
 	dcpMsg.SrRequest = req
 	dcpMsg.Seqno = req.StartSeq
+	dcpMsg.Vbuuid = req.Vbuuid
 }
 
 // Internal function to parse different responses
