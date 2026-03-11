@@ -172,7 +172,7 @@ func (handler *vbHandler) eventReceiver(ctx context.Context) {
 			case dcpMessage.DCP_STREAM_END:
 				if msg.Status == dcpMessage.ROLLBACK {
 					handler.config.StatsHandler.IncrementCountProcessingStats("rollback", 1)
-					logging.Warnf("%s Got rollback message for vb: %d", logPrefix, msg.Vbno)
+					logging.Warnf("%s Got rollback message for vb: %d req: %s", logPrefix, msg.Vbno, msg.SrRequest)
 				}
 				handler.config.StatsHandler.IncrementCountProcessingStats("dcp_streamend", 1)
 				sendNoOp := handler.allocator.DoneVb(msg.SrRequest)
