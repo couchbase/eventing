@@ -144,6 +144,7 @@ const (
 	ErrAppPaused              = errCode(64)
 	ErrCursorLimitReached     = errCode(65)
 	ErrSGWDetection           = errCode(66)
+	ErrJWTJitNotSupported     = errCode(67)
 )
 
 // Shouldn't expose internal details
@@ -198,6 +199,7 @@ var (
 		ErrAppPaused:              ErrorInfo{httpStatusCode: http.StatusUnprocessableEntity, Name: "ERR_APP_PAUSED", Code: 64},
 		ErrCursorLimitReached:     ErrorInfo{httpStatusCode: http.StatusBadRequest, Name: "ERR_CURSOR_LIMIT_REACHED", Code: 65},
 		ErrSGWDetection:           ErrorInfo{httpStatusCode: http.StatusInternalServerError, Name: "ERR_SYNC_GATEWAY_DETECTION", Code: 66},
+		ErrJWTJitNotSupported:     ErrorInfo{httpStatusCode: http.StatusForbidden, Name: "ERR_JWT_JIT_NOT_SUPPORTED", Code: 67, Description: "JWT authentication with JIT provisioning is not supported in Eventing"},
 	}
 )
 
