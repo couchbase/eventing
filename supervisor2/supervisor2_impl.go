@@ -205,7 +205,7 @@ func StartSupervisor(ctx context.Context, cs *common.ClusterSettings) (Superviso
 	}
 
 	isIpv4 := (s.clusterSetting.IpMode == "ipv4")
-	observer, err := notifier.NewObserverForPool(tlsConfig, "default", restAddress, isIpv4)
+	observer, err := notifier.NewObserverForPool(tlsConfig, "default", restAddress, isIpv4, s)
 	if err != nil {
 		return nil, fmt.Errorf("unable to start observer: %v", err)
 	}
@@ -1685,6 +1685,10 @@ func (s *supervisor) MemRequiredPerThread(application.KeyspaceInfo) float64 {
 	_, config := s.serverConfig.GetServerConfig(application.NewKeyspaceInfo("", "", "", "", 0))
 	quota := config.RamQuota / max(float64(s.numWorkersRunning.Load()), 1)
 	return quota
+}
+
+func (s *supervisor) GetInUseEncryptionKeys() ([]string, error) {
+	return []string{}, nil
 }
 
 func (s *supervisor) GetNamespaceDistribution(keyinfo *application.KeyspaceInfo) int {

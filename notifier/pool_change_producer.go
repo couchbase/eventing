@@ -51,6 +51,7 @@ type changeCallback interface {
 	PoolChangeCallback([]*TransitionEvent, error)
 	BucketChangeCallback(bucket *Bucket, co []*TransitionEvent, err error)
 	TLSChangesCallback(*TransitionEvent, error)
+	EncryptionKeyChangesCallback(*TransitionEvent, error)
 }
 
 func newPoolObserver(settings *TLSClusterConfig, poolName, restPoint string, isIpv4 bool, responseChangeCallback changeCallback) (*poolObserver, error) {
@@ -472,7 +473,7 @@ func (p *poolObserver) queryBucketApi(sResult *streamingResult) ([]*Bucket, erro
 	}
 
 	var buckets []*Bucket
-	err = json.Unmarshal(res.Body, buckets)
+	err = json.Unmarshal(res.Body, &buckets)
 	if err != nil {
 		return nil, fmt.Errorf("error in unmarshalling query bucket api response: %v", err)
 	}
