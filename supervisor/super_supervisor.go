@@ -136,17 +136,20 @@ func (s *SuperSupervisor) waitForRecovery() {
 			continue
 		}
 
+		initialised := true
 		for _, node := range nodes {
 			_, err = common.FrameCouchbaseVerFromNsServerStreamingRestApi(node.Version)
 			if err != nil {
 				logging.Errorf("%s Failed to frame Couchbase version from ns server streaming rest api, err: %v", logPrefix, err)
-				clusterInfo.RUnlock()
-				time.Sleep(10 * time.Millisecond)
-				continue
+				initialised = false
+				break
 			}
 		}
 		clusterInfo.RUnlock()
-		break
+		if initialised {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 
 	logging.Infof("%s Recovery of version completed, all nodes are up and running", logPrefix)
