@@ -44,6 +44,7 @@ type functionSet interface {
 
 	NotifyOwnershipChange(version string)
 	NotifyGlobalConfigChange()
+	GetInUseKeyIDs(keySet map[string]struct{})
 
 	DeleteFunctionSet()
 }
@@ -142,6 +143,9 @@ func (ifs *idealFunctionSet) NotifyOwnershipChange(string) {
 }
 
 func (ifs *idealFunctionSet) NotifyGlobalConfigChange() {
+}
+
+func (ifs *idealFunctionSet) GetInUseKeyIDs(map[string]struct{}) {
 }
 
 func (ifs *idealFunctionSet) DeleteFunctionSet() {
@@ -340,6 +344,13 @@ func (fs *funcSet) NotifyGlobalConfigChange() {
 
 	for _, fHandler := range funcHandlerList {
 		fHandler.funcHandler.NotifyGlobalConfigChange()
+	}
+}
+
+func (fs *funcSet) GetInUseKeyIDs(keySet map[string]struct{}) {
+	funcHandlerList := fs.getFunctionHandlerList()
+	for _, fHandler := range funcHandlerList {
+		fHandler.funcHandler.GetInUseKeyIDs(keySet)
 	}
 }
 

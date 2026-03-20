@@ -38,6 +38,9 @@ type FunctionManager interface {
 	NotifyGlobalConfigChange()
 	NotifyTlsChanges(cluster *gocb.Cluster)
 
+	// GetInUseKeyIDs collects encryption key IDs in use by all app log files in this manager into the provided set.
+	GetInUseKeyIDs(keySet map[string]struct{})
+
 	// For debugger
 	TrapEventOp(trapEvent functionHandler.TrapEventOp, appLocation application.AppLocation, value interface{}) error
 

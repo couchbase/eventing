@@ -153,7 +153,7 @@ func NewFunctionHandler(id uint16, fd *application.FunctionDetails, re RuntimeEn
 
 	if fHandler.funcHandlerConfig.LeaderHandler {
 		_, logFileLocation := application.GetLogDirectoryAndFileName(false, fHandler.fd, fHandler.clusterSettings.EventingDir)
-		appLogWriter, err := openAppLog(logFileLocation, 0640, int64(fHandler.fd.Settings.AppLogMaxSize), int64(fHandler.fd.Settings.AppLogMaxFiles))
+		appLogWriter, err := openAppLog(logFileLocation, 0640, int64(fHandler.fd.Settings.AppLogMaxSize), int64(fHandler.fd.Settings.AppLogMaxFiles), fHandler.observer)
 		if err != nil {
 			fHandler.appLogWriter.Store(NewDummyLogWriter())
 			logging.Errorf("%s Error in opening file: %s, err: %v", fHandler.logPrefix, logFileLocation, err)
@@ -713,6 +713,10 @@ func (fHandler *funcHandler) notifyOwnershipChange(version string) {
 	for _, vb := range toOwn {
 		fHandler.checkpointManager.Load().OwnVbCheckpoint(vb)
 	}
+}
+
+func (fHandler *funcHandler) GetInUseKeyIDs(keySet map[string]struct{}) {
+	fHandler.appLogWriter.Load().GetInUseKeyIDs(keySet)
 }
 
 func (fHandler *funcHandler) NotifyGlobalConfigChange() {

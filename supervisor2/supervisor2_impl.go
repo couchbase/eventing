@@ -1688,7 +1688,18 @@ func (s *supervisor) MemRequiredPerThread(application.KeyspaceInfo) float64 {
 }
 
 func (s *supervisor) GetInUseEncryptionKeys() ([]string, error) {
-	return []string{}, nil
+	keySet := make(map[string]struct{})
+
+	tenents := s.tenents.Load().(map[string]*functionInfo)
+	for _, tInfo := range tenents {
+		tInfo.manager.GetInUseKeyIDs(keySet)
+	}
+
+	keys := make([]string, 0, len(keySet))
+	for k := range keySet {
+		keys = append(keys, k)
+	}
+	return keys, nil
 }
 
 func (s *supervisor) GetNamespaceDistribution(keyinfo *application.KeyspaceInfo) int {

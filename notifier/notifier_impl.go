@@ -438,11 +438,12 @@ func newNotifier(settings *TLSClusterConfig, poolName, restAddr string, isIpv4 b
 		count: 0,
 	}
 
+	n.observer = newObserver()
+
 	err := NewEncryptionKeyManager(n.observer, notifierHelper)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create encryption key manager: %v", err)
 	}
-	n.observer = newObserver()
 
 	pool, err := newPoolObserver(settings, poolName, restAddr, isIpv4, n.observer)
 	if err != nil {
