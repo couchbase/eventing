@@ -2,6 +2,7 @@ PROJECT (eventing-producer)
 
 INCLUDE (FindCouchbaseGo)
 INCLUDE (FindCouchbaseCurl)
+INCLUDE (FindCouchbaseOpenSSL)
 
 SET(LDFLAGS)
 IF(APPLE)
@@ -43,9 +44,13 @@ IF(BUILD_ENTERPRISE)
     LIST(APPEND CGO_LIBRARY_DIRS ${evaluator_BINARY_DIR})
 ENDIF()
 
+GET_FILENAME_COMPONENT (OPENSSL_LIB_DIR "${OPENSSL_CRYPTO_LIBRARY}" DIRECTORY)
+
 GoModBuild(TARGET eventing-producer PACKAGE github.com/couchbase/eventing/cmd/producer
   INSTALL_PATH bin OUTPUT eventing-producer
   DEPENDS sigar Curl::libcurl eventing-generated
+  CGO_INCLUDE_DIRS "${OPENSSL_INCLUDE_DIR}"
+  CGO_LIBRARY_DIRS "${OPENSSL_LIB_DIR}"
   GOTAGS "${TAGS}"
   LDFLAGS "${LDFLAGS}"
   GOVERSION ${GOVERSION})
