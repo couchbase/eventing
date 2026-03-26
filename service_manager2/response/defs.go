@@ -275,6 +275,7 @@ const (
 	EventGetRuntimeProfiling
 
 	EventGetAppStats
+	EventHandleEventingLogLevel
 )
 
 type log uint8
@@ -654,6 +655,12 @@ var (
 			description: "Get user info",
 			log:         AuditLog,
 			auditLogVal: auditevent.GetUserInfo,
+		},
+		EventHandleEventingLogLevel: &event{
+			description: "Handle eventing log level change",
+			log:         AuditLog | SystemLog,
+			auditLogVal: auditevent.SaveConfig,
+			systemLogId: common.EVENTID_UPDATE_CONFIG,
 		},
 	}
 )

@@ -1,12 +1,17 @@
 package logging
 
-import "os"
-import "fmt"
-import "strings"
-import "time"
-import "bytes"
-import "runtime/debug"
-import l "log"
+import (
+	"bytes"
+	"fmt"
+	"os"
+	"runtime/debug"
+	"strings"
+	"time"
+
+	l "log"
+
+	"github.com/couchbase/gocb/v2"
+)
 
 type LogLevel int
 
@@ -21,6 +26,22 @@ const (
 	Timing
 	Debug
 	Trace
+)
+
+type LogLevelInfo struct {
+	GocbLevel     string `json:"gocb_log_level,omitempty"`
+	EventingLevel string `json:"eventing_log_level,omitempty"`
+}
+
+func (l LogLevelInfo) String() string {
+	return fmt.Sprintf("Gocb Log Level: %s, Eventing Log Level: %s", l.GocbLevel, l.EventingLevel)
+}
+
+type logType uint8
+
+const (
+	gocbLog logType = iota
+	eventingLog
 )
 
 var (
@@ -73,6 +94,9 @@ func (t LogLevel) String() string {
 }
 
 func Level(s string) LogLevel {
+	if s == "" {
+		return -1
+	}
 	switch strings.ToUpper(s) {
 	case "SILENT":
 		return Silent
@@ -97,6 +121,7 @@ func Level(s string) LogLevel {
 	}
 }
 
+var gocbLogLevel gocb.LogLevel
 var baselevel LogLevel
 var target *l.Logger
 var noredact bool
@@ -105,10 +130,13 @@ func init() {
 	target = l.New(os.Stdout, "", 0)
 	baselevel = Info
 	noredact = os.Getenv("CB_EVENTING_NOREDACT") == "true"
+
+	gocbLogLevel = gocb.LogInfo
+	gocb.SetLogger(&GocbLogger{})
 }
 
-func printf(at LogLevel, format string, v ...interface{}) {
-	if baselevel >= at {
+func printf(force bool, at LogLevel, format string, v ...interface{}) {
+	if IsEnabled(at) || force {
 		format := RedactFormat(format)
 		ts := time.Now().Format(LogTimeFormat)
 		msg := fmt.Sprintf(ts+" ["+at.String()+"] "+format, v...)
@@ -130,39 +158,72 @@ func RedactFormat(format string) string {
 }
 
 func Warnf(format string, v ...interface{}) {
-	printf(Warn, format, v...)
+	printf(false, Warn, format, v...)
 }
 
 func Errorf(format string, v ...interface{}) {
-	printf(Error, format, v...)
+	printf(false, Error, format, v...)
 }
 
 func Fatalf(format string, v ...interface{}) {
-	printf(Fatal, format, v...)
+	printf(true, Fatal, format, v...)
 }
 
 func Infof(format string, v ...interface{}) {
-	printf(Info, format, v...)
+	printf(false, Info, format, v...)
 }
 
 func Verbosef(format string, v ...interface{}) {
-	printf(Verbose, format, v...)
+	printf(false, Verbose, format, v...)
 }
 
 func Debugf(format string, v ...interface{}) {
-	printf(Debug, format, v...)
+	printf(false, Debug, format, v...)
 }
 
 func Tracef(format string, v ...interface{}) {
-	printf(Trace, format, v...)
+	printf(false, Trace, format, v...)
 }
 
 func IsEnabled(at LogLevel) bool {
 	return baselevel >= at
 }
 
-func SetLogLevel(to LogLevel) {
-	baselevel = to
+func SetLogLevel(loglevelInfo LogLevelInfo) {
+	setLogLevel(gocbLog, loglevelInfo.GocbLevel)
+	setLogLevel(eventingLog, loglevelInfo.EventingLevel)
+}
+
+func setLogLevel(log logType, logLevel string) {
+	to := Level(logLevel)
+	if to < Silent || to > Trace {
+		return
+	}
+	switch log {
+	case gocbLog:
+		switch to {
+		case Timing:
+			fallthrough
+		case Info:
+			gocbLogLevel = gocb.LogInfo
+		case Trace:
+			gocbLogLevel = gocb.LogTrace
+		case Fatal:
+			fallthrough
+		case Silent:
+			fallthrough
+		case Error:
+			gocbLogLevel = gocb.LogError
+		case Warn:
+			gocbLogLevel = gocb.LogWarn
+		case Verbose:
+			gocbLogLevel = gocb.LogMaxVerbosity
+		case Debug:
+			gocbLogLevel = gocb.LogDebug
+		}
+	case eventingLog:
+		baselevel = to
+	}
 }
 
 func StackTrace() string {

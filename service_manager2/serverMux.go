@@ -23,6 +23,7 @@ func (m *serviceMgr) getServerMux() *http.ServeMux {
 	mux.HandleFunc("/getUserInfo", m.getUserInfoHandler)
 	mux.HandleFunc("/getCreds", m.getCreds)
 	mux.HandleFunc("/getCpuCount", m.getCPUCount)
+	mux.HandleFunc("/logLevel", m.handleLogLevel)
 
 	//expvar REST APIs
 	mux.HandleFunc("/debug/vars", m.expvarHandler) //DONE
