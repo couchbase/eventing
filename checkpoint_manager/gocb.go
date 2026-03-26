@@ -14,17 +14,10 @@ import (
 	"github.com/couchbase/gocb/v2"
 )
 
-type GocbLogger struct{}
-
 const (
-	noCas = gocb.Cas(0)
+	gocbWaitTime = 30 * time.Second
+	noCas        = gocb.Cas(0)
 )
-
-func (r *GocbLogger) Log(level gocb.LogLevel, offset int, format string, v ...interface{}) error {
-	// TODO: Add logging for gocb based on level
-	// logging.Infof(format, v...)
-	return nil
-}
 
 type dynamicAuthenticator struct {
 	statsCounter      *common.GlobalStatsCounter
@@ -132,7 +125,8 @@ func GetGocbClusterObject(clusterConfig *common.ClusterSettings, observer notifi
 			continue
 		}
 
-		err = cluster.WaitUntilReady(5*time.Second, &gocb.WaitUntilReadyOptions{})
+		gocbWaitUntilReadyTime := gocbWaitTime * time.Duration(len(kvNodes))
+		err = cluster.WaitUntilReady(gocbWaitUntilReadyTime, &gocb.WaitUntilReadyOptions{})
 		if err != nil {
 			logging.Errorf("%s Error while waiting for cluster %s to be up: %v", logPrefix, connStr, err)
 			cluster.Close(nil)
@@ -157,7 +151,7 @@ func GetBucketObjectWithRetry(cluster *gocb.Cluster, retryCount int, observer no
 	for retryCount != 0 {
 		// gocb won't return nil bucket. So we can retur this bucket in case of error and any ops will be no op
 		bucket = cluster.Bucket(bucketName)
-		err = bucket.WaitUntilReady(5*time.Second, nil)
+		err = bucket.WaitUntilReady(gocbWaitTime, nil)
 		if errors.Is(err, gocb.ErrShutdown) {
 			return bucket, err
 		}
