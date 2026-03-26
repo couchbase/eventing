@@ -1,6 +1,7 @@
 package servicemanager2
 
 import (
+	"encoding/json"
 	"expvar"
 	"fmt"
 	"io"
@@ -18,6 +19,7 @@ import (
 	"github.com/couchbase/eventing/authenticator/rbac"
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/gen/version"
+	"github.com/couchbase/eventing/logging"
 	"github.com/couchbase/eventing/notifier"
 	"github.com/couchbase/eventing/service_manager2/response"
 )
@@ -365,4 +367,43 @@ func (m *serviceMgr) getCreds(w http.ResponseWriter, r *http.Request) {
 	runtimeInfo.OnlyDescription = true
 	runtimeInfo.SendRawDescription = true
 	runtimeInfo.Description = fmt.Sprintf("%s", response.Encode())
+}
+
+func (m *serviceMgr) handleLogLevel(w http.ResponseWriter, r *http.Request) {
+	res := response.NewResponseWriter(w, r, response.EventHandleEventingLogLevel)
+	runtimeInfo := &response.RuntimeInfo{}
+
+	defer func() {
+		res.LogAndSend(runtimeInfo)
+	}()
+
+	if notAllowed, err := rbac.IsAllowed(r, rbac.EventingPermissionManage, false); err != nil {
+		getAuthErrorInfo(runtimeInfo, notAllowed, false, err)
+		return
+	}
+
+	data, err := io.ReadAll(r.Body)
+	if err != nil {
+		runtimeInfo.ErrCode = response.ErrInvalidRequest
+		runtimeInfo.Description = fmt.Sprintf("Failed to read request body, err: %v", err)
+		return
+	}
+
+	if r.Method != http.MethodPost {
+		runtimeInfo.ErrCode = response.ErrInvalidRequest
+		runtimeInfo.Description = fmt.Sprintf("Invalid request method: %s, only POST is allowed", r.Method)
+		return
+	}
+
+	logLevelInfo := logging.LogLevelInfo{}
+	err = json.Unmarshal(data, &logLevelInfo)
+	if err != nil {
+		runtimeInfo.ErrCode = response.ErrInvalidRequest
+		runtimeInfo.Description = fmt.Sprintf("Failed to unmarshal request body, err: %v", err)
+		return
+	}
+	runtimeInfo.ExtraAttributes = logLevelInfo
+
+	logging.SetLogLevel(logLevelInfo)
+	runtimeInfo.Description = fmt.Sprintf("Successfully set log handler to: %s", logLevelInfo)
 }

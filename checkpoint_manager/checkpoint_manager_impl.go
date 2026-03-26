@@ -387,7 +387,6 @@ func NewCheckpointManagerForKeyspaceWithContext(ctx context.Context, cc Checkpoi
 		gocbMutateIn: make([]gocb.MutateInSpec, 0, 6),
 	}
 
-	gocb.SetLogger(&GocbLogger{})
 	// Store true and lazily detect if keyspace exists or not
 	cm.keyspaceExists.Store(true)
 	cm.collectionHandler.Store(GetCollectionHandle(bucket, cc.Keyspace))
