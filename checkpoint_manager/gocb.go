@@ -124,15 +124,6 @@ func GetGocbClusterObject(clusterConfig *common.ClusterSettings, observer notifi
 			time.Sleep(time.Second)
 			continue
 		}
-
-		gocbWaitUntilReadyTime := gocbWaitTime * time.Duration(len(kvNodes))
-		err = cluster.WaitUntilReady(gocbWaitUntilReadyTime, &gocb.WaitUntilReadyOptions{})
-		if err != nil {
-			logging.Errorf("%s Error while waiting for cluster %s to be up: %v", logPrefix, connStr, err)
-			cluster.Close(nil)
-			time.Sleep(time.Second)
-			continue
-		}
 		break
 	}
 
@@ -149,9 +140,13 @@ func GetBucketObjectWithRetry(cluster *gocb.Cluster, retryCount int, observer no
 	logPrefix := "checkpointManager::GetBucketObjectWithRetry"
 
 	for retryCount != 0 {
-		// gocb won't return nil bucket. So we can retur this bucket in case of error and any ops will be no op
+		// gocb won't return nil bucket. So we can return this bucket in case of error and any ops will be no op
 		bucket = cluster.Bucket(bucketName)
-		err = bucket.WaitUntilReady(gocbWaitTime, nil)
+		err = bucket.WaitUntilReady(gocbWaitTime, &gocb.WaitUntilReadyOptions{
+			ServiceTypes: []gocb.ServiceType{
+				gocb.ServiceTypeKeyValue,
+			},
+		})
 		if errors.Is(err, gocb.ErrShutdown) {
 			return bucket, err
 		}
