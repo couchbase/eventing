@@ -151,6 +151,17 @@ func NewFunctionHandler(id uint16, fd *application.FunctionDetails, re RuntimeEn
 		},
 	}
 
+	if fHandler.funcHandlerConfig.LeaderHandler {
+		_, logFileLocation := application.GetLogDirectoryAndFileName(false, fHandler.fd, fHandler.clusterSettings.EventingDir)
+		appLogWriter, err := openAppLog(logFileLocation, 0640, int64(fHandler.fd.Settings.AppLogMaxSize), int64(fHandler.fd.Settings.AppLogMaxFiles), fHandler.observer)
+		if err != nil {
+			fHandler.appLogWriter.Store(NewDummyLogWriter())
+			logging.Errorf("%s Error in opening file: %s, err: %v", fHandler.logPrefix, logFileLocation, err)
+		} else {
+			fHandler.appLogWriter.Store(appLogWriter)
+		}
+	}
+
 	fHandler.statsHandler = newStatsHandler(fHandler.logPrefix, location)
 	fHandler.vbMapVersion.Store("")
 	fHandler.trapEvent.Store(noEvent)
@@ -427,26 +438,12 @@ func (fHandler *funcHandler) runOnDeploy(seq uint32) checkpointManager.OnDeployS
 }
 
 func (fHandler *funcHandler) initOnDeploy() {
-	logPrefix := fmt.Sprintf("funcHandler::initOnDeploy[%s]", fHandler.logPrefix)
-
-	if fHandler.funcHandlerConfig.LeaderHandler {
-		_, logFileLocation := application.GetLogDirectoryAndFileName(false, fHandler.fd, fHandler.clusterSettings.EventingDir)
-		appLogWriter, err := openAppLog(logFileLocation, 0640, int64(fHandler.fd.Settings.AppLogMaxSize), int64(fHandler.fd.Settings.AppLogMaxFiles))
-		if err != nil {
-			logging.Errorf("%s Error in opening file: %s, err: %v", logPrefix, err)
-		} else {
-			fHandler.appLogWriter.Store(appLogWriter)
-		}
-	}
-
 	fHandler.instanceID = []byte(fHandler.fd.AppInstanceID)
 	fHandler.checkpointManager.Store(fHandler.pool.GetCheckpointManager(fHandler.fd.AppID, fHandler.fd.AppInstanceID, fHandler.interrupt, fHandler.fd.AppLocation, fHandler.fd.DeploymentConfig.MetaKeyspace))
 	fHandler.isSrcMutationPossible = fHandler.fd.IsSourceMutationPossible()
 }
 
 func (fHandler *funcHandler) doneOnDeploy() {
-	appHandler := fHandler.appLogWriter.Swap(NewDummyLogWriter())
-	appHandler.Close()
 }
 
 // Function to change state of a function handler
@@ -630,8 +627,6 @@ func (fHandler *funcHandler) handleRunningState(seq uint32, newState funcHandler
 // TODO: This function should always succeed
 // Start the function checkpoint handler and dcp stream for ownership vbs
 func (fHandler *funcHandler) spawnFunction(re RuntimeEnvironment) {
-	logPrefix := fmt.Sprintf("funcHandler::spawnFunction[%s]", fHandler.logPrefix)
-
 	fHandler.re = re
 	fHandler.version = re.GetProcessDetails().Version
 	ctx, close := context.WithCancel(context.Background())
@@ -648,19 +643,6 @@ func (fHandler *funcHandler) spawnFunction(re RuntimeEnvironment) {
 	fHandler.notifyGlobalConfigChange()
 	checkpointMgr := fHandler.checkpointManager.Swap(fHandler.pool.GetCheckpointManager(fHandler.fd.AppID, fHandler.fd.AppInstanceID, fHandler.interrupt, fHandler.fd.AppLocation, fHandler.fd.DeploymentConfig.MetaKeyspace))
 	checkpointMgr.CloseCheckpointManager()
-
-	if fHandler.funcHandlerConfig.LeaderHandler {
-		_, logFileLocation := application.GetLogDirectoryAndFileName(false, fHandler.fd, fHandler.clusterSettings.EventingDir)
-		var err error
-		appLogWriter, err := openAppLog(logFileLocation, 0640, int64(fHandler.fd.Settings.AppLogMaxSize), int64(fHandler.fd.Settings.AppLogMaxFiles))
-		if err != nil {
-			logging.Errorf("%s Error in opening file: %s, err: %v", logPrefix, err)
-			// return nil
-		} else {
-			appLogWriter := fHandler.appLogWriter.Swap(appLogWriter)
-			appLogWriter.Close()
-		}
-	}
 	fHandler.isSrcMutationPossible = fHandler.fd.IsSourceMutationPossible()
 
 	config := &vbhandler.Config{
@@ -731,6 +713,10 @@ func (fHandler *funcHandler) notifyOwnershipChange(version string) {
 	for _, vb := range toOwn {
 		fHandler.checkpointManager.Load().OwnVbCheckpoint(vb)
 	}
+}
+
+func (fHandler *funcHandler) GetInUseKeyIDs(keySet map[string]struct{}) {
+	fHandler.appLogWriter.Load().GetInUseKeyIDs(keySet)
 }
 
 func (fHandler *funcHandler) NotifyGlobalConfigChange() {
@@ -848,10 +834,6 @@ func (fHandler *funcHandler) notifyInterrupt() {
 		// No need to handle this just give the interrupt
 
 	case pausing, Paused, undeploying, Undeployed:
-		// Get it into basic state
-		fHandler.close()
-		appLogWriter := fHandler.appLogWriter.Swap(NewDummyLogWriter())
-		appLogWriter.Close()
 		vbHandler := fHandler.vbHandler.Swap(vbhandler.NewDummyVbHandler())
 		vbHandler.Close()
 
@@ -883,5 +865,8 @@ func (fHandler *funcHandler) CloseFunctionHandler() {
 	checkpointMgr.CloseCheckpointManager()
 
 	close(fHandler.commandChan)
+
+	appLogWriter := fHandler.appLogWriter.Swap(NewDummyLogWriter())
+	appLogWriter.Close()
 	logging.Infof("%s Function handler closed successfully", logPrefix)
 }

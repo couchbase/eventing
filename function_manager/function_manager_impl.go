@@ -266,6 +266,13 @@ func (fm *functionManager) NotifyTlsChanges(cluster *gocb.Cluster) {
 	fm.pool.TlsSettingsChanged(cluster)
 }
 
+func (fm *functionManager) GetInUseKeyIDs(keySet map[string]struct{}) {
+	fSetList := fm.getAllFunctionSet()
+	for _, funcSet := range fSetList {
+		funcSet.GetInUseKeyIDs(keySet)
+	}
+}
+
 func (fm *functionManager) RebalanceProgress(version string, appLocation application.AppLocation, rebalanceProgress *common.AppRebalanceProgress) {
 	instanceID, fhList := fm.getFunctionHandlerListFromLocation(appLocation)
 	for _, fh := range fhList {

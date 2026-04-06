@@ -139,6 +139,10 @@ type FunctionHandler interface {
 	// NotifyGlobalConfigChange will be called when global config is changed
 	NotifyGlobalConfigChange()
 
+	// GetInUseKeyIDs collects encryption key IDs currently in use by this
+	// handler's app log files into the provided set.
+	GetInUseKeyIDs(keySet map[string]struct{})
+
 	// GetRebalanceProgress how many vbs need to be claimed
 	GetRebalanceProgress(version string, appProgress *common.AppRebalanceProgress) bool
 
@@ -187,6 +191,9 @@ func (d dummy) NotifyOwnershipChange(version string) {
 }
 
 func (d dummy) NotifyGlobalConfigChange() {
+}
+
+func (d dummy) GetInUseKeyIDs(map[string]struct{}) {
 }
 
 func (d dummy) GetRebalanceProgress(version string, appProgress *common.AppRebalanceProgress) bool {

@@ -157,12 +157,13 @@ func (sl *subscriberList) close() {
 
 type observer struct {
 	// poolEvent holds the events related to pool
-	kvNode            *subscriberList
-	queryNode         *subscriberList
-	eventingNode      *subscriberList
-	clusterCompat     *subscriberList
-	bucketListChanges *subscriberList
-	tlsConfigChanges  *subscriberList
+	kvNode                  *subscriberList
+	queryNode               *subscriberList
+	eventingNode            *subscriberList
+	clusterCompat           *subscriberList
+	bucketListChanges       *subscriberList
+	tlsConfigChanges        *subscriberList
+	encryptionConfigChanges *subscriberList
 
 	bucketDetailsMutex sync.RWMutex
 	bucketNameToUUID   map[string]string
@@ -195,6 +196,9 @@ func newObserver() *observer {
 
 	event.Event = EventTLSChanges
 	ob.tlsConfigChanges = newSubscriberList(event, &TlsConfig{})
+
+	event.Event = EventEncryptionKeyChanges
+	ob.encryptionConfigChanges = newSubscriberList(event, &EncryptionKeyConfig{})
 
 	return ob
 }
@@ -318,15 +322,16 @@ func (ob *observer) deleteSignalLocked(uuid, name string) {
 	ob.bucketListChanges.send(event)
 }
 
-func (ob *observer) TLSChangesCallback(event *TransitionEvent, err error) {
+func (ob *observer) TLSChangesCallback(event *TransitionEvent, _ error) {
 	logPrefix := "observer::TLSChangesCallback"
-	if err != nil {
-		logging.Errorf("%s Error in tls chages callback: %v", logPrefix, err)
-		return
-	}
-
 	logging.Infof("%s TlsConfig changes detected: %s", logPrefix, event)
 	ob.tlsConfigChanges.send(event)
+}
+
+func (ob *observer) EncryptionKeyChangesCallback(event *TransitionEvent, _ error) {
+	logPrefix := "observer::EncryptionKeyChangesCallback"
+	logging.Infof("%s EncryptionKeyConfig changes detected: %s", logPrefix, event)
+	ob.encryptionConfigChanges.send(event)
 }
 
 func (ob *observer) deleteSubscriber(iE InterestedEvent, s *subscriber) {
@@ -367,6 +372,9 @@ func (ob *observer) getSubscriber(iE InterestedEvent) (*subscriberList, error) {
 	case EventTLSChanges:
 		return ob.tlsConfigChanges, nil
 
+	case EventEncryptionKeyChanges:
+		return ob.encryptionConfigChanges, nil
+
 	default:
 		ob.bucketDetailsMutex.RLock()
 		defer ob.bucketDetailsMutex.RUnlock()
@@ -383,13 +391,13 @@ func (ob *observer) getSubscriber(iE InterestedEvent) (*subscriberList, error) {
 
 // NewObserver creates a new observer if not already created on default pool
 // which can be used to create subscriber
-func NewObserver(settings *TLSClusterConfig, restAddress string, isIpv4 bool) (Observer, error) {
-	return NewObserverForPool(settings, defaultPool, restAddress, isIpv4)
+func NewObserver(settings *TLSClusterConfig, restAddress string, isIpv4 bool, notifierHelper notifierHelper) (Observer, error) {
+	return NewObserverForPool(settings, defaultPool, restAddress, isIpv4, notifierHelper)
 }
 
 // NewObserverForPool creates a new observer on a given pool
 // which can be used to create subscriber
-func NewObserverForPool(settings *TLSClusterConfig, poolName, restAddress string, isIpv4 bool) (Observer, error) {
+func NewObserverForPool(settings *TLSClusterConfig, poolName, restAddress string, isIpv4 bool, notifierHelper notifierHelper) (Observer, error) {
 	once.Do(func() {
 		poolCache = &poolCacheType{
 			pools: make(map[string]Observer),
@@ -405,7 +413,7 @@ func NewObserverForPool(settings *TLSClusterConfig, poolName, restAddress string
 		return ob, nil
 	}
 
-	ob, err := newNotifier(settings, poolName, restAddress, isIpv4)
+	ob, err := newNotifier(settings, poolName, restAddress, isIpv4, notifierHelper)
 	if err != nil {
 		return nil, err
 	}
@@ -425,12 +433,17 @@ type notifier struct {
 	pool     *poolObserver
 }
 
-func newNotifier(settings *TLSClusterConfig, poolName, restAddr string, isIpv4 bool) (Observer, error) {
+func newNotifier(settings *TLSClusterConfig, poolName, restAddr string, isIpv4 bool, notifierHelper notifierHelper) (Observer, error) {
 	n := &notifier{
 		count: 0,
 	}
 
 	n.observer = newObserver()
+
+	err := NewEncryptionKeyManager(n.observer, notifierHelper)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create encryption key manager: %v", err)
+	}
 
 	pool, err := newPoolObserver(settings, poolName, restAddr, isIpv4, n.observer)
 	if err != nil {

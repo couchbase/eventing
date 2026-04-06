@@ -13,6 +13,10 @@ import (
 
 type eventType uint8
 
+type notifierHelper interface {
+	GetInUseEncryptionKeys() ([]string, error)
+}
+
 const (
 	EventingAdminService = "eventingAdminPort"
 	EventingAdminSSL     = "eventingSSL"
@@ -80,6 +84,9 @@ const (
 
 	// EventTLSChanges represents subscriber is interested in changes in tls settings
 	EventTLSChanges
+
+	// EventEncryptionKeyChanges represents subscriber is interested in changes in encryption key
+	EventEncryptionKeyChanges // *EncryptionKeyConfig
 )
 
 func (e eventType) String() string {
@@ -102,6 +109,8 @@ func (e eventType) String() string {
 		return "ClusterCompatibilityChanges"
 	case EventTLSChanges:
 		return "TLSChanges"
+	case EventEncryptionKeyChanges:
+		return "EncryptionKeyChanges"
 	default:
 		return "Unknown"
 	}
@@ -138,8 +147,8 @@ const (
 type TransitionEvent struct {
 	Event InterestedEvent
 
-	CurrentState interface{}
-	Transition   map[transition]interface{}
+	CurrentState any
+	Transition   map[transition]any
 
 	// If filter is deleted then this will be set to true
 	Deleted bool
@@ -349,6 +358,28 @@ func (t *TlsConfig) String() string {
 	}
 
 	return fmt.Sprintf("encryptData: %v, disableNonSSLPort: %v, useClientCert: %v", t.EncryptData, t.DisableNonSSLPorts, t.UseClientCert)
+}
+
+type EncryptionKeyConfig struct {
+	ActiveKeyID    string
+	ActiveKeyBytes []byte
+
+	AvailableKeys map[string][]byte
+}
+
+func (ekc EncryptionKeyConfig) String() string {
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("activeKeyID: %s, availableKeys: {", ekc.ActiveKeyID))
+	first := true
+	for keyID := range ekc.AvailableKeys {
+		if !first {
+			sb.WriteString(", ")
+		}
+		first = false
+		sb.WriteString(keyID)
+	}
+	sb.WriteString("}")
+	return sb.String()
 }
 
 type Observer interface {
