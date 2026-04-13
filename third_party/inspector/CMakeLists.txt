@@ -18,13 +18,14 @@ FIND_PACKAGE(ZLIB REQUIRED)
 
 INCLUDE_DIRECTORIES(BEFORE ${LIBUV_INCLUDE_DIR})
 
-INCLUDE_DIRECTORIES(AFTER  ${ICU_INCLUDE_DIR}
+INCLUDE_DIRECTORIES(AFTER SYSTEM ${ICU_INCLUDE_DIR}
                            ${V8_INCLUDE_DIR}
                            ${OPENSSL_INCLUDE_DIR}
                            ${V8_INCLUDE_DIR}/include
-                           ${CMAKE_CURRENT_SOURCE_DIR}
-                           ${CMAKE_INSTALL_PREFIX}/include
                            ${ZLIB_INCLUDE_DIR})
+
+INCLUDE_DIRECTORIES(AFTER  ${CMAKE_CURRENT_SOURCE_DIR}
+                           ${CMAKE_INSTALL_PREFIX}/include)
 
 SET(V8INSPECTOR_SOURCES validate.cc http_parser.cc inspector_agent.cc
     inspector_io.cc inspector_socket.cc inspector_socket_server.cc)

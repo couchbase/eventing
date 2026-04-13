@@ -45,25 +45,27 @@ SET(FEATURES_SRC
         ../third_party/crc64/crc64.cc
         ../third_party/crc32/crc32.cc)
 
-INCLUDE_DIRECTORIES(BEFORE
+INCLUDE_DIRECTORIES(BEFORE SYSTEM
                      "${libcouchbase_SOURCE_DIR}/include"
                      "${libcouchbase_BINARY_DIR}/generated"
                      "${LIBUV_INCLUDE_DIR}")
 
-INCLUDE_DIRECTORIES(AFTER
+INCLUDE_DIRECTORIES(AFTER SYSTEM
                      ${ICU_INCLUDE_DIR}
                      ${EVENTING_QUERY_INCLUDE_DIR}
                      ${V8_INCLUDE_DIR}
                      ${CURL_INCLUDE_DIR}
                      ${OPENSSL_INCLUDE_DIR}
+                     ${FLATBUFFERS_INCLUDE_DIR}
+                     ${FEATURES_HEADERS}
+                     ${NLOHMANN_JSON_INCLUDE_DIR})
+
+INCLUDE_DIRECTORIES(AFTER
                      ${CMAKE_CURRENT_BINARY_DIR}
                      ${CMAKE_CURRENT_SOURCE_DIR}
                      ${CMAKE_CURRENT_SOURCE_DIR}/include
-                     ${FLATBUFFERS_INCLUDE_DIR}
                      ${CMAKE_INSTALL_PREFIX}/include
-                     ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/inspector
-                     ${FEATURES_HEADERS}
-                     ${NLOHMANN_JSON_INCLUDE_DIR})
+                     ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/inspector)
 
 IF (NOT WIN32)
   SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-omit-frame-pointer")

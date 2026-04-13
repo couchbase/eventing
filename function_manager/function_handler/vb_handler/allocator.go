@@ -497,26 +497,27 @@ func (al *allocator) Close() []uint16 {
 
 	for _, worker := range al.workers {
 		worker.Lock()
-		for _, status := range worker.allVbList {
-			vbStatus, ok := worker.CloseVb(status.Vbno)
+		for len(worker.allVbList) > 0 {
+			vbStatus := worker.allVbList[len(worker.allVbList)-1]
+			_, ok := worker.CloseVb(vbStatus.Vbno)
 			if !ok {
 				continue
 			}
 			vbStatuses = append(vbStatuses, vbStatus)
 		}
 		worker.Unlock()
-
-		al.closedVbsLock.Lock()
-		for _, vbStatus := range vbStatuses {
-			if vbStatus.Status == initStatus {
-				continue
-			}
-			vb := vbStatus.Vbno
-			ownedVbs = append(ownedVbs, vb)
-			al.closedVbs[vb] = struct{}{}
-		}
-		al.closedVbsLock.Unlock()
 	}
+
+	al.closedVbsLock.Lock()
+	for _, vbStatus := range vbStatuses {
+		if vbStatus.Status == initStatus {
+			continue
+		}
+		vb := vbStatus.Vbno
+		ownedVbs = append(ownedVbs, vb)
+		al.closedVbs[vb] = struct{}{}
+	}
+	al.closedVbsLock.Unlock()
 
 	for _, vbStatus := range vbStatuses {
 		if requested, streaming := vbStatus.isRequested(); requested {
