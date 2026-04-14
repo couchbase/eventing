@@ -321,7 +321,7 @@ func (s *supervisor) recover(ctx context.Context) error {
 		configRecovery := func(path string, payload []byte) error {
 			keyspaceInfo := getNamespaceFromConfigPath(path)
 			if payload != nil {
-				_, _, err := s.serverConfig.UpsertServerConfig(serverConfig.MetaKvStore, keyspaceInfo, payload)
+				_, _, _, err := s.serverConfig.UpsertServerConfig(serverConfig.MetaKvStore, keyspaceInfo, payload)
 				return err
 			}
 			return nil

@@ -903,6 +903,10 @@ func (s State) IsUndeployed() bool {
 	return (s == Undeployed)
 }
 
+func (s State) IsNotDeployed() bool {
+	return !s.IsDeployed() && !s.IsBootstrapping()
+}
+
 func GetStateFromLifeCycle(op LifeCycleOp) State {
 	state := NoState
 	switch op {
@@ -985,6 +989,7 @@ const (
 	Bucket bindingType = iota
 	Curl
 	Constant
+	bindingTypeCount
 )
 
 type access string
@@ -1609,6 +1614,15 @@ func (fd *FunctionDetails) IsSourceMutationPossible() bool {
 	return false
 }
 
+func (fd *FunctionDetails) BindingTypeUsed() []bool {
+	var bindingsUsed [bindingTypeCount]bool
+	bindings := fd.Bindings
+	for _, binding := range bindings {
+		bindingsUsed[binding.BindingType] = true
+	}
+	return bindingsUsed[:]
+}
+
 // TODO: Use simple ways to verify the changes
 func (oldFd *FunctionDetails) IsPossibleToMerge(compositeStatus string, newFd *FunctionDetails) error {
 	possibleChanges, err := PossibleStateChange(compositeStatus, newFd.AppState)
@@ -1625,10 +1639,12 @@ func (oldFd *FunctionDetails) IsPossibleToMerge(compositeStatus string, newFd *F
 		return err
 	}
 
-	settingsMap := make(map[string]any)
 	settingsBytes, _ := json.Marshal(newFd.Settings)
-	settingsMap = make(map[string]any)
+	settingsMap := make(map[string]any)
 	err = json.Unmarshal(settingsBytes, &settingsMap)
+	if err != nil {
+		return err
+	}
 
 	_, err = oldFd.VerifyAndMergeSettings(possibleChanges, settingsMap)
 	if err != nil {

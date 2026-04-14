@@ -16,6 +16,13 @@ func (s *serverConfig) validateConfig(keyspaceInfo application.KeyspaceInfo, con
 		case EnableCurlJSON:
 			err = typecheck.ValidateBoolean(value)
 
+		case DisableCurlBindingJSON:
+			if namespaceKey != application.GlobalValue {
+				err = fmt.Errorf("allowed only at global scope")
+				break
+			}
+			err = typecheck.ValidateBoolean(value)
+
 		case ForceCompressJSON:
 			err = typecheck.ValidateBoolean(value)
 

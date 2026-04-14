@@ -40,7 +40,7 @@ func (m *serviceMgr) checkAndSaveConfig(cred cbauth.Creds, runtimeInfo *response
 	m.lifeCycleOpSeq.Lock()
 	defer m.lifeCycleOpSeq.Unlock()
 
-	changedFields, configBytes, err := m.serverConfig.UpsertServerConfig(serverConfig.RestApi, keyspaceInfo, data)
+	changedFields, configBytes, config, err := m.serverConfig.UpsertServerConfig(serverConfig.RestApi, keyspaceInfo, data)
 	if err != nil {
 		runtimeInfo.ErrCode = response.ErrInvalidRequest
 		runtimeInfo.Description = fmt.Sprintf("%s", err)
@@ -53,7 +53,7 @@ func (m *serviceMgr) checkAndSaveConfig(cred cbauth.Creds, runtimeInfo *response
 	}
 
 	// Check whether we can store the config or not
-	m.checkConfigStorageCondition(runtimeInfo, changedFields, keyspaceInfo)
+	m.checkConfigStorageCondition(cred, runtimeInfo, changedFields, keyspaceInfo, config)
 	if runtimeInfo.ErrCode != response.Ok {
 		return
 	}
@@ -63,7 +63,6 @@ func (m *serviceMgr) checkAndSaveConfig(cred cbauth.Creds, runtimeInfo *response
 		return
 	}
 	m.serverConfig.UpsertServerConfig(serverConfig.MetaKvStore, keyspaceInfo, configBytes)
-	return
 }
 
 func (m *serviceMgr) deleteConfig(cred cbauth.Creds, runtimeInfo *response.RuntimeInfo, namespace application.Namespace) {
@@ -605,6 +604,16 @@ func (m *serviceMgr) verifyAndAddMetaDetailsFunction(runtimeInfo *response.Runti
 	}
 
 	if nextState == application.Deploy {
+		_, config := m.serverConfig.GetServerConfig(funcDetails.MetaInfo.FunctionScopeID)
+		if config.DisableCurlBindingJSON {
+			bindingsUsed := funcDetails.BindingTypeUsed()
+			if bindingsUsed[application.Curl] {
+				runtimeInfo.ErrCode = response.ErrInvalidRequest
+				runtimeInfo.Description = "curl binding not allowed"
+				return
+			}
+		}
+
 		err := m.superSup.AssignOwnership(funcDetails)
 		if err != nil {
 			runtimeInfo.ErrCode = response.ErrInvalidRequest
@@ -641,7 +650,6 @@ func (m *serviceMgr) verifyAndAddMetaDetailsFunction(runtimeInfo *response.Runti
 			return
 		}
 		funcDetails.AppInstanceID = strconv.Itoa(int(funcDetails.AppID)) + "-" + instanceID
-
 		funcDetails.MetaInfo.IsUsingTimer = parser.UsingTimer(funcDetails.AppCode)
 
 		m.superSup.CreateInitCheckpoint(runtimeInfo, funcDetails)
