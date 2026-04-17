@@ -56,6 +56,15 @@ func (dynAuth dynamicAuthenticator) Credentials(req gocb.AuthCredsRequest) ([]go
 	}}, nil
 }
 
+
+func (dynAuth dynamicAuthenticator) JWT(req gocb.AuthCredsRequest) (gocb.JWT, error) {
+    return "", nil
+}
+
+func (dynAuth dynamicAuthenticator) DefaultSaslMechanisms(tlsEnabled bool) []gocb.SaslMechanism {
+    return nil
+}
+
 func GetGocbClusterObject(clusterConfig *common.ClusterSettings, observer notifier.Observer, globalStatsCounter *common.GlobalStatsCounter) (cluster *gocb.Cluster) {
 	logPrefix := "checkpointManager::GetGocbClusterObject"
 	iE := notifier.InterestedEvent{
