@@ -27,7 +27,7 @@ func (o Optional[T]) Get() (T, bool) {
 func ValidateInteger[T float64 | int](value interface{}, low, high Optional[T], possibleValues map[T]struct{}) error {
 	intValue, ok := value.(T)
 	if !ok {
-		return fmt.Errorf("expected interger value")
+		return fmt.Errorf("expected integer value")
 	}
 
 	if possibleValues != nil {
