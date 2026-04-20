@@ -155,11 +155,11 @@ func (dynAuth *DynamicAuthenticator) Certificate(req gocb.AuthCertRequest) (*tls
 }
 
 func (dynAuth *DynamicAuthenticator) JWT(req gocb.AuthCredsRequest) (gocb.JWT, error) {
-    return "", nil
+	return "", nil
 }
 
 func (dynAuth *DynamicAuthenticator) DefaultSaslMechanisms(tlsEnabled bool) []gocb.SaslMechanism {
-    return nil
+	return []gocb.SaslMechanism{gocb.PlainSaslMechanism}
 }
 
 func (h *ConfigHolder) Store(conf Config) {

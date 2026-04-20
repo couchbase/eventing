@@ -62,7 +62,7 @@ func (dynAuth dynamicAuthenticator) JWT(req gocb.AuthCredsRequest) (gocb.JWT, er
 }
 
 func (dynAuth dynamicAuthenticator) DefaultSaslMechanisms(tlsEnabled bool) []gocb.SaslMechanism {
-    return nil
+    return []gocb.SaslMechanism{gocb.PlainSaslMechanism}
 }
 
 func GetGocbClusterObject(clusterConfig *common.ClusterSettings, observer notifier.Observer, globalStatsCounter *common.GlobalStatsCounter) (cluster *gocb.Cluster) {
