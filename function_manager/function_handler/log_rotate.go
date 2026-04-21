@@ -174,9 +174,20 @@ func (wc *appLogCloser) readEncryptedTail(sz int64) ([]byte, error) {
 		return nil, fmt.Errorf("failed to create encrypted reader for %v: %v", wc.path, err)
 	}
 
-	allData, err := io.ReadAll(cryptReader)
-	if err != nil {
-		return nil, fmt.Errorf("decryption failed for %v: %v", wc.path, err)
+	capacity := int64(10 * 1024)
+	if info, err := file.Stat(); err == nil {
+		capacity = info.Size()
+	}
+	allData := make([]byte, 0, capacity)
+	for {
+		block, err := cryptReader.ReadAndDecryptBlock()
+		if err != nil {
+			if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+				break
+			}
+			return nil, fmt.Errorf("decryption failed for %v: %v", wc.path, err)
+		}
+		allData = append(allData, block...)
 	}
 
 	if len(allData) > int(sz) {
