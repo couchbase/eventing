@@ -28,7 +28,7 @@ func NewServerConfig() (ServerConfig, error) {
 	return sConfig, nil
 }
 
-func (s *serverConfig) UpsertServerConfig(payloadSource source, keyspaceInfo application.KeyspaceInfo, payload []byte) ([]string, []byte, error) {
+func (s *serverConfig) UpsertServerConfig(payloadSource source, keyspaceInfo application.KeyspaceInfo, payload []byte) ([]string, []byte, *Config, error) {
 	config := &Config{}
 	changed := []string{}
 	var err error
@@ -37,7 +37,7 @@ func (s *serverConfig) UpsertServerConfig(payloadSource source, keyspaceInfo app
 	case MetaKvStore:
 		err := json.Unmarshal(payload, config)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 
 		s.adjustConfig(config)
@@ -46,16 +46,16 @@ func (s *serverConfig) UpsertServerConfig(payloadSource source, keyspaceInfo app
 	case RestApi:
 		changed, config, err = s.storeAppFromRestApi(keyspaceInfo, payload)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 	}
 
 	if config == nil {
-		return nil, nil, nil
+		return nil, nil, nil, nil
 	}
 
 	configBytes, err := config.ToBytes()
-	return changed, configBytes, err
+	return changed, configBytes, config, err
 }
 
 func (s *serverConfig) DeleteSettings(keyspaceInfo application.KeyspaceInfo) {
@@ -83,10 +83,7 @@ func (s *serverConfig) WillItChange(addingKeyspaceInfo application.KeyspaceInfo,
 	s.funcScopeConfig[getKey(addingKeyspaceInfo)] = DefaultConfig()
 	newNamespace, _ := s.getConfigLocked(keyspaceInfo)
 	delete(s.funcScopeConfig, getKey(addingKeyspaceInfo))
-	if usingNamespace.Match(newNamespace) {
-		return false
-	}
-	return true
+	return !usingNamespace.Match(newNamespace)
 }
 
 func getMemLimit() (float64, error) {

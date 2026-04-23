@@ -10,16 +10,19 @@ import (
 )
 
 type FeatureList struct {
-	EnableCurl bool `json:"enable_curl"`
+	EnableCurl             bool `json:"enable_curl"`
+	DisableCurlBindingJSON bool `json:"disable_curl_binding"`
 }
 
 func (f FeatureList) Clone() (cloned FeatureList) {
 	cloned.EnableCurl = f.EnableCurl
+	cloned.DisableCurlBindingJSON = f.DisableCurlBindingJSON
 	return
 }
 
 func DefaultFeatureList() (f FeatureList) {
 	f.EnableCurl = true
+	f.DisableCurlBindingJSON = false
 	return
 }
 
@@ -29,7 +32,7 @@ const (
 
 func (f FeatureList) GetFeatureMatrix() uint32 {
 	newDisabledFeatureList := uint32(0)
-	if !f.EnableCurl {
+	if !f.EnableCurl || f.DisableCurlBindingJSON {
 		newDisabledFeatureList = newDisabledFeatureList | CurlFeature
 	}
 
@@ -38,7 +41,7 @@ func (f FeatureList) GetFeatureMatrix() uint32 {
 }
 
 func (f FeatureList) String() string {
-	return fmt.Sprintf("{ \"enable_curl\": %v }", f.EnableCurl)
+	return fmt.Sprintf("{ \"enable_curl\": %v, \"disable_curl_binding\": %v }", f.EnableCurl, f.DisableCurlBindingJSON)
 }
 
 const (
@@ -54,6 +57,7 @@ const (
 	DeploymentModeJSON            = "deployment_mode"
 	CursorLimitJSON               = "cursor_limit"
 	NumNodesRunningJSON           = "num_nodes_running"
+	DisableCurlBindingJSON        = "disable_curl_binding"
 )
 
 type DeploymentMode string
@@ -100,7 +104,7 @@ func (c *Config) Clone() *Config {
 
 func (c Config) String() string {
 	data, _ := json.Marshal(c)
-	return fmt.Sprintf("%s", data)
+	return string(data)
 }
 
 func DefaultConfig() (c *Config) {
@@ -146,6 +150,13 @@ func (c *Config) MergeConfig(configMap map[string]interface{}) (changedSlice []s
 			eCurl := val.(bool)
 			if c.EnableCurl != eCurl {
 				c.EnableCurl = eCurl
+				changed = true
+			}
+
+		case DisableCurlBindingJSON:
+			disableCurlBinding := val.(bool)
+			if c.DisableCurlBindingJSON != disableCurlBinding {
+				c.DisableCurlBindingJSON = disableCurlBinding
 				changed = true
 			}
 
@@ -242,7 +253,7 @@ const (
 )
 
 type ServerConfig interface {
-	UpsertServerConfig(payloadSource source, namespace application.KeyspaceInfo, payload []byte) ([]string, []byte, error)
+	UpsertServerConfig(payloadSource source, namespace application.KeyspaceInfo, payload []byte) ([]string, []byte, *Config, error)
 	DeleteSettings(namespace application.KeyspaceInfo)
 	GetServerConfig(application.KeyspaceInfo) (application.KeyspaceInfo, *Config)
 	WillItChange(addingNamespace application.KeyspaceInfo, namespace application.KeyspaceInfo) bool

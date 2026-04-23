@@ -440,12 +440,15 @@ const (
 	allFunc uint8 = iota
 	sbm
 	notsbm
+	curlBindingTrue
+	curlBindingFalse
 )
 
 type filterFunction struct {
 	sourceKeyspace *application.Keyspace
 	funcType       uint8
 	deployedFunc   bool
+	curlHandleFunc uint8
 }
 
 func getValues(query url.Values, key string, defaultVal []string) (values []string) {
@@ -479,6 +482,22 @@ func getFilterFunc(query url.Values) (fFunction filterFunction, err error) {
 		}
 
 		fFunction.sourceKeyspace = &sourceKeyspace
+	}
+
+	curlHandle, ok := query["curl_binding"]
+	if ok {
+		if len(curlHandle) > 1 {
+			return fFunction, fmt.Errorf("invalid curl_binding")
+		}
+
+		switch curlHandle[0] {
+		case "true":
+			fFunction.curlHandleFunc = curlBindingTrue
+		case "false":
+			fFunction.curlHandleFunc = curlBindingFalse
+		default:
+			return fFunction, fmt.Errorf("invalid curl binding, supported: true, false")
+		}
 	}
 
 	functionTypes, ok := query["function_type"]
@@ -532,8 +551,16 @@ func (m *serviceMgr) functionTypeMatch(fFunction filterFunction, aggStatus map[s
 	if !ok {
 		return false
 	}
-	if application.StringToAppState(state.CompositeStatus).IsDeployed() != fFunction.deployedFunc {
+	if application.StringToAppState(state.CompositeStatus).IsNotDeployed() == fFunction.deployedFunc {
 		return false
+	}
+
+	if fFunction.curlHandleFunc != allFunc {
+		definedCurlBinding := (fFunction.curlHandleFunc == curlBindingTrue)
+		bindingsUsed := funcDetails.BindingTypeUsed()
+		if bindingsUsed[application.Curl] != definedCurlBinding {
+			return false
+		}
 	}
 	return true
 }
@@ -545,7 +572,10 @@ func (m *serviceMgr) getFunctionList(cred cbauth.Creds, runtimeInfo *response.Ru
 		runtimeInfo.Description = err
 		return nil
 	}
+	return m.getFunctionListFromFilter(cred, runtimeInfo, fFunction)
+}
 
+func (m *serviceMgr) getFunctionListFromFilter(cred cbauth.Creds, runtimeInfo *response.RuntimeInfo, fFunction filterFunction) []string {
 	applications := m.appManager.ListApplication()
 	aggStatus, _ := m.getAggAppsStatus(runtimeInfo, applications)
 	if runtimeInfo.ErrCode != response.Ok {
@@ -570,7 +600,8 @@ func (m *serviceMgr) getFunctionList(cred cbauth.Creds, runtimeInfo *response.Ru
 	return funcList
 }
 
-func (m *serviceMgr) checkConfigStorageCondition(runtimeInfo *response.RuntimeInfo, changedFields []string, keyspaceInfo application.KeyspaceInfo) {
+func (m *serviceMgr) checkConfigStorageCondition(cred cbauth.Creds, runtimeInfo *response.RuntimeInfo, changedFields []string,
+	keyspaceInfo application.KeyspaceInfo, config *serverConfig.Config) {
 	checkNamespaceConfigBeingUsed := false
 	for _, field := range changedFields {
 		switch field {
@@ -583,6 +614,22 @@ func (m *serviceMgr) checkConfigStorageCondition(runtimeInfo *response.RuntimeIn
 			m.checkFunctionUsingConfig(runtimeInfo, keyspaceInfo)
 			if runtimeInfo.ErrCode != response.Ok {
 				return
+			}
+
+		case serverConfig.DisableCurlBindingJSON:
+			if config.DisableCurlBindingJSON {
+				filter := filterFunction{
+					curlHandleFunc: curlBindingTrue,
+					deployedFunc:   true,
+				}
+				funcs := m.getFunctionListFromFilter(cred, runtimeInfo, filter)
+				if runtimeInfo.ErrCode != response.Ok {
+					return
+				}
+				if len(funcs) != 0 {
+					runtimeInfo.ErrCode = response.ErrInvalidRequest
+					runtimeInfo.Description = "Few functions are using curl binding"
+				}
 			}
 		}
 	}
