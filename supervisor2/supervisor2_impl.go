@@ -533,7 +533,7 @@ func (s *supervisor) TopologyChangeCallback(kve metakv.KVEntry) error {
 
 	changeID, rebalanceType, knownNodes, uuids := s.distributor.AddDistribution(kve.Path, kve.Value)
 	logging.Infof("%s Called by %s, length of value: %d. changeId: %s active eventing nodes: %v uuids: %v", logPrefix, kve.Path, len(kve.Value), changeID, knownNodes, uuids)
-	s.service.AddBalancedInfo(changeID, knownNodes)
+	s.service.AddBalancedInfo(knownNodes)
 
 	switch rebalanceType {
 	case distributor.VbucketTopologyID:
