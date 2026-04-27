@@ -216,6 +216,7 @@ func (p *poolObserver) checkAndSendPoolChanges(sResult *streamingResult) error {
 }
 
 func (p *poolObserver) nodeChanges(sResult *streamingResult) ([]*TransitionEvent, error) {
+	logPrefix := "poolObserver::nodeChanges"
 	// force fetch when node version is not correct
 	v := sResult.getNodeVersions()
 
@@ -244,6 +245,7 @@ func (p *poolObserver) nodeChanges(sResult *streamingResult) ([]*TransitionEvent
 			events = append(events, cObject)
 		}
 	}
+	logging.Infof("%s events %s created for %s", logPrefix, events, sResult)
 
 	p.currentNodes = nodes
 	// version not provided forcefully update for next call
@@ -305,10 +307,12 @@ func (p *poolObserver) clusterCompatChange(sResult *streamingResult) error {
 }
 
 func (p *poolObserver) bucketChanges(sResult *streamingResult) error {
+	logPrefix := "poolObserver::bucketChanges"
 	newBucketVersions := sResult.getBucketVersions()
 	if p.bucketVersions == newBucketVersions {
 		return nil
 	}
+	logging.Infof("%s bucket changes detected: %s", logPrefix, sResult)
 
 	// There might be added bucket or removed bucket
 	// check for bucketInfo struct
