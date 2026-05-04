@@ -854,7 +854,12 @@ func (cm *checkpointManager) getOwnershipVbs(uuid string) (*common.AppRebalanceP
 
 	if len(responseBytes) == 0 {
 		// Check if node is healthy or not
-		return nil, cm.healthCheck(uuid)
+		err := cm.healthCheck(uuid)
+		if err == nil {
+			// node still alive but call is not made due to sync issue. Return some error so that caller can retry and get the progress details
+			err = fmt.Errorf("node is alive but no response received for getOwnership call")
+		}
+		return nil, err
 	}
 
 	rebalanceProgress := &common.AppRebalanceProgress{}
