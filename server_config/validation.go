@@ -73,6 +73,11 @@ func (s *serverConfig) validateConfig(keyspaceInfo application.KeyspaceInfo, con
 
 		case NumNodesRunningJSON:
 			err = typecheck.ValidateInteger[float64](value, lowVal.Set(-1), missingOptional, nil)
+			if err == nil {
+				if numNodes, ok := value.(float64); ok && numNodes == 0 {
+					err = fmt.Errorf("value must be -1 (all nodes) or a positive integer")
+				}
+			}
 		}
 
 		if err != nil {
