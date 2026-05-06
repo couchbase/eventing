@@ -442,12 +442,14 @@ const (
 	notsbm
 	curlBindingTrue
 	curlBindingFalse
+	deployedTrue
+	deployedFalse
 )
 
 type filterFunction struct {
 	sourceKeyspace *application.Keyspace
 	funcType       uint8
-	deployedFunc   bool
+	deployedFunc   uint8
 	curlHandleFunc uint8
 }
 
@@ -523,9 +525,9 @@ func getFilterFunc(query url.Values) (fFunction filterFunction, err error) {
 
 		switch deploymentStatus[0] {
 		case "true":
-			fFunction.deployedFunc = true
+			fFunction.deployedFunc = deployedTrue
 		case "false":
-			fFunction.deployedFunc = false
+			fFunction.deployedFunc = deployedFalse
 		default:
 			return fFunction, fmt.Errorf("invalid deployment status, supported deployment status are: true, false")
 		}
@@ -551,8 +553,12 @@ func (m *serviceMgr) functionTypeMatch(fFunction filterFunction, aggStatus map[s
 	if !ok {
 		return false
 	}
-	if application.StringToAppState(state.CompositeStatus).IsNotDeployed() == fFunction.deployedFunc {
-		return false
+	if fFunction.deployedFunc != allFunc {
+		notDeployed := application.StringToAppState(state.CompositeStatus).IsNotDeployed()
+		requiredNotDeployed := fFunction.deployedFunc == deployedFalse
+		if notDeployed != requiredNotDeployed {
+			return false
+		}
 	}
 
 	if fFunction.curlHandleFunc != allFunc {
@@ -620,7 +626,7 @@ func (m *serviceMgr) checkConfigStorageCondition(cred cbauth.Creds, runtimeInfo 
 			if config.DisableCurlBindingJSON {
 				filter := filterFunction{
 					curlHandleFunc: curlBindingTrue,
-					deployedFunc:   true,
+					deployedFunc:   deployedTrue,
 				}
 				funcs := m.getFunctionListFromFilter(cred, runtimeInfo, filter)
 				if runtimeInfo.ErrCode != response.Ok {
