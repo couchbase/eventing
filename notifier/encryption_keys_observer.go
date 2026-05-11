@@ -77,13 +77,26 @@ func NewEncryptionKeyManager(encryptionKeyChange encryptionKeyChange, notifierHe
 		return err
 	}
 
-	// Fetch initial keys (blocking with timeout)
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
+	var keys *cbauth.EncrKeysInfo
 
-	keys, err := cbauth.GetEncryptionKeysBlocking(ctx, cbauth.KeyDataType{TypeName: dataTypeNameLog})
+	timeoutInSecond, deltaTimeout := 30, 30
+	backOffInMilliseconds := time.Duration(100) * time.Millisecond
+
+	for range 20 {
+		// Fetch initial keys (blocking with timeout)
+		ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutInSecond)*time.Second)
+		keys, err = cbauth.GetEncryptionKeysBlocking(ctx, cbauth.KeyDataType{TypeName: dataTypeNameLog})
+		cancel()
+		if err != nil {
+			logging.Errorf("Failed to get initial encryption keys, retrying...: %v", err)
+			timeoutInSecond = min(300, timeoutInSecond+deltaTimeout)
+			time.Sleep(backOffInMilliseconds)
+			continue
+		}
+		break
+	}
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get initial encryption keys: %w", err)
 	}
 	eko.updateKeysCache(keys)
 
