@@ -315,9 +315,6 @@ func (sm *serviceManager) PrepareTopologyChange(change service.TopologyChange) e
 
 	if rebalanceID != "" {
 		logging.Errorf("%s conflict detected: %s", logPrefix, rebalanceID)
-		if change.Type == service.TopologyChangeTypeRebalance {
-			sm.setStateIsBalanced(false)
-		}
 		return service.ErrConflict
 	}
 
