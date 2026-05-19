@@ -116,45 +116,111 @@ func (wc *appLogCloser) Write(p []byte) (_ int, err error) {
 	return bytesWritten, err
 }
 
+// Tail returns up to sz bytes aggregated across the active and rotated log
+// files (oldest first). Falls back to rotated files when the active file is
+// near-empty (e.g. after an encryption-toggle rotation).
 func (wc *appLogCloser) Tail(sz int64) ([]byte, error) {
-	fptr := wc.lockAndGet()
-	defer fptr.lock.Unlock()
-
+	if sz <= 0 {
+		return nil, nil
+	}
 	if atomic.LoadUint32(&wc.closed) == 1 {
 		return nil, errApplogFileAlreadyClosed
 	}
 
-	isEncrypted, err := gocbcrypto.IsFileEncrypted(wc.path)
+	// Read the active file under lock so rotation cannot rename it while
+	// we read, and so buffered writes are flushed to disk first.
+	activeData, err := func() ([]byte, error) {
+		fptr := wc.lockAndGet()
+		defer fptr.lock.Unlock()
+
+		if atomic.LoadUint32(&wc.closed) == 1 {
+			return nil, errApplogFileAlreadyClosed
+		}
+		if fptr.writer != nil {
+			if ferr := fptr.writer.Flush(); ferr != nil {
+				logging.Errorf("appLogCloser::Tail Failed to flush writer: %v", ferr)
+			}
+		}
+		return wc.readFileTail(wc.path, sz)
+	}()
+	if err != nil && !os.IsNotExist(err) {
+		return nil, err
+	}
+
+	result := activeData
+	remaining := sz - int64(len(result))
+
+	// Walk rotated files from .1 (most recent) to .maxFiles (oldest)
+	maxFiles := atomic.LoadInt64(&wc.maxFiles)
+	for i := int64(1); i <= maxFiles && remaining > 0; i++ {
+		rotatedPath := fmt.Sprintf("%s.%d", wc.path, i)
+		data, rerr := wc.readFileTail(rotatedPath, remaining)
+		if rerr != nil {
+			if os.IsNotExist(rerr) {
+				// Rotation may have shifted/removed this file - keep iterating;
+				// higher-indexed slots may still hold older data.
+				continue
+			}
+			logging.Errorf("appLogCloser::Tail Failed to read %v: %v", rotatedPath, rerr)
+			continue
+		}
+		if len(data) == 0 {
+			continue
+		}
+		result = append(data, result...)
+		remaining -= int64(len(data))
+	}
+	return result, nil
+}
+
+// readFileTail returns at most sz bytes from the tail of path,
+// auto-detecting encryption per file. Returns nil on os.IsNotExist.
+func (wc *appLogCloser) readFileTail(path string, sz int64) ([]byte, error) {
+	if sz <= 0 {
+		return nil, nil
+	}
+
+	isEncrypted, err := gocbcrypto.IsFileEncrypted(path)
 	if err != nil {
-		return nil, fmt.Errorf("unable to check encryption status for %v: %v", wc.path, err)
+		return nil, err
 	}
 
 	if isEncrypted {
-		return wc.readEncryptedTail(sz)
+		return wc.readEncryptedTail(path, sz)
 	}
+	return readPlaintextTail(path, sz)
+}
 
-	stat, err := os.Stat(wc.path)
+func readPlaintextTail(path string, sz int64) ([]byte, error) {
+	file, err := os.Open(path)
 	if err != nil {
-		return nil, fmt.Errorf("unable to stat %v: %v", wc.path, err)
+		return nil, err
+	}
+	defer file.Close()
+
+	stat, err := file.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("unable to stat %v: %v", path, err)
 	}
 	pathSize := stat.Size()
 	trueSize := min(pathSize, sz)
-	from := pathSize - trueSize
+	if trueSize <= 0 {
+		return nil, nil
+	}
 	buf := make([]byte, trueSize)
-
-	read, err := fptr.ptr.ReadAt(buf, from)
+	read, err := file.ReadAt(buf, pathSize-trueSize)
 	if (err != nil && !errors.Is(err, io.EOF)) || read < 0 {
-		return nil, fmt.Errorf("unable to read %v: %v", wc.path, err)
+		return nil, fmt.Errorf("unable to read %v: %v", path, err)
 	}
 	return buf[:read], nil
 }
 
-func (wc *appLogCloser) readEncryptedTail(sz int64) ([]byte, error) {
+func (wc *appLogCloser) readEncryptedTail(path string, sz int64) ([]byte, error) {
 	logPrefix := "appLogCloser::readEncryptedTail"
 
-	file, err := os.Open(wc.path)
+	file, err := os.Open(path)
 	if err != nil {
-		return nil, fmt.Errorf("unable to open encrypted file %v: %v", wc.path, err)
+		return nil, err
 	}
 	defer file.Close()
 
@@ -164,14 +230,14 @@ func (wc *appLogCloser) readEncryptedTail(sz int64) ([]byte, error) {
 		keyBytes := wc.availableKeys[keyIDStr]
 		wc.encMu.RUnlock()
 		if keyBytes == nil {
-			logging.Errorf("%s Key %s not found in cache", logPrefix, keyIDStr)
+			logging.Errorf("%s Key %s not found in cache (file %s)", logPrefix, keyIDStr, path)
 		}
 		return keyBytes
 	}
 
 	cryptReader, err := gocbcrypto.NewCryptFileReaderWithLabel(file, getKeyById, kbkdfLabelCtx, gocbcrypto.ChunkSize, false, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create encrypted reader for %v: %v", wc.path, err)
+		return nil, fmt.Errorf("failed to create encrypted reader for %v: %v", path, err)
 	}
 
 	capacity := int64(10 * 1024)
@@ -185,13 +251,13 @@ func (wc *appLogCloser) readEncryptedTail(sz int64) ([]byte, error) {
 			if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
 				break
 			}
-			return nil, fmt.Errorf("decryption failed for %v: %v", wc.path, err)
+			return nil, fmt.Errorf("decryption failed for %v: %v", path, err)
 		}
 		allData = append(allData, block...)
 	}
 
-	if len(allData) > int(sz) {
-		return allData[len(allData)-int(sz):], nil
+	if int64(len(allData)) > sz {
+		return allData[int64(len(allData))-sz:], nil
 	}
 	return allData, nil
 }
