@@ -322,6 +322,11 @@ func (fHandler *funcHandler) AddFunctionDetails(funcDetails *application.Functio
 		fHandler.fd = funcDetails.Clone(false)
 		logging.Errorf("%s function is in internal transition state: %v", logPrefix, currState)
 	}
+
+	fHandler.appLogWriter.Load().UpdateSettings(
+		int64(funcDetails.Settings.AppLogMaxFiles),
+		int64(funcDetails.Settings.AppLogMaxSize),
+	)
 }
 
 // ChangeState is called after AddFunctionDetails is called in a sequential manner
