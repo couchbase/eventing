@@ -180,6 +180,20 @@ if [[ "$MODE" == *"$phase"* ]]; then
   collect_logs
 fi
 
+# TLS cert-reload tests (MB-72086): eventing's admin SSL listener must recover
+# from a transient cert/key mismatch. Add "tls" to MODE to run this phase.
+export phase=tls
+if [[ "$MODE" == *"$phase"* ]]; then
+  echo "</pre><h4>${phase^} tests</h4><pre>"
+  echo "`date +'%Y/%m/%d %H:%M:%S'` Started $phase"
+  cd $WORKSPACE/goproj/src/github.com/couchbase/eventing/tests/functional_tests
+  startTime=$SECONDS
+  GOMAXPROCS=16 STATSFILE=$WORKSPACE/stats.log $GOROOT/bin/go test -timeout 1h -tags tls -v 2>&1 | tee -a $WORKSPACE/test.log
+  duration=$(( SECONDS - startTime ))
+  echo "</pre><h2>${phase^} tests took $(($duration / 3600)) hours, $((($duration / 60) % 60)) minutes and $(($duration % 60)) seconds.</h2><pre>"
+  collect_logs
+fi
+
 stop_cluster
 
 start_cluster
