@@ -416,7 +416,8 @@ func (m *ServiceMgr) initService() {
 				tlscfg, err := m.getTLSConfig(logPrefix)
 				if err != nil {
 					logging.Errorf("%s Error configuring TLS: %v", logPrefix, err)
-					return
+					time.Sleep(1 * time.Second)
+					continue
 				}
 				m.tlsServerMutex.Lock()
 				m.tlsServer = &http.Server{
