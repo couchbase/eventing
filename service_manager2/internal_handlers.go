@@ -800,6 +800,30 @@ func (m *serviceMgr) getStatus(w http.ResponseWriter, r *http.Request) {
 	runtimeInfo.OnlyDescription = true
 }
 
+func (m *serviceMgr) getInUseEncryptionKeys(w http.ResponseWriter, r *http.Request) {
+	res := response.NewResponseWriter(w, r, response.EventGetInUseEncryptionKeys)
+	runtimeInfo := &response.RuntimeInfo{}
+
+	defer func() {
+		res.LogAndSend(runtimeInfo)
+	}()
+
+	if notAllowed, err := rbac.IsAllowed(r, rbac.EventingPermissionManage, false); err != nil {
+		getAuthErrorInfo(runtimeInfo, notAllowed, false, err)
+		return
+	}
+
+	keys, err := m.superSup.GetInUseEncryptionKeys()
+	if err != nil {
+		runtimeInfo.ErrCode = response.ErrInternalServer
+		runtimeInfo.Description = fmt.Sprintf("Failed to get in-use encryption keys: %v", err)
+		return
+	}
+
+	runtimeInfo.Description = keys
+	runtimeInfo.OnlyDescription = true
+}
+
 func (m *serviceMgr) getWorkerCount(w http.ResponseWriter, r *http.Request) {
 	res := response.NewResponseWriter(w, r, response.EventGetWorkerCount)
 	runtimeInfo := &response.RuntimeInfo{}

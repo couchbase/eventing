@@ -80,6 +80,7 @@ func (m *serviceMgr) getServerMux() *http.ServeMux {
 	mux.HandleFunc("/getErrorCodes", m.getErrCodes)
 	mux.HandleFunc("/getStatus", m.getStatus)
 	mux.HandleFunc("/getWorkerCount", m.getWorkerCount)
+	mux.HandleFunc("/getInUseEncryptionKeys", m.getInUseEncryptionKeys)
 
 	// Public REST APIs
 	mux.HandleFunc("/api/v1/status", m.statusHandler)

@@ -34,6 +34,8 @@ type Supervisor2 interface {
 
 	CreateInitCheckpoint(*response.RuntimeInfo, *application.FunctionDetails)
 	PopulateID(response *response.RuntimeInfo, keyspace application.Keyspace) application.KeyspaceInfo
+
+	GetInUseEncryptionKeys() ([]string, error)
 }
 
 type Config struct {
