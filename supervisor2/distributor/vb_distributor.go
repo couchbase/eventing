@@ -48,15 +48,10 @@ func NewVbMapDistributor(uuid string, broadcaster common.Broadcaster, observer n
 		observer:         observer,
 	}
 
-	// Initially own everything
 	vbMap.nodes = append(vbMap.nodes, uuid)
 	for _, numVbs := range vbsList {
 		vbMap.vbs[numVbs] = make(map[string][]uint16)
-		vbs := make([]uint16, 0, numVbs)
-		for i := uint16(0); i < numVbs; i++ {
-			vbs = append(vbs, i)
-		}
-		vbMap.vbs[numVbs][uuid] = vbs
+		vbMap.vbs[numVbs][uuid] = make([]uint16, 0, numVbs)
 	}
 
 	return vbMap
@@ -92,6 +87,14 @@ func (vm *vbMapDistributor) initialise(changeID string) {
 	}, 0)
 
 	for {
+		rebalancePath := getRebalancePath(VbucketTopologyID, nil)
+		vbucketBytes, _, err := metakv.Get(rebalancePath)
+		if err == nil && len(vbucketBytes) > 0 {
+			// That means some new version node already started rebalance and we can get the nodes from vb distribution
+			// vb distribution will come from addDistribution
+			return
+		}
+
 		nodes = nodes[:0]
 		keepNodesData, _, err := metakv.Get(common.EventingMetakvConfigKeepNodes)
 		if err != nil {
@@ -103,7 +106,7 @@ func (vm *vbMapDistributor) initialise(changeID string) {
 		var keepNodes []string
 		json.Unmarshal(keepNodesData, &keepNodes)
 		if len(keepNodes) == 0 {
-			keepNodes = []string{vm.uuid}
+			return
 		}
 
 		currState, err := vm.observer.GetCurrentState(notifier.InterestedEvent{
@@ -347,17 +350,36 @@ func (vm *vbMapDistributor) syncvbMap() {
 		Method:  http.MethodPost,
 		Timeout: common.HttpCallWaitTime,
 	}
-
 	responseList, _, _ := vm.broadcaster.Request(false, true, requestVbOwnershipMap, req)
-	vm.nodes = make([]string, 0, len(responseList))
+
 	for _, ownershipBytes := range responseList {
 		ownership := ownershipStruct{}
 		_ = json.Unmarshal(ownershipBytes, &ownership)
-		vm.nodes = append(vm.nodes, ownership.UUID)
 		for numVbs, vbsList := range ownership.OwnedVbs {
 			vm.vbs[numVbs][ownership.UUID] = vbsList
 		}
 	}
+
+	// due to older version bug some vbs might be distributed between more than 1 node. Use that vb for only one node and remove from other nodes
+	for _, numVb := range vbsList {
+		logging.Infof("%s Before balancing distribution for vb: %d -> %s for: %v", logPrefix, numVb, utils.CondenseMap(vm.vbs[numVb]), vm.nodes)
+		for vb := range numVb {
+			ownerCount := 0
+			for nodeUUID, vbs := range vm.vbs[numVb] {
+				for index, ownedVb := range vbs {
+					if ownedVb == vb {
+						ownerCount++
+						if ownerCount > 1 {
+							vm.vbs[numVb][nodeUUID][index] = vm.vbs[numVb][nodeUUID][len(vbs)-1]
+							vm.vbs[numVb][nodeUUID] = vm.vbs[numVb][nodeUUID][:len(vbs)-1]
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// balance the vbs no
 
 	for _, numVb := range vbsList {
 		ownershipMap := vm.vbs[numVb]
@@ -368,6 +390,7 @@ func (vm *vbMapDistributor) syncvbMap() {
 				ownedVbs[vb] = struct{}{}
 			}
 		}
+
 		index := 0
 		for vb := range numVb {
 			if _, ok := ownedVbs[vb]; !ok {
@@ -377,6 +400,11 @@ func (vm *vbMapDistributor) syncvbMap() {
 			}
 		}
 		logging.Infof("%s After assigning unassigned vbs for %d: -> %s", logPrefix, numVb, utils.CondenseMap(vm.vbs[numVb]))
+	}
+
+	for _, numVb := range vbsList {
+		nodeDistribution := vm.vbs[numVb]
+		balanceBetweenNodes(numVb, nodeDistribution)
 	}
 }
 
@@ -481,5 +509,42 @@ func distributeVbs(numVbs uint16, numNodes int, vbsMap map[string][]uint16, ejec
 			vbsMap[remainingAddedNodes[index]] = append(vbsMap[remainingAddedNodes[index]], vb)
 			index = (index + 1) % len(remainingAddedNodes)
 		}
+	}
+
+	balanceBetweenNodes(numVbs, vbsMap)
+}
+
+func balanceBetweenNodes(numVbs uint16, vbsMap map[string][]uint16) {
+	if len(vbsMap) < 2 {
+		return
+	}
+
+	for {
+		var nodeWithMaxVbs, nodeWithMinVbs string
+		maxCount := -1
+		minCount := int(numVbs) + 1
+
+		for uuid, vbs := range vbsMap {
+			count := len(vbs)
+			if count > maxCount {
+				maxCount = count
+				nodeWithMaxVbs = uuid
+			}
+			if count < minCount {
+				minCount = count
+				nodeWithMinVbs = uuid
+			}
+		}
+
+		if maxCount-minCount <= 1 {
+			break
+		}
+
+		moveCount := (maxCount - minCount) / 2
+		maxVbs := vbsMap[nodeWithMaxVbs]
+		splitIdx := len(maxVbs) - moveCount
+
+		vbsMap[nodeWithMinVbs] = append(vbsMap[nodeWithMinVbs], maxVbs[splitIdx:]...)
+		vbsMap[nodeWithMaxVbs] = maxVbs[:splitIdx]
 	}
 }
