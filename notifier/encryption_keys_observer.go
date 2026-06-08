@@ -159,6 +159,7 @@ func (eko *encryptionKeyObserver) refreshKeysCallback(dataType cbauth.KeyDataTyp
 	if transition == nil {
 		return nil
 	}
+	logging.Infof("%s Refresh keys callback invoked for dataType: %v", logPrefix, dataType)
 	eko.encryptionKeyChange.EncryptionKeyChangesCallback(transition, nil)
 	return nil
 }

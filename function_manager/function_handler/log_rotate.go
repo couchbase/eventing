@@ -354,7 +354,9 @@ func (wc *appLogCloser) updateEncryptionKeys(config *notifier.EncryptionKeyConfi
 
 	wc.activeKeyID = config.ActiveKeyID
 	wc.activeKeyBytes = config.ActiveKeyBytes
-	wc.availableKeys = make(map[string][]byte, len(config.AvailableKeys))
+	// Add new keys but do NOT remove old ones. Keys that are being dropped are
+	// still needed to read (decrypt) files encrypted with them. They are removed
+	// explicitly in reencryptFilesWithKey after all affected files are processed.
 	for k, v := range config.AvailableKeys {
 		wc.availableKeys[k] = v
 	}
@@ -362,7 +364,7 @@ func (wc *appLogCloser) updateEncryptionKeys(config *notifier.EncryptionKeyConfi
 
 // handleEncryptionEvent processes an encryption key change event.
 // EventChangeAdded: active key changed -> rotate log file.
-// EventChangeRemoved: key dropped -> re-encrypt rotated files that used it.
+// EventChangeRemoved: key dropped -> re-encrypt (or decrypt) rotated files that used it.
 func (wc *appLogCloser) handleEncryptionEvent(te *notifier.TransitionEvent) {
 	logPrefix := "appLogCloser::handleEncryptionEvent"
 
@@ -371,13 +373,12 @@ func (wc *appLogCloser) handleEncryptionEvent(te *notifier.TransitionEvent) {
 		logging.Errorf("%s unexpected state type: %T", logPrefix, te.CurrentState)
 		return
 	}
+
 	wc.updateEncryptionKeys(config)
 
 	if te.Deleted {
 		droppedKeyID, _ := te.Transition[notifier.EventChangeRemoved].(string)
-		if droppedKeyID != "" {
-			wc.reencryptFilesWithKey(droppedKeyID)
-		}
+		wc.reencryptFilesWithKey(droppedKeyID)
 	} else {
 		if atomic.LoadUint32(&wc.closed) == 0 {
 			logging.Infof("%s Rotating log %s due to encryption state change", logPrefix, wc.path)
@@ -393,11 +394,6 @@ func (wc *appLogCloser) reencryptFilesWithKey(droppedKeyID string) {
 	activeKeyID := wc.activeKeyID
 	activeKeyBytes := wc.activeKeyBytes
 	wc.encMu.RUnlock()
-
-	if activeKeyID == "" {
-		logging.Infof("%s Encryption disabled; skipping re-encryption of rotated files for %s", logPrefix, wc.path)
-		return
-	}
 
 	for i := int64(1); i <= atomic.LoadInt64(&wc.maxFiles); i++ {
 		rotatedPath := fmt.Sprintf("%s.%d", wc.path, i)
@@ -415,11 +411,27 @@ func (wc *appLogCloser) reencryptFilesWithKey(droppedKeyID string) {
 			continue
 		}
 
-		logging.Infof("%s Re-encrypting %s (key %q -> %s)", logPrefix, rotatedPath, droppedKeyID, activeKeyID)
-		if err := wc.reencryptFile(rotatedPath, activeKeyID, activeKeyBytes); err != nil {
-			logging.Errorf("%s Failed to re-encrypt %s: %v", logPrefix, rotatedPath, err)
+		if activeKeyID == "" {
+			// Encryption has been disabled: decrypt the file to plaintext so it
+			// remains readable after droppedKeyID is removed from the cache.
+			logging.Infof("%s Decrypting %s to plaintext (encryption disabled, dropped key %q)", logPrefix, rotatedPath, droppedKeyID)
+			if err := wc.decryptEncryptedFile(rotatedPath); err != nil {
+				logging.Errorf("%s Failed to decrypt %s: %v", logPrefix, rotatedPath, err)
+			}
+		} else {
+			// Re-encrypt the file with the new active key.
+			logging.Infof("%s Re-encrypting %s (key %q -> %s)", logPrefix, rotatedPath, droppedKeyID, activeKeyID)
+			if err := wc.reencryptFile(rotatedPath, activeKeyID, activeKeyBytes); err != nil {
+				logging.Errorf("%s Failed to re-encrypt %s: %v", logPrefix, rotatedPath, err)
+			}
 		}
 	}
+
+	// All files using droppedKeyID have been processed. Now it is safe to evict
+	// the key bytes from the cache — no file on disk references it any more.
+	wc.encMu.Lock()
+	delete(wc.availableKeys, droppedKeyID)
+	wc.encMu.Unlock()
 }
 
 func (wc *appLogCloser) reencryptFile(path, targetKeyID string, targetKeyBytes []byte) error {
@@ -439,6 +451,8 @@ func (wc *appLogCloser) reencryptFile(path, targetKeyID string, targetKeyBytes [
 		if keyIDStr == targetKeyID {
 			return targetKeyBytes
 		}
+		// Source key bytes are still in availableKeys: updateEncryptionKeys accumulates
+		// keys and only reencryptFilesWithKey removes them after all files are processed.
 		wc.encMu.RLock()
 		kb := wc.availableKeys[keyIDStr]
 		wc.encMu.RUnlock()
@@ -723,6 +737,60 @@ func encryptPlaintextFile(path, targetKeyID string, targetKeyBytes []byte) error
 	}
 
 	logging.Infof("%s Encrypted plaintext file %s with key %s", logPrefix, path, targetKeyID)
+	return nil
+}
+
+// decryptEncryptedFile converts an AES-GCM-256 encrypted log file back to
+// plaintext. Key bytes are looked up from availableKeys, which still holds the
+// dropped key at call time (the caller removes it only after all files are done).
+func (wc *appLogCloser) decryptEncryptedFile(path string) error {
+	logPrefix := "decryptEncryptedFile"
+
+	file, err := os.Open(path)
+	if err != nil {
+		return fmt.Errorf("failed to open %s: %w", path, err)
+	}
+
+	getKeyById := func(k []byte) []byte {
+		keyIDStr := string(bytes.TrimRight(k, "\x00"))
+		wc.encMu.RLock()
+		keyBytes := wc.availableKeys[keyIDStr]
+		wc.encMu.RUnlock()
+		return keyBytes
+	}
+
+	cryptReader, err := gocbcrypto.NewCryptFileReaderWithLabel(file, getKeyById, kbkdfLabelCtx, gocbcrypto.ChunkSize, false, nil)
+	if err != nil {
+		file.Close()
+		return fmt.Errorf("failed to create encrypted reader for %s: %w", path, err)
+	}
+
+	var plaintext []byte
+	for {
+		block, err := cryptReader.ReadAndDecryptBlock()
+		if err != nil {
+			if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+				break
+			}
+			file.Close()
+			return fmt.Errorf("decryption failed for %s: %w", path, err)
+		}
+		plaintext = append(plaintext, block...)
+	}
+	file.Close()
+
+	tmpPath := path + ".decrypt.tmp"
+	if err := os.WriteFile(tmpPath, plaintext, 0640); err != nil {
+		os.Remove(tmpPath)
+		return fmt.Errorf("failed to write plaintext to %s: %w", tmpPath, err)
+	}
+
+	if err := os.Rename(tmpPath, path); err != nil {
+		os.Remove(tmpPath)
+		return fmt.Errorf("failed to replace %s with decrypted file: %w", path, err)
+	}
+
+	logging.Infof("%s Decrypted file %s to plaintext", logPrefix, path)
 	return nil
 }
 
