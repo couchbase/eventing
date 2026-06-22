@@ -400,8 +400,7 @@ private:
   v8::Local<v8::ObjectTemplate> NewGlobalObj() const;
   void InstallCurlBindings(const std::vector<CurlBinding> &curl_bindings) const;
   void InstallConstantBindings(
-      const std::vector<std::pair<std::string, std::string>> constant_bindings)
-      const;
+      const std::vector<std::pair<std::string, std::string>> constant_bindings);
   void InstallBucketBindings(
       const std::unordered_map<
           std::string,
@@ -423,6 +422,7 @@ private:
   Histogram *curl_latency_stats_;
 
   std::string src_path_;
+  std::string constant_binding_error_;
 
   vb_seq_map_t *vb_seq_;
   vb_lock_map_t *vb_locks_;

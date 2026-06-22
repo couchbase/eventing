@@ -527,10 +527,15 @@ func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {
 				}
 			}
 		case compileInfo:
-			err := json.Unmarshal([]byte(msg), &c.compileInfo)
+			var compiledStatus common.CompileStatus
+			err := json.Unmarshal([]byte(msg), &compiledStatus)
 			if err != nil {
 				logging.Errorf("%s [%s:%s:%d] Failed to unmarshal compilation stats, msg: %v err: %v",
 					logPrefix, c.workerName, c.tcpPort, c.Pid(), msg, err)
+			} else {
+				c.msgProcessedRWMutex.Lock()
+				c.compileInfo = &compiledStatus
+				c.msgProcessedRWMutex.Unlock()
 			}
 		case queueSize:
 			c.workerRespMainLoopTs.Store(time.Now())

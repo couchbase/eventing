@@ -563,10 +563,26 @@ func (c *Consumer) SpawnCompilationWorker(appCode, appContent, appName, eventing
 
 	c.sendCompileRequest(appCode)
 
-	go c.readMessageLoop()
+	msgLoopExitCh := make(chan struct{})
+	go func() {
+		c.readMessageLoop()
+		close(msgLoopExitCh)
+	}()
 
-	for c.compileInfo == nil {
-		time.Sleep(1 * time.Second)
+	getCompileInfo := func() *common.CompileStatus {
+		c.msgProcessedRWMutex.RLock()
+		defer c.msgProcessedRWMutex.RUnlock()
+		return c.compileInfo
+	}
+
+	// Wait for compile info or worker exit (crash/unexpected termination)
+waitForCompileInfo:
+	for getCompileInfo() == nil {
+		select {
+		case <-msgLoopExitCh:
+			break waitForCompileInfo
+		case <-time.After(1 * time.Second):
+		}
 	}
 
 	c.conn.Close()
@@ -578,10 +594,17 @@ func (c *Consumer) SpawnCompilationWorker(appCode, appContent, appName, eventing
 			logPrefix, c.workerName, c.tcpPort, pid, err)
 	}
 
-	logging.Infof("%s [%s:%s:%d] compilation status %#v",
-		logPrefix, c.workerName, c.tcpPort, pid, c.compileInfo)
+	compileInfo := getCompileInfo()
+	if compileInfo == nil {
+		logging.Errorf("%s [%s:%s:%d] Compilation worker exited without sending compile info",
+			logPrefix, c.workerName, c.tcpPort, pid)
+		return &common.CompileStatus{CompileSuccess: false, Description: "Compilation worker exited unexpectedly"}, nil
+	}
 
-	return c.compileInfo, nil
+	logging.Infof("%s [%s:%s:%d] compilation status %#v",
+		logPrefix, c.workerName, c.tcpPort, pid, compileInfo)
+
+	return compileInfo, nil
 }
 
 func (c *Consumer) initConsumer(appName string) {

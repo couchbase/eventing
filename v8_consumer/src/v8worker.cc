@@ -395,6 +395,7 @@ void V8Worker::SetCouchbaseNamespace() {
     LOG(logError) << "Exception logged:"
                   << ExceptionString(isolate_, context, &try_catch)
                   << std::endl;
+    return;
   }
 
   v8::Local<v8::Value> result_wrapper2;
@@ -402,6 +403,7 @@ void V8Worker::SetCouchbaseNamespace() {
     LOG(logError) << "Unable to run the injected couchbase.js script: "
                   << ExceptionString(isolate_, context, &try_catch)
                   << std::endl;
+    return;
   }
 
   return;
@@ -444,8 +446,7 @@ void V8Worker::InstallCurlBindings(
 }
 
 void V8Worker::InstallConstantBindings(
-    const std::vector<std::pair<std::string, std::string>> constant_bindings)
-    const {
+    const std::vector<std::pair<std::string, std::string>> constant_bindings) {
 
   v8::Locker locker(isolate_);
   v8::Isolate::Scope isolate_scope(isolate_);
@@ -471,15 +472,17 @@ void V8Worker::InstallConstantBindings(
   if (!TO_LOCAL(v8::Script::Compile(context, injection_source, &origin),
                 &compiled_script)) {
     assert(try_catch.HasCaught());
-    LOG(logError) << "Exception logged:"
-                  << ExceptionString(isolate_, context, &try_catch)
-                  << std::endl;
+    constant_binding_error_ = ExceptionString(isolate_, context, &try_catch);
+    LOG(logError) << "Exception logged:" << constant_binding_error_ << std::endl;
+    return;
   }
 
   v8::Local<v8::Value> result_wrapper;
   if (!TO_LOCAL(compiled_script->Run(context), &result_wrapper)) {
-    LOG(logError) << "Unable to inject constant bindings into the script"
-                  << std::endl;
+    constant_binding_error_ = ExceptionString(isolate_, context, &try_catch);
+    LOG(logError) << "Unable to inject constant bindings into the script: "
+                  << constant_binding_error_ << std::endl;
+    return;
   }
 }
 
@@ -903,11 +906,13 @@ int V8Worker::V8WorkerLoad(std::string script_to_execute) {
     LOG(logError) << "Exception logged:"
                   << ExceptionString(isolate_, context, &try_catch)
                   << std::endl;
+    return kFailedToCompileJs;
   }
 
   v8::Local<v8::Value> result_wrapper;
   if (!TO_LOCAL(compiled_script->Run(context), &result_wrapper)) {
     LOG(logError) << "Unable to run the injected N1qlQuery script" << std::endl;
+    return kFailedToCompileJs;
   }
 
   // Spawning terminator thread to monitor the wall clock time for execution
@@ -1656,6 +1661,15 @@ CompilationInfo V8Worker::CompileHandler(std::string area_name,
 }
 
 std::string V8Worker::Compile(std::string handler) {
+  if (!constant_binding_error_.empty()) {
+    CompilationInfo info;
+    info.compile_success = false;
+    info.language = "Javascript";
+    info.area = "constant_bindings";
+    info.description = "Invalid constant binding: " + constant_binding_error_;
+    return CompileInfoToString(info);
+  }
+
   std::string header_code;
   int header_index_length = 0;
   for (const auto &header : handler_headers_) {
