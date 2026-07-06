@@ -606,6 +606,7 @@ Bucket::WriteCheckpoint(const MetaData &meta, const uint64_t &rootcas,
   lcb_cmdsubdoc_create(&cmd);
   lcb_cmdsubdoc_specs(cmd, specs);
   lcb_cmdsubdoc_cas(cmd, meta.cas);
+  lcb_cmdsubdoc_expiry(cmd, meta.expiry);
   // lcb_cmdsubdoc_store_semantics(cmd, LCB_SUBDOC_STORE_UPSERT);
   lcb_cmdsubdoc_collection(cmd, meta.scope.c_str(), meta.scope.size(),
                            meta.collection.c_str(), meta.collection.size());
