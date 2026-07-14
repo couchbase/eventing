@@ -495,7 +495,10 @@ func (m *serviceMgr) getGlobalAppLog(appLocation application.AppLocation, size i
 		return nil, err
 	}
 
-	lines := make([]string, 0, size)
+	// Assuming 1024 lines of log message
+	// If more than that go will allocate more space
+	// TODO: If needed in future we can have it as streaming logs
+	lines := make([]string, 0, 1024)
 	for _, msgBytes := range res {
 		msgs := bytes.Split(msgBytes, []byte("\n"))
 		for _, msg := range msgs {
