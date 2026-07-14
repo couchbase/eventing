@@ -25,7 +25,7 @@ type cursorRegistry struct {
 	root *cursorTracker
 }
 
-func NewCursorRegistry(limit uint8) *cursorRegistry {
+func newCursorRegistry(limit uint8) *cursorRegistry {
 	return &cursorRegistry{
 		root: &cursorTracker{
 			num:      0,
@@ -50,6 +50,7 @@ func (registry *cursorRegistry) UpdateLimit(newlimit uint8) {
 func (registry *cursorRegistry) Register(k application.Keyspace, funcId string) bool {
 	registry.Lock()
 	defer registry.Unlock()
+
 	return registry.root.checkOrUpdate(k, funcId, true)
 }
 
@@ -80,6 +81,8 @@ func (registry *cursorRegistry) PrintTree() {
 
 func (ct *cursorTracker) checkOrUpdate(k application.Keyspace, funcId string, update bool) bool {
 	currTracker := ct
+
+	// 1. Bucket Level
 	if _, found := currTracker.children[k.BucketName]; !found {
 		if !update {
 			return true
@@ -90,14 +93,39 @@ func (ct *cursorTracker) checkOrUpdate(k application.Keyspace, funcId string, up
 			limit:    ct.limit,
 		}
 	}
+
 	if k.ScopeName != "*" {
-		currTracker := currTracker.children[k.BucketName]
+		currTracker = currTracker.children[k.BucketName]
+
+		// 2. Scope Level
 		if _, found := currTracker.children[k.ScopeName]; !found {
 			if currTracker.num == currTracker.limit {
 				return false
 			}
-			if update {
-				currTracker.children[k.ScopeName] = &cursorTracker{
+			if !update {
+				return true
+			}
+			currTracker.children[k.ScopeName] = &cursorTracker{
+				num:      currTracker.num,
+				max:      currTracker.num,
+				limit:    ct.limit,
+				children: make(map[string]*cursorTracker),
+				funcIds:  maps.Clone(currTracker.funcIds),
+			}
+		}
+
+		if k.CollectionName != "*" {
+			currTracker = currTracker.children[k.ScopeName]
+
+			// 3. Collection Level
+			if _, found := currTracker.children[k.CollectionName]; !found {
+				if currTracker.num == currTracker.limit {
+					return false
+				}
+				if !update {
+					return true
+				}
+				currTracker.children[k.CollectionName] = &cursorTracker{
 					num:      currTracker.num,
 					max:      currTracker.num,
 					limit:    ct.limit,
@@ -105,33 +133,18 @@ func (ct *cursorTracker) checkOrUpdate(k application.Keyspace, funcId string, up
 					funcIds:  maps.Clone(currTracker.funcIds),
 				}
 			}
-		}
-		if k.CollectionName != "*" {
-			currTracker := currTracker.children[k.ScopeName]
-			if _, found := currTracker.children[k.CollectionName]; !found {
-				if currTracker.num == currTracker.limit {
+
+			collNode := currTracker.children[k.CollectionName]
+			if collNode.max == collNode.limit {
+				if _, exists := collNode.funcIds[funcId]; !exists {
 					return false
 				}
-				if update {
-					currTracker.children[k.CollectionName] = &cursorTracker{
-						num:      currTracker.num,
-						max:      currTracker.num,
-						limit:    ct.limit,
-						children: make(map[string]*cursorTracker),
-						funcIds:  maps.Clone(currTracker.funcIds),
-					}
-				}
-			}
-			// Update max counters on all levels of parents
-			if currTracker.children[k.CollectionName].max ==
-				currTracker.children[k.CollectionName].limit {
-				return false
 			}
 			if update {
-				(currTracker.children[k.CollectionName]).addCursor(funcId)
+				collNode.addCursor(funcId)
 
-				if currTracker.max < currTracker.children[k.CollectionName].max {
-					currTracker.max = currTracker.children[k.CollectionName].max
+				if currTracker.max < collNode.max {
+					currTracker.max = collNode.max
 				}
 				if ct.children[k.BucketName].max < currTracker.max {
 					ct.children[k.BucketName].max = currTracker.max
@@ -141,15 +154,16 @@ func (ct *cursorTracker) checkOrUpdate(k application.Keyspace, funcId string, up
 				}
 			}
 		} else {
-			// Update max counters on all levels of parents
-			if currTracker.children[k.ScopeName].max ==
-				currTracker.children[k.ScopeName].limit {
-				return false
+			scopeNode := currTracker.children[k.ScopeName]
+			if scopeNode.max == scopeNode.limit {
+				if _, exists := scopeNode.funcIds[funcId]; !exists {
+					return false
+				}
 			}
 			if update {
-				currTracker.children[k.ScopeName].addCursor(funcId)
-				if currTracker.max < currTracker.children[k.ScopeName].max {
-					currTracker.max = currTracker.children[k.ScopeName].max
+				scopeNode.addCursor(funcId)
+				if currTracker.max < scopeNode.max {
+					currTracker.max = scopeNode.max
 				}
 				if ct.max < currTracker.max {
 					ct.max = currTracker.max
@@ -157,15 +171,16 @@ func (ct *cursorTracker) checkOrUpdate(k application.Keyspace, funcId string, up
 			}
 		}
 	} else {
-		// Update max counters on all levels of parents
-		if currTracker.children[k.BucketName].max ==
-			currTracker.children[k.BucketName].limit {
-			return false
+		bucketNode := currTracker.children[k.BucketName]
+		if bucketNode.max == bucketNode.limit {
+			if _, exists := bucketNode.funcIds[funcId]; !exists {
+				return false
+			}
 		}
 		if update {
-			(currTracker.children[k.BucketName]).addCursor(funcId)
-			if currTracker.max < currTracker.children[k.BucketName].max {
-				currTracker.max = currTracker.children[k.BucketName].max
+			bucketNode.addCursor(funcId)
+			if currTracker.max < bucketNode.max {
+				currTracker.max = bucketNode.max
 			}
 		}
 	}
@@ -182,12 +197,12 @@ func (ct *cursorTracker) unregister(k application.Keyspace, funcId string) {
 		if _, found := currTracker.children[k.ScopeName]; !found {
 			return
 		}
-		currTracker := currTracker.children[k.ScopeName]
+		currTracker = currTracker.children[k.ScopeName]
 		if k.CollectionName != "*" {
 			if _, found := currTracker.children[k.CollectionName]; !found {
 				return
 			}
-			currTracker := currTracker.children[k.CollectionName]
+			currTracker = currTracker.children[k.CollectionName]
 			if _, functionFound := currTracker.funcIds[funcId]; !functionFound {
 				return
 			}
@@ -247,7 +262,7 @@ func (ct *cursorTracker) getCursors(k application.Keyspace) (map[string]struct{}
 		return nil, true
 	}
 	cursors := make(map[string]struct{}, collComponent.num)
-	for key, _ := range collComponent.funcIds {
+	for key := range collComponent.funcIds {
 		cursors[key] = struct{}{}
 	}
 	return cursors, true
