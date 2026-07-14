@@ -216,7 +216,7 @@ func StartSupervisor(ctx context.Context, cs *common.ClusterSettings) (Superviso
 		return nil, fmt.Errorf("unable to start broadcaster: %v", err)
 	}
 
-	s.cursorRegistry = NewCursorRegistry(uint8(serverConfig.DefaultConfig().CursorLimit))
+	s.cursorRegistry = newCursorRegistry(uint8(serverConfig.DefaultConfig().CursorLimit))
 
 	s.serviceMgr, err = servicemanager2.NewServiceManager(
 		cs,
