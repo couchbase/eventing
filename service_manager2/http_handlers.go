@@ -1219,6 +1219,10 @@ func (m *serviceMgr) importHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	importedFuncs := m.storeFunctionList(cred, runtimeInfo, funcList)
+	if len(importedFuncs) == 0 {
+		runtimeInfo.ErrCode = response.ErrInvalidRequest
+		runtimeInfo.OnlyDescription = false
+	}
 	res.AddRequestData(common.AppLocationsTag, importedFuncs)
 	runtimeInfo.ExtraAttributes = map[string]interface{}{common.AppLocationsTag: importedFuncs}
 }
