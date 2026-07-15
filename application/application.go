@@ -73,6 +73,10 @@ type bucket struct {
 	Access         string `json:"access"`
 }
 
+func (b bucket) String() string {
+	return fmt.Sprintf("Alias: %s", b.Alias)
+}
+
 type credential struct {
 	UserName  string `json:"username"`
 	Password  string `json:"password"`
@@ -1229,11 +1233,13 @@ func (nBinding Bindings) ExactEquals(oBinding Bindings) bool {
 func createStructFromDepcfg(oldDepcfg depCfg) (newDepcfg DepCfg, bindings []Bindings, err error) {
 	newDepcfg.SourceKeyspace, err = NewKeyspace(oldDepcfg.SourceBucket, oldDepcfg.SourceScope, oldDepcfg.SourceCollection, true)
 	if err != nil {
+		err = fmt.Errorf("Invalid source keyspace: %v", err)
 		return
 	}
 
 	newDepcfg.MetaKeyspace, err = NewKeyspace(oldDepcfg.MetadataBucket, oldDepcfg.MetadataScope, oldDepcfg.MetadataCollection, false)
 	if err != nil {
+		err = fmt.Errorf("Invalid metadata keyspace: %v", err)
 		return
 	}
 
@@ -1246,7 +1252,7 @@ func createStructFromDepcfg(oldDepcfg depCfg) (newDepcfg DepCfg, bindings []Bind
 			bucketBinding.CollectionName,
 			access(bucketBinding.Access))
 		if bErr != nil {
-			err = bErr
+			err = fmt.Errorf("Invalid bucket binding: %s err: %v", bucketBinding, err)
 			return
 		}
 		bindings = append(bindings, binding)
