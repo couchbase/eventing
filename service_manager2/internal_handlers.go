@@ -495,7 +495,10 @@ func (m *serviceMgr) getGlobalAppLog(appLocation application.AppLocation, size i
 		return nil, err
 	}
 
-	lines := make([]string, 0, size)
+	// Assuming 1024 lines of log message
+	// If more than that go will allocate more space
+	// TODO: If needed in future we can have it as streaming logs
+	lines := make([]string, 0, 1024)
 	for _, msgBytes := range res {
 		msgs := bytes.Split(msgBytes, []byte("\n"))
 		for _, msg := range msgs {
@@ -797,6 +800,30 @@ func (m *serviceMgr) getStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	runtimeInfo.Description = result
+	runtimeInfo.OnlyDescription = true
+}
+
+func (m *serviceMgr) getInUseEncryptionKeys(w http.ResponseWriter, r *http.Request) {
+	res := response.NewResponseWriter(w, r, response.EventGetInUseEncryptionKeys)
+	runtimeInfo := &response.RuntimeInfo{}
+
+	defer func() {
+		res.LogAndSend(runtimeInfo)
+	}()
+
+	if notAllowed, err := rbac.IsAllowed(r, rbac.EventingPermissionManage, false); err != nil {
+		getAuthErrorInfo(runtimeInfo, notAllowed, false, err)
+		return
+	}
+
+	keys, err := m.superSup.GetInUseEncryptionKeys()
+	if err != nil {
+		runtimeInfo.ErrCode = response.ErrInternalServer
+		runtimeInfo.Description = fmt.Sprintf("Failed to get in-use encryption keys: %v", err)
+		return
+	}
+
+	runtimeInfo.Description = keys
 	runtimeInfo.OnlyDescription = true
 }
 

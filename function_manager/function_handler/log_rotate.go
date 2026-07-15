@@ -52,6 +52,7 @@ type LogWriter interface {
 	Flush()
 	Close() error
 	GetInUseKeyIDs(keySet map[string]struct{})
+	UpdateSettings(maxFiles, maxSize int64)
 }
 
 type dummyLogWriter struct{}
@@ -62,6 +63,7 @@ func (dummyLogWriter) Tail(int64) ([]byte, error)              { return nil, nil
 func (dummyLogWriter) Flush()                                  {}
 func (dummyLogWriter) Close() error                            { return nil }
 func (dummyLogWriter) GetInUseKeyIDs(map[string]struct{})      {}
+func (dummyLogWriter) UpdateSettings(int64, int64)             {}
 
 type filePtr struct {
 	ptr    *os.File
@@ -81,7 +83,8 @@ type appLogCloser struct {
 
 	closed uint32
 
-	cancel context.CancelFunc
+	cancel   context.CancelFunc
+	rotateCh chan struct{} // capacity-1 channel; Write signals when size exceeds maxSize
 
 	// encryption key cache - updated by the runLoop goroutine
 	encMu          sync.RWMutex
@@ -112,7 +115,12 @@ func (wc *appLogCloser) Write(p []byte) (_ int, err error) {
 	}
 
 	bytesWritten, err := fptr.writer.Write(p)
-	atomic.AddInt64(&wc.size, int64(bytesWritten))
+	if atomic.AddInt64(&wc.size, int64(bytesWritten)) > atomic.LoadInt64(&wc.maxSize) {
+		select {
+		case wc.rotateCh <- struct{}{}:
+		default:
+		}
+	}
 	return bytesWritten, err
 }
 
@@ -519,12 +527,13 @@ func (wc *appLogCloser) runLoop(ctx context.Context, observer notifier.Observer)
 			}
 			wc.handleEncryptionEvent(te)
 
-		case <-ticker.C:
+		case <-wc.rotateCh:
 			if atomic.LoadInt64(&wc.size) > atomic.LoadInt64(&wc.maxSize) {
 				wc.manageLogFiles()
-			} else {
-				wc.Flush()
 			}
+
+		case <-ticker.C:
+			wc.Flush()
 		}
 	}
 }
@@ -615,6 +624,7 @@ func openAppLog(path string, perm os.FileMode, maxSize, maxFiles int64, observer
 		maxFiles:      maxFiles,
 		size:          size,
 		cancel:        cancel,
+		rotateCh:      make(chan struct{}, 1),
 		availableKeys: make(map[string][]byte),
 	}
 
@@ -639,13 +649,13 @@ func openAppLog(path string, perm os.FileMode, maxSize, maxFiles int64, observer
 	return logger, nil
 }
 
-func updateApplogSetting(wc *appLogCloser, maxFileCount, maxFileSize int64) {
-	if maxFileCount < atomic.LoadInt64(&wc.maxFiles) {
-		go cleanupExtraLogFiles(wc.path, maxFileCount+1, atomic.LoadInt64(&wc.maxFiles))
+func (wc *appLogCloser) UpdateSettings(maxFiles, maxSize int64) {
+	if maxFiles < atomic.LoadInt64(&wc.maxFiles) {
+		go cleanupExtraLogFiles(wc.path, maxFiles+1, atomic.LoadInt64(&wc.maxFiles))
 	}
 
-	atomic.StoreInt64(&wc.maxFiles, maxFileCount)
-	atomic.StoreInt64(&wc.maxSize, maxFileSize)
+	atomic.StoreInt64(&wc.maxFiles, maxFiles)
+	atomic.StoreInt64(&wc.maxSize, maxSize)
 }
 
 func cleanupExtraLogFiles(filenamePrefix string, beginFileIndex, endFileIndex int64) {

@@ -276,6 +276,7 @@ const (
 
 	EventGetAppStats
 	EventHandleEventingLogLevel
+	EventGetInUseEncryptionKeys
 )
 
 type log uint8
@@ -661,6 +662,12 @@ var (
 			log:         AuditLog | SystemLog,
 			auditLogVal: auditevent.SaveConfig,
 			systemLogId: common.EVENTID_UPDATE_CONFIG,
+		},
+
+		EventGetInUseEncryptionKeys: &event{
+			description: "Get in-use encryption key IDs",
+			log:         AuditLog,
+			auditLogVal: auditevent.FunctionStatus,
 		},
 	}
 )
