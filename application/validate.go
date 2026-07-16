@@ -207,7 +207,7 @@ func validateDuplicateBindings(bindings []Bindings, presentAlias map[string]Bind
 		case Constant:
 			askedAlias = b.ConstantBinding.Alias
 		}
-		if oldBinding, ok := presentAlias[askedAlias]; ok && !oldBinding.ExactEquals(b) {
+		if _, ok := presentAlias[askedAlias]; ok {
 			return fmt.Errorf("Duplicate alias names found in bindings %s", askedAlias)
 		}
 		presentAlias[askedAlias] = b
