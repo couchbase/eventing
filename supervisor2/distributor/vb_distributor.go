@@ -352,11 +352,34 @@ func (vm *vbMapDistributor) syncvbMap() {
 	}
 	responseList, _, _ := vm.broadcaster.Request(false, true, requestVbOwnershipMap, req)
 
+	// To avoid duplicates if possible
+
 	for _, ownershipBytes := range responseList {
 		ownership := ownershipStruct{}
 		_ = json.Unmarshal(ownershipBytes, &ownership)
 		for numVbs, vbsList := range ownership.OwnedVbs {
 			vm.vbs[numVbs][ownership.UUID] = vbsList
+		}
+	}
+
+	nodes := make(map[string]struct{})
+	for _, nodesVbs := range vm.vbs {
+		for nodeUUID := range nodesVbs {
+			nodes[nodeUUID] = struct{}{}
+		}
+	}
+	vm.nodes = make([]string, 0)
+	for nodeUUID := range nodes {
+		vm.nodes = append(vm.nodes, nodeUUID)
+	}
+
+	// check if all nodes details are there in the vm.vbs to keep in sync with the vm.nodes. Its fine if some of them got 0 vbs
+	for nodeUUID := range nodes {
+		for numVbs, uuidMap := range vm.vbs {
+			if _, ok := uuidMap[nodeUUID]; ok {
+				continue
+			}
+			vm.vbs[numVbs][nodeUUID] = make([]uint16, 0)
 		}
 	}
 
