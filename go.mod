@@ -51,7 +51,7 @@ require (
 	github.com/couchbase/gocbcore/v9 v9.1.11
 	github.com/couchbase/gocbcrypto v0.0.0-00010101000000-000000000000
 	github.com/couchbase/gomemcached v0.3.4
-	github.com/couchbase/goutils v0.1.2
+	github.com/couchbase/goutils v0.3.0
 	github.com/couchbase/query v0.0.0-20231201224521-b47444ea33a9
 	github.com/google/flatbuffers v25.12.19+incompatible
 	github.com/mitchellh/go-ps v1.0.0
