@@ -37,6 +37,10 @@ type keyspaceOwner struct {
 	seq              uint32
 }
 
+func (k *keyspaceOwner) String() string {
+	return fmt.Sprintf("appLocation: %s", k.appLocation)
+}
+
 func (ko *keyspaceOwner) Copy() *keyspaceOwner {
 	permsRequired := make([]string, 0, len(ko.permsRequired))
 	permsRequired = append(permsRequired, ko.permsRequired...)
@@ -311,7 +315,8 @@ func (f *keyspaceObserver) analyseCollectionChange(bucketName string, removedCol
 	m := make(map[string]*keyspaceOwner)
 	for sName, sStruct := range removedCol.Scopes {
 		for cName := range sStruct.Collections {
-			key := getObserverKey(bucketName, sName, cName, funcScopeType)
+
+			key := getObserverKey(bucketName, sName, cName, metaType)
 			iMap, ok := f.observerMap[key]
 			if ok {
 				for instanceID, ko := range iMap {
@@ -327,7 +332,7 @@ func (f *keyspaceObserver) analyseCollectionChange(bucketName string, removedCol
 				}
 			}
 
-			key = getObserverKey(bucketName, sName, cName, metaType)
+			key = getObserverKey(bucketName, sName, cName, funcScopeType)
 			iMap, ok = f.observerMap[key]
 			if ok {
 				for instanceID, ko := range iMap {
@@ -362,14 +367,26 @@ func (f *keyspaceObserver) handleBucketDelete(bucketName string) map[string]*key
 	defer f.RUnlock()
 
 	m := make(map[string]*keyspaceOwner)
+	topPermissionLevel := make(map[string]*keyspaceOwner)
 	for key, iMap := range f.observerMap {
-		bucket, _, _, _ := splitObserverKey(key)
+		bucket, _, _, keyspaceType := splitObserverKey(key)
 		if bucket != bucketName {
+			continue
+		}
+
+		// This type should be there since it also needs to delete the function
+		if keyspaceType == funcScopeType {
+			for instanceID, keyspaceOwner := range iMap {
+				topPermissionLevel[instanceID] = keyspaceOwner
+			}
 			continue
 		}
 		for instanceID, keyspaceOwner := range iMap {
 			m[instanceID] = keyspaceOwner
 		}
+	}
+	for instanceID, keyspaceOwner := range topPermissionLevel {
+		m[instanceID] = keyspaceOwner
 	}
 
 	return m

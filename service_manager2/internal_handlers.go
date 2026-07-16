@@ -953,13 +953,11 @@ func (m *serviceMgr) getUserInfoHandler(w http.ResponseWriter, r *http.Request) 
 		// bucket.scope.*
 		for scopeName, scopes := range manifests.Scopes {
 			k.ScopeName = scopeName
-			k.CollectionName = application.GlobalValue
-			checkAndAppendPermissions(k, true)
 
 			// bucket.scope.collection
-			for collName, _ := range scopes.Collections {
+			for collName := range scopes.Collections {
 				k.CollectionName = collName
-				checkAndAppendPermissions(k, false)
+				checkAndAppendPermissions(k, collName == application.GlobalValue)
 			}
 		}
 	}
