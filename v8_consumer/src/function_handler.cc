@@ -30,9 +30,26 @@ void function_worker::init_event(
     comm_->send_message(msg, "", "", "");
   } break;
   case messages::eCompileHandler: {
-    auto app_code = messages::get_value(msg->payload);
-    auto result = compile(app_code);
-    comm_->send_message(msg, "", "", result);
+    try {
+      auto app_details = settings::parse_app_details(msg->payload);
+      if (app_details == nullptr) {
+        CompilationInfo info;
+        info.compile_success = false;
+        info.language = "Javascript";
+        info.description = "Invalid function definition JSON";
+        comm_->send_message(msg, "", "", CompileInfoToString(info));
+        break;
+      }
+      workers_[0]->InstallValidationBindings(app_details);
+      auto result = compile(app_details->app_code);
+      comm_->send_message(msg, "", "", result);
+    } catch (const std::exception &e) {
+      CompilationInfo info;
+      info.compile_success = false;
+      info.language = "Javascript";
+      info.description = std::string("Invalid function definition: ") + e.what();
+      comm_->send_message(msg, "", "", CompileInfoToString(info));
+    }
   } break;
   case messages::eDebugHandlerStart:
   case messages::eDebugHandlerStop:

@@ -432,6 +432,7 @@ void V8Worker2::SetCouchbaseNamespace() {
     LOG(logError) << "Exception logged:"
                   << ExceptionString(isolate_, context, &try_catch)
                   << std::endl;
+    return;
   }
 
   v8::Local<v8::Value> result_wrapper2;
@@ -439,6 +440,7 @@ void V8Worker2::SetCouchbaseNamespace() {
     LOG(logError) << "Unable to run the injected couchbase.js script: "
                   << ExceptionString(isolate_, context, &try_catch)
                   << std::endl;
+    return;
   }
 
   return;
@@ -482,8 +484,7 @@ void V8Worker2::InstallCurlBindings(
 }
 
 void V8Worker2::InstallConstantBindings(
-    const std::vector<std::pair<std::string, std::string>> constant_bindings)
-    const {
+    const std::vector<std::pair<std::string, std::string>> constant_bindings) {
 
   v8::Locker locker(isolate_);
   v8::Isolate::Scope isolate_scope(isolate_);
@@ -509,16 +510,24 @@ void V8Worker2::InstallConstantBindings(
   if (!TO_LOCAL(v8::Script::Compile(context, injection_source, &origin),
                 &compiled_script)) {
     assert(try_catch.HasCaught());
-    LOG(logError) << "Exception logged:"
-                  << ExceptionString(isolate_, context, &try_catch)
+    constant_binding_error_ = ExceptionString(isolate_, context, &try_catch);
+    LOG(logError) << "Exception logged:" << constant_binding_error_
                   << std::endl;
+    return;
   }
 
   v8::Local<v8::Value> result_wrapper;
   if (!TO_LOCAL(compiled_script->Run(context), &result_wrapper)) {
-    LOG(logError) << "Unable to inject constant bindings into the script"
-                  << std::endl;
+    constant_binding_error_ = ExceptionString(isolate_, context, &try_catch);
+    LOG(logError) << "Unable to inject constant bindings into the script: "
+                  << constant_binding_error_ << std::endl;
+    return;
   }
+}
+
+void V8Worker2::InstallValidationBindings(
+    std::shared_ptr<settings::app_details> app_details) {
+  InstallConstantBindings(app_details->dConfig->constant_bindings);
 }
 
 void V8Worker2::InitializeIsolateData() {
@@ -730,6 +739,7 @@ V8Worker2::V8Worker2(v8::Platform *platform) {
       v8::ArrayBuffer::Allocator::NewDefaultAllocator();
 
   isolate_ = v8::Isolate::New(create_params);
+  isolate_->SetData(IsolateData::index, &data_);
 
   v8::Locker locker(isolate_);
   v8::Isolate::Scope isolate_scope(isolate_);
@@ -827,11 +837,13 @@ int V8Worker2::Start() {
     LOG(logError) << log_prefix_ << "Exception logged:"
                   << ExceptionString(isolate_, context, &try_catch)
                   << std::endl;
+    return kFailedToCompileJs;
   }
 
   v8::Local<v8::Value> result_wrapper;
   if (!TO_LOCAL(compiled_script->Run(context), &result_wrapper)) {
     LOG(logError) << log_prefix_ << "Compile error" << std::endl;
+    return kFailedToCompileJs;
   }
 
   std::thread r_thr(&V8Worker2::RouteMessage, this);
@@ -1503,6 +1515,15 @@ void V8Worker2::settings_change(
 
 std::string V8Worker2::CompileHandler(std::string area_name,
                                       std::string handler) {
+  if (!constant_binding_error_.empty()) {
+    CompilationInfo info;
+    info.compile_success = false;
+    info.language = "Javascript";
+    info.area = "constant_bindings";
+    info.description = "Invalid constant binding: " + constant_binding_error_;
+    return CompileInfoToString(info);
+  }
+
   v8::Locker locker(isolate_);
   v8::Isolate::Scope isolate_scope(isolate_);
   v8::HandleScope handle_scope(isolate_);

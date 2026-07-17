@@ -90,6 +90,7 @@ public:
   int16_t num_vbuckets_;
 
   std::string CompileHandler(std::string area_name, std::string handler);
+  void InstallValidationBindings(std::shared_ptr<settings::app_details> app_details);
   inline std::string GetFunctionInstanceID() { return function_instance_id_; }
   void settings_change(const std::unique_ptr<messages::worker_request> &msg);
   inline void AccumulateLog(const std::string &log) {
@@ -197,8 +198,7 @@ private:
 
   void InstallCurlBindings(const std::vector<CurlBinding> &curl_bindings) const;
   void InstallConstantBindings(
-      const std::vector<std::pair<std::string, std::string>> constant_bindings)
-      const;
+      const std::vector<std::pair<std::string, std::string>> constant_bindings);
   void InstallBucketBindings(
       const std::unordered_map<
           std::string,
@@ -228,6 +228,7 @@ private:
   const std::shared_ptr<settings::cluster> cluster_details_;
   const std::shared_ptr<settings::global> global_settings_;
   const std::shared_ptr<settings::app_details> app_details_;
+  std::string constant_binding_error_;
 
   std::unique_ptr<vb_handler> f_map_;
   std::string user_;
