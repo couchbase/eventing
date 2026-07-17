@@ -163,8 +163,8 @@ func (mb *flatbufMessageBuilder) InitMessage(opcode uint8, handlerID []byte, val
 		val, _ = json.Marshal(v)
 
 	case CompileHandler:
-		code := value.(string)
-		val = []byte(code)
+		v := value.(*application.FunctionDetails)
+		val, _ = json.Marshal(v)
 
 	case OnDeployHandler:
 		v := value.(*OnDeployActionObject)
