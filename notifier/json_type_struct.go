@@ -7,6 +7,8 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+
+	"github.com/couchbase/eventing/application"
 )
 
 var (
@@ -348,6 +350,10 @@ func (c *collectionManifest) toCollectionManifest() *CollectionManifest {
 			Collections: make(map[string]*Collection),
 		}
 
+		// add entire scope present as "*"
+		s.Collections[application.GlobalValue] = &Collection{
+			CID: scope.Uid,
+		}
 		for _, col := range scope.Collection {
 			s.Collections[col.Name] = &Collection{
 				CID: col.Uid,

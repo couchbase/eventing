@@ -969,7 +969,10 @@ func (s *supervisor) requestStopFunction(msg stopMsg) (functionDeleted bool, err
 			// Function already deleted
 			return true, nil
 		}
-		return false, err
+		// Check why not acceptable
+		if res.StatusCode != http.StatusNotAcceptable {
+			return false, err
+		}
 	}
 
 	if len(responseBytes) == 0 {
