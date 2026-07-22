@@ -144,6 +144,9 @@ func (b *broadcaster) initPointConnection() error {
 
 	if b.tlsConfig.EncryptData {
 		setting.TlsConfig = b.tlsConfig.Config
+		// Verify the server certificate against the nodeToNode CRL policy.
+		// This is an outbound connection to another Couchbase node.
+		setting.VerifyPeerCertificate = authenticator.VerifyNodeToNode
 	}
 
 	if b.tlsConfig.UseClientCert {

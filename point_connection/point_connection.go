@@ -3,6 +3,7 @@ package pointconnection
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"net/http"
 	"time"
@@ -62,6 +63,12 @@ type ConnSettings struct {
 	// TlsConfig will give the config that client wants to use
 	// If provided other tls realted config will be ignored
 	TlsConfig *tls.Config
+
+	// VerifyPeerCertificate, if set, is used as tls.Config's callback of the
+	// same name to verify the peer's certificate chain on outbound
+	// connections. Left nil, no additional verification beyond Go's own
+	// chain validation is performed.
+	VerifyPeerCertificate func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error
 }
 
 // Response is the response to the provided response
