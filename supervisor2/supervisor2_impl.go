@@ -1368,13 +1368,16 @@ func (s *supervisor) CompileHandler(funcDetails *application.FunctionDetails) (c
 	defer process.StopProcess()
 
 	appCode = funcDetails.ModifyAppCode(false)
-	process.InitEvent(process.GetProcessDetails().Version, processManager.CompileHandler, []byte(funcDetails.AppLocation.Appname), appCode)
+	compileFuncDetails := funcDetails.Clone(false)
+	compileFuncDetails.AppCode = appCode
+	process.InitEvent(process.GetProcessDetails().Version, processManager.CompileHandler, []byte(funcDetails.AppLocation.Appname), compileFuncDetails)
 	t := time.NewTicker(5 * time.Second)
 
 	select {
 	case msg, ok := <-receive:
 		if !ok {
 			err = fmt.Errorf("unable to spawn compiler. Try again later")
+			break
 		}
 
 		err = json.Unmarshal(msg.Value, compileInfo)
