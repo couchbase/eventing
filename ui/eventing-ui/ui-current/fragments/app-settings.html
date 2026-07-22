@@ -600,6 +600,10 @@
                 ng-show="!form.appname.$error.bindingsValid && formCtrl.createAppForm.appname.$error.bucketsValidList[$index] === false">
                 Bucket Name cannot be empty
               </div>
+              <div class="row margin-bottom-half error field-error"
+                ng-show="!form.appname.$error.bindingsValid && formCtrl.createAppForm.appname.$error.duplicateAliasValidList[$index] === true">
+                Alias name must be unique across all bindings.
+              </div>
             </div>
           </div>
         </div>

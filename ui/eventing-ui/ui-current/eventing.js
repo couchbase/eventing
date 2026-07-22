@@ -2801,6 +2801,20 @@ angular
             }
           }
 
+          const aliasCounts = Object.create(null);
+          for (const b of bindings) {
+            if (b.value?.length) {
+              aliasCounts[b.value] = (aliasCounts[b.value] || 0) + 1;
+            }
+          }
+          const duplicateAliasValidList = bindings.map((b) =>
+            !!(b.value?.length && aliasCounts[b.value] > 1)
+          );
+          const duplicateAliasError = duplicateAliasValidList.some(Boolean);
+          if (duplicateAliasError) {
+            bindingError = true;
+          }
+
           // Check whether the appname exists in the list of apps.
           if (form.appname.$viewValue && form.appname.$viewValue !== '') {
             var function_scope = {
@@ -2819,6 +2833,7 @@ angular
             form.appname.$error.hostnameValidList = hostnameValidList;
             form.appname.$error.bindingsValid = bindingError;
             form.appname.$error.hostnameValid = hostnameError;
+            form.appname.$error.duplicateAliasValidList = duplicateAliasValidList;
           }
 
           form.appname.$error.required = form.appname.$viewValue === '' ||
