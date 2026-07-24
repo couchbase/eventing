@@ -851,7 +851,12 @@ func makeConn(parent context.Context, KVAddressStruct *notifier.NodeAddress, tls
 
 	if tlsConfig.EncryptData {
 		var t tls.Dialer
-		t.Config = &tls.Config{RootCAs: tlsConfig.Config.RootCAs}
+		t.Config = &tls.Config{
+			RootCAs: tlsConfig.Config.RootCAs,
+			// Verify the server certificate against the nodeToNode CRL policy.
+			// This is an outbound connection Eventing dials to a KV (Data) node.
+			VerifyPeerCertificate: authenticator.VerifyNodeToNode,
+		}
 		if tlsConfig.UseClientCert {
 			t.Config.Certificates = []tls.Certificate{*tlsConfig.ClientCertificate}
 		}

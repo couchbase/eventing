@@ -238,7 +238,9 @@ func (s *ConnSettings) getConnFromSetting() (*http.Client, error) {
 
 // getTlsConfig returns tls.config from the connection settings
 func (s *ConnSettings) getTlsConfig() (config *tls.Config, err error) {
-	config = &tls.Config{}
+	config = &tls.Config{
+		VerifyPeerCertificate: s.VerifyPeerCertificate,
+	}
 
 	if s.TlsConfig != nil {
 		config.RootCAs = s.TlsConfig.RootCAs.Clone()

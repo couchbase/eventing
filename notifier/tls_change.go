@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/couchbase/cbauth"
+	"github.com/couchbase/eventing/authenticator"
 	"github.com/couchbase/eventing/logging"
 	cbtls "github.com/couchbase/goutils/tls"
 )
@@ -106,6 +107,10 @@ func (tlsOb *tlsObserver) tlsConfigChanges(newConfig *TlsConfig) (bool, error) {
 		MinVersion:               cbauthTLScfg.MinVersion,
 		PreferServerCipherSuites: cbauthTLScfg.PreferServerCipherSuites,
 		ClientAuth:               cbauthTLScfg.ClientAuthType,
+		// Verify the client certificate against the clientAuth CRL policy.
+		// This is an inbound listener: Eventing is verifying a certificate
+		// presented by a client connecting to it.
+		VerifyPeerCertificate: authenticator.VerifyClientAuth,
 	}
 
 	pemFile := tlsOb.settings.SslCertFile
