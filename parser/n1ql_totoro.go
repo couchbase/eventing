@@ -46,3 +46,8 @@ func (qs *queryStmt) VisitDropCredentialStore(stmt *algebra.DropCredentialStore)
 	err := handleStmt(qs, stmt.Expressions())
 	return stmt, err
 }
+
+func (qs *queryStmt) VisitCreateKnowledge(stmt *algebra.CreateKnowledge) (interface{}, error) {
+	err := handleStmt(qs, stmt.Expressions())
+	return stmt, err
+}
