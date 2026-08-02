@@ -93,7 +93,9 @@ func (c *cidToKeyspaceNameCache) updateManifestFromServer(manifest *notifier.Col
 				continue
 			}
 
-			c.cidToKeyspaceName[collectionID] = createMarshalledData(c.bucketName, scopeName, colName)
+			if colName != application.GlobalValue {
+				c.cidToKeyspaceName[collectionID] = createMarshalledData(c.bucketName, scopeName, colName)
+			}
 		}
 	}
 }
