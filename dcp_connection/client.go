@@ -1021,6 +1021,13 @@ func (c *client) handleSystemEvent(res *memcachedCommand) (dcpMsg *DcpEvent) {
 	uid := binary.BigEndian.Uint64(res.body[0:]) //8 byte Manifest UID
 	uidstr := strconv.FormatUint(uid, 16)        //convert to base 16 encoded string
 	dcpMsg.ManifestUID = uidstr
+	name := res.key
+	if cap(dcpMsg.Key) > len(name) {
+		dcpMsg.Key = dcpMsg.Key[:len(name)]
+	} else {
+		dcpMsg.Key = make([]byte, len(name))
+	}
+	copy(dcpMsg.Key, name)
 
 	systemEventType := collectionEvent(binary.BigEndian.Uint32(extras[8:12]))
 	dcpMsg.EventType = systemEventType
