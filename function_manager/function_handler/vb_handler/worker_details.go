@@ -34,7 +34,7 @@ const (
 )
 
 func (s status) isRunning() bool {
-	return (s == running) || (s == paused) || (s == ready)
+	return (s == running) || (s == paused)
 }
 
 func (s status) isRequested() bool {

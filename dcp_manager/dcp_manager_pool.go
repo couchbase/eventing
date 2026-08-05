@@ -30,11 +30,11 @@ func (m *dcpManager) StartStreamReq(sr *dcpConn.StreamReq) error {
 }
 
 func (m *dcpManager) PauseStreamReq(id uint16, vbno uint16) {
-	m.manager.PauseStreamReq(id, vbno)
+	m.manager.PauseStreamReq(m.id, vbno)
 }
 
 func (m *dcpManager) CloseRequest(id uint16, vbno uint16) {
-	m.manager.CloseRequest(id, vbno)
+	m.manager.CloseRequest(m.id, vbno)
 }
 
 func (m *dcpManager) GetFailoverLog(vbs []uint16) (map[uint16]dcpConn.FailoverLog, error) {
