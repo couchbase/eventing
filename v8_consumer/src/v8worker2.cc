@@ -498,6 +498,14 @@ void V8Worker2::SetCouchbaseNamespace() {
       geoPolygon: function(points) {
         // [longitude, latitude, longitude, latitude....]
         return new couchbase.SearchQuery.geoPolygonObject(points);
+      },
+
+      vectorQuery: function(fieldName, vector) {
+        return new couchbase.SearchQuery.vectorQueryObject(fieldName, vector);
+      },
+
+      vectorSearch: function(...queries) {
+        return new couchbase.SearchQuery.vectorSearchObject(...queries);
       }
     };)"
 
@@ -975,20 +983,114 @@ void V8Worker2::SetCouchbaseNamespace() {
         return this._data;
       };
     });
+   )"
 
-    couchbase.searchQuery = function(indexName, query, options) {
-      var queryJson = {
-            "query": query.toJson(),
-            "indexName": indexName
-          };
+   R"(couchbase.searchQuery = function(indexName, query, options) {
+      var queryJson = { indexName: indexName };
+      options = options || {};
 
-      for(var option in options) {
+      if (query instanceof couchbase.SearchQuery.vectorSearchObject) {
+        queryJson.knn = query.toKnnArray();
+        var combo = query.getCombination();
+        if (combo) {
+          queryJson.knn_operator = combo;
+        }
+      } else if (query instanceof couchbase.SearchQuery.vectorQueryObject) {
+        queryJson.knn = [query.toJson()];
+      } else if (query && typeof query.toJson === 'function') {
+        queryJson.query = query.toJson();
+      }
+
+      if (options.vectorSearch instanceof couchbase.SearchQuery.vectorSearchObject) {
+        queryJson.knn = options.vectorSearch.toKnnArray();
+        var hybridCombo = options.vectorSearch.getCombination();
+        if (hybridCombo) {
+          queryJson.knn_operator = hybridCombo;
+        }
+      }
+
+      for (var option in options) {
+        if (Object.prototype.hasOwnProperty.call(options, option) && option !== 'vectorSearch') {
           queryJson[option] = options[option];
+        }
       }
 
       var queryJsonString = JSON.stringify(queryJson);
       return couchbase.searchQueryInternal(queryJsonString);
     };)"
+
+    R"(
+    couchbase.SearchQuery.Combination = {};
+    couchbase.SearchQuery.Combination.AND = 'and';
+    couchbase.SearchQuery.Combination.OR = 'or';
+
+    couchbase.SearchQuery.vectorQueryObject = (function(fieldName, vector) {
+      this._data = {
+        field: fieldName
+      }
+
+      if (typeof vector === 'string') {
+          this._data.vector_base64 = vector;
+      } else {
+          this._data.vector = vector;
+      }
+
+      this.boost = function(boost) {
+        this._data.boost = boost;
+        return this;
+      };
+
+      this.numCandidates = function(numCandidates) {
+        this._data.k = numCandidates;
+        return this;
+      };
+
+      this.prefilter = function(searchQuery) {
+         this._data.filter = searchQuery.toJson();
+         return this;
+      };
+
+      this.params = function(params) {
+          this._data.params = params;
+          return this;
+      };
+
+      this.toJson = function() {
+        return this._data;
+      };
+    });
+
+    couchbase.SearchQuery.vectorSearchObject = (function(...queries) {
+      this._queries = [];
+      this._combination = undefined;
+
+      this.and = function(...queries) {
+        for (var i = 0; i < queries.length; i++) {
+          this._queries.push(queries[i]);
+        }
+        return this;
+      };
+
+      this.combination = function(combo) {
+        if (combo !== couchbase.SearchQuery.Combination.AND &&
+            combo !== couchbase.SearchQuery.Combination.OR) {
+          throw "invalid vector query combination specified";
+        }
+        this._combination = combo;
+        return this;
+      };
+
+      this.toKnnArray = function() {
+        return this._queries.map(function(q) { return q.toJson(); });
+      };
+
+      this.getCombination = function() {
+        return this._combination;
+      };
+
+      this.and(...queries);
+    });
+    )"
 
     R"(couchbase.getCachedKey = function(id, details) {
       return details.keyspace.bucket + "/" + details.keyspace.scope + "/" + details.keyspace.collection + "/" + id;
@@ -1235,7 +1337,7 @@ V8Worker2::V8Worker2(int index, std::shared_ptr<RuntimeStats> stats,
       cluster_details_(cluster_details), global_settings_(global_Settings),
       app_details_(app_details),
       exception_type_names_(
-          {"KVError", "N1QLError", "EventingError", "CurlError", "TypeError"}) {
+          {"KVError", "N1QLError", "EventingError", "CurlError", "TypeError", "SearchError"}) {
   cb_source_bucket_.assign(app_details->dConfig->source_bucket);
   cb_source_scope_.assign(app_details->dConfig->source_scope);
   cb_source_collection_.assign(app_details->dConfig->source_collection);

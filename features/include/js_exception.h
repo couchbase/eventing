@@ -34,8 +34,8 @@ public:
     return NewCustomError(message_val, analytics_error_out, "AnalyticsError");
   }
   Info NewSearchError(const v8::Local<v8::Value> &message_val,
-                     v8::Local<v8::Object> &analytics_error_out) {
-    return NewCustomError(message_val, analytics_error_out, "SearchError");
+                     v8::Local<v8::Object> &search_error_out) {
+    return NewCustomError(message_val, search_error_out, "SearchError");
   }
   Info NewKVError(const v8::Local<v8::Value> &message_val,
                   v8::Local<v8::Object> &kv_error_out) {
