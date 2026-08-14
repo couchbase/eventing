@@ -84,7 +84,7 @@ func NewServiceManager(config *common.ClusterSettings, observer notifier.Observe
 func (s *serviceMgr) initServiceManager() error {
 	logPrefix := "serviceManager::initServiceManager"
 
-	err := response.Init(s.config.RestPort)
+	err := response.Init(s.config)
 	if err != nil {
 		logging.Errorf("%s Error initializing response package: %v", logPrefix, err)
 	}

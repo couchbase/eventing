@@ -3,6 +3,7 @@ package response
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"strconv"
 
@@ -45,8 +46,9 @@ func GetErrCodes() ErrorPayloadList {
 	return epl
 }
 
-func Init(restPort string) error {
-	err := audit.Init(restPort)
+func Init(clusterConfig *common.ClusterSettings) error {
+	clusterUrl := "http://" + net.JoinHostPort(clusterConfig.LocalAddress, clusterConfig.RestPort)
+	err := audit.Init(clusterUrl)
 	if err != nil {
 		return fmt.Errorf("Failed to initialize audit service, err: %v", err)
 	}
