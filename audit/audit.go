@@ -1,3 +1,4 @@
+//go:build enterprise
 // +build enterprise
 
 //  Copyright (c) 2016 Couchbase, Inc.
@@ -15,12 +16,10 @@ package audit
 
 import (
 	"fmt"
-	"net"
 	"net/http"
 
 	"github.com/couchbase/eventing/gen/auditevent"
 	"github.com/couchbase/eventing/logging"
-	"github.com/couchbase/eventing/util"
 	goadt "github.com/couchbase/goutils/go-cbaudit"
 )
 
@@ -35,8 +34,7 @@ type AuditEntry struct {
 
 var auditService *goadt.AuditSvc
 
-func Init(restPort string) error {
-	clusterURL := "http://" + net.JoinHostPort(util.Localhost(), restPort)
+func Init(clusterURL string) error {
 	svc, err := goadt.NewAuditSvc(clusterURL)
 	if err != nil {
 		logging.Errorf("Audit initialization failed: %v", err)

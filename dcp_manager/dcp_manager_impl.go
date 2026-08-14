@@ -270,7 +270,7 @@ func (m *manager) closeManager() {
 	m.consumersLock.Unlock()
 	for _, consumer := range consumers {
 		// No need to handle any pending requests
-		consumer.CloseDcpConsumer()
+		consumer.CloseDcpConsumer(false)
 	}
 }
 
@@ -491,7 +491,7 @@ func (m *manager) handleVbChangeReceived(newState interface{}) {
 	m.consumersLock.Unlock()
 
 	for _, consumer := range consumersToBeClosed {
-		pendingEvents := consumer.CloseDcpConsumer()
+		pendingEvents := consumer.CloseDcpConsumer(true)
 		for _, dcpEvent := range pendingEvents {
 			m.eventReceiveChan <- dcpEvent
 		}

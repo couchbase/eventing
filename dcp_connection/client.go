@@ -10,6 +10,7 @@ import (
 	"io"
 	"math"
 	"net"
+	"runtime"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -377,7 +378,7 @@ func (c *client) GetFailoverLog(vbs []uint16) (failoverLogMap map[uint16]Failove
 }
 
 // Manager doesn't care what all requests ownersip we have
-func (c *client) CloseDcpConsumer() []*DcpEvent {
+func (c *client) CloseDcpConsumer(pendingRequired bool) []*DcpEvent {
 	if !c.closed.CompareAndSwap(false, true) {
 		return nil
 	}
@@ -390,9 +391,12 @@ func (c *client) CloseDcpConsumer() []*DcpEvent {
 	c.Unlock()
 
 	c.close()
+	if !pendingRequired {
+		return nil
+	}
 	// wait for request routine to get closed
 	for !c.receiveRoutineClosed.Load() {
-		time.Sleep(5 * time.Millisecond)
+		runtime.Gosched()
 	}
 
 	pendingEvents := c.pendingDcpEvents
