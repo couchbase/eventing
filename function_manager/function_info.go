@@ -28,6 +28,7 @@ const (
 )
 
 type keyspaceOwner struct {
+	state            application.LifeCycleOp
 	owner            application.Owner
 	keyspaceID       application.KeyspaceInfo
 	keyspaceIdentity application.Keyspace
@@ -38,7 +39,7 @@ type keyspaceOwner struct {
 }
 
 func (k *keyspaceOwner) String() string {
-	return fmt.Sprintf("appLocation: %s", k.appLocation)
+	return fmt.Sprintf("appLocation: %s state: %s keyspaceType: %s seq: %d owner: %s", k.appLocation, k.state, k.keyspaceType, k.seq, k.owner)
 }
 
 func (ko *keyspaceOwner) Copy() *keyspaceOwner {
@@ -46,6 +47,7 @@ func (ko *keyspaceOwner) Copy() *keyspaceOwner {
 	permsRequired = append(permsRequired, ko.permsRequired...)
 
 	return &keyspaceOwner{
+		state:            ko.state,
 		owner:            ko.owner,
 		keyspaceID:       ko.keyspaceID,
 		keyspaceIdentity: ko.keyspaceIdentity,
@@ -87,9 +89,15 @@ func getPermission(keyspace application.Keyspace, currState string) (perms []str
 	return
 }
 
-func getUndeployMessage(instanceID string, appLocation application.AppLocation, kType string) (undeployMsg common.LifecycleMsg) {
+func getUndeployMessage(instanceID string, appLocation application.AppLocation, kType string, ownershipLost bool) (undeployMsg common.LifecycleMsg) {
 	undeployMsg.Applocation = appLocation
 	undeployMsg.InstanceID = instanceID
+
+	if ownershipLost {
+		undeployMsg.Description = "Owner lost privilege"
+		undeployMsg.UndeloyFunction = true
+		return
+	}
 
 	switch kType {
 	case funcScopeType:
@@ -109,9 +117,8 @@ func getUndeployMessage(instanceID string, appLocation application.AppLocation, 
 	return
 }
 
-func getUndeployMessageFromkeyspaceOwner(instanceID string, keyspace *keyspaceOwner) (uint32, common.LifecycleMsg) {
-	undeployMsg := getUndeployMessage(instanceID, keyspace.appLocation, keyspace.keyspaceType)
-	undeployMsg.Description = "Owner lost privilage"
+func getUndeployMessageFromkeyspaceOwner(instanceID string, keyspace *keyspaceOwner, ownershipLost bool) (uint32, common.LifecycleMsg) {
+	undeployMsg := getUndeployMessage(instanceID, keyspace.appLocation, keyspace.keyspaceType, ownershipLost)
 	return keyspace.seq, undeployMsg
 }
 
@@ -145,18 +152,20 @@ func NewKeyspaceObserverWithContext(ctx context.Context, id string, observer not
 	return ko
 }
 
-func (f *keyspaceObserver) InternalUndeploymentMap(undeployMap map[string]*keyspaceOwner) {
+func (f *keyspaceObserver) InternalUndeploymentMap(undeployMap map[string]*keyspaceOwner, ownershipLost bool) {
 	for instanceID, ko := range undeployMap {
-		f.InternalUndeployment(instanceID, ko)
+		f.InternalUndeployment(instanceID, ko, ownershipLost)
 	}
 }
 
-func (f *keyspaceObserver) InternalUndeployment(instanceID string, ko *keyspaceOwner) {
-	seq, undeployMsg := getUndeployMessageFromkeyspaceOwner(instanceID, ko)
+func (f *keyspaceObserver) InternalUndeployment(instanceID string, ko *keyspaceOwner, ownershipLost bool) {
+	logPrefix := "keyspaceObserver::InternalUndeployment"
+	seq, undeployMsg := getUndeployMessageFromkeyspaceOwner(instanceID, ko, ownershipLost)
+	logging.Infof("%s internal undployment: %s", logPrefix, undeployMsg)
 	f.interrupt.StopCalledInterupt(seq, undeployMsg)
 }
 
-func (f *keyspaceObserver) AddToObserverList(funcDetails *application.FunctionDetails, nextState application.LifeCycleOp) {
+func (f *keyspaceObserver) AddToObserverList(oldInstanceID string, funcDetails *application.FunctionDetails, nextState application.LifeCycleOp) {
 	logPrefix := fmt.Sprintf("keyspaceObserver::AddToObserverList[%s]", f.id)
 	funcScope := funcDetails.AppLocation.Namespace
 	funcScopeKeyspace, _ := application.NewKeyspace(funcScope.BucketName, funcScope.ScopeName, "*", true)
@@ -171,7 +180,7 @@ func (f *keyspaceObserver) AddToObserverList(funcDetails *application.FunctionDe
 	case application.Undeploy:
 		f.removeLocked(instanceID, srcKeyspace, sourceType)
 		f.removeLocked(instanceID, metaKeyspace, metaType)
-		f.addLocked(instanceID, funcDetails.MetaInfo.Seq, funcDetails.AppLocation, funcScopeKeyspace, funcDetails.MetaInfo.FunctionScopeID, funcDetails.Owner, funcScopeType)
+		f.addLocked(oldInstanceID, instanceID, funcDetails.MetaInfo.Seq, funcDetails.AppLocation, funcScopeKeyspace, funcDetails.MetaInfo.FunctionScopeID, funcDetails.Owner, funcScopeType, application.Undeploy)
 
 		logging.Infof(
 			"%s-%s %s added: funcScope: %s(%s). removed: src: %s(%s), checkpoint: %s(%s). currState: %s",
@@ -188,9 +197,9 @@ func (f *keyspaceObserver) AddToObserverList(funcDetails *application.FunctionDe
 		)
 
 	case application.Deploy, application.Pause:
-		f.addLocked(instanceID, funcDetails.MetaInfo.Seq, funcDetails.AppLocation, funcScopeKeyspace, funcDetails.MetaInfo.FunctionScopeID, funcDetails.Owner, funcScopeType)
-		f.addLocked(instanceID, funcDetails.MetaInfo.Seq, funcDetails.AppLocation, srcKeyspace, funcDetails.MetaInfo.SourceID, funcDetails.Owner, sourceType)
-		f.addLocked(instanceID, funcDetails.MetaInfo.Seq, funcDetails.AppLocation, metaKeyspace, funcDetails.MetaInfo.MetaID, funcDetails.Owner, metaType)
+		f.addLocked(oldInstanceID, instanceID, funcDetails.MetaInfo.Seq, funcDetails.AppLocation, funcScopeKeyspace, funcDetails.MetaInfo.FunctionScopeID, funcDetails.Owner, funcScopeType, nextState)
+		f.addLocked(oldInstanceID, instanceID, funcDetails.MetaInfo.Seq, funcDetails.AppLocation, srcKeyspace, funcDetails.MetaInfo.SourceID, funcDetails.Owner, sourceType, nextState)
+		f.addLocked(oldInstanceID, instanceID, funcDetails.MetaInfo.Seq, funcDetails.AppLocation, metaKeyspace, funcDetails.MetaInfo.MetaID, funcDetails.Owner, metaType, nextState)
 
 		logging.Infof(
 			"%s-%s %s added: funcScope: %s(%s), src: %s(%s), checkpoint: %s(%s). removed: none. currState: %s",
@@ -267,7 +276,7 @@ func (f *keyspaceObserver) routineForControlMessage(ctx context.Context) {
 	}
 	f.Unlock()
 
-	f.InternalUndeploymentMap(m)
+	f.InternalUndeploymentMap(m, false)
 	for {
 		select {
 		case trans := <-f.subscriber.WaitForEvent():
@@ -279,7 +288,7 @@ func (f *keyspaceObserver) routineForControlMessage(ctx context.Context) {
 
 		case <-ownershipCheckTimer.C:
 			undeployMap := f.analyseOwnership()
-			f.InternalUndeploymentMap(undeployMap)
+			f.InternalUndeploymentMap(undeployMap, true)
 
 		case <-ctx.Done():
 			return
@@ -291,7 +300,7 @@ func (f *keyspaceObserver) analyseClusterChange(trans *notifier.TransitionEvent)
 	if trans.Deleted {
 		bucketName := trans.Event.Filter
 		undeployMap := f.handleBucketDelete(bucketName)
-		f.InternalUndeploymentMap(undeployMap)
+		f.InternalUndeploymentMap(undeployMap, false)
 		return
 	}
 
@@ -302,7 +311,7 @@ func (f *keyspaceObserver) analyseClusterChange(trans *notifier.TransitionEvent)
 			return
 		}
 		undeployMap := f.analyseCollectionChange(trans.Event.Filter, rManifest.(*notifier.CollectionManifest))
-		f.InternalUndeploymentMap(undeployMap)
+		f.InternalUndeploymentMap(undeployMap, false)
 
 	default:
 	}
@@ -351,6 +360,10 @@ func (f *keyspaceObserver) analyseOwnership() map[string]*keyspaceOwner {
 	m := make(map[string]*keyspaceOwner)
 	for _, iMap := range f.observerMap {
 		for instanceID, keyspaceOwner := range iMap {
+			// Nothing to do. Its in a correct state
+			if keyspaceOwner.state == application.Undeploy {
+				continue
+			}
 			notAllowed, err := rbac.HasPermissions(&keyspaceOwner.owner, keyspaceOwner.permsRequired, true)
 			if !checkPermError(err) || len(notAllowed) == 0 {
 				continue
@@ -392,12 +405,13 @@ func (f *keyspaceObserver) handleBucketDelete(bucketName string) map[string]*key
 	return m
 }
 
-func (f *keyspaceObserver) addLocked(instanceID string, seq uint32,
+func (f *keyspaceObserver) addLocked(oldInstanceID, instanceID string, seq uint32,
 	appLocation application.AppLocation, keyspace application.Keyspace,
 	keyspaceID application.KeyspaceInfo,
-	owner application.Owner, kType string) error {
+	owner application.Owner, kType string, nextState application.LifeCycleOp) error {
 
 	keyspaceOwnerStruct := &keyspaceOwner{
+		state:            nextState,
 		seq:              seq,
 		owner:            owner,
 		keyspaceID:       keyspaceID,
@@ -408,7 +422,7 @@ func (f *keyspaceObserver) addLocked(instanceID string, seq uint32,
 	}
 	err := f.registerWithNotifierLocked(keyspace, keyspaceID)
 	if err != nil {
-		f.InternalUndeployment(instanceID, keyspaceOwnerStruct)
+		f.InternalUndeployment(instanceID, keyspaceOwnerStruct, false)
 		return err
 	}
 
@@ -417,6 +431,10 @@ func (f *keyspaceObserver) addLocked(instanceID string, seq uint32,
 	if !ok {
 		oMap = make(map[string]*keyspaceOwner)
 		f.observerMap[key] = oMap
+	}
+
+	if oldInstanceID != "" {
+		delete(oMap, oldInstanceID)
 	}
 
 	oMap[instanceID] = keyspaceOwnerStruct
@@ -539,11 +557,11 @@ func NewFunctionNameCache(ctx context.Context, id string, observer notifier.Obse
 }
 
 func (fCache *funcCache) AddToFuncCache(funcDetails *application.FunctionDetails, funcRuntimeDetails *funcRuntimeDetails, nextState application.LifeCycleOp) {
-	fCache.kO.AddToObserverList(funcDetails, nextState)
 	fCache.Lock()
 	defer fCache.Unlock()
 
 	currInstanceId, ok := fCache.applocationToInstanceId[funcDetails.AppLocation]
+	fCache.kO.AddToObserverList(currInstanceId, funcDetails, nextState)
 	if ok {
 		delete(fCache.instanceIdToFunctionRuntime, currInstanceId)
 	}
