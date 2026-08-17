@@ -22,7 +22,7 @@ import (
 func redirectRequestToLeader[T any](cred cbauth.Creds, broadcaster common.Broadcaster, leaderNode string, runtimeInfo *response.RuntimeInfo, path string, req *pc.Request, successResponse T) T {
 	logPrefix := "serviceMgr::redirectRequestToLeader"
 
-	req.Query = rbac.PutOnBehalfOf(cred, req.Query)
+	req.Header = rbac.PutOnBehalfOf(cred, req.Header)
 	responseBytes, res, err := broadcaster.RequestFor(leaderNode, path, req)
 	if err != nil {
 		if res == nil {

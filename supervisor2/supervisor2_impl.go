@@ -969,9 +969,19 @@ func (s *supervisor) requestStopFunction(msg stopMsg) (functionDeleted bool, err
 			// Function already deleted
 			return true, nil
 		}
-		// Check why not acceptable
-		if res.StatusCode != http.StatusNotAcceptable {
-			return false, err
+
+		if res.StatusCode >= http.StatusInternalServerError {
+			return false, fmt.Errorf("Unexpected status code received: %s err: %v", res.StatusCode, res.Err)
+		}
+
+		if len(responseBytes) == 0 {
+			// res.Err might have some details use it
+			if res.Err == nil {
+				return false, fmt.Errorf("Unexpected error sending request for msg: %s err: %v", msg, err)
+			}
+			responseBytes = [][]byte{
+				[]byte(res.Err.Error()),
+			}
 		}
 	}
 
@@ -1007,7 +1017,7 @@ func (s *supervisor) requestStopFunction(msg stopMsg) (functionDeleted bool, err
 		return false, fmt.Errorf("response not expected %v for: %s", runtimeInfo.ErrCode, path)
 	}
 
-	return
+	return functionDeleted, nil
 }
 
 func (s *supervisor) deleteFunction(appLocation application.AppLocation) {

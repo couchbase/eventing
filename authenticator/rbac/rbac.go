@@ -261,10 +261,11 @@ func ValidateAuthForOp(r *http.Request, rPerms []string, mPerms []string, all bo
 	return nil, nil
 }
 
-func PutOnBehalfOf(cred cbauth.Creds, query map[string][]string) map[string][]string {
-	if query == nil {
-		query = make(map[string][]string)
+func PutOnBehalfOf(cred cbauth.Creds, header map[string][]string) map[string][]string {
+	if header == nil {
+		header = make(map[string][]string)
 	}
-	query["cb-on-behalf-of"] = []string{encodeCbOnBehalfOfHeaderWithUser(cred.Name(), cred.Domain())}
-	return query
+	username, domain := cred.User()
+	header["cb-on-behalf-of"] = []string{encodeCbOnBehalfOfHeaderWithUser(username, domain)}
+	return header
 }
