@@ -44,6 +44,8 @@ const (
 	sendStreamEndOnClientCloseStream = "true"
 	enableExpiryOpcode               = "true"
 	backfillOrder                    = "round-robin"
+	enableOSOSnapshot                = "true_with_seqno_advanced"
+	osoControlKey                    = "enable_out_of_order_snapshots"
 )
 
 const (
@@ -79,13 +81,56 @@ type stats struct {
 	DcpStreamEnd               uint64           `json:"dcp_stream_end"`
 	DcpCloseStream             uint64           `json:"dcp_close_stream"`
 	DcpSnapshotMarker          uint64           `json:"dcp_snapshot_marker"`
+	DcpOsoSnapshot             uint64           `json:"dcp_oso_snapshot"`
+	OsoEnabled                 bool             `json:"oso_enabled"`
 	DcpUnknownOpcodes          uint64           `json:"dcp_unknown_opcodes"`
 	NumSent                    uint64           `json:"num_sent"`
 }
 
-func (s *stats) Copy() *stats {
-	copyStats := *s
-	return &copyStats
+type atomicStats struct {
+	spawned            atomic.Uint64
+	lastSpawnedVersion atomic.Uint32
+	noopCount          atomic.Uint64
+
+	streamCloseRequestExecuted atomic.Uint64
+	streamStartRequestExecuted atomic.Uint64
+
+	dcpStreamRequestResponse atomic.Uint64
+	dcpEventMessages         atomic.Uint64
+	dcpAdvancedSeqno         atomic.Uint64
+	dcpSystemEvent           atomic.Uint64
+	dcpSeqNumber             atomic.Uint64
+	dcpFailoverLog           atomic.Uint64
+	dcpStreamEnd             atomic.Uint64
+	dcpCloseStream           atomic.Uint64
+	dcpSnapshotMarker        atomic.Uint64
+	dcpOsoSnapshot           atomic.Uint64
+	dcpUnknownOpcodes        atomic.Uint64
+	numSent                  atomic.Uint64
+}
+
+func (s *atomicStats) snapshot() *stats {
+	return &stats{
+		Spawned:            s.spawned.Load(),
+		LastSpawnedVersion: s.lastSpawnedVersion.Load(),
+		NoopCount:          s.noopCount.Load(),
+
+		StreamCloseRequestExecuted: s.streamCloseRequestExecuted.Load(),
+		StreamStartRequestExecuted: s.streamStartRequestExecuted.Load(),
+
+		DcpStreamRequestResponse: s.dcpStreamRequestResponse.Load(),
+		DcpEventMessages:         s.dcpEventMessages.Load(),
+		DcpAdvancdedSeqno:        s.dcpAdvancedSeqno.Load(),
+		DcpSystemEvent:           s.dcpSystemEvent.Load(),
+		DcpSeqNumber:             s.dcpSeqNumber.Load(),
+		DcpFailoverLog:           s.dcpFailoverLog.Load(),
+		DcpStreamEnd:             s.dcpStreamEnd.Load(),
+		DcpCloseStream:           s.dcpCloseStream.Load(),
+		DcpSnapshotMarker:        s.dcpSnapshotMarker.Load(),
+		DcpOsoSnapshot:           s.dcpOsoSnapshot.Load(),
+		DcpUnknownOpcodes:        s.dcpUnknownOpcodes.Load(),
+		NumSent:                  s.numSent.Load(),
+	}
 }
 
 type seqResponse struct {
@@ -111,6 +156,8 @@ type client struct {
 	connVersion *atomic.Uint32
 	closed      *atomic.Bool
 
+	osoEnabled *atomic.Bool
+
 	// ReceiveRoutine will wait for gen_server to get closed and then requestRoutine to get closed
 	// CloseDcpConsumer will wait for receiveRoutine to get closed.
 	receiveRoutineClosed *atomic.Bool
@@ -125,7 +172,7 @@ type client struct {
 	seqConnected           chan struct{}
 	internalCommandChannel map[uint32]map[uint16][]chan interface{}
 
-	stats *stats
+	stats *atomicStats
 }
 
 type dummyRWC struct {
@@ -162,6 +209,7 @@ func GetDcpConsumerWithContext(ctx context.Context, config Config, tlsConfig *no
 		tcpConn:              &dummyRWC{},
 		connVersion:          &atomic.Uint32{},
 		closed:               &atomic.Bool{},
+		osoEnabled:           &atomic.Bool{},
 		sendChannel:          sendChannel,
 		hdrBytes:             make([]byte, hdr_len),
 		dcpEventPool:         dcpEventPool,
@@ -169,7 +217,7 @@ func GetDcpConsumerWithContext(ctx context.Context, config Config, tlsConfig *no
 		genServerClosed:      &atomic.Bool{},
 		requestRoutineClosed: &atomic.Bool{},
 		pendingDcpEvents:     make([]*DcpEvent, 0),
-		stats:                &stats{},
+		stats:                &atomicStats{},
 	}
 
 	c.receiveRoutineClosed.Store(false)
@@ -218,8 +266,9 @@ func GetDcpConsumerWithContext(ctx context.Context, config Config, tlsConfig *no
 }
 
 func (c *client) GetRuntimeStats() common.StatsInterface {
-	copyStats := c.stats.Copy()
+	copyStats := c.stats.snapshot()
 	copyStats.Config = c.config
+	copyStats.OsoEnabled = c.osoEnabled.Load()
 	if c.config.Mode != InfoMode {
 		copyStats.ReqManagerStats = c.requestManager.GetRuntimeStats()
 	}
@@ -543,7 +592,7 @@ func (c *client) receiveWorker(ctx context.Context) {
 		}
 
 		if mcCommand.resCommand == DCP_NOOP {
-			c.stats.NoopCount++
+			c.stats.noopCount.Add(1)
 			c.noopResponse(mcCommand)
 			continue
 		}
@@ -572,7 +621,7 @@ func (c *client) genServer(ctx context.Context) {
 			if send {
 				select {
 				case c.sendChannel <- dcpEvent:
-					c.stats.NumSent++
+					c.stats.numSent.Add(1)
 				case <-ctx.Done():
 					c.pendingDcpEvents = append(c.pendingDcpEvents, dcpEvent)
 					return
@@ -593,20 +642,21 @@ func (c *client) handleDcpRequest(cmd command) (req *StreamReq, err error) {
 	case stream_close:
 		// Caller asked to close it so request won't be there
 		// no need update state to closing
-		c.stats.StreamCloseRequestExecuted++
+		c.stats.streamCloseRequestExecuted.Add(1)
 		err = c.streamClose(cmd.id, cmd.opaque, cmd.vbno)
 
 	case stream_request:
-		c.stats.StreamStartRequestExecuted++
-		req = c.requestManager.readyRequest(cmd.opaque)
-		if req == nil {
+		c.stats.streamStartRequestExecuted.Add(1)
+		reqCopy := c.requestManager.readyRequest(cmd.opaque)
+		if reqCopy == nil {
 			return nil, nil
 		}
-		err = c.streamRequest(req)
+		err = c.streamRequest(reqCopy)
 		if err != nil {
-			// Take the ownership away from request manager
+			// Take the ownership away from request manager. doneRequest hands
+			// back the live request, which is what the caller needs.
 			mcCommand := &memcachedCommand{}
-			mcCommand.createErrorMemcachedCommand(req)
+			mcCommand.createErrorMemcachedCommand(reqCopy)
 			dcpEvent := c.getDcpMsgFilled(mcCommand)
 			req, _ = c.requestManager.doneRequest(dcpEvent)
 			return req, err
@@ -626,51 +676,57 @@ func (c *client) handlePacket(res *memcachedCommand) (msg *DcpEvent, send bool) 
 	case DCP_BUFFERACK:
 
 	case DCP_STREAMREQ:
-		c.stats.DcpStreamRequestResponse++
+		c.stats.dcpStreamRequestResponse.Add(1)
 		msg, send = c.handleStreamRequest(res)
 
 	case DCP_MUTATION, DCP_DELETION,
 		DCP_EXPIRATION:
-		c.stats.DcpEventMessages++
+		c.stats.dcpEventMessages.Add(1)
 		sendAck = true
 		msg = c.handleDcpMessages(res)
 		send = c.requestManager.mutationNote(msg)
 
 	case DCP_STREAM_END:
-		c.stats.DcpStreamEnd++
+		c.stats.dcpStreamEnd.Add(1)
 		msg, send = c.handleStreamEnd(res)
 		sendAck = true
 
 	case DCP_SNAPSHOT_MARKER:
-		c.stats.DcpSnapshotMarker++
+		c.stats.dcpSnapshotMarker.Add(1)
 		sendAck = true
 
 	case DCP_CLOSESTREAM:
-		c.stats.DcpCloseStream++
+		c.stats.dcpCloseStream.Add(1)
 		// dcp will send streamend for this request so no need to send this message
 
 	case DCP_SYSTEM_EVENT:
-		c.stats.DcpSystemEvent++
+		c.stats.dcpSystemEvent.Add(1)
 		sendAck = true
 		msg = c.handleSystemEvent(res)
 		send = c.requestManager.mutationNote(msg)
 
 	case DCP_ADV_SEQNUM:
-		c.stats.DcpAdvancdedSeqno++
+		c.stats.dcpAdvancedSeqno.Add(1)
 		sendAck = true
 		msg = c.handleAdvSeqNumber(res)
 		send = c.requestManager.mutationNote(msg)
 
+	case DCP_OSO_SNAPSHOT:
+		c.stats.dcpOsoSnapshot.Add(1)
+		sendAck = true
+		msg = c.handleOsoSnapshot(res)
+		send = c.requestManager.osoNote(msg)
+
 	case DCP_SEQ_NUMBER:
-		c.stats.DcpSeqNumber++
+		c.stats.dcpSeqNumber.Add(1)
 		c.handleSeqNumber(res)
 
 	case DCP_FAILOVER:
-		c.stats.DcpFailoverLog++
+		c.stats.dcpFailoverLog.Add(1)
 		c.handleFailoverLog(res)
 
 	default:
-		c.stats.DcpUnknownOpcodes++
+		c.stats.dcpUnknownOpcodes.Add(1)
 	}
 
 	c.sendBufferAck(sendAck, res.size, res.connVersion)
@@ -750,7 +806,7 @@ func (c *client) initConnection(parent context.Context) (err error) {
 	// Created new connection
 	c.unackedBytes = 0
 	c.tcpConn = conn
-	c.stats.LastSpawnedVersion = c.connVersion.Add(1)
+	c.stats.lastSpawnedVersion.Store(c.connVersion.Add(1))
 	c.Unlock()
 
 	switch c.config.Mode {
@@ -788,7 +844,7 @@ func (c *client) requestInternalCommand() {
 // start the connection and
 func (c *client) startConnection(parent context.Context) (conn net.Conn, err error) {
 	c.Lock()
-	c.stats.Spawned++
+	c.stats.spawned.Add(1)
 	// All new requests are rejected
 	c.tcpConn = &dummyRWC{}
 	tlsConfig := c.tlsConfig
@@ -839,9 +895,23 @@ func (c *client) startConnection(parent context.Context) (conn net.Conn, err err
 		"send_stream_end_on_client_close_stream": sendStreamEndOnClientCloseStream,
 		"backfill_order":                         backfillOrder,
 	}
-	if _, err = c.controlRequest(conn, controlRequest); err != nil {
+
+	osoRequested := false
+	if oso, ok := c.config.DcpConfig[EnableOSO].(bool); ok && oso {
+		osoRequested = true
+		controlRequest[osoControlKey] = enableOSOSnapshot
+	}
+
+	var notAllowed map[string]error
+	if notAllowed, err = c.controlRequest(conn, controlRequest); err != nil {
 		return
 	}
+	osoEnabled := osoRequested && notAllowed[osoControlKey] == nil
+	if osoRequested && !osoEnabled {
+		logging.Warnf("dcpConnection::startConnection[%s] OSO not enabled by kv: %v", c.config.ClientName, notAllowed[osoControlKey])
+	}
+
+	c.osoEnabled.Store(osoEnabled)
 
 	heloCommand := []heloCommand{FEATURE_COLLECTIONS, FEATURE_XERROR}
 	if err = c.heloCommand(conn, heloCommand); err != nil {
@@ -1047,6 +1117,27 @@ func (c *client) handleSystemEvent(res *memcachedCommand) (dcpMsg *DcpEvent) {
 		dcpMsg.CollectionID = binary.BigEndian.Uint32(res.body[8:12])
 
 	default:
+	}
+
+	return
+}
+
+func (c *client) handleOsoSnapshot(res *memcachedCommand) (dcpMsg *DcpEvent) {
+	dcpMsg = c.getDcpMsgFilled(res)
+	dcpMsg.Status = SUCCESS
+
+	flags := uint32(0)
+	if len(res.extras) >= 4 {
+		flags = binary.BigEndian.Uint32(res.extras)
+	}
+
+	switch {
+	case (flags & osoSnapshotStart) == osoSnapshotStart:
+		dcpMsg.EventType = OSO_SNAPSHOT_START
+	case (flags & osoSnapshotEnd) == osoSnapshotEnd:
+		dcpMsg.EventType = OSO_SNAPSHOT_END
+	default:
+		dcpMsg.EventType = EVENT_UNKNOWN
 	}
 
 	return

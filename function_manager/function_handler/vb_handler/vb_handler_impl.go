@@ -9,6 +9,7 @@ import (
 	"github.com/couchbase/eventing/application"
 	checkpointManager "github.com/couchbase/eventing/checkpoint_manager"
 	"github.com/couchbase/eventing/common"
+	dcpConn "github.com/couchbase/eventing/dcp_connection"
 	dcpMessage "github.com/couchbase/eventing/dcp_connection"
 	dcpManager "github.com/couchbase/eventing/dcp_manager"
 	eventPool "github.com/couchbase/eventing/event_pool"
@@ -49,16 +50,19 @@ func NewVbHandler(ctx context.Context, logPrefix string, keyspace application.Ke
 		flushNotifier: common.NewSignal(),
 	}
 
+	dcpConfig := map[dcpConn.ConfigKey]any{
+		dcpConn.IncludeXattr: true,
+	}
 	switch config.DcpType {
 	case serverConfig.FunctionGroup:
 		handler.isolatedDcpManager = dcpManager.NewDummyManager()
-		handler.commonDcpManager = config.Pool.GetDcpManagerPool(eventPool.CommonConn, "", keyspace.BucketName, handler.eventChannel)
+		handler.commonDcpManager = config.Pool.GetDcpManagerPool(eventPool.CommonConn, "", keyspace.BucketName, handler.eventChannel, dcpConfig)
 	case serverConfig.IsolateFunction:
 		handler.commonDcpManager = dcpManager.NewDummyManager()
-		handler.isolatedDcpManager = config.Pool.GetDcpManagerPool(eventPool.DedicatedConn, config.AppLocation.String(), keyspace.BucketName, handler.eventChannel)
+		handler.isolatedDcpManager = config.Pool.GetDcpManagerPool(eventPool.DedicatedConn, config.AppLocation.String(), keyspace.BucketName, handler.eventChannel, dcpConfig)
 	case serverConfig.HybridMode:
-		handler.commonDcpManager = config.Pool.GetDcpManagerPool(eventPool.CommonConn, "", keyspace.BucketName, handler.eventChannel)
-		handler.isolatedDcpManager = config.Pool.GetDcpManagerPool(eventPool.DedicatedConn, config.AppLocation.String(), keyspace.BucketName, handler.eventChannel)
+		handler.commonDcpManager = config.Pool.GetDcpManagerPool(eventPool.CommonConn, "", keyspace.BucketName, handler.eventChannel, dcpConfig)
+		handler.isolatedDcpManager = config.Pool.GetDcpManagerPool(eventPool.DedicatedConn, config.AppLocation.String(), keyspace.BucketName, handler.eventChannel, dcpConfig)
 	}
 	handler.msgBuffer = NewMsgBuffer(config.Version, config.InstanceID, config.RuntimeSystem)
 	requester := requester{

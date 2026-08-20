@@ -3,6 +3,7 @@ package dcpConn
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/couchbase/eventing/application"
@@ -95,6 +96,10 @@ type StreamReq struct {
 	opaque  uint32
 	running bool
 
+	osoActive bool
+	osoResume uint64
+	osoMaxSeq uint64
+
 	LastStreamSuccessTime   time.Time `json:"stream_success_time"`
 	LastStreamRequestedTime time.Time `json:"stream_requested_time"`
 }
@@ -121,6 +126,10 @@ func (sr *StreamReq) Copy() *StreamReq {
 
 		opaque:  sr.opaque,
 		running: sr.running,
+
+		osoActive: sr.osoActive,
+		osoResume: sr.osoResume,
+		osoMaxSeq: sr.osoMaxSeq,
 
 		LastStreamSuccessTime:   sr.LastStreamSuccessTime,
 		LastStreamRequestedTime: sr.LastStreamRequestedTime,
@@ -167,6 +176,7 @@ type DcpEvent struct {
 	EventType   collectionEvent
 	ManifestUID string
 	FailoverLog FailoverLog
+	OsoSnapshot bool
 
 	Keyspace    *common.MarshalledData[application.Keyspace]
 	SystemXattr map[string]xattrVal
@@ -229,6 +239,7 @@ func (event *DcpEvent) Reset() {
 	event.Keyspace = nil
 	event.Expiry = 0
 	event.FailoverLog = nil
+	event.OsoSnapshot = false
 }
 
 type resCommandCode uint8
@@ -259,6 +270,7 @@ const (
 
 	DCP_SYSTEM_EVENT = resCommandCode(0x5F)
 	DCP_ADV_SEQNUM   = resCommandCode(0x64)
+	DCP_OSO_SNAPSHOT = resCommandCode(0x65) // Out of sequence order snapshot marker
 
 	DCP_HELO = resCommandCode(0x1F)
 
@@ -275,11 +287,16 @@ const (
 	SCOPE_CREATE       = collectionEvent(0x03) // Scope has been created
 	SCOPE_DROP         = collectionEvent(0x04) // Scope has been dropped
 	COLLECTION_CHANGED = collectionEvent(0x05) // Collection has changed
-
 	OSO_SNAPSHOT_START = collectionEvent(0x06) // OSO snapshot start
 	OSO_SNAPSHOT_END   = collectionEvent(0x07) // OSO snapshot end
 
 	EVENT_UNKNOWN = collectionEvent(0xFF)
+)
+
+// Flags carried in the 4 byte extras of a DCP_OSO_SNAPSHOT message
+const (
+	osoSnapshotStart = uint32(0x01)
+	osoSnapshotEnd   = uint32(0x02)
 )
 
 type status uint16
@@ -312,6 +329,7 @@ const (
 	// KeyOnly specifies whether to open connection with key only
 	KeyOnly ConfigKey = iota
 	IncludeXattr
+	EnableOSO
 )
 
 type heloCommand uint16
@@ -329,3 +347,30 @@ const (
 	SNAPPY = 0x02
 	XATTR  = 0x04
 )
+
+func DcpConfigSignature(config map[ConfigKey]any) string {
+	if config == nil {
+		config = defaultConfig
+	}
+
+	var sb strings.Builder
+	sb.WriteByte('[')
+	if val, ok := config[KeyOnly]; ok {
+		if val.(bool) {
+			sb.WriteString("keyOnly,")
+		}
+	}
+
+	if val, ok := config[EnableOSO]; ok {
+		if val.(bool) {
+			sb.WriteString("oso,")
+		}
+	}
+
+	if val, ok := config[IncludeXattr]; ok {
+		if val.(bool) {
+			sb.WriteString("xattr,")
+		}
+	}
+	return strings.TrimSuffix(sb.String(), ",") + "]"
+}
