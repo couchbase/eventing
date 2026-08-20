@@ -57,13 +57,13 @@ type LogWriter interface {
 
 type dummyLogWriter struct{}
 
-func NewDummyLogWriter() LogWriter                              { return dummyLogWriter{} }
-func (dummyLogWriter) Write(p []byte) (int, error)             { return len(p), nil }
-func (dummyLogWriter) Tail(int64) ([]byte, error)              { return nil, nil }
-func (dummyLogWriter) Flush()                                  {}
-func (dummyLogWriter) Close() error                            { return nil }
-func (dummyLogWriter) GetInUseKeyIDs(map[string]struct{})      {}
-func (dummyLogWriter) UpdateSettings(int64, int64)             {}
+func NewDummyLogWriter() LogWriter                        { return dummyLogWriter{} }
+func (dummyLogWriter) Write(p []byte) (int, error)        { return len(p), nil }
+func (dummyLogWriter) Tail(int64) ([]byte, error)         { return nil, nil }
+func (dummyLogWriter) Flush()                             {}
+func (dummyLogWriter) Close() error                       { return nil }
+func (dummyLogWriter) GetInUseKeyIDs(map[string]struct{}) {}
+func (dummyLogWriter) UpdateSettings(int64, int64)        {}
 
 type filePtr struct {
 	ptr    *os.File
@@ -487,6 +487,9 @@ func (wc *appLogCloser) GetInUseKeyIDs(keySet map[string]struct{}) {
 
 	for i := int64(1); i <= atomic.LoadInt64(&wc.maxFiles); i++ {
 		rotatedPath := fmt.Sprintf("%s.%d", wc.path, i)
+		if _, err := os.Stat(rotatedPath); os.IsNotExist(err) {
+			continue
+		}
 		keyID, err := ReadFileKeyID(rotatedPath)
 		if err != nil {
 			continue

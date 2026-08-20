@@ -32,7 +32,7 @@ type DcpConsumer interface {
 	TlsSettingsChange(config *notifier.TlsConfig)
 
 	GetRuntimeStats() common.StatsInterface
-	CloseDcpConsumer() []*DcpEvent
+	CloseDcpConsumer(pendingRequired bool) []*DcpEvent
 }
 
 type Mode uint8
