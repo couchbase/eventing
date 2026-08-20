@@ -3,8 +3,6 @@ package dcpConn
 import (
 	"sync"
 	"time"
-
-	"github.com/couchbase/eventing/common/utils"
 )
 
 type dcpCommand int8
@@ -61,18 +59,26 @@ func newRequestManager(requestChannel chan<- command) *reqManager {
 	return manager
 }
 
+func copyReqMap(reqMap map[uint32]*StreamReq) map[uint32]*StreamReq {
+	copyMap := make(map[uint32]*StreamReq, len(reqMap))
+	for opaque, req := range reqMap {
+		copyMap[opaque] = req.Copy()
+	}
+	return copyMap
+}
+
 func (manager *reqManager) GetRuntimeStats() *reqManagerStats {
 	reqStats := &reqManagerStats{}
 	manager.reqLock.RLock()
-	reqStats.ReqMap = utils.CopyMap(manager.reqMap)
+	reqStats.ReqMap = copyReqMap(manager.reqMap)
 	manager.reqLock.RUnlock()
 
 	manager.readyLock.RLock()
-	reqStats.ReadyMap = utils.CopyMap(manager.readyMap)
+	reqStats.ReadyMap = copyReqMap(manager.readyMap)
 	manager.readyLock.RUnlock()
 
 	manager.runningLock.RLock()
-	reqStats.RunningMap = utils.CopyMap(manager.runningMap)
+	reqStats.RunningMap = copyReqMap(manager.runningMap)
 	manager.runningLock.RUnlock()
 
 	return reqStats
@@ -110,7 +116,7 @@ func (manager *reqManager) readyRequest(opaque uint32) *StreamReq {
 	delete(manager.reqMap, opaque)
 	manager.readyMap[opaque] = req
 	req.LastStreamRequestedTime = time.Now()
-	return req
+	return req.Copy()
 }
 
 func (manager *reqManager) rollbackReqNote(dcpMsg *DcpEvent) *StreamReq {
@@ -123,6 +129,7 @@ func (manager *reqManager) rollbackReqNote(dcpMsg *DcpEvent) *StreamReq {
 	delete(manager.readyMap, dcpMsg.opaque)
 	manager.readyLock.Unlock()
 
+	resetOso(req)
 	failoverLog, vbuuid, seqNo := req.FailoverLog.Pop(req.StartSeq)
 	req.Vbuuid = vbuuid
 	req.StartSeq = seqNo
@@ -146,15 +153,37 @@ func (manager *reqManager) runningReq(dcpMsg *DcpEvent) bool {
 	manager.readyLock.Unlock()
 
 	dcpMsg.Version = req.Version
+	resetOso(req)
 	req.FailoverLog = dcpMsg.FailoverLog
 	req.Vbuuid, req.failoverLogIndex = GetVbUUID(req.StartSeq, dcpMsg.FailoverLog)
 	req.LastStreamSuccessTime = time.Now()
 	return true
 }
 
+func adjustVbuuid(req *StreamReq) {
+	if req.failoverLogIndex > 0 {
+		failoverLogEntry := req.FailoverLog[req.failoverLogIndex-1]
+		seq := failoverLogEntry[1]
+		if seq >= req.StartSeq {
+			req.failoverLogIndex--
+			req.Vbuuid = failoverLogEntry[0]
+		}
+	}
+}
+
+// Caller should be holding the lock which guards req.
+func resetOso(req *StreamReq) {
+	if req.osoActive {
+		req.StartSeq = req.osoResume
+	}
+	req.osoActive = false
+	req.osoResume = 0
+	req.osoMaxSeq = 0
+}
+
 func (manager *reqManager) mutationNote(event *DcpEvent) bool {
-	manager.runningLock.RLock()
-	defer manager.runningLock.RUnlock()
+	manager.runningLock.Lock()
+	defer manager.runningLock.Unlock()
 
 	req, ok := manager.runningMap[event.opaque]
 	if !ok || !req.running {
@@ -162,18 +191,54 @@ func (manager *reqManager) mutationNote(event *DcpEvent) bool {
 	}
 
 	event.Version = req.Version
-	req.StartSeq = event.Seqno
 	event.FailoverLog = req.FailoverLog
 
-	if req.failoverLogIndex > 0 {
-		failoverLogEntry := req.FailoverLog[req.failoverLogIndex-1]
-		seq := failoverLogEntry[1]
-		if seq >= event.Seqno {
-			req.failoverLogIndex--
-			req.Vbuuid = failoverLogEntry[0]
+	if req.osoActive {
+		if event.Seqno > req.osoMaxSeq {
+			req.osoMaxSeq = event.Seqno
+		}
+		event.OsoSnapshot = true
+		event.Vbuuid = req.Vbuuid
+		return true
+	}
+
+	req.StartSeq = event.Seqno
+	adjustVbuuid(req)
+	event.Vbuuid = req.Vbuuid
+	return true
+}
+
+func (manager *reqManager) osoNote(event *DcpEvent) bool {
+	manager.runningLock.Lock()
+	defer manager.runningLock.Unlock()
+
+	req, ok := manager.runningMap[event.opaque]
+	if !ok || !req.running {
+		return false
+	}
+
+	switch event.EventType {
+	case OSO_SNAPSHOT_START:
+		req.osoActive = true
+		req.osoResume = req.StartSeq
+		req.osoMaxSeq = req.StartSeq
+
+	case OSO_SNAPSHOT_END:
+		if req.osoActive {
+			req.osoActive = false
+			if req.osoMaxSeq > req.StartSeq {
+				req.StartSeq = req.osoMaxSeq
+				adjustVbuuid(req)
+			}
+			req.osoResume, req.osoMaxSeq = 0, 0
 		}
 	}
+
+	event.Version = req.Version
+	event.Seqno = req.StartSeq
 	event.Vbuuid = req.Vbuuid
+	event.FailoverLog = req.FailoverLog
+	event.OsoSnapshot = true
 	return true
 }
 
@@ -194,6 +259,8 @@ func (manager *reqManager) doneRequest(event *DcpEvent) (*StreamReq, bool) {
 	}
 	manager.runningLock.Unlock()
 	manager.readyLock.Unlock()
+
+	resetOso(req)
 
 	if event.Opcode == DCP_STREAM_END {
 		switch event.Status {
@@ -343,6 +410,7 @@ func (manager *reqManager) closeAllRequest(stopAcceptingRequest bool) []*StreamR
 	}
 	reqList := make([]*StreamReq, 0, len(manager.reqMap)+len(manager.readyMap)+len(manager.runningMap))
 	for _, req := range manager.runningMap {
+		resetOso(req)
 		reqList = append(reqList, req)
 	}
 	manager.runningMap = make(map[uint32]*StreamReq)
