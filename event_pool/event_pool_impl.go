@@ -19,13 +19,31 @@ import (
 )
 
 const (
-	commonIdentifier    = "common_%s"
+	commonIdentifier    = "common_%s_%d"
 	seqNumberIdentifier = "seqNumber_"
 )
 
+type dcpManagerKey struct {
+	bucketName string
+	configSig  string
+}
+
+func (dk dcpManagerKey) String() string {
+	return fmt.Sprintf("{ bucket: %s, config: %s }", dk.bucketName, dk.configSig)
+}
+
+func newDcpManagerKey(bucketName string, config map[dcpConn.ConfigKey]interface{}) dcpManagerKey {
+	managerKey := dcpManagerKey{
+		bucketName: bucketName,
+		configSig:  dcpConn.DcpConfigSignature(config),
+	}
+
+	return managerKey
+}
+
 type stats struct {
-	CommDcpConn map[string]uint64 `json:"common_dcp_conn"`
 	CommSeqConn map[string]uint64 `json:"common_seq_conn"`
+	CommDcpConn map[string]uint64 `json:"common_dcp_conn"`
 }
 
 func newStats() *stats {
@@ -42,8 +60,24 @@ func (s *stats) Copy() *stats {
 	return copyStats
 }
 
+type statsAlias stats
+
 func (s *stats) MarshalJSON() ([]byte, error) {
-	return json.Marshal(s)
+	return json.Marshal((*statsAlias)(s))
+}
+
+func (s *stats) removeDcpConnection(bucketName string) {
+	count, ok := s.CommDcpConn[bucketName]
+	if !ok || count <= 1 {
+		delete(s.CommDcpConn, bucketName)
+		return
+	}
+	s.CommDcpConn[bucketName] = count - 1
+}
+
+func (s *stats) removeBucket(bucketName string) {
+	delete(s.CommDcpConn, bucketName)
+	delete(s.CommSeqConn, bucketName)
 }
 
 type managerPool struct {
@@ -57,7 +91,10 @@ type managerPool struct {
 	clusterSettings *common.ClusterSettings
 	gocbCluster     *common.AtomicTypes[*gocb.Cluster]
 
-	dcpManagers         map[string]dcpManager.DcpManager
+	// Keyed on bucket + dcp config so that callers wanting different
+	// connection settings never end up sharing one connection.
+	dcpManagers         map[dcpManagerKey]dcpManager.DcpManager
+	dcpConnID           uint64
 	dcpSeqNumberManager map[string]dcpManager.DcpManager
 	checkpointManagers  map[string]checkpointManager.BucketCheckpoint
 	stats               *stats
@@ -78,7 +115,7 @@ func NewManagerPool(ctx context.Context, poolID string, clusterSettings *common.
 		broadcaster:     broadcaster,
 		gocbCluster:     common.NewAtomicTypes(gocbCluster),
 
-		dcpManagers:         make(map[string]dcpManager.DcpManager),
+		dcpManagers:         make(map[dcpManagerKey]dcpManager.DcpManager),
 		dcpSeqNumberManager: make(map[string]dcpManager.DcpManager),
 		checkpointManagers:  make(map[string]checkpointManager.BucketCheckpoint),
 		stats:               newStats(),
@@ -117,23 +154,34 @@ func (pool *managerPool) observe(ctx context.Context) {
 		return
 	}
 
-	bucketList := bucketListInterface.(map[string]string)
-	deletedBucekts := make(map[string]struct{})
+	bucketList, ok := bucketListInterface.(map[string]string)
+	if !ok {
+		logging.Errorf("%s unexpected bucket list type: %T", logPrefix, bucketListInterface)
+		return
+	}
+
+	deletedBuckets := make(map[string]struct{})
 	pool.RLock()
-	for bucketName := range pool.dcpManagers {
-		if _, ok := bucketList[bucketName]; !ok {
-			deletedBucekts[bucketName] = struct{}{}
+	for key := range pool.dcpManagers {
+		if _, ok := bucketList[key.bucketName]; !ok {
+			deletedBuckets[key.bucketName] = struct{}{}
 		}
 	}
 
 	for bucketName := range pool.dcpSeqNumberManager {
 		if _, ok := bucketList[bucketName]; !ok {
-			deletedBucekts[bucketName] = struct{}{}
+			deletedBuckets[bucketName] = struct{}{}
+		}
+	}
+
+	for bucketName := range pool.checkpointManagers {
+		if _, ok := bucketList[bucketName]; !ok {
+			deletedBuckets[bucketName] = struct{}{}
 		}
 	}
 	pool.RUnlock()
 
-	for bucketName := range deletedBucekts {
+	for bucketName := range deletedBuckets {
 		pool.closeManagerForBucket(bucketName)
 	}
 
@@ -145,9 +193,10 @@ func (pool *managerPool) observe(ctx context.Context) {
 				return
 			}
 
+			// Keep observing: a bucket deletion is a normal event, not a reason
+			// to tear down the subscription and re-register a second later.
 			if trans.Deleted {
 				pool.closeManagerForBucket(trans.Event.Filter)
-				return
 			}
 
 		case <-ctx.Done():
@@ -190,47 +239,54 @@ func (pool *managerPool) GetSeqManager(bucketName string) SeqNumerInterface {
 		}
 		manager = dcpManager.NewDcpManager(managerConfig, pool.poolID, bucketName, pool.notif, nil)
 		pool.dcpSeqNumberManager[bucketName] = manager
+		pool.stats.CommSeqConn[bucketName]++
 	}
 	seqNum := pool.seqNumID
 	pool.seqNumID++
 
 	m := dcpManager.NewDcpManagerWrapper(manager)
 	m.RegisterID(seqNum, nil)
-	pool.stats.CommSeqConn[bucketName]++
 
 	return m
 }
 
-func (pool *managerPool) GetDcpManagerPool(dcpManagerType DcpManagerType, identifier string, bucketName string, sendChannel chan<- *dcpConn.DcpEvent) dcpManager.DcpManager {
-	var manager dcpManager.DcpManager
-	managerId := uint16(1)
-
-	switch dcpManagerType {
-	case DedicatedConn:
+func (pool *managerPool) GetDcpManagerPool(dcpManagerType DcpManagerType, identifier string, bucketName string, sendChannel chan<- *dcpConn.DcpEvent, dcpConnConfig map[dcpConn.ConfigKey]interface{}) dcpManager.DcpManager {
+	if dcpManagerType == DedicatedConn {
 		managerConfig := dcpManager.ManagerType{
 			Mode:        dcpConn.StreamRequestMode,
 			SeqInterval: 0,
 		}
-		manager = dcpManager.NewDcpManager(managerConfig, identifier, bucketName, pool.notif, nil)
 
-	case CommonConn:
-		var ok bool
-
-		pool.Lock()
-		defer pool.Unlock()
-		manager, ok = pool.dcpManagers[bucketName]
-		if !ok {
-			managerConfig := dcpManager.ManagerType{
-				Mode:        dcpConn.StreamRequestMode,
-				SeqInterval: 0,
-			}
-			manager = dcpManager.NewDcpManager(managerConfig, fmt.Sprintf(commonIdentifier, pool.poolID), bucketName, pool.notif, nil)
-			pool.dcpManagers[bucketName] = manager
-		}
-		managerId = pool.managerID
-		pool.managerID++
-		pool.stats.CommDcpConn[bucketName]++
+		manager := dcpManager.NewDcpManager(managerConfig, identifier, bucketName, pool.notif, dcpConnConfig)
+		m := dcpManager.NewDcpManagerWrapper(manager)
+		m.RegisterID(uint16(1), sendChannel)
+		return m
 	}
+
+	key := newDcpManagerKey(bucketName, dcpConnConfig)
+	pool.Lock()
+	defer pool.Unlock()
+
+	manager, ok := pool.dcpManagers[key]
+	if !ok {
+		managerConfig := dcpManager.ManagerType{
+			Mode:        dcpConn.StreamRequestMode,
+			SeqInterval: 0,
+		}
+
+		pool.dcpConnID++
+		identifier := fmt.Sprintf(commonIdentifier, pool.poolID, pool.dcpConnID)
+
+		manager = dcpManager.NewDcpManager(managerConfig, identifier, bucketName, pool.notif, dcpConnConfig)
+		pool.dcpManagers[key] = manager
+		pool.stats.CommDcpConn[bucketName]++
+
+		logging.Infof("eventPool::GetDcpManagerPool[%s] new shared dcp connection %s for bucket: %s config: %s",
+			pool.poolID, identifier, bucketName, key.configSig)
+	}
+
+	managerId := pool.managerID
+	pool.managerID++
 
 	m := dcpManager.NewDcpManagerWrapper(manager)
 	m.RegisterID(managerId, sendChannel)
@@ -263,12 +319,12 @@ func (pool *managerPool) CloseConditional() {
 	}
 
 	dcpMgr := make([]dcpManager.DcpManager, 0, len(pool.dcpManagers))
-	for bucketName, manager := range pool.dcpManagers {
+	for key, manager := range pool.dcpManagers {
 		deleteManager := manager.ClosePossible()
 		if deleteManager {
 			dcpMgr = append(dcpMgr, manager)
-			delete(pool.dcpManagers, bucketName)
-			delete(pool.stats.CommDcpConn, bucketName)
+			delete(pool.dcpManagers, key)
+			pool.stats.removeDcpConnection(key.bucketName)
 		}
 	}
 	pool.Unlock()
@@ -287,30 +343,38 @@ func (pool *managerPool) closeManagerForBucket(bucketname string) {
 	logging.Infof("managerPool::closeManagerForBucket[%s] closing any cached connections for bucket: %s", pool.poolID, bucketname)
 
 	pool.Lock()
-	seqMgr, ok := pool.dcpSeqNumberManager[bucketname]
-	if ok {
-		delete(pool.dcpSeqNumberManager, bucketname)
-		delete(pool.stats.CommSeqConn, bucketname)
+	seqMgr := pool.dcpSeqNumberManager[bucketname]
+	delete(pool.dcpSeqNumberManager, bucketname)
+
+	// A bucket can hold more than one shared connection, one per dcp config.
+	dcpMgrs := make([]dcpManager.DcpManager, 0, len(pool.dcpManagers))
+	for key, manager := range pool.dcpManagers {
+		if key.bucketName != bucketname {
+			continue
+		}
+		dcpMgrs = append(dcpMgrs, manager)
+		delete(pool.dcpManagers, key)
 	}
 
-	dcpMgr, ok := pool.dcpManagers[bucketname]
-	if ok {
-		delete(pool.dcpManagers, bucketname)
-		delete(pool.stats.CommDcpConn, bucketname)
-	}
+	checkpointMgr := pool.checkpointManagers[bucketname]
+	delete(pool.checkpointManagers, bucketname)
+
+	pool.stats.removeBucket(bucketname)
 	pool.Unlock()
 
 	if seqMgr != nil {
 		seqMgr.CloseManager()
 	}
 
-	if dcpMgr != nil {
+	for _, dcpMgr := range dcpMgrs {
 		dcpMgr.CloseManager()
+	}
+
+	if checkpointMgr != nil {
+		checkpointMgr.CloseBucketManager()
 	}
 }
 
-// ClosePool closes all the managers in the pool
-// After this call any function won't be called any function on the pool
 func (pool *managerPool) ClosePool() {
 	pool.close()
 
@@ -319,10 +383,12 @@ func (pool *managerPool) ClosePool() {
 	pool.checkpointManagers = make(map[string]checkpointManager.BucketCheckpoint)
 
 	dcpManagers := pool.dcpManagers
-	pool.dcpManagers = make(map[string]dcpManager.DcpManager)
+	pool.dcpManagers = make(map[dcpManagerKey]dcpManager.DcpManager)
 
 	dcpSeqNumberManager := pool.dcpSeqNumberManager
 	pool.dcpSeqNumberManager = make(map[string]dcpManager.DcpManager)
+
+	pool.stats = newStats()
 	pool.Unlock()
 
 	for _, manager := range checkpointManagers {

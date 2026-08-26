@@ -14,6 +14,7 @@ import (
 	checkpointManager "github.com/couchbase/eventing/checkpoint_manager"
 	"github.com/couchbase/eventing/common"
 	"github.com/couchbase/eventing/common/utils"
+	dcpConn "github.com/couchbase/eventing/dcp_connection"
 	dcpMessage "github.com/couchbase/eventing/dcp_connection"
 	eventPool "github.com/couchbase/eventing/event_pool"
 	vbhandler "github.com/couchbase/eventing/function_manager/function_handler/vb_handler"
@@ -61,15 +62,8 @@ func (fHandler *funcHandler) deleteAllCheckpoint() {
 	fHandler.checkpointManager.Load().WaitTillAllGiveUp(fHandler.fd.MetaInfo.SourceID.NumVbuckets)
 	parallelism := runtime.NumCPU()
 
-	logging.Infof("%s all nodes given up owned vbs. Continue deleting remaining checkpoints documents with parallelism: %d", logPrefix, parallelism)
-	function, err := initialiseScanner(fHandler.fd.AppID, fHandler.checkpointManager.Load())
-	if err != nil {
-		logging.Infof("%s range scan deletion not possible error: %v. Proceeding with dcp stream deletion...", logPrefix, err)
-		common.DistributeAndWaitWork[uint16](parallelism, len(vbsToDelete), initDcpDeletion(vbsToDelete), fHandler.deleteCheckpointsUsingDcp)
-	} else {
-		// Delete metadata checkpoints using range scan
-		common.DistributeAndWaitWork[string](parallelism, parallelism*batchDelete, function, fHandler.deleteCheckpointsUsingRangeScan)
-	}
+	logging.Infof("%s Proceeding with dcp stream deletion...", logPrefix)
+	common.DistributeAndWaitWork[uint16](parallelism, len(vbsToDelete), initDcpDeletion(vbsToDelete), fHandler.deleteCheckpointsUsingDcp)
 	logging.Infof("%s successfully deleted all checkpoint blobs", logPrefix)
 }
 
@@ -128,7 +122,12 @@ func (fHandler *funcHandler) deleteCheckpointsUsingDcp(waitGroup *sync.WaitGroup
 
 	keyPrefix := checkpointManager.GetCheckpointKeyTemplate(fHandler.fd.AppID)
 	eventChannel := make(chan *dcpMessage.DcpEvent, eventChannelSize)
-	manager := fHandler.pool.GetDcpManagerPool(eventPool.CommonConn, "", fHandler.fd.DeploymentConfig.MetaKeyspace.BucketName, eventChannel)
+	dcpConfig := map[dcpConn.ConfigKey]interface{}{
+		dcpConn.KeyOnly:   true,
+		dcpConn.EnableOSO: true,
+	}
+
+	manager := fHandler.pool.GetDcpManagerPool(eventPool.CommonConn, "", fHandler.fd.DeploymentConfig.MetaKeyspace.BucketName, eventChannel, dcpConfig)
 	defer manager.CloseManager()
 
 	deleteKeyspaceCheck := time.NewTicker(deleteKeyspaceCheck)
