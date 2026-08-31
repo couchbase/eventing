@@ -51,3 +51,8 @@ func (qs *queryStmt) VisitCreateKnowledge(stmt *algebra.CreateKnowledge) (interf
 	err := handleStmt(qs, stmt.Expressions())
 	return stmt, err
 }
+
+func (qs *queryStmt) VisitDropKnowledge(stmt *algebra.DropKnowledge) (interface{}, error) {
+	err := handleStmt(qs, stmt.Expressions())
+	return stmt, err
+}
