@@ -126,6 +126,10 @@ func (stats *statsHandler) handleStats(msg *processManager.ResponseMessage) {
 			return
 		}
 
+		if val, ok := eStats["dcp_mutation_msg_counter"]; ok {
+			eStats["dcp_mutations_msg_counter"] = val
+		}
+
 		stats.Lock()
 		stats.stats.ExecutionStats = eStats
 		stats.stats.EventProcessingStats["timer_responses_received"] = uint64(eStats["timer_create_counter"].(float64))
@@ -208,6 +212,10 @@ func (stats *statsHandler) handleStats(msg *processManager.ResponseMessage) {
 		err = json.Unmarshal([]byte(aStats["lcb_exception_stats"].(string)), &lcbExceptionStats)
 		if err != nil {
 			return
+		}
+
+		if val, ok := executionStats["dcp_mutation_msg_counter"]; ok {
+			executionStats["dcp_mutations_msg_counter"] = val
 		}
 
 		stats.Lock()
