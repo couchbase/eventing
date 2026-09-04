@@ -169,6 +169,10 @@ func (nI *nodeInternal) createNode(nService *services, isIpv4 bool) *Node {
 			}
 		}
 	}
+	portMapping := make(map[string]string)
+	for service, port := range nService.PortsMapping {
+		portMapping[service] = strconv.Itoa(port)
+	}
 
 	n := &Node{
 		ThisNode:             nI.ThisNode,
@@ -176,7 +180,7 @@ func (nI *nodeInternal) createNode(nService *services, isIpv4 bool) *Node {
 		ClusterCompatibility: getCompatibility(nI.CompatVersion),
 		NodeUUID:             nI.NodeUUID,
 		NodeEncryption:       nI.NodeEncryption,
-		Services:             nService.PortsMapping,
+		Services:             portMapping,
 		HostName:             nService.HostName,
 		ExternalHostName:     externalIp,
 	}
@@ -282,22 +286,22 @@ func (t *terseBucketResponse) getVbMap(isIpv4 bool) *VBmap {
 				host = localhostIpv6
 			}
 		}
-		hostPort, _ := strconv.Atoi(port)
 
+		hostPort, _ := strconv.Atoi(port)
 		nodeAddress := NodeAddress{}
 		for _, node := range t.NodesExt {
 			if node.HostName == "" {
 				if hostPort == node.PortsMapping[DataService] {
 					// Found node so create the ssl and non ssl ports
-					nodeAddress.SSLAddress = fmt.Sprintf("%s:%d", host, node.PortsMapping[DataServiceSSL])
-					nodeAddress.NonSSLAddress = fmt.Sprintf("%s:%d", host, node.PortsMapping[DataService])
+					nodeAddress.SSLAddress = net.JoinHostPort(host, strconv.Itoa(node.PortsMapping[DataServiceSSL]))
+					nodeAddress.NonSSLAddress = net.JoinHostPort(host, strconv.Itoa(node.PortsMapping[DataService]))
 					break
 				}
 			}
 
 			if node.HostName == host {
-				nodeAddress.SSLAddress = fmt.Sprintf("%s:%d", host, node.PortsMapping[DataServiceSSL])
-				nodeAddress.NonSSLAddress = fmt.Sprintf("%s:%d", host, node.PortsMapping[DataService])
+				nodeAddress.SSLAddress = net.JoinHostPort(host, strconv.Itoa(node.PortsMapping[DataServiceSSL]))
+				nodeAddress.NonSSLAddress = net.JoinHostPort(host, strconv.Itoa(node.PortsMapping[DataService]))
 				break
 			}
 		}
