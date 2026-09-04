@@ -161,7 +161,7 @@ type Node struct {
 	ClusterCompatibility *Version
 
 	// Services provides the services to port mapping
-	Services map[string]int
+	Services map[string]string
 
 	// Contains the dns/ip address
 	HostName         string

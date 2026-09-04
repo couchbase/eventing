@@ -3,7 +3,7 @@ package checkpointManager
 import (
 	"crypto/tls"
 	"errors"
-	"fmt"
+	"net"
 	"time"
 
 	"github.com/couchbase/eventing/application"
@@ -95,7 +95,7 @@ func GetGocbClusterObject(clusterConfig *common.ClusterSettings, observer notifi
 			if index != 0 {
 				connStr += ","
 			}
-			connStr += fmt.Sprintf("%s:%d", node.HostName, node.Services[kvPort])
+			connStr += net.JoinHostPort(node.HostName, node.Services[kvPort])
 		}
 
 		authenticator := &dynamicAuthenticator{
