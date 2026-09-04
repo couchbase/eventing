@@ -318,7 +318,7 @@ func (m *serviceMgr) getKVNodesAndCertsHandler(w http.ResponseWriter, r *http.Re
 	}
 	kvNodeHost := make([]string, 0, len(kvNodes))
 	for _, node := range kvNodes {
-		kvNodeHost = append(kvNodeHost, fmt.Sprintf("%s:%d", node.HostName, node.Services[port]))
+		kvNodeHost = append(kvNodeHost, net.JoinHostPort(node.HostName, node.Services[port]))
 	}
 
 	responseMap["is_error"] = false

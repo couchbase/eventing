@@ -16,7 +16,7 @@ func testResetNode(node *Node) {
 	node.ThisNode = false
 	node.Status = "unhealthy"
 	node.NodeUUID = "testUuid2"
-	node.Services = map[string]int{}
+	node.Services = map[string]string{}
 	node.HostName = "localhost"
 	node.NodeEncryption = false
 }
@@ -64,7 +64,7 @@ func TestCopyFunction(t *testing.T) {
 		Status:               "healthy",
 		NodeUUID:             "testUuid",
 		ClusterCompatibility: ver,
-		Services:             map[string]int{"kv": 1000, "eventing": 2000},
+		Services:             map[string]string{"kv": "1000", "eventing": "2000"},
 		HostName:             "127.0.0.1",
 		NodeEncryption:       true,
 	}
