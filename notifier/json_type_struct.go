@@ -11,7 +11,7 @@ import (
 
 var (
 	localhostIpv4 = "127.0.0.1"
-	localhostIpv6 = "[::1]"
+	localhostIpv6 = "::1"
 )
 
 const (
