@@ -525,6 +525,9 @@ func (c *Consumer) routeResponse(msgType, opcode int8, msg string) {
 				if val, ok := c.executionStats["timer_msg_counter"]; ok {
 					c.timerMessagesProcessed = uint64(val.(float64))
 				}
+				if val, ok := c.executionStats["dcp_mutation_msg_counter"]; ok {
+					c.executionStats["dcp_mutations_msg_counter"] = val
+				}
 			}
 		case compileInfo:
 			var compiledStatus common.CompileStatus
