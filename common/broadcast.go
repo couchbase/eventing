@@ -3,6 +3,8 @@ package common
 import (
 	"errors"
 	"fmt"
+	"net"
+	"net/url"
 	"sync/atomic"
 	"time"
 
@@ -112,7 +114,12 @@ func (b *broadcaster) request(nodes []*notifier.Node, dontSkipOthersOnError bool
 			continue
 		}
 
-		request.URL = fmt.Sprintf("%s://%s:%d%s", schema, node.HostName, node.Services[eventingPort], path)
+		base := &url.URL{Scheme: schema, Host: net.JoinHostPort(node.HostName, node.Services[eventingPort])}
+		ref, err := url.Parse(path)
+		if err != nil {
+			return nil, nil, err
+		}
+		request.URL = base.ResolveReference(ref).String()
 		res, err := b.pointConn.SyncSend(request)
 		if err != nil {
 			if dontSkipOthersOnError {

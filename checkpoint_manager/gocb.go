@@ -3,7 +3,7 @@ package checkpointManager
 import (
 	"crypto/tls"
 	"errors"
-	"fmt"
+	"net"
 	"time"
 
 	"github.com/couchbase/eventing/application"
@@ -56,13 +56,12 @@ func (dynAuth dynamicAuthenticator) Credentials(req gocb.AuthCredsRequest) ([]go
 	}}, nil
 }
 
-
 func (dynAuth dynamicAuthenticator) JWT(req gocb.AuthCredsRequest) (gocb.JWT, error) {
-    return "", nil
+	return "", nil
 }
 
 func (dynAuth dynamicAuthenticator) DefaultSaslMechanisms(tlsEnabled bool) []gocb.SaslMechanism {
-    return []gocb.SaslMechanism{gocb.PlainSaslMechanism}
+	return []gocb.SaslMechanism{gocb.PlainSaslMechanism}
 }
 
 func GetGocbClusterObject(clusterConfig *common.ClusterSettings, observer notifier.Observer, globalStatsCounter *common.GlobalStatsCounter) (cluster *gocb.Cluster) {
@@ -104,7 +103,7 @@ func GetGocbClusterObject(clusterConfig *common.ClusterSettings, observer notifi
 			if index != 0 {
 				connStr += ","
 			}
-			connStr += fmt.Sprintf("%s:%d", node.HostName, node.Services[kvPort])
+			connStr += net.JoinHostPort(node.HostName, node.Services[kvPort])
 		}
 
 		authenticator := &dynamicAuthenticator{
