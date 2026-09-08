@@ -803,8 +803,8 @@ func (fHandler *funcHandler) ReceiveMessage(msg *processManager.ResponseMessage)
 		case processManager.StatsAckBytes:
 			vbHandler := fHandler.vbHandler.Load()
 			unackedCount, unackedBytes := vbHandler.AckMessages(msg.Value)
-			fHandler.statsHandler.AddExecutionStats("agg_queue_memory", unackedBytes)
-			fHandler.statsHandler.AddExecutionStats("agg_queue_size", unackedCount)
+			fHandler.statsHandler.AddExecutionStats("agg_queue_memory", float64(unackedBytes))
+			fHandler.statsHandler.AddExecutionStats("agg_queue_size", float64(unackedCount))
 
 		default:
 			fHandler.statsHandler.handleStats(msg)

@@ -610,16 +610,25 @@ func (s2 *Stats) Sub(s1 *Stats, statType StatsType) *Stats {
 
 	case PrometheusStats:
 		for k, v := range s2.ExecutionStats {
+			if k == "curl" {
+				continue
+			}
 			fValue, ok := v.(float64)
 			if !ok {
 				newStats.ExecutionStats[k] = v
 				continue
 			}
-			if val, ok := s1.ExecutionStats[k]; ok {
-				newStats.ExecutionStats[k] = fValue - val.(float64)
-			} else {
+			val, ok := s1.ExecutionStats[k]
+			if !ok {
 				newStats.ExecutionStats[k] = fValue
+				continue
 			}
+			prevValue, ok := val.(float64)
+			if !ok {
+				newStats.ExecutionStats[k] = fValue
+				continue
+			}
+			newStats.ExecutionStats[k] = fValue - prevValue
 		}
 
 		for k, v := range s2.FailureStats {
@@ -628,11 +637,17 @@ func (s2 *Stats) Sub(s1 *Stats, statType StatsType) *Stats {
 				newStats.FailureStats[k] = v
 				continue
 			}
-			if val, ok := s1.FailureStats[k]; ok {
-				newStats.FailureStats[k] = fValue - val.(float64)
-			} else {
-				newStats.FailureStats[k] = v
+			val, ok := s1.FailureStats[k]
+			if !ok {
+				newStats.FailureStats[k] = fValue
+				continue
 			}
+			prevValue, ok := val.(float64)
+			if !ok {
+				newStats.FailureStats[k] = fValue
+				continue
+			}
+			newStats.FailureStats[k] = fValue - prevValue
 		}
 
 		for k, v := range s2.EventProcessingStats {
@@ -697,16 +712,25 @@ func (s2 *Stats) Add(s1 *Stats, statType StatsType) {
 
 	case PrometheusStats:
 		for k, v := range s1.ExecutionStats {
+			if k == "curl" {
+				continue
+			}
 			fValue, ok := v.(float64)
 			if !ok {
 				s2.ExecutionStats[k] = v
 				continue
 			}
-			if val, ok := s2.ExecutionStats[k]; ok {
-				s2.ExecutionStats[k] = fValue + val.(float64)
-			} else {
+			val, ok := s2.ExecutionStats[k]
+			if !ok {
 				s2.ExecutionStats[k] = fValue
+				continue
 			}
+			aggValue, ok := val.(float64)
+			if !ok {
+				s2.ExecutionStats[k] = fValue
+				continue
+			}
+			s2.ExecutionStats[k] = fValue + aggValue
 		}
 
 		for k, v := range s1.FailureStats {
@@ -715,11 +739,17 @@ func (s2 *Stats) Add(s1 *Stats, statType StatsType) {
 				s2.FailureStats[k] = v
 				continue
 			}
-			if val, ok := s2.FailureStats[k]; ok {
-				s2.FailureStats[k] = fValue + val.(float64)
-			} else {
-				s2.FailureStats[k] = v
+			val, ok := s2.FailureStats[k]
+			if !ok {
+				s2.FailureStats[k] = fValue
+				continue
 			}
+			aggValue, ok := val.(float64)
+			if !ok {
+				s2.FailureStats[k] = fValue
+				continue
+			}
+			s2.FailureStats[k] = fValue + aggValue
 		}
 
 		for k, v := range s1.EventProcessingStats {
