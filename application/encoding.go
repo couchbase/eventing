@@ -37,8 +37,8 @@ func (fd *FunctionDetails) encodeBytes(compress bool) StorageBytes {
 	cfgv2.ConfigAddVersion(builder, fd.Version)
 	cfgv2.ConfigAddApplocation(builder, appLocationOffset)
 	cfgv2.ConfigAddAppCode(builder, appcodeOffset)
-	cfgv2.ConfigAddAppID(builder, fd.AppID)
-	cfgv2.ConfigAddAppInstanceID(builder, instanceOffset)
+	cfgv2.ConfigAddAppId(builder, fd.AppID)
+	cfgv2.ConfigAddAppInstanceId(builder, instanceOffset)
 	cfgv2.ConfigAddSettings(builder, handlerSettingOffset)
 	cfgv2.ConfigAddAppState(builder, appStateOffset)
 	cfgv2.ConfigAddDeploymentConfig(builder, depcfgOffset)
@@ -95,8 +95,8 @@ func decodeBytes(sb StorageBytes) (*FunctionDetails, error) {
 		config := cfgv2.GetRootAsConfig(data, 0)
 		fd.Version = config.Version()
 		fd.AppCode = string(config.AppCode())
-		fd.AppID = config.AppID()
-		fd.AppInstanceID = string(config.AppInstanceID())
+		fd.AppID = config.AppId()
+		fd.AppInstanceID = string(config.AppInstanceId())
 
 		fd.AppLocation = decodeAppLocation(config)
 		fd.Settings = decodeHandlerSetting(config)
@@ -390,7 +390,7 @@ func encodeOwner(builder *flatbuffers.Builder, owner Owner) flatbuffers.UOffsetT
 	cfgv2.OwnerStart(builder)
 	cfgv2.OwnerAddUsername(builder, usernameOffset)
 	cfgv2.OwnerAddDomain(builder, domainOffset)
-	cfgv2.OwnerAddUUID(builder, uuidOffset)
+	cfgv2.OwnerAddUuid(builder, uuidOffset)
 	return cfgv2.OwnerEnd(builder)
 }
 
@@ -399,7 +399,7 @@ func decodeOwner(config *cfgv2.Config) (owner Owner) {
 
 	owner.User = string(configOwner.Username())
 	owner.Domain = string(configOwner.Domain())
-	owner.UUID = string(configOwner.UUID())
+	owner.UUID = string(configOwner.Uuid())
 	return
 }
 
@@ -426,40 +426,40 @@ func encodeMetaInfo(builder *flatbuffers.Builder, metaInfo MetaInfo) flatbuffers
 	logFileName := builder.CreateString(metaInfo.LogFileName)
 
 	cfgv2.KeyspaceInfoStart(builder)
-	cfgv2.KeyspaceInfoAddUID(builder, funcID)
-	cfgv2.KeyspaceInfoAddScopeID(builder, funcScopeID)
-	cfgv2.KeyspaceInfoAddCID(builder, funcCollectionID)
-	cfgv2.KeyspaceInfoAddUUID(builder, funcBucketID)
+	cfgv2.KeyspaceInfoAddUid(builder, funcID)
+	cfgv2.KeyspaceInfoAddScopeId(builder, funcScopeID)
+	cfgv2.KeyspaceInfoAddCid(builder, funcCollectionID)
+	cfgv2.KeyspaceInfoAddUuid(builder, funcBucketID)
 	cfgv2.KeyspaceInfoAddNumVbs(builder, metaInfo.FunctionScopeID.NumVbuckets)
 	funcOffset := cfgv2.KeyspaceInfoEnd(builder)
 
 	cfgv2.KeyspaceInfoStart(builder)
-	cfgv2.KeyspaceInfoAddUID(builder, sourceID)
-	cfgv2.KeyspaceInfoAddScopeID(builder, sourceScopeID)
-	cfgv2.KeyspaceInfoAddCID(builder, sourceCollectionID)
-	cfgv2.KeyspaceInfoAddUUID(builder, sourceBucketID)
+	cfgv2.KeyspaceInfoAddUid(builder, sourceID)
+	cfgv2.KeyspaceInfoAddScopeId(builder, sourceScopeID)
+	cfgv2.KeyspaceInfoAddCid(builder, sourceCollectionID)
+	cfgv2.KeyspaceInfoAddUuid(builder, sourceBucketID)
 	cfgv2.KeyspaceInfoAddNumVbs(builder, metaInfo.SourceID.NumVbuckets)
 	sourceOffset := cfgv2.KeyspaceInfoEnd(builder)
 
 	cfgv2.KeyspaceInfoStart(builder)
-	cfgv2.KeyspaceInfoAddUID(builder, metaID)
-	cfgv2.KeyspaceInfoAddScopeID(builder, metaScopeID)
-	cfgv2.KeyspaceInfoAddCID(builder, metaCollectionID)
-	cfgv2.KeyspaceInfoAddUUID(builder, metaBucketID)
+	cfgv2.KeyspaceInfoAddUid(builder, metaID)
+	cfgv2.KeyspaceInfoAddScopeId(builder, metaScopeID)
+	cfgv2.KeyspaceInfoAddCid(builder, metaCollectionID)
+	cfgv2.KeyspaceInfoAddUuid(builder, metaBucketID)
 	cfgv2.KeyspaceInfoAddNumVbs(builder, metaInfo.MetaID.NumVbuckets)
 	metaOffset := cfgv2.KeyspaceInfoEnd(builder)
 
 	cfgv2.MetaInfoStart(builder)
 	cfgv2.MetaInfoAddRequestType(builder, uint8(metaInfo.RequestType))
-	cfgv2.MetaInfoAddFuncID(builder, funcOffset)
-	cfgv2.MetaInfoAddMetaID(builder, metaOffset)
+	cfgv2.MetaInfoAddFuncId(builder, funcOffset)
+	cfgv2.MetaInfoAddMetaId(builder, metaOffset)
 	cfgv2.MetaInfoAddIsUsingTimer(builder, isUsingTimer)
 	cfgv2.MetaInfoAddSeq(builder, metaInfo.Seq)
 	cfgv2.MetaInfoAddPrevState(builder, prevState)
 	cfgv2.MetaInfoAddLastPaused(builder, lastPaused)
 
 	cfgv2.MetaInfoAddSboundary(builder, boundaryOffset)
-	cfgv2.MetaInfoAddSourceID(builder, sourceOffset)
+	cfgv2.MetaInfoAddSourceId(builder, sourceOffset)
 	cfgv2.MetaInfoAddLogFileName(builder, logFileName)
 
 	return cfgv2.MetaInfoEnd(builder)
@@ -470,18 +470,18 @@ func decodeMetaInfo(config *cfgv2.Config) (metaInfo MetaInfo) {
 
 	metaInfo.RequestType = requestType(configMetaInfo.RequestType())
 
-	funcID := configMetaInfo.FuncID(nil)
-	metaInfo.FunctionScopeID.UID = string(funcID.UID())
-	metaInfo.FunctionScopeID.CollectionID = string(funcID.CID())
-	metaInfo.FunctionScopeID.ScopeID = string(funcID.ScopeID())
-	metaInfo.FunctionScopeID.BucketID = string(funcID.UUID())
+	funcID := configMetaInfo.FuncId(nil)
+	metaInfo.FunctionScopeID.UID = string(funcID.Uid())
+	metaInfo.FunctionScopeID.CollectionID = string(funcID.Cid())
+	metaInfo.FunctionScopeID.ScopeID = string(funcID.ScopeId())
+	metaInfo.FunctionScopeID.BucketID = string(funcID.Uuid())
 	metaInfo.FunctionScopeID.NumVbuckets = funcID.NumVbs()
 
-	metaID := configMetaInfo.MetaID(nil)
-	metaInfo.MetaID.UID = string(metaID.UID())
-	metaInfo.MetaID.CollectionID = string(metaID.CID())
-	metaInfo.MetaID.ScopeID = string(metaID.ScopeID())
-	metaInfo.MetaID.BucketID = string(metaID.UUID())
+	metaID := configMetaInfo.MetaId(nil)
+	metaInfo.MetaID.UID = string(metaID.Uid())
+	metaInfo.MetaID.CollectionID = string(metaID.Cid())
+	metaInfo.MetaID.ScopeID = string(metaID.ScopeId())
+	metaInfo.MetaID.BucketID = string(metaID.Uuid())
 	metaInfo.MetaID.NumVbuckets = metaID.NumVbs()
 
 	if configMetaInfo.IsUsingTimer() == trueByte {
@@ -492,11 +492,11 @@ func decodeMetaInfo(config *cfgv2.Config) (metaInfo MetaInfo) {
 	metaInfo.PrevState = StringToAppState(string(configMetaInfo.PrevState()))
 
 	metaInfo.Sboundary = streamBoundary(configMetaInfo.Sboundary())
-	sourceID := configMetaInfo.SourceID(nil)
-	metaInfo.SourceID.UID = string(sourceID.UID())
-	metaInfo.SourceID.CollectionID = string(sourceID.CID())
-	metaInfo.SourceID.ScopeID = string(sourceID.ScopeID())
-	metaInfo.SourceID.BucketID = string(sourceID.UUID())
+	sourceID := configMetaInfo.SourceId(nil)
+	metaInfo.SourceID.UID = string(sourceID.Uid())
+	metaInfo.SourceID.CollectionID = string(sourceID.Cid())
+	metaInfo.SourceID.ScopeID = string(sourceID.ScopeId())
+	metaInfo.SourceID.BucketID = string(sourceID.Uuid())
 	metaInfo.SourceID.NumVbuckets = sourceID.NumVbs()
 	metaInfo.LogFileName = string(configMetaInfo.LogFileName())
 	return
@@ -557,7 +557,7 @@ func encodeBindings(builder, sensitiveBuilder *flatbuffers.Builder, bindings []B
 			cfgv2.CurlBindingAddHostname(builder, hostnameEncoded)
 			cfgv2.CurlBindingAddAlias(builder, aliasEncoded)
 			cfgv2.CurlBindingAddAllowCookies(builder, allowCookie)
-			cfgv2.CurlBindingAddValidateSSLCertificate(builder, validateSSL)
+			cfgv2.CurlBindingAddValidateSslCertificate(builder, validateSSL)
 			curlEnd := cfgv2.CurlBindingEnd(builder)
 
 			cfgv2.BindingsStart(builder)
@@ -680,7 +680,7 @@ func decodeBindings(config *cfgv2.Config, sb StorageBytes) ([]Bindings, error) {
 				curl.AllowCookie = true
 			}
 
-			if curlBinding.ValidateSSLCertificate() == trueByte {
+			if curlBinding.ValidateSslCertificate() == trueByte {
 				curl.ValidateSSL = true
 			}
 

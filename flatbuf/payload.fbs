@@ -1,7 +1,7 @@
 namespace flatbuf.payload;
 
 table VbsThreadMap {
-  threadID:short;
+  thread_id:short;
   partitions:[short];
 }
 
@@ -40,7 +40,7 @@ table Payload {
   context:string; // context for timer
 
   // CPP worker config
-  partitionCount:short; // Virtual partitions for sharding workload among c++ workers
+  partition_count:short; // Virtual partitions for sharding workload among c++ workers
   thr_map: [VbsThreadMap]; // Mapping of vbuckets to std::thread associated with V8Worker instance;
 
   function_instance_id:string;
@@ -61,7 +61,7 @@ table Payload {
 
   curl_max_allowed_resp_size:int64; // max allowed size of curl response
   lcb_timeout:int;
-  certFile:string; // TLS certFile, null string if encryption is disabled
+  cert_file:string; // TLS certFile, null string if encryption is disabled
   encryption_level:string; // encryption level, at the time this consumer is being created
 
   bucket:string;
