@@ -1914,7 +1914,7 @@ func EncodeAppPayload(app *cm.Application) []byte {
 		cfg.CurlAddUsername(builder, usernameEncoded)
 		cfg.CurlAddBearerKey(builder, bearerKeyEncoded)
 		cfg.CurlAddAllowCookies(builder, cookiesEncoded)
-		cfg.CurlAddValidateSSLCertificate(builder, validateSSLCertificateEncoded)
+		cfg.CurlAddValidateSslCertificate(builder, validateSSLCertificateEncoded)
 		curlBindingsEnd := cfg.CurlEnd(builder)
 
 		curlBindings = append(curlBindings, curlBindingsEnd)
@@ -2021,11 +2021,11 @@ func EncodeAppPayload(app *cm.Application) []byte {
 	cfg.ConfigAddAppName(builder, aName)
 	cfg.ConfigAddDepCfg(builder, depcfg)
 	cfg.ConfigAddVersion(builder, version)
-	cfg.ConfigAddHandlerUUID(builder, app.FunctionID)
+	cfg.ConfigAddHandlerUuid(builder, app.FunctionID)
 	cfg.ConfigAddCurl(builder, curlBindingsVector)
 	cfg.ConfigAddConstants(builder, constantsBindingsVector)
 	cfg.ConfigAddAccess(builder, access)
-	cfg.ConfigAddFunctionInstanceID(builder, fiid)
+	cfg.ConfigAddFunctionInstanceId(builder, fiid)
 	cfg.ConfigAddEnforceSchema(builder, schema)
 	cfg.ConfigAddLifecycleState(builder, lifecycleState)
 	cfg.ConfigAddFunctionScope(builder, funcScope)
@@ -2044,9 +2044,9 @@ func ParseFunctionPayload(data []byte, fnName string) cm.Application {
 	var app cm.Application
 	app.AppHandlers = string(config.AppCode())
 	app.Name = string(config.AppName())
-	app.FunctionID = uint32(config.HandlerUUID())
+	app.FunctionID = uint32(config.HandlerUuid())
 	app.EventingVersion = string(config.Version())
-	app.FunctionInstanceID = string(config.FunctionInstanceID())
+	app.FunctionInstanceID = string(config.FunctionInstanceId())
 	if config.EnforceSchema() == byte(0x1) {
 		app.EnforceSchema = true
 	} else {
@@ -2092,7 +2092,7 @@ func ParseFunctionPayload(data []byte, fnName string) cm.Application {
 				allowCookies = true
 			}
 			validateSSL := false
-			if c.ValidateSSLCertificate() == (0x1) {
+			if c.ValidateSslCertificate() == (0x1) {
 				validateSSL = true
 			}
 			newCurl := cm.Curl{
