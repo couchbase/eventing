@@ -44,6 +44,10 @@ struct MetaData {
     const std::string& key, const uint64_t& cas)
       : scope(scope), collection(collection), key(key), cas(cas),
         expiry(0), invalidate_cache_(false) {}
+  MetaData(const std::string& scope, const std::string& collection,
+    const std::string& key, const uint64_t& cas, const uint32_t& expiry)
+      : scope(scope), collection(collection), key(key), cas(cas),
+        expiry(expiry), invalidate_cache_(false) {}
 };
 
 struct MutateInSpecs {

@@ -1105,7 +1105,7 @@ void V8Worker::HandleMutationEvent(const std::unique_ptr<WorkerMessage> &msg) {
       }
       auto [client_err, err_code, result] = checkpoint_writer_->Write(
           MetaData(parsed_meta->scope, parsed_meta->collection,
-                   parsed_meta->key, cas),
+                   parsed_meta->key, cas, parsed_meta->expiration),
           rootcas, cursors_arr);
       if (err_code != LCB_SUCCESS) {
         if (err_code == LCB_ERR_CAS_MISMATCH) {
@@ -1770,6 +1770,9 @@ V8Worker::ParseMetadataWithAck(const std::string &metadata_str, int &skip_ack,
     }
     if (metadata.contains("id")) {
       pmeta.key = metadata["id"].get<std::string>();
+    }
+    if (metadata.contains("expiration")) {
+      pmeta.expiration = metadata["expiration"].get<uint32_t>();
     }
     if (metadata.contains("cas")) {
       pmeta.cas = metadata["cas"].get<std::string>();
