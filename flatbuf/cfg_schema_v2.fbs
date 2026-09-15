@@ -2,135 +2,135 @@ namespace flatbuf.cfgv2;
 
 table Config {
   version:int8;
-  Applocation:AppLocation; // do you need this to store
-  AppCode:string;
-  AppID:uint;
-  AppInstanceID:string;
-  Settings:HandlerSetting;
-  AppState:AppState;
-  DeploymentConfig:DeploymentConfig;
-  Bindings:[Bindings];
-  MetaInfo:MetaInfo;
-  Owner:Owner;
+  applocation:AppLocation; // do you need this to store
+  app_code:string;
+  app_id:uint;
+  app_instance_id:string;
+  settings:HandlerSetting;
+  app_state:AppState;
+  deployment_config:DeploymentConfig;
+  bindings:[Bindings];
+  meta_info:MetaInfo;
+  owner:Owner;
 }
 
 table Namespace {
-  BucketName:string;
-  ScopeName:string;
+  bucket_name:string;
+  scope_name:string;
 }
 
 table Keyspace {
-  BucketName:string;
-  ScopeName:string;
-  CollectionName:string;
+  bucket_name:string;
+  scope_name:string;
+  collection_name:string;
 }
 
 table AppLocation {
-  Namespace:Namespace;
-  AppName:string;
+  namespace:Namespace;
+  app_name:string;
 }
 
 table HandlerSetting {
-  CppWorkerThread:uint32;
-  DcpStreamBoundary:string;
-  Description:string;
-  LogLevel:string;
-  NumTimerPartition:uint16;
-  StatsDuration:uint64;
-  TimerContextSize:uint32;
-  WorkerCount:uint32;
-  AppLogDir:string;
-  EnableAppRotation:bool;
-  AppLogMaxSize:uint64;
-  AppLogMaxFiles:uint32;
-  CheckpointInterval:uint64;
-  CursorAware:bool;
-  AllowTransactionDocument:bool;
-  AllowSyncDocument:bool;
-  CheckInterval:uint64;
-  MaxUnackedBytes:float64;
-  MaxUnackedCount:float64;
-  FlushTimer:uint64;
-  MaxParallelVb:uint16;
+  cpp_worker_thread:uint32;
+  dcp_stream_boundary:string;
+  description:string;
+  log_level:string;
+  num_timer_partition:uint16;
+  stats_duration:uint64;
+  timer_context_size:uint32;
+  worker_count:uint32;
+  app_log_dir:string;
+  enable_app_rotation:bool;
+  app_log_max_size:uint64;
+  app_log_max_files:uint32;
+  checkpoint_interval:uint64;
+  cursor_aware:bool;
+  allow_transaction_document:bool;
+  allow_sync_document:bool;
+  check_interval:uint64;
+  max_unacked_bytes:float64;
+  max_unacked_count:float64;
+  flush_timer:uint64;
+  max_parallel_vb:uint16;
 
-  ExecutionTimeout:uint64;
-  CursorCheckpointTimeout:uint64;
-  OnDeployTimeout:uint64;
-  LanguageCompat:string;
-  LcbInstCapacity:uint32;
-  LcbRetryCount:uint32;
-  LcbTimeout:uint64;
-  N1qlConsistency:string;
-  N1qlPrepare:bool;
-  HandlerHeader:[string];
-  HandlerFooter:[string];
-  BucketCacheSize:uint64;
-  BucketCacheAge:uint64;
-  CurlRespSize:uint64;
+  execution_timeout:uint64;
+  cursor_checkpoint_timeout:uint64;
+  on_deploy_timeout:uint64;
+  language_compat:string;
+  lcb_inst_capacity:uint32;
+  lcb_retry_count:uint32;
+  lcb_timeout:uint64;
+  n1ql_consistency:string;
+  n1ql_prepare:bool;
+  handler_header:[string];
+  handler_footer:[string];
+  bucket_cache_size:uint64;
+  bucket_cache_age:uint64;
+  curl_resp_size:uint64;
 }
 
 table AppState {
-  ProcessingState:bool;
-  DeploymentState:bool;
+  processing_state:bool;
+  deployment_state:bool;
 }
 
 table DeploymentConfig {
-  SourceKeyspace:Keyspace;
-  MetadataKeyspace:Keyspace;
+  source_keyspace:Keyspace;
+  metadata_keyspace:Keyspace;
 }
 
 table Bindings {
-  BindingType:uint;
-  BucketBinding:BucketBinding;
-  CurlBinding:CurlBinding;
-  ConstantBinding:ConstantBinding;
+  binding_type:uint;
+  bucket_binding:BucketBinding;
+  curl_binding:CurlBinding;
+  constant_binding:ConstantBinding;
 }
 
 table KeyspaceInfo {
-  UID:string;
-  ScopeID:string;
-  CID:string;
-  UUID:string;
-  NumVbs:uint16;
+  uid:string;
+  scope_id:string;
+  cid:string;
+  uuid:string;
+  num_vbs:uint16;
 }
 
 table MetaInfo {
-  RequestType:uint8;
-  FuncID:KeyspaceInfo;
-  MetaID:KeyspaceInfo;
-  IsUsingTimer:bool;
-  Seq:uint32;
-  PrevState:string;
-  LastPaused:string;
+  request_type:uint8;
+  func_id:KeyspaceInfo;
+  meta_id:KeyspaceInfo;
+  is_using_timer:bool;
+  seq:uint32;
+  prev_state:string;
+  last_paused:string;
 
   sboundary:string;
-  SourceID:KeyspaceInfo;
-  LogFileName:string;
+  source_id:KeyspaceInfo;
+  log_file_name:string;
 }
 
 table Owner {
-  Username:string;
-  Domain:string;
-  UUID:string;
+  username:string;
+  domain:string;
+  uuid:string;
 }
 
 table BucketBinding {
-  Alias:string;
-  Keyspace:Keyspace;
-  Access:string;
+  alias:string;
+  keyspace:Keyspace;
+  access:string;
 }
 
 table CurlBinding {
   hostname:string;
   alias:string;
-  authType:string;
-  allowCookies:bool;
-  validateSSLCertificate:bool;
+  auth_type:string;
+  allow_cookies:bool;
+  validate_ssl_certificate:bool;
 }
 
 table ConstantBinding {
-  Literal:string;
-  Value:string;
+  literal:string;
+  value:string;
 }
 
 table SensitiveConfig {
@@ -138,8 +138,8 @@ table SensitiveConfig {
 }
 
 table Sensitive {
-  curlIndex:int32;
+  curl_index:int32;
   username:string;
   password:string;
-  bearerKey:string;
+  bearer_key:string;
 }

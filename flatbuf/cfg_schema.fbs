@@ -1,50 +1,50 @@
 namespace flatbuf.cfg;
 
 table Config {
-  appCode:string;
-  appName:string;
-  depCfg:DepCfg;
-  handlerUUID:uint;
+  app_code:string;
+  app_name:string;
+  dep_cfg:DepCfg;
+  handler_uuid:uint;
   reserved1:uint; // was id
   reserved2:bool; // was usingTimer
-  functionInstanceID:string;
+  function_instance_id:string;
   reserved3:bool; // was srcMutationEnabled
   access:[string];
   curl:[Curl];
-  enforceSchema:bool;
+  enforce_schema:bool;
   constants:[Constant];
-  lifecycleState:string;
+  lifecycle_state:string;
   version:string;
   owner:Owner;
-  functionScope:FunctionScope;
+  function_scope:FunctionScope;
 }
 
 table DepCfg {
   buckets:[Bucket];
-  metadataBucket:string;
-  sourceBucket:string;
-  sourceScope:string;
-  sourceCollection:string;
-  metadataScope:string;
-  metadataCollection:string;
+  metadata_bucket:string;
+  source_bucket:string;
+  source_scope:string;
+  source_collection:string;
+  metadata_scope:string;
+  metadata_collection:string;
 }
 
 table Bucket {
-  bucketName:string;
+  bucket_name:string;
   alias:string;
-  scopeName:string;
-  collectionName:string;
+  scope_name:string;
+  collection_name:string;
 }
 
 table Curl {
   hostname:string;
   value:string;
-  authType:string;
+  auth_type:string;
   username:string;
   password:string;
-  bearerKey:string;
-  allowCookies:bool;
-  validateSSLCertificate:bool;
+  bearer_key:string;
+  allow_cookies:bool;
+  validate_ssl_certificate:bool;
 }
 
 table Constant {
@@ -59,8 +59,8 @@ table Owner {
 }
 
 table FunctionScope {
-  bucketName:string;
-  scopeName:string;
+  bucket_name:string;
+  scope_name:string;
 }
 
 root_type Config;
