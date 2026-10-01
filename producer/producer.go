@@ -372,9 +372,8 @@ func (p *Producer) Serve() {
 				continue
 			}
 
-			logLevel, ok := settings["log_level"].(string)
+			_, ok := settings["log_level"].(string)
 			if ok {
-				logging.SetLogLevel(util.GetLogLevel(logLevel))
 				p.updateAppLogSetting(settings)
 			}
 

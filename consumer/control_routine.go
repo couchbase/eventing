@@ -71,7 +71,6 @@ func (c *Consumer) controlRoutine() error {
 
 			if val, ok := settings["log_level"]; ok {
 				c.logLevel = val.(string)
-				logging.SetLogLevel(util.GetLogLevel(c.logLevel))
 				c.sendLogLevel(c.logLevel, false)
 			}
 

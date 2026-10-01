@@ -295,7 +295,6 @@ func (c *Consumer) HandleV8Worker() error {
 	<-c.signalConnectedCh
 	<-c.signalFeedbackConnectedCh
 
-	logging.SetLogLevel(util.GetLogLevel(c.logLevel))
 	c.sendLogLevel(c.logLevel, false)
 	c.sendWorkerThrMap(nil, false)
 	c.sendWorkerThrCount(0, false)

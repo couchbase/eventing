@@ -446,15 +446,6 @@ func (p *Producer) parseDepcfg() error {
 	p.dcpConfig["activeVbOnly"] = true
 	p.app.Settings = settings
 
-	var logLevel string
-	if val, ok := settings["log_level"]; ok {
-		logLevel = val.(string)
-	} else {
-		logLevel = "INFO"
-	}
-
-	logging.SetLogLevel(util.GetLogLevel(logLevel))
-
 	logging.Infof("%s [%s] Loaded function => wc: %v bucket: %v Scope: %v Collection: %s statsTickD: %v",
 		logPrefix, p.appName, p.handlerConfig.WorkerCount, p.SourceBucket(), p.SourceScope(), p.SourceCollection(),
 		p.handlerConfig.StatsLogInterval)
