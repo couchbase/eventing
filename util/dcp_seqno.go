@@ -127,25 +127,46 @@ func (r *vbSeqnosReader) GetScopeOrCollectionSeqnos(cid uint32) (seqs []uint64, 
 // This routine is responsible for computing request batches on the fly
 // and issue single 'dcp seqno' per batch.
 func (r *vbSeqnosReader) Routine() {
-	for req := range r.requestCh {
-		l := len(r.requestCh)
-		seqnos, err := CollectSeqnos(r.kvfeeds, req.bucketLevel, req.cid)
-		response := &vbSeqnosResponse{
-			seqnos: seqnos,
-			err:    err,
-		}
-		if err != nil {
-			dcp_buckets_seqnos.rw.Lock()
-			dcp_buckets_seqnos.errors[r.bucket] = err
-			dcp_buckets_seqnos.rw.Unlock()
-		}
-		req.Reply(response)
+	type batchKey struct {
+		cid         uint32
+		bucketLevel bool
+	}
 
-		// Read outstanding requests that can be served by
-		// using the same response
+	for req := range r.requestCh {
+		// Drain everything queued alongside this request, grouped by keyspace.
+		l := len(r.requestCh)
+		order := make([]batchKey, 0, l+1)
+		batch := make(map[batchKey][]vbSeqnosRequest, l+1)
+
+		add := func(q vbSeqnosRequest) {
+			k := batchKey{cid: q.cid, bucketLevel: q.bucketLevel}
+			if _, seen := batch[k]; !seen {
+				order = append(order, k)
+			}
+			batch[k] = append(batch[k], q)
+		}
+
+		add(req)
 		for i := 0; i < l; i++ {
-			req := <-r.requestCh
-			req.Reply(response)
+			add(<-r.requestCh)
+		}
+
+		// One fetch per distinct keyspace. These must not overlap:
+		// CollectSeqnos writes through the shared kvConn.seqsbuf.
+		for _, k := range order {
+			seqnos, err := CollectSeqnos(r.kvfeeds, k.bucketLevel, k.cid)
+			response := &vbSeqnosResponse{
+				seqnos: seqnos,
+				err:    err,
+			}
+			if err != nil {
+				dcp_buckets_seqnos.rw.Lock()
+				dcp_buckets_seqnos.errors[r.bucket] = err
+				dcp_buckets_seqnos.rw.Unlock()
+			}
+			for _, q := range batch[k] {
+				q.Reply(response)
+			}
 		}
 	}
 
@@ -248,9 +269,10 @@ func delDBSbucket(bucketn string, checkErr bool) {
 
 // BucketSeqnos return list of {{vbno,seqno}..} for all vbuckets.
 // this call might fail due to,
-// - concurrent access that can preserve a deleted/failed bucket object.
-// - pollForDeletedBuckets() did not get a chance to cleanup
-//   a deleted bucket.
+//   - concurrent access that can preserve a deleted/failed bucket object.
+//   - pollForDeletedBuckets() did not get a chance to cleanup
+//     a deleted bucket.
+//
 // in both the cases if the call is retried it should get fixed, provided
 // a valid bucket exists.
 func BucketSeqnos(cluster, pooln, bucketn string) (l_seqnos []uint64, err error) {
