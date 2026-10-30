@@ -22,6 +22,8 @@ replace github.com/couchbase/go_json => ../go_json
 
 replace github.com/couchbase/gocbcrypto => ../gocbcrypto
 
+replace github.com/couchbase/gocoverage => ../../../../../gocoverage
+
 replace github.com/couchbase/gomemcached => ../gomemcached
 
 replace github.com/couchbase/goutils => ../goutils
@@ -48,6 +50,7 @@ require (
 	github.com/couchbase/gocb/v2 v2.12.4
 	github.com/couchbase/gocbcore/v9 v9.1.11
 	github.com/couchbase/gocbcrypto v0.0.0-00010101000000-000000000000
+	github.com/couchbase/gocoverage v0.0.0
 	github.com/couchbase/gomemcached v0.3.4
 	github.com/couchbase/goutils v0.3.0
 	github.com/couchbase/query v0.0.0-20231201224521-b47444ea33a9
