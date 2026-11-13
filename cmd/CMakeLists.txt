@@ -36,6 +36,11 @@ IF("${PRODUCT_VERSION}" VERSION_GREATER_EQUAL "7.1.0" OR
   SET(TAGS "${TAGS} neo")
 ENDIF()
 
+IF(CB_GO_CODE_COVERAGE)
+  MESSAGE(STATUS "Enabling Go code coverage instrumentation for Eventing")
+  SET(TAGS "${TAGS} go_coverage")
+ENDIF()
+
 IF(BUILD_ENTERPRISE)
     SET(NEWEVAL_DIR ../../eventing-ee/evaluator)
     find_path(NEWEVAL_INCLUDE_DIR worker.h

@@ -15,8 +15,6 @@ const (
 	version1Identifier  = byte(0x01)
 	compressedPayload   = byte(0x00)
 	uncompressedPayload = byte(0x01)
-	trueByte            = byte(0x01)
-	falseByte           = byte(0x00)
 )
 
 func (fd *FunctionDetails) encodeBytes(compress bool) StorageBytes {
@@ -165,33 +163,8 @@ func encodeHandlerSettings(builder *flatbuffers.Builder, handlerSettings Handler
 	logLevelOffset := builder.CreateString(string(handlerSettings.LogLevel))
 	appDirOffset := builder.CreateString(handlerSettings.AppLogDir)
 
-	rotation := byte(falseByte)
-	if handlerSettings.EnableAppRotation {
-		rotation = trueByte
-	}
-
 	langOffset := builder.CreateString(string(handlerSettings.LanguageCompat))
 	n1qlConsOffset := builder.CreateString(string(handlerSettings.N1qlConsistency))
-
-	n1qlPrepare := falseByte
-	if handlerSettings.N1qlPrepare {
-		n1qlPrepare = trueByte
-	}
-
-	cursorAware := falseByte
-	if handlerSettings.CursorAware {
-		cursorAware = trueByte
-	}
-
-	allowSyncDocument := falseByte
-	if handlerSettings.AllowSyncDocuments {
-		allowSyncDocument = trueByte
-	}
-
-	allowTransactionDocument := falseByte
-	if handlerSettings.AllowTransactionDocument {
-		allowTransactionDocument = trueByte
-	}
 
 	headerVectorOffset := make([]flatbuffers.UOffsetT, 0, len(handlerSettings.HandlerHeader))
 	for _, header := range handlerSettings.HandlerHeader {
@@ -226,13 +199,13 @@ func encodeHandlerSettings(builder *flatbuffers.Builder, handlerSettings Handler
 	cfgv2.HandlerSettingAddTimerContextSize(builder, handlerSettings.TimerContextSize)
 	cfgv2.HandlerSettingAddWorkerCount(builder, handlerSettings.WorkerCount)
 	cfgv2.HandlerSettingAddAppLogDir(builder, appDirOffset)
-	cfgv2.HandlerSettingAddEnableAppRotation(builder, rotation)
+	cfgv2.HandlerSettingAddEnableAppRotation(builder, handlerSettings.EnableAppRotation)
 	cfgv2.HandlerSettingAddAppLogMaxSize(builder, handlerSettings.AppLogMaxSize)
 	cfgv2.HandlerSettingAddAppLogMaxFiles(builder, handlerSettings.AppLogMaxFiles)
 	cfgv2.HandlerSettingAddCheckpointInterval(builder, handlerSettings.CheckpointInterval)
-	cfgv2.HandlerSettingAddAllowSyncDocument(builder, allowSyncDocument)
-	cfgv2.HandlerSettingAddAllowTransactionDocument(builder, allowTransactionDocument)
-	cfgv2.HandlerSettingAddCursorAware(builder, cursorAware)
+	cfgv2.HandlerSettingAddAllowSyncDocument(builder, handlerSettings.AllowSyncDocuments)
+	cfgv2.HandlerSettingAddAllowTransactionDocument(builder, handlerSettings.AllowTransactionDocument)
+	cfgv2.HandlerSettingAddCursorAware(builder, handlerSettings.CursorAware)
 	cfgv2.HandlerSettingAddMaxParallelVb(builder, handlerSettings.MaxParallelVb)
 	cfgv2.HandlerSettingAddMaxUnackedBytes(builder, handlerSettings.MaxUnackedBytes)
 	cfgv2.HandlerSettingAddMaxUnackedCount(builder, handlerSettings.MaxUnackedCount)
@@ -247,7 +220,7 @@ func encodeHandlerSettings(builder *flatbuffers.Builder, handlerSettings Handler
 	cfgv2.HandlerSettingAddLcbRetryCount(builder, handlerSettings.LcbRetryCount)
 	cfgv2.HandlerSettingAddLcbTimeout(builder, handlerSettings.LcbTimeout)
 	cfgv2.HandlerSettingAddN1qlConsistency(builder, n1qlConsOffset)
-	cfgv2.HandlerSettingAddN1qlPrepare(builder, n1qlPrepare)
+	cfgv2.HandlerSettingAddN1qlPrepare(builder, handlerSettings.N1qlPrepare)
 	cfgv2.HandlerSettingAddHandlerHeader(builder, headerOffset)
 	cfgv2.HandlerSettingAddHandlerFooter(builder, footerOffset)
 	cfgv2.HandlerSettingAddBucketCacheSize(builder, handlerSettings.BucketCacheSize)
@@ -270,7 +243,7 @@ func decodeHandlerSetting(config *cfgv2.Config) (hSettings HandlerSettings) {
 	hSettings.WorkerCount = setting.WorkerCount()
 	hSettings.AppLogDir = string(setting.AppLogDir())
 
-	hSettings.EnableAppRotation = (setting.EnableAppRotation() == trueByte)
+	hSettings.EnableAppRotation = setting.EnableAppRotation()
 	hSettings.AppLogMaxSize = setting.AppLogMaxSize()
 	hSettings.AppLogMaxFiles = setting.AppLogMaxFiles()
 	hSettings.CheckpointInterval = setting.CheckpointInterval()
@@ -283,7 +256,7 @@ func decodeHandlerSetting(config *cfgv2.Config) (hSettings HandlerSettings) {
 	hSettings.LcbRetryCount = setting.LcbRetryCount()
 	hSettings.LcbTimeout = setting.LcbTimeout()
 	hSettings.N1qlConsistency = n1qlConsistency(setting.N1qlConsistency())
-	hSettings.N1qlPrepare = (setting.N1qlPrepare() == trueByte)
+	hSettings.N1qlPrepare = setting.N1qlPrepare()
 
 	hSettings.HandlerHeader = make([]string, 0, setting.HandlerHeaderLength())
 	for i := 0; i < setting.HandlerHeaderLength(); i++ {
@@ -299,9 +272,9 @@ func decodeHandlerSetting(config *cfgv2.Config) (hSettings HandlerSettings) {
 	hSettings.BucketCacheAge = setting.BucketCacheAge()
 	hSettings.CurlRespSize = setting.CurlRespSize()
 
-	hSettings.CursorAware = (setting.CursorAware() == trueByte)
-	hSettings.AllowSyncDocuments = (setting.AllowSyncDocument() == trueByte)
-	hSettings.AllowTransactionDocument = (setting.AllowTransactionDocument() == trueByte)
+	hSettings.CursorAware = setting.CursorAware()
+	hSettings.AllowSyncDocuments = setting.AllowSyncDocument()
+	hSettings.AllowTransactionDocument = setting.AllowTransactionDocument()
 
 	hSettings.MaxParallelVb = setting.MaxParallelVb()
 	hSettings.CheckInterval = setting.CheckInterval()
@@ -314,30 +287,16 @@ func decodeHandlerSetting(config *cfgv2.Config) (hSettings HandlerSettings) {
 }
 
 func encodeAppState(builder *flatbuffers.Builder, appState AppState) flatbuffers.UOffsetT {
-	processing, deployment := falseByte, falseByte
-	if appState.ProcessingState {
-		processing = trueByte
-	}
-
-	if appState.DeploymentState {
-		deployment = trueByte
-	}
-
 	cfgv2.AppStateStart(builder)
-	cfgv2.AppStateAddProcessingState(builder, processing)
-	cfgv2.AppStateAddDeploymentState(builder, deployment)
+	cfgv2.AppStateAddProcessingState(builder, appState.ProcessingState)
+	cfgv2.AppStateAddDeploymentState(builder, appState.DeploymentState)
 	return cfgv2.AppStateEnd(builder)
 }
 
 func decodeAppState(config *cfgv2.Config) (appState AppState) {
 	configAppState := config.AppState(nil)
-	if configAppState.ProcessingState() == trueByte {
-		appState.ProcessingState = true
-	}
-
-	if configAppState.DeploymentState() == trueByte {
-		appState.DeploymentState = true
-	}
+	appState.ProcessingState = configAppState.ProcessingState()
+	appState.DeploymentState = configAppState.DeploymentState()
 	return
 }
 
@@ -417,10 +376,6 @@ func encodeMetaInfo(builder *flatbuffers.Builder, metaInfo MetaInfo) flatbuffers
 	metaScopeID := builder.CreateString(metaInfo.MetaID.ScopeID)
 	metaCollectionID := builder.CreateString(metaInfo.MetaID.CollectionID)
 	boundaryOffset := builder.CreateString(string(metaInfo.Sboundary))
-	isUsingTimer := falseByte
-	if metaInfo.IsUsingTimer {
-		isUsingTimer = trueByte
-	}
 	prevState := builder.CreateString(metaInfo.PrevState.String())
 	lastPaused := builder.CreateString(metaInfo.LastPaused.Format(time.RFC3339))
 	logFileName := builder.CreateString(metaInfo.LogFileName)
@@ -453,7 +408,7 @@ func encodeMetaInfo(builder *flatbuffers.Builder, metaInfo MetaInfo) flatbuffers
 	cfgv2.MetaInfoAddRequestType(builder, uint8(metaInfo.RequestType))
 	cfgv2.MetaInfoAddFuncId(builder, funcOffset)
 	cfgv2.MetaInfoAddMetaId(builder, metaOffset)
-	cfgv2.MetaInfoAddIsUsingTimer(builder, isUsingTimer)
+	cfgv2.MetaInfoAddIsUsingTimer(builder, metaInfo.IsUsingTimer)
 	cfgv2.MetaInfoAddSeq(builder, metaInfo.Seq)
 	cfgv2.MetaInfoAddPrevState(builder, prevState)
 	cfgv2.MetaInfoAddLastPaused(builder, lastPaused)
@@ -484,9 +439,7 @@ func decodeMetaInfo(config *cfgv2.Config) (metaInfo MetaInfo) {
 	metaInfo.MetaID.BucketID = string(metaID.Uuid())
 	metaInfo.MetaID.NumVbuckets = metaID.NumVbs()
 
-	if configMetaInfo.IsUsingTimer() == trueByte {
-		metaInfo.IsUsingTimer = true
-	}
+	metaInfo.IsUsingTimer = configMetaInfo.IsUsingTimer()
 	metaInfo.Seq = configMetaInfo.Seq()
 	metaInfo.LastPaused, _ = time.Parse(time.RFC3339, string(configMetaInfo.LastPaused()))
 	metaInfo.PrevState = StringToAppState(string(configMetaInfo.PrevState()))
@@ -542,22 +495,12 @@ func encodeBindings(builder, sensitiveBuilder *flatbuffers.Builder, bindings []B
 			authTypeEncoded := builder.CreateString(string(curlBinding.AuthType))
 			hostnameEncoded := builder.CreateString(curlBinding.HostName)
 			aliasEncoded := builder.CreateString(curlBinding.Alias)
-			allowCookie := falseByte
-			if curlBinding.AllowCookie {
-				allowCookie = trueByte
-			}
-
-			validateSSL := falseByte
-			if curlBinding.ValidateSSL {
-				validateSSL = trueByte
-			}
-
 			cfgv2.CurlBindingStart(builder)
 			cfgv2.CurlBindingAddAuthType(builder, authTypeEncoded)
 			cfgv2.CurlBindingAddHostname(builder, hostnameEncoded)
 			cfgv2.CurlBindingAddAlias(builder, aliasEncoded)
-			cfgv2.CurlBindingAddAllowCookies(builder, allowCookie)
-			cfgv2.CurlBindingAddValidateSslCertificate(builder, validateSSL)
+			cfgv2.CurlBindingAddAllowCookies(builder, curlBinding.AllowCookie)
+			cfgv2.CurlBindingAddValidateSslCertificate(builder, curlBinding.ValidateSSL)
 			curlEnd := cfgv2.CurlBindingEnd(builder)
 
 			cfgv2.BindingsStart(builder)
@@ -676,13 +619,8 @@ func decodeBindings(config *cfgv2.Config, sb StorageBytes) ([]Bindings, error) {
 				Alias:    string(curlBinding.Alias()),
 				AuthType: authType(curlBinding.AuthType()),
 			}
-			if curlBinding.AllowCookies() == trueByte {
-				curl.AllowCookie = true
-			}
-
-			if curlBinding.ValidateSslCertificate() == trueByte {
-				curl.ValidateSSL = true
-			}
+			curl.AllowCookie = curlBinding.AllowCookies()
+			curl.ValidateSSL = curlBinding.ValidateSslCertificate()
 
 			curl.UserName = credList[sensitiveIndex].UserName
 			curl.Password = credList[sensitiveIndex].Password
