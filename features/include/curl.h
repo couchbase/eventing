@@ -220,6 +220,7 @@ struct CurlRequest : public Info {
   CurlRequest(bool is_fatal) : Info(is_fatal) {}
   CurlRequest(bool is_fatal, std::string msg)
       : Info(is_fatal, std::move(msg)) {}
+  CurlRequest(long default_timeout) : timeout(default_timeout) {}
 
   bool redirect{true};
   std::string method;
