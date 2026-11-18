@@ -137,9 +137,10 @@ type supervisor struct {
 	bucketGraph  appGraph.AppGraph
 	serverConfig serverConfig.ServerConfig
 
-	systemConfig       serverConfig.SystemConfig
-	globalStatsCounter *common.GlobalStatsCounter
-	gocbCluster        *gocb.Cluster
+	systemConfig          serverConfig.SystemConfig
+	globalStatsCounter    *common.GlobalStatsCounter
+	gocbClusterChangeLock sync.Mutex
+	gocbClusterPtr        atomic.Pointer[gocb.Cluster]
 
 	// This is single reader multiple writer scenario
 	// Wrote by StopCalledInterupt which can be called from different routines and read by checkAndStopFunctions
@@ -314,7 +315,7 @@ func (s *supervisor) recover(ctx context.Context) error {
 	logging.Infof("%s successfully recovered topology path", logPrefix)
 
 	cluster := checkpointManager.GetGocbClusterObject(s.clusterSetting, s.observer, s.globalStatsCounter)
-	s.createGocbClusterObjectLocked(cluster)
+	s.createGocbClusterObject(cluster)
 
 	// Recover functions only for leader node. Other node can lazily recover
 	if s.GetLeaderNode() == s.clusterSetting.UUID {
@@ -412,7 +413,7 @@ func (s *supervisor) observeStateChanges(ctx context.Context) {
 	}
 
 	cluster := checkpointManager.GetGocbClusterObject(s.clusterSetting, s.observer, s.globalStatsCounter)
-	s.createGocbClusterObjectLocked(cluster)
+	s.createGocbClusterObject(cluster)
 
 	for {
 		select {
@@ -425,7 +426,7 @@ func (s *supervisor) observeStateChanges(ctx context.Context) {
 			case notifier.EventTLSChanges:
 				logging.Infof("%s Tls settings changed. Refreshing gocb cluster object", logPrefix)
 				cluster := checkpointManager.GetGocbClusterObject(s.clusterSetting, s.observer, s.globalStatsCounter)
-				s.createGocbClusterObjectLocked(cluster)
+				s.createGocbClusterObject(cluster)
 
 			case notifier.EventClusterCompatibilityChanges:
 				clusterCompat := msg.CurrentState.(*notifier.Version)
@@ -468,15 +469,19 @@ func (s *supervisor) periodicRun(ctx context.Context) {
 	}
 }
 
-func (s *supervisor) createGocbClusterObjectLocked(cluster *gocb.Cluster) {
-	if s.gocbCluster != nil {
-		s.gocbCluster.Close(nil)
+func (s *supervisor) createGocbClusterObject(cluster *gocb.Cluster) {
+	oldCluster := s.gocbClusterPtr.Load()
+	if oldCluster != nil {
+		oldCluster.Close(nil)
 	}
 
 	tenents := s.tenents.Load().(map[string]*functionInfo)
-	s.gocbCluster = cluster
+	s.gocbClusterPtr.Store(cluster)
+
+	s.gocbClusterChangeLock.Lock()
+	defer s.gocbClusterChangeLock.Unlock()
 	for _, tInfo := range tenents {
-		tInfo.manager.NotifyTlsChanges(s.gocbCluster)
+		tInfo.manager.NotifyTlsChanges(cluster)
 	}
 }
 
@@ -1192,9 +1197,12 @@ func (s *supervisor) undeployFunction(function *application.FunctionDetails) {
 }
 
 func (s *supervisor) spawnTenantManagerLocked(functionDetails *application.FunctionDetails) *functionInfo {
+	s.gocbClusterChangeLock.Lock()
+	defer s.gocbClusterChangeLock.Unlock()
+
 	tenant := functionManager.NewFunctionManager(
 		functionDetails.AppLocation.Namespace.BucketName,
-		s.gocbCluster,
+		s.gocbClusterPtr.Load(),
 		s.clusterSetting,
 		s.observer,
 		s,
@@ -1215,6 +1223,7 @@ func (s *supervisor) spawnTenantManagerLocked(functionDetails *application.Funct
 	maps.Copy(copyTenents, tenents)
 	copyTenents[functionDetails.AppLocation.Namespace.BucketName] = tInfo
 	s.tenents.Store(copyTenents)
+
 	return tInfo
 }
 
@@ -1301,7 +1310,8 @@ func (s *supervisor) CreateInitCheckpoint(runtimeInfo *response.RuntimeInfo, fun
 		KvPort:        s.clusterSetting.KvPort,
 		OwnerNodeUUID: s.clusterSetting.UUID,
 	}
-	cpManager := checkpointManager.NewCheckpointManager(cc, s.gocbCluster, s.clusterSetting, nil, s.observer, s.broadcaster)
+
+	cpManager := checkpointManager.NewCheckpointManager(cc, s.gocbClusterPtr.Load(), s.clusterSetting, nil, s.observer, s.broadcaster)
 	defer cpManager.CloseCheckpointManager()
 
 	fLogMap, err := manager.GetFailoverLog(vbs)
@@ -1411,7 +1421,7 @@ func (s *supervisor) DebuggerOp(op common.DebuggerOp, funcDetails *application.F
 
 	metadataKeyspace := funcDetails.DeploymentConfig.MetaKeyspace
 	metadataBucketHandle, err := checkpointManager.GetBucketObjectWithRetry(
-		s.gocbCluster,
+		s.gocbClusterPtr.Load(),
 		1,
 		s.observer,
 		metadataKeyspace.BucketName,
@@ -1616,7 +1626,7 @@ func (s *supervisor) SyncPhaseDone() bool {
 }
 
 func (s *supervisor) GetCollectionObject(keyspace application.Keyspace) (*gocb.Collection, error) {
-	bucketHandler, err := checkpointManager.GetBucketObjectWithRetry(s.gocbCluster, 5, s.observer, keyspace.BucketName)
+	bucketHandler, err := checkpointManager.GetBucketObjectWithRetry(s.gocbClusterPtr.Load(), 5, s.observer, keyspace.BucketName)
 	if err != nil {
 		return nil, err
 	}
