@@ -272,7 +272,6 @@ func (vm *vbMapDistributor) addVbVersion1Locked(changeID string, keepNodes []str
 		nodeUUIDs = append(nodeUUIDs, node.nodeID)
 		if node.nodeID == vm.uuid {
 			nodeIndex = index
-			break
 		}
 	}
 
